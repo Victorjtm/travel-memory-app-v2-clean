@@ -1,0 +1,83 @@
+<div class="contenedor">
+  <h2>Itinerarios para el viaje {{ viajePrevistoId }}</h2>
+
+  <!-- Botón para añadir un nuevo itinerario -->
+  <button [routerLink]="['/formulario-itinerario', viajePrevistoId]" class="btn-agregar">
+    <i class="fa fa-plus-circle"></i> Añadir Itinerario
+  </button>
+
+  <hr>
+
+  <!-- Mostrar formulario de actualización solo cuando se seleccione un itinerario -->
+  <div *ngIf="itinerarioActualizado.id !== 0">
+    <h3>Actualizar Itinerario</h3>
+    <form (ngSubmit)="guardarActualizacion()">
+      <label for="fechaInicio">Fecha de inicio</label>
+      <input type="date" id="fechaInicio" [(ngModel)]="itinerarioActualizado.fechaInicio" name="fechaInicio" required />
+
+      <label for="fechaFin">Fecha de fin</label>
+      <input type="date" id="fechaFin" [(ngModel)]="itinerarioActualizado.fechaFin" name="fechaFin" required />
+
+      <label for="duracionDias">Duración (días)</label>
+      <input type="number" id="duracionDias" [(ngModel)]="itinerarioActualizado.duracionDias" name="duracionDias" required />
+
+      <label for="destinosPorDia">Destinos por día</label>
+      <input type="text" id="destinosPorDia" [(ngModel)]="itinerarioActualizado.destinosPorDia" name="destinosPorDia" required />
+
+      <label for="descripcionGeneral">Descripción general</label>
+      <textarea id="descripcionGeneral" [(ngModel)]="itinerarioActualizado.descripcionGeneral" name="descripcionGeneral" required></textarea>
+
+      <label for="horaInicio">Hora de inicio</label>
+      <input type="time" id="horaInicio" [(ngModel)]="itinerarioActualizado.horaInicio" name="horaInicio" required />
+
+      <label for="horaFin">Hora de fin</label>
+      <input type="time" id="horaFin" [(ngModel)]="itinerarioActualizado.horaFin" name="horaFin" required />
+
+      <label for="climaGeneral">Clima general</label>
+      <input type="text" id="climaGeneral" [(ngModel)]="itinerarioActualizado.climaGeneral" name="climaGeneral" required />
+
+      <label for="tipoDeViaje">Tipo de viaje</label>
+      <select id="tipoDeViaje" [(ngModel)]="itinerarioActualizado.tipoDeViaje" name="tipoDeViaje" required>
+        <option value="costa">Costa</option>
+        <option value="montaña">Montaña</option>
+        <option value="rural">Rural</option>
+        <option value="ciudad">Ciudad</option>
+      </select>
+
+      <button type="submit" class="btn-guardar">Guardar cambios</button>
+      <button type="button" class="btn-cancelar" (click)="cancelarActualizacion()">Cancelar</button>
+    </form>
+    <hr>
+  </div>
+
+  <!-- Lista de itinerarios, solo se muestra si no estamos actualizando uno -->
+  <div *ngIf="itinerarioActualizado.id === 0">
+    <div *ngFor="let itinerario of itinerarios">
+      <h3>Itinerario {{ itinerario.id }}</h3>
+      <p><strong>Fecha:</strong> {{ itinerario.fechaInicio }} - {{ itinerario.fechaFin }}</p>
+      <p><strong>Duración:</strong> {{ itinerario.duracionDias }} días</p>
+      <p><strong>Destinos:</strong> {{ itinerario.destinosPorDia }}</p>
+      <p><strong>Descripción:</strong> {{ itinerario.descripcionGeneral }}</p>
+      <p><strong>Horario:</strong> {{ itinerario.horaInicio }} a {{ itinerario.horaFin }}</p>
+      <p><strong>Clima:</strong> {{ itinerario.climaGeneral }}</p>
+      <p><strong>Tipo:</strong> {{ itinerario.tipoDeViaje }}</p>
+
+      <button class="btn-eliminar" (click)="eliminarItinerario(itinerario.id)">
+        <i class="fa fa-trash"></i> Eliminar
+     </button>
+     <button class="btn-actualizar" (click)="actualizarItinerario(itinerario)">
+        <i class="fa fa-edit"></i> Actualizar
+      </button>
+      <button class="btn-verActividades" (click)="verActividades(itinerario)">
+        <i class="fa fa-eye"></i> Ver Actividades
+      </button>
+
+      <button (click)="agregarActividad(itinerario)">
+        <i class="fa fa-plus"></i> Agregar Actividad
+      </button>
+      <hr>
+    </div>
+  </div>
+
+  <button (click)="volverAViajes()"><i class="fa fa-arrow-left"></i> Volver a Viajes Previsto</button>
+</div>

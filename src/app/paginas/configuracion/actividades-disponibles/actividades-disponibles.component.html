@@ -1,0 +1,78 @@
+<div class="crud-container">
+    <h2>Actividades Disponibles</h2>
+    
+    <!-- Alertas -->
+    <div *ngIf="showAlert" class="alert" [class.alert-success]="alertType === 'success'" [class.alert-error]="alertType === 'error'">
+      {{ alertMessage }}
+      <button (click)="showAlert = false" class="alert-close">&times;</button>
+    </div>
+  
+    <div class="header-actions">
+      <!-- Botón para añadir nueva actividad disponible -->
+      <button 
+        routerLink="/configuracion/actividades-disponibles/nueva"
+        class="btn btn-primary">
+        <i class="fas fa-plus"></i> Nueva Actividad
+      </button>
+  
+      <!-- Botón para volver a tipos de actividad -->
+      <button 
+        routerLink="/configuracion/tipos-actividad"
+        class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Volver a Tipos de Actividad
+      </button>
+    </div>
+  
+    <div class="table-responsive" *ngIf="actividades.length > 0; else noData">
+      <table class="crud-table">
+        <thead>
+          <tr>
+            <!-- Eliminado ID y Tipo Actividad -->
+            <th>Descripción</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let actividad of actividades">
+            <!-- Eliminado ID y Tipo Actividad -->
+            <td>{{ actividad.descripcion }}</td>
+            <td class="actions">
+              <button 
+                [routerLink]="['/configuracion/actividades-disponibles/editar', actividad.id]"
+                class="btn btn-edit">
+                <i class="fas fa-edit"></i> Editar
+              </button>
+              <button 
+                (click)="confirmarEliminacion(actividad.id)"
+                class="btn btn-delete">
+                <i class="fas fa-trash"></i> Eliminar
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  
+    <ng-template #noData>
+      <div class="no-data">
+        <p>No hay actividades disponibles registradas</p>
+      </div>
+    </ng-template>
+  
+    <!-- Diálogo de confirmación -->
+    <div *ngIf="showDeleteConfirm" class="confirmation-overlay">
+      <div class="confirmation-dialog">
+        <h3>Confirmar Eliminación</h3>
+        <p>¿Estás seguro de eliminar esta actividad disponible?</p>
+        <div class="dialog-actions">
+          <button (click)="eliminarActividad()" class="btn btn-confirm">
+            <i class="fas fa-check"></i> Confirmar
+          </button>
+          <button (click)="cancelarEliminacion()" class="btn btn-cancel">
+            <i class="fas fa-times"></i> Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  

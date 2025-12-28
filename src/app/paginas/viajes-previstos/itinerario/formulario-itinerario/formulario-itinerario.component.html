@@ -1,0 +1,92 @@
+<div class="contenedor">
+    <h2>Agregar un nuevo Itinerario</h2>
+
+    <!-- Formulario para agregar nuevo itinerario -->
+    <form (ngSubmit)="agregarItinerario()" #formItinerario="ngForm">
+<div>
+    <label><i class="fa fa-calendar-day"></i> Fecha Inicio:</label>
+    <input type="date"
+           [(ngModel)]="nuevoItinerario.fechaInicio"
+           (change)="onFechaInicioChange()"
+           name="fechaInicio"
+           required>
+</div>
+
+
+        <div>
+            <label><i class="fa fa-calendar-day"></i> Fecha Fin:</label>
+            <input type="date" [(ngModel)]="nuevoItinerario.fechaFin" name="fechaFin" required>
+        </div>
+
+        <div>
+            <label><i class="fa fa-clock"></i> Duración (días):</label>
+            <input type="number" [(ngModel)]="nuevoItinerario.duracionDias" name="duracionDias" required>
+        </div>
+
+        <div>
+            <label><i class="fa fa-map-marker-alt"></i> Destinos por Día:</label>
+            <textarea [(ngModel)]="nuevoItinerario.destinosPorDia" name="destinosPorDia" required></textarea>
+        </div>
+
+        <div>
+            <label><i class="fa fa-pencil-alt"></i> Descripción General:</label>
+            <textarea [(ngModel)]="nuevoItinerario.descripcionGeneral" name="descripcionGeneral"></textarea>
+        </div>
+
+        <div>
+            <label><i class="fa fa-clock"></i> Hora Inicio:</label>
+            <input type="time" [(ngModel)]="nuevoItinerario.horaInicio" name="horaInicio">
+        </div>
+        <div>
+            <label><i class="fa fa-clock"></i> Hora Fin:</label>
+            <input type="time" [(ngModel)]="nuevoItinerario.horaFin" name="horaFin">
+        </div>
+
+        <div>
+            <label><i class="fa fa-sun"></i> Clima General:</label>
+            <input type="text" [(ngModel)]="nuevoItinerario.climaGeneral" name="climaGeneral">
+        </div>
+
+<div>
+            <label><i class="fa fa-suitcase"></i> Tipo de Viaje:</label>
+            <select [(ngModel)]="nuevoItinerario.tipoDeViaje" name="tipoDeViaje" required>
+                <option value="costa">Costa</option>
+                <option value="naturaleza">Naturaleza</option>
+                <option value="rural">Rural</option>
+                <option value="urbana">Urbana</option>
+                <option value="cultural">Cultural</option>
+                <option value="trabajo">Trabajo</option>
+            </select>
+        </div>
+
+        <button type="submit" [disabled]="!formItinerario.form.valid"><i class="fa fa-plus-circle"></i> Agregar Itinerario</button>
+    </form>
+
+    <!-- Botón de dictado por voz FUERA del formulario -->
+    <div class="dictado-container">
+        <button type="button" 
+                class="btn-dictado" 
+                [class.grabando]="estaGrabando"
+                (click)="toggleDictado()"
+                [disabled]="!soportaReconocimientoVoz">
+            <i class="fa" [class.fa-microphone]="!estaGrabando" [class.fa-stop]="estaGrabando"></i>
+            {{ estaGrabando ? 'Parar Dictado' : 'Dictar Itinerario' }}
+        </button>
+        
+<!-- ✅ AGREGAR: Mostrar texto en tiempo real mientras graba -->
+<div *ngIf="estaGrabando || textoEnTiempoReal" class="texto-tiempo-real">
+    <strong>🎤 Escuchando:</strong> 
+    <span class="texto-detectado">{{ textoEnTiempoReal || 'Esperando...' }}</span>
+</div>
+
+<!-- ✅ MODIFICAR: Mostrar solo cuando NO está grabando -->
+<div *ngIf="textoReconocido && !estaGrabando" class="texto-reconocido">
+    <strong>✅ Texto capturado:</strong> {{ textoReconocido }}
+</div>
+
+<div *ngIf="mensajeError" class="mensaje-error">
+    {{ mensajeError }}
+</div>
+    </div>
+</div>
+

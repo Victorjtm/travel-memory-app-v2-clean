@@ -1,0 +1,729 @@
+<!-- ========================================= -->
+<!-- CONTENEDOR PRINCIPAL DEL ÁLBUM MULTIMEDIA -->
+<!-- ========================================= -->
+<div class="libro-container" [class.portada-abierta]="estado === 'abierto'" role="main" aria-label="Álbum multimedia">
+
+  <!-- ========================================= -->
+  <!-- BLOQUE: PORTADA DEL LIBRO -->
+  <!-- ========================================= -->
+  <div class="portada" *ngIf="estado === 'portada'" (click)="abrirLibro()" role="button" tabindex="0"
+    aria-label="Abrir álbum" (keydown.enter)="abrirLibro()" (keydown.space)="abrirLibro()">
+
+    <!-- --- Elemento visual del lomo --- -->
+    <div class="lomo" aria-hidden="true"></div>
+
+    <!-- --- Contenido de la portada --- -->
+    <div class="titulo-portada">
+
+      <!-- --- Imagen del viaje --- -->
+      <div class="imagen-portada" *ngIf="getImagenViajeUrl(); else imagenDefault">
+        <img [src]="getImagenViajeUrl()!" [alt]="infoViaje?.nombre || 'Imagen del viaje'" class="imagen-viaje"
+          loading="lazy" (error)="onMediaError($event)" />
+      </div>
+      <ng-template #imagenDefault>
+        <div class="imagen-portada imagen-default">
+          <div class="placeholder-content">
+            <i class="fas fa-camera-retro" aria-hidden="true"></i>
+            <span class="placeholder-text">{{ infoViaje?.nombre || getTituloContextual() }}</span>
+          </div>
+        </div>
+      </ng-template>
+
+      <!-- --- Título y fechas --- -->
+      <ng-container *ngIf="infoViaje as info; else fallbackTitulo">
+        <h1>{{ info.nombre || getTituloContextual() }}</h1>
+        <p *ngIf="info.fechaInicio">
+          <strong>Fechas:</strong>
+          {{ info.fechaInicio | date:'longDate':'es' }}
+          <span *ngIf="info.fechaFin"> – {{ info.fechaFin | date:'longDate':'es' }}</span>
+        </p>
+      </ng-container>
+      <ng-template #fallbackTitulo>
+        <h1>{{ getTituloContextual() }}</h1>
+      </ng-template>
+
+      <!-- --- Descripción del álbum --- -->
+      <p>{{ getDescripcionContextual() }}</p>
+
+      <!-- --- Instrucción para abrir --- -->
+      <p class="instruccion">Haz clic para abrir</p>
+
+    </div>
+  </div>
+
+  <!-- ========================================= -->
+  <!-- BLOQUE: CONTENIDO DEL LIBRO ABIERTO -->
+  <!-- ========================================= -->
+  <section class="contenido-libro" [class.contenido-visible]="estado === 'abierto'" aria-label="Contenido del álbum"
+    *ngIf="estado === 'abierto'">
+
+    <!-- --- Botón cerrar álbum --- -->
+    <button class="btn-cerrar" (click)="volver()" title="Cerrar álbum y volver"
+      aria-label="Cerrar álbum y volver al contexto anterior">
+      <i class="fas fa-times" aria-hidden="true"></i>
+    </button>
+
+    <!-- --- Botón audio del viaje --- -->
+    <button class="btn-audio-viaje" *ngIf="audioDisponible" (click)="toggleAudioViaje()"
+      [title]="audioReproduciendo ? 'Pausar audio del viaje' : 'Reproducir audio del viaje'"
+      [attr.aria-label]="audioReproduciendo ? 'Pausar audio del viaje' : 'Reproducir audio del viaje'"
+      [class.reproduciendo]="audioReproduciendo">
+      <i class="fas" [class.fa-pause]="audioReproduciendo" [class.fa-play]="!audioReproduciendo" aria-hidden="true"></i>
+    </button>
+
+    <!-- --- Botón generar video --- -->
+    <button class="btn-video" (click)="mostrarDialogoVideo()" title="Generar video con las fotos del viaje"
+      aria-label="Generar video con las fotos del viaje" [disabled]="generandoVideo">
+      <i class="fas fa-video" aria-hidden="true"></i>
+    </button>
+
+    <!-- Botón ℹ️ (información) --->
+    <button class="info-trigger" [class.active]="mostrarInfoDetalle"
+      (click)="toggleInfoDetalle(); $event.stopPropagation()"
+      (mouseenter)="!infoDetalleEsModal && (mostrarInfoDetalle = true); cancelarOcultarInfo()"
+      (mouseleave)="!infoDetalleEsModal && ocultarInfoDetalle()"
+      *ngIf="paginaActualData && !paginaActualData.esIndice && !paginaActualData.esCartaManuscrita"
+      aria-label="Mostrar información del archivo" title="Ver información del archivo">
+      <i class="fas fa-info-circle"></i>
+    </button>
+
+    <div class="archivos-asociados-botones"
+      *ngIf="paginaActualData && $any(paginaActualData).archivosAsociados && $any(paginaActualData).archivosAsociados.length > 0">
+
+
+
+      <!-- Audio asociado -->
+      <button class="btn-asociado btn-audio" *ngIf="tieneArchivoAsociado(paginaActualData, 'audio')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'audio')" title="Reproducir audio asociado"
+        aria-label="Reproducir audio asociado">
+        <i class="fa fa-volume-up"></i>
+      </button>
+
+      <!-- GPX asociado - Abre mapa satelital -->
+      <button class="btn-asociado btn-gpx" *ngIf="tieneArchivoAsociado(paginaActualData, 'gpx')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'gpx')" title="Ver ruta GPX en mapa satelital"
+        aria-label="Ver ruta GPX en mapa satelital">
+        <i class="fa fa-map-marked-alt"></i>
+      </button>
+
+      <!-- Mapa de ubicación (PNG) -->
+      <button class="btn-asociado btn-imagen" *ngIf="tieneArchivoAsociado(paginaActualData, 'mapa_ubicacion')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'mapa_ubicacion')" title="Ver mapa PNG"
+        aria-label="Ver mapa PNG">
+        <i class="fa fa-map"></i>
+      </button>
+
+      <!-- Manifest JSON -->
+      <button class="btn-asociado btn-manifest" *ngIf="tieneArchivoAsociado(paginaActualData, 'manifest')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'manifest')" title="Ver manifest JSON"
+        aria-label="Ver manifest JSON">
+        <i class="fa fa-file-code"></i>
+      </button>
+
+      <!-- Estadísticas JSON -->
+      <button class="btn-asociado btn-estadisticas" *ngIf="tieneArchivoAsociado(paginaActualData, 'estadisticas')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'estadisticas')" title="Ver estadísticas"
+        aria-label="Ver estadísticas">
+        <i class="fa fa-chart-bar"></i>
+      </button>
+
+      <!-- Texto asociado -->
+      <button class="btn-asociado btn-texto" *ngIf="tieneArchivoAsociado(paginaActualData, 'texto')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'texto')" title="Ver texto asociado"
+        aria-label="Ver texto asociado">
+        <i class="fa fa-file-text"></i>
+      </button>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- TOOLTIP/MODAL DE INFORMACIÓN COMPLETA -->
+    <!-- ========================================= -->
+    <div class="info-detalle" [class.visible]="mostrarInfoDetalle" [class.modal]="infoDetalleEsModal"
+      (mouseenter)="!infoDetalleEsModal && cancelarOcultarInfo()"
+      (mouseleave)="!infoDetalleEsModal && ocultarInfoDetalle()"
+      *ngIf="mostrarInfoDetalle && paginaActualData && !paginaActualData.esIndice && !paginaActualData.esCartaManuscrita">
+
+      <!-- Overlay para modal (solo móvil) -->
+      <div class="info-overlay" *ngIf="infoDetalleEsModal" (click)="cerrarInfoDetalle()">
+      </div>
+
+      <!-- Contenedor de información -->
+      <div class="info-contenido">
+
+        <!-- Título del modal (solo móvil) -->
+        <div class="info-header" *ngIf="infoDetalleEsModal">
+          <h3>Información del archivo</h3>
+          <button class="close-button" (click)="cerrarInfoDetalle(); $event.stopPropagation()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <!-- Lista de información -->
+        <div class="info-lista">
+
+          <!-- 1. UBICACIÓN -->
+          <div class="info-item ubicacion">
+            <div class="info-icon">
+              <i class="fas fa-map-marker-alt"></i>
+            </div>
+            <div class="info-text">
+              <span class="info-label">Ubicación</span>
+              <span class="info-value">{{ getNivelContexto() }}</span>
+            </div>
+          </div>
+
+          <!-- 2. FECHA Y HORA -->
+          <div class="info-item fecha">
+            <div class="info-icon">
+              <i class="fas fa-calendar-alt"></i>
+            </div>
+            <div class="info-text">
+              <span class="info-label">Fecha y hora</span>
+              <span class="info-value">{{ obtenerFechaFormateada(paginaActualData) }}</span>
+            </div>
+          </div>
+
+          <!-- 3. DESCRIPCIÓN (si existe) -->
+          <div class="info-item descripcion" *ngIf="paginaActualData?.descripcion">
+            <div class="info-icon">
+              <i class="fas fa-comment-alt"></i>
+            </div>
+            <div class="info-text">
+              <span class="info-label">Descripción</span>
+              <span class="info-value">{{ paginaActualData.descripcion }}</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ======================================= -->
+    <!-- SUB-BLOQUE: PÁGINA ACTUAL -->
+    <!-- ======================================= -->
+    <article class="pagina" *ngIf="paginas[paginaActual] as paginaActual" role="region" aria-label="Página del álbum">
+
+      <!-- ===================================== -->
+      <!-- SUB-BLOQUE: PÁGINA ÍNDICE -->
+      <!-- ===================================== -->
+      <div class="pagina-indice" *ngIf="paginaActual.esIndice">
+        <div class="contenido-indice">
+
+          <!-- --- Título --->
+          <h2>Itinerarios del Viaje</h2>
+
+          <!-- --- Lista de itinerarios --->
+          <div class="lista-itinerarios" *ngIf="listaItinerarios && listaItinerarios.length > 0; else sinItinerarios">
+            <p>Selecciona un itinerario para ver sus archivos:</p>
+            <div class="itinerarios-grid">
+              <button *ngFor="let itinerario of listaItinerarios; let i = index" class="btn-itinerario"
+                (click)="verAlbumItinerario(itinerario.id)"
+                [attr.aria-label]="'Ver álbum del itinerario del ' + (itinerario.fechaInicio | date:'fullDate':'es')">
+                <div class="itinerario-fecha">
+                  <i class="fas fa-calendar" aria-hidden="true"></i>
+                  {{ itinerario.fechaInicio | date:'EEEE dd-MM-yyyy':'es' }}
+                </div>
+                <div class="itinerario-destinos" *ngIf="itinerario.destinosPorDia">
+                  <i class="fas fa-map-marker-alt" aria-hidden="true"></i>
+                  <span>{{ isArray(itinerario.destinosPorDia) ? itinerario.destinosPorDia.join(', ') :
+                    itinerario.destinosPorDia }}</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- --- Mensaje sin itinerarios --->
+          <ng-template #sinItinerarios>
+            <div class="sin-itinerarios" *ngIf="!isLoading">
+              <i class="fas fa-route" aria-hidden="true"></i>
+              <p>Este viaje no tiene itinerarios definidos.</p>
+            </div>
+          </ng-template>
+
+          <!-- --- Instrucciones generales --->
+          <div class="instrucciones-generales">
+            <p>Estás viendo el álbum multimedia del viaje <strong>{{ infoViaje?.nombre }}</strong>.</p>
+            <div class="navegacion-info" *ngIf="obtenerMensajeNavegacion()">
+              <i class="fas fa-info-circle" aria-hidden="true"></i>
+              <p>{{ obtenerMensajeNavegacion() }}</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ===================================== -->
+      <!-- SUB-BLOQUE: CARTA MANUSCRITA -->
+      <!-- ===================================== -->
+      <div class="pagina-contenido carta-manuscrita-page" *ngIf="paginaActual.esCartaManuscrita" (click)="abrirFullscreen('', 'carta-manuscrita', {
+    titulo: paginaActual.titulo,
+    descripcion: paginaActual.descripcion
+  })" style="cursor: zoom-in">
+        <div class="carta-manuscrita-container">
+          <div class="carta-manuscrita">
+            <div class="papel-manuscrito">
+              <div class="contenido-carta">
+                <h2 class="titulo-carta">{{ paginaActual.titulo }}</h2>
+                <div class="fecha-carta" *ngIf="paginaActual.fecha">
+                  {{ formatearFecha(paginaActual.fecha) }}
+                </div>
+                <div class="texto-manuscrito">
+                  {{ paginaActual.descripcion }}
+                </div>
+                <div class="firma-carta">
+                  <em>— Tu diario de viaje —</em>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================== -->
+      <!-- SUB-BLOQUE: PÁGINA MULTIMEDIA -->
+      <!-- ===================================== -->
+      <div class="pagina-contenido" *ngIf="!paginaActual.esIndice && !paginaActual.esCartaManuscrita">
+
+        <!-- --- Contenedor multimedia --->
+        <div class="media-container" [attr.data-tipo]="paginaActual.tipoMedia">
+
+          <!-- --- Loader --->
+          <div class="loader" *ngIf="!paginaActual.cargado && paginaActual.tipoMedia !== 'desconocido'" role="status"
+            aria-label="Cargando contenido">
+            <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
+            <p>Cargando contenido...</p>
+          </div>
+
+          <!-- --- Imagen --->
+          <figure class="media-content media-imagen" *ngIf="paginaActual.tipoMedia === 'imagen'"
+            (click)="abrirFullscreen(paginaActual.url, 'imagen')">
+            <img [src]="paginaActual.url" [alt]="obtenerTextoAlternativo(paginaActual)"
+              [class.cargado]="paginaActual.cargado" loading="lazy" (load)="onMediaLoad(this.paginaActual)"
+              (error)="onMediaError($event)" />
+            <div class="overlay-fullscreen" *ngIf="paginaActual.cargado">
+              <i class="fas fa-expand" aria-hidden="true"></i>
+              <span class="sr-only">Ampliar imagen</span>
+            </div>
+          </figure>
+
+          <!-- --- Video --->
+          <div class="media-content media-video" *ngIf="paginaActual.tipoMedia === 'video'"
+            (click)="abrirFullscreen(paginaActual.url, 'video')">
+            <video [src]="paginaActual.url" controls preload="metadata"
+              [attr.aria-label]="'Video: ' + paginaActual.titulo" (loadeddata)="onMediaLoad(this.paginaActual)"
+              (error)="onMediaError($event)" (play)="onVideoPlay()" (pause)="onVideoPause()" (ended)="onVideoEnded()">
+              Tu navegador no soporta el elemento video.
+            </video>
+            <div class="overlay-fullscreen">
+              <i class="fas fa-expand" aria-hidden="true"></i>
+              <span class="sr-only">Ampliar video</span>
+            </div>
+          </div>
+
+          <!-- --- Audio --->
+          <div class="media-content media-audio" *ngIf="paginaActual.tipoMedia === 'audio'">
+            <div class="audio-player">
+              <i class="fas fa-music audio-icon" aria-hidden="true"></i>
+              <audio [src]="paginaActual.url" controls preload="metadata"
+                [attr.aria-label]="'Audio: ' + paginaActual.titulo" (loadeddata)="onMediaLoad(this.paginaActual)"
+                (error)="onMediaError($event)">
+                Tu navegador no soporta el elemento audio.
+              </audio>
+            </div>
+          </div>
+
+          <!-- --- PDF --->
+          <div class="media-content media-pdf" *ngIf="paginaActual.tipoMedia === 'pdf'"
+            (click)="abrirFullscreen(paginaActual.url, 'pdf')">
+            <iframe [src]="paginaActual.url + '#toolbar=0'" frameborder="0"
+              [attr.aria-label]="'PDF: ' + paginaActual.titulo" [attr.title]="paginaActual.titulo"
+              (load)="onMediaLoad(this.paginaActual)" (error)="onMediaError($event)">
+            </iframe>
+            <div class="overlay-fullscreen">
+              <i class="fas fa-expand" aria-hidden="true"></i>
+              <span class="sr-only">Ampliar PDF</span>
+            </div>
+          </div>
+
+          <!-- --- Documento/Archivo no visualizable --->
+          <div class="media-content media-preview"
+            *ngIf="paginaActual.tipoMedia === 'documento' || paginaActual.tipoMedia === 'desconocido'">
+            <div class="file-preview">
+              <i [class]="obtenerIconoTipo(paginaActual.tipoMedia)" aria-hidden="true"></i>
+              <h3>{{ paginaActual.titulo }}</h3>
+              <p class="file-type">{{ paginaActual.tipoMedia | titlecase }}</p>
+              <p class="file-size" *ngIf="paginaActual.tamano">
+                {{ formatearTamano(paginaActual.tamano) }}
+              </p>
+              <a [href]="paginaActual.url" target="_blank" class="btn-descargar" rel="noopener noreferrer"
+                [download]="paginaActual.archivo.nombreArchivo" [attr.aria-label]="'Descargar ' + paginaActual.titulo">
+                <i class="fas fa-download" aria-hidden="true"></i>
+                Descargar archivo
+              </a>
+            </div>
+          </div>
+
+        </div>
+
+
+      </div>
+    </article>
+
+    <!-- ======================================= -->
+    <!-- SUB-BLOQUE: NAVEGACIÓN DE PÁGINAS -->
+    <!-- ======================================= -->
+    <nav class="controles-pagina" role="navigation" aria-label="Navegación de páginas">
+
+      <!-- --- Botón anterior --->
+      <button class="btn-pagina" (click)="cambiarPagina(-1)" [disabled]="!puedeNavegar('anterior')"
+        [attr.aria-label]="hayPaginaAnterior ? 'Ir a página anterior' : 'No hay página anterior'"
+        title="Página anterior">
+        <i class="fas fa-chevron-left" aria-hidden="true"></i>
+        <span class="sr-only">Anterior</span>
+      </button>
+
+      <!-- --- Información de paginación --->
+      <div *ngIf="paginas[paginaActual] as paginaInfo" class="info-pagina">
+        <span class="tipo-pagina">
+          {{ paginaInfo.esIndice ? 'Índice' : obtenerFechaFormateada(paginaInfo) }}
+        </span>
+        <span class="numero-pagina" *ngIf="!paginaInfo.esIndice">
+          {{ paginaActual }} / {{ paginas.length - 1 }}
+        </span>
+        <span class="contexto-nivel">{{ getNivelContexto() }}</span>
+      </div>
+
+      <!-- --- Botón siguiente --->
+      <button class="btn-pagina" (click)="cambiarPagina(1)" [disabled]="!puedeNavegar('siguiente')"
+        [attr.aria-label]="hayPaginaSiguiente ? 'Ir a página siguiente' : 'No hay página siguiente'"
+        title="Página siguiente">
+        <i class="fas fa-chevron-right" aria-hidden="true"></i>
+        <span class="sr-only">Siguiente</span>
+      </button>
+
+    </nav>
+
+    <!-- ======================================= -->
+    <!-- SUB-BLOQUE: NAVEGACIÓN RÁPIDA -->
+    <!-- ======================================= -->
+    <div class="navegacion-rapida" *ngIf="paginas && paginas.length > 1">
+      <h3 class="sr-only">Navegación rápida</h3>
+      <div class="indicadores-container">
+        <button *ngFor="let pagina of paginas; let i = index" class="indicador-pagina"
+          [class.activo]="i === paginaActual" [class.indice]="pagina.esIndice" [class.cargado]="pagina.cargado"
+          [attr.data-tipo]="pagina.tipoMedia" (click)="irAPagina(i)"
+          [attr.aria-label]="obtenerDescripcionAccesibilidad(pagina)"
+          [title]="pagina.esIndice ? 'Índice' : pagina.titulo">
+          <i *ngIf="pagina.esIndice" class="fas fa-list" aria-hidden="true"></i>
+          <i *ngIf="!pagina.esIndice" [class]="obtenerIconoTipo(pagina.tipoMedia)" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ========================================= -->
+  <!-- BLOQUE: ESTADOS (CARGA, ERROR, VACÍO) -->
+  <!-- ========================================= -->
+
+  <!-- --- Estado de carga --->
+  <div class="estado-carga" *ngIf="isLoading" role="status" aria-label="Cargando álbum">
+    <div class="spinner"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i></div>
+    <p>Cargando álbum multimedia...</p>
+  </div>
+
+  <!-- --- Estado de error --->
+  <div class="estado-error" *ngIf="error && !isLoading" role="alert">
+    <div class="icono-error"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i></div>
+    <h3>Error al cargar el álbum</h3>
+    <p>{{ error }}</p>
+    <button class="btn-reintentar" (click)="reintentar()"><i class="fas fa-redo" aria-hidden="true"></i>
+      Reintentar</button>
+  </div>
+
+  <!-- --- Estado vacío --->
+  <div class="estado-vacio" *ngIf="noArchivosEncontrados && !isLoading && !error" role="status">
+    <div class="icono-vacio"><i class="fas fa-folder-open" aria-hidden="true"></i></div>
+    <h3>No hay archivos</h3>
+    <p>No se encontraron archivos multimedia para {{ getNivelContexto().toLowerCase() }}</p>
+    <button class="btn-volver" (click)="volver()"><i class="fas fa-arrow-left" aria-hidden="true"></i> Volver</button>
+  </div>
+
+  <!-- ========================================= -->
+  <!-- BLOQUE: MODO PANTALLA COMPLETA -->
+  <!-- ========================================= -->
+  <div class="modo-pantalla-completa" [class.activo]="mostrarFullscreen" (click)="cerrarFullscreen()" role="dialog"
+    aria-modal="true" aria-label="Contenido en pantalla completa" *ngIf="mostrarFullscreen">
+
+    <!-- --- Contenido multimedia --->
+    <img *ngIf="tipoFullscreen === 'imagen'" [src]="mediaFullscreen" class="media-fullscreen imagen-fullscreen"
+      (click)="$event.stopPropagation()" [alt]="paginaActualData?.titulo || 'Imagen en pantalla completa'" />
+
+    <video *ngIf="tipoFullscreen === 'video'" [src]="mediaFullscreen" class="media-fullscreen video-fullscreen" controls
+      autoplay (click)="$event.stopPropagation()"
+      [attr.aria-label]="'Video en pantalla completa: ' + (paginaActualData?.titulo || '')">
+      Tu navegador no soporta el elemento video.
+    </video>
+
+    <iframe *ngIf="tipoFullscreen === 'pdf'" [src]="mediaFullscreen + '#toolbar=0'"
+      class="media-fullscreen pdf-fullscreen" frameborder="0"
+      [attr.title]="'PDF: ' + (paginaActualData?.titulo || 'Documento')" (click)="$event.stopPropagation()">
+    </iframe>
+
+    <!-- CARTA MANUSCRITA -->
+    <div *ngIf="tipoFullscreen === 'carta-manuscrita'" class="media-fullscreen carta-manuscrita-fullscreen"
+      (click)="$event.stopPropagation()">
+      <div class="papel-manuscrito">
+        <h2>{{ fullscreenTitulo }}</h2>
+        <p>{{ fullscreenDescripcion }}</p>
+      </div>
+    </div>
+
+    <!-- --- Botón cerrar --->
+    <button class="btn-cerrar-fullscreen" (click)="cerrarFullscreen(); $event.stopPropagation()"
+      aria-label="Cerrar pantalla completa" title="Cerrar (Esc)">
+      <i class="fas fa-times" aria-hidden="true"></i>
+    </button>
+
+    <!-- --- Botón ℹ️ en pantalla completa --->
+    <button class="info-trigger-fullscreen" [class.active]="mostrarInfoDetalle"
+      (click)="toggleInfoDetalle(); $event.stopPropagation()"
+      *ngIf="paginaActualData && !paginaActualData.esIndice && !paginaActualData.esCartaManuscrita"
+      aria-label="Mostrar información del archivo" title="Ver información del archivo">
+      <i class="fas fa-info-circle"></i>
+    </button>
+
+    <!-- ✅ NUEVO: Botones flotantes para archivos asociados en fullscreen -->
+    <div class="archivos-asociados-botones-fullscreen"
+      *ngIf="paginaActualData && $any(paginaActualData).archivosAsociados && $any(paginaActualData).archivosAsociados.length > 0">
+
+      <!-- Audio asociado -->
+      <button class="btn-asociado btn-audio" *ngIf="tieneArchivoAsociado(paginaActualData, 'audio')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'audio'); $event.stopPropagation()"
+        title="Reproducir audio asociado" aria-label="Reproducir audio asociado">
+        <i class="fa fa-volume-up"></i>
+      </button>
+
+      <!-- GPX asociado -->
+      <button class="btn-asociado btn-gpx" *ngIf="tieneArchivoAsociado(paginaActualData, 'gpx')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'gpx'); $event.stopPropagation()"
+        title="Ver ruta GPX en mapa satelital" aria-label="Ver ruta GPX en mapa satelital">
+        <i class="fa fa-map-marked-alt"></i>
+      </button>
+
+      <!-- Mapa de ubicación (PNG) -->
+      <button class="btn-asociado btn-imagen" *ngIf="tieneArchivoAsociado(paginaActualData, 'mapa_ubicacion')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'mapa_ubicacion'); $event.stopPropagation()"
+        title="Ver mapa PNG" aria-label="Ver mapa PNG">
+        <i class="fa fa-map"></i>
+      </button>
+
+      <!-- Manifest JSON -->
+      <button class="btn-asociado btn-manifest" *ngIf="tieneArchivoAsociado(paginaActualData, 'manifest')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'manifest'); $event.stopPropagation()" title="Ver manifest JSON"
+        aria-label="Ver manifest JSON">
+        <i class="fa fa-file-code"></i>
+      </button>
+
+      <!-- Estadísticas JSON -->
+      <button class="btn-asociado btn-estadisticas" *ngIf="tieneArchivoAsociado(paginaActualData, 'estadisticas')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'estadisticas'); $event.stopPropagation()"
+        title="Ver estadísticas" aria-label="Ver estadísticas">
+        <i class="fa fa-chart-bar"></i>
+      </button>
+
+      <!-- Texto asociado -->
+      <button class="btn-asociado btn-texto" *ngIf="tieneArchivoAsociado(paginaActualData, 'texto')"
+        (click)="abrirArchivoAsociado(paginaActualData, 'texto'); $event.stopPropagation()" title="Ver texto asociado"
+        aria-label="Ver texto asociado">
+        <i class="fa fa-file-text"></i>
+      </button>
+
+    </div>
+
+
+    <!-- --- Botón audio del viaje en fullscreen --- -->
+    <button class="btn-audio-viaje-fullscreen" *ngIf="audioDisponible"
+      (click)="toggleAudioViaje(); $event.stopPropagation()"
+      [title]="audioReproduciendo ? 'Pausar audio del viaje' : 'Reproducir audio del viaje'"
+      [attr.aria-label]="audioReproduciendo ? 'Pausar audio del viaje' : 'Reproducir audio del viaje'"
+      [class.reproduciendo]="audioReproduciendo">
+      <i class="fas" [class.fa-pause]="audioReproduciendo" [class.fa-play]="!audioReproduciendo" aria-hidden="true"></i>
+    </button>
+
+
+    <!-- --- Controles de navegación --->
+    <div class="controles-fullscreen">
+      <button class="btn-nav-fullscreen btn-anterior" *ngIf="hayPaginaAnterior && !paginas[paginaActual - 1]?.esIndice"
+        (click)="navegarEnFullscreen(-1); $event.stopPropagation()" aria-label="Archivo anterior"
+        title="Archivo anterior">
+        <i class="fas fa-chevron-left" aria-hidden="true"></i>
+      </button>
+      <button class="btn-nav-fullscreen btn-siguiente"
+        *ngIf="hayPaginaSiguiente && !paginas[paginaActual + 1]?.esIndice"
+        (click)="navegarEnFullscreen(1); $event.stopPropagation()" aria-label="Archivo siguiente"
+        title="Archivo siguiente">
+        <i class="fas fa-chevron-right" aria-hidden="true"></i>
+      </button>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ========================================= -->
+<!-- BLOQUE: MODAL DE CONFIGURACIÓN DE VIDEO -->
+<!-- ========================================= -->
+<div class="modal-video-overlay" [class.activo]="mostrarConfiguracionVideo" (click)="cerrarDialogoVideo()"
+  *ngIf="mostrarConfiguracionVideo">
+
+  <div class="modal-video-contenido" (click)="$event.stopPropagation()">
+
+    <!-- Header del modal -->
+    <div class="modal-video-header">
+      <h3><i class="fas fa-video"></i> Generar Video del Viaje</h3>
+      <button class="btn-cerrar-modal" (click)="cerrarDialogoVideo()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <!-- Contenido del modal -->
+    <div class="modal-video-body">
+
+      <!-- Información del video -->
+      <div class="info-video">
+        <p><strong>{{ obtenerSoloImagenes().length }}</strong> imágenes serán incluidas en el video</p>
+        <p>Viaje: <strong>{{ infoViaje?.nombre || 'Sin nombre' }}</strong></p>
+      </div>
+
+      <!-- Configuración básica -->
+      <div class="configuracion-seccion">
+        <h4>Configuración Básica</h4>
+
+        <div class="config-item">
+          <label for="duracion-foto">Duración por foto (segundos):</label>
+          <input type="range" id="duracion-foto" min="1" max="8" step="0.5"
+            [(ngModel)]="configuracionVideo.duracionPorFoto">
+          <span class="valor">{{ configuracionVideo.duracionPorFoto }}s</span>
+        </div>
+
+        <div class="config-item">
+          <label for="tipo-transicion">Tipo de transición:</label>
+          <select id="tipo-transicion" [(ngModel)]="configuracionVideo.tipoTransicion">
+            <option value="fade">Fundido</option>
+            <option value="slide">Deslizar</option>
+            <option value="zoom">Zoom</option>
+          </select>
+        </div>
+
+        <div class="config-item">
+          <label for="duracion-transicion">Duración transición (segundos):</label>
+          <input type="range" id="duracion-transicion" min="0.5" max="3" step="0.1"
+            [(ngModel)]="configuracionVideo.duracionTransicion">
+          <span class="valor">{{ configuracionVideo.duracionTransicion }}s</span>
+        </div>
+      </div>
+
+      <!-- Configuración de calidad -->
+      <div class="configuracion-seccion">
+        <h4>Calidad y Resolución</h4>
+
+        <div class="config-item">
+          <label for="resolucion">Resolución:</label>
+          <select id="resolucion" [(ngModel)]="configuracionVideo.resolucion">
+            <option value="480p">480p (854x480) - Básica</option>
+            <option value="720p">720p (1280x720) - HD</option>
+            <option value="1080p">1080p (1920x1080) - Full HD</option>
+          </select>
+        </div>
+
+        <div class="config-item">
+          <label for="calidad">Calidad:</label>
+          <select id="calidad" [(ngModel)]="configuracionVideo.calidad">
+            <option value="baja">Baja (archivo pequeño)</option>
+            <option value="media">Media (recomendada)</option>
+            <option value="alta">Alta (archivo grande)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Opciones adicionales -->
+      <div class="configuracion-seccion">
+        <h4>Opciones Adicionales</h4>
+
+        <div class="config-checkbox">
+          <input type="checkbox" id="incluir-texto" [(ngModel)]="configuracionVideo.incluirTexto">
+          <label for="incluir-texto">Incluir descripciones y fechas</label>
+        </div>
+
+        <div class="config-checkbox">
+          <input type="checkbox" id="transiciones-aleatorias" [(ngModel)]="configuracionVideo.transicionesAleatorias">
+          <label for="transiciones-aleatorias">
+            Usar transiciones aleatorias
+            <span class="ayuda-tooltip"
+              title="Las fotos se enlazarán con efectos variados (fundido, deslizar, zoom) en lugar de usar siempre el mismo">ⓘ</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Estimación de duración -->
+      <div class="estimacion-duracion">
+        <p><i class="fas fa-clock"></i>
+          Duración estimada:
+          <strong>{{ (obtenerSoloImagenes().length * (configuracionVideo.duracionPorFoto +
+            configuracionVideo.duracionTransicion) + 3) | number:'1.0-0' }} segundos</strong>
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Footer del modal -->
+    <div class="modal-video-footer">
+      <button class="btn-cancelar" (click)="cerrarDialogoVideo()" [disabled]="generandoVideo">
+        Cancelar
+      </button>
+      <button class="btn-generar" (click)="generarVideoViaje()" [disabled]="generandoVideo">
+        <i class="fas fa-play" *ngIf="!generandoVideo"></i>
+        <i class="fas fa-spinner fa-spin" *ngIf="generandoVideo"></i>
+        {{ generandoVideo ? 'Generando...' : 'Generar Video' }}
+      </button>
+    </div>
+
+    <!-- Progreso de generación -->
+    <div class="progreso-video" *ngIf="progresoVideo">
+      <div class="progreso-info">
+        <span class="fase">{{ progresoVideo.fase | titlecase }}</span>
+        <span class="porcentaje">{{ progresoVideo.porcentaje | number:'1.0-0' }}%</span>
+      </div>
+      <div class="barra-progreso">
+        <div class="barra-relleno" [style.width.%]="progresoVideo.porcentaje"></div>
+      </div>
+      <p class="mensaje-progreso">{{ progresoVideo.mensaje }}</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ========================================= -->
+<!-- BLOQUE: MODAL DE MAPA GPX INDIVIDUAL -->
+<!-- ========================================= -->
+<div class="modal-gpx-overlay" *ngIf="mostrarModalGPXIndividual" (click)="cerrarModalGPXIndividual()">
+  <div class="modal-gpx-contenido" (click)="$event.stopPropagation()">
+
+    <div class="modal-gpx-header">
+      <h3><i class="fas fa-map-marked-alt"></i> Ruta GPX</h3>
+      <button class="btn-cerrar-modal" (click)="cerrarModalGPXIndividual()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <div class="modal-gpx-body">
+      <div id="mapa-gpx-individual" class="mapa-gpx-container"></div>
+    </div>
+
+  </div>
+</div>

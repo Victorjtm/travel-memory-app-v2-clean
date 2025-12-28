@@ -1,0 +1,10 @@
+<div class="viajes-container">
+    <h1>Mis Viajes</h1>
+    <ul>
+      <li *ngFor="let viaje of viajes">
+        <p>{{ viaje.nombre }} - {{ viaje.fecha }}</p>
+      </li>
+    </ul>
+    <a routerLink="/recuerdos" class="btn">Ir a Recuerdos</a>
+  </div>
+  

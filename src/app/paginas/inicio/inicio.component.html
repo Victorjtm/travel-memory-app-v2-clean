@@ -1,0 +1,164 @@
+<div class="inicio-container">
+  <h1>{{ mensajeBienvenida }}</h1>
+  <p>Comienza a guardar tus recuerdos de viaje aquí.</p>
+  
+  <a routerLink="/viajes" class="btn">Ir a Viajes</a>
+  <a routerLink="/viajes-previstos" class="btn">Ir a Viajes Previstos</a>
+  
+  <!-- Nuevo botón para seleccionar archivos -->
+  <a routerLink="/formulario-archivos-actividades-itinerario" class="btn">
+    Seleccionar Archivos
+  </a>
+
+  <!-- ====================================================================== -->
+  <!-- NUEVO: Botón Importar desde Móvil                                     -->
+  <!-- ====================================================================== -->
+  <button 
+    class="btn btn-import" 
+    (click)="importarDesdeMovil()"
+    title="Importar tracking desde AudioPhotoApp">
+    📤 Importar desde Móvil
+  </button>
+</div>
+
+<!-- ====================================================================== -->
+<!-- NUEVO: Modal de Importación                                           -->
+<!-- ====================================================================== -->
+<div class="modal-overlay" *ngIf="mostrarModalImport" (click)="cancelarImportacion()">
+  <div class="modal-import" (click)="$event.stopPropagation()">
+    
+    <!-- Header del Modal -->
+    <div class="modal-header">
+      <h2>📦 Importar Tracking GPS</h2>
+      <button class="btn-close" (click)="cancelarImportacion()" [disabled]="importando">
+        ✕
+      </button>
+    </div>
+
+    <!-- Contenido del Modal -->
+    <div class="modal-body">
+
+      <!-- ============================================ -->
+      <!-- Vista de Configuración (antes de importar)  -->
+      <!-- ============================================ -->
+      <div *ngIf="!importando">
+        
+        <!-- Información del Tracking Detectado -->
+        <div class="tracking-info" *ngIf="manifestData">
+          <h3>🗺️ Tracking Detectado</h3>
+          <div class="info-grid">
+            <div class="info-item">
+              <strong>Nombre:</strong>
+              <span>{{ manifestData.nombre }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Fecha:</strong>
+              <span>{{ manifestData.fecha_exportacion | date:'dd/MM/yyyy HH:mm' }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Distancia:</strong>
+              <span>{{ manifestData.estadisticas.distancia_km }} km</span>
+            </div>
+            <div class="info-item">
+              <strong>Duración:</strong>
+              <span>{{ manifestData.estadisticas.duracion_formateada }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Fotos:</strong>
+              <span>{{ manifestData.estadisticas.num_fotos }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Videos:</strong>
+              <span>{{ manifestData.estadisticas.num_videos }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Audios:</strong>
+              <span>{{ manifestData.estadisticas.num_audios }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Archivos:</strong>
+              <span>{{ archivosSeleccionados.length }} ({{ getTamanoTotal() }})</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Separador -->
+        <hr class="divider">
+
+        <!-- Formulario de Configuración -->
+        <div class="config-form">
+          <h3>⚙️ Configuración</h3>
+
+          <!-- Campo: Destino -->
+          <div class="form-group">
+            <label for="destino">
+              🗺️ Destino del viaje:
+            </label>
+            <input 
+              type="text" 
+              id="destino"
+              [(ngModel)]="destinoViaje"
+              placeholder="Ej: Málaga, España"
+              class="form-input"
+              required>
+          </div>
+
+          <!-- Campo: Tipo de Actividad -->
+          <div class="form-group">
+            <label for="tipoActividad">
+              🏃 Tipo de actividad:
+            </label>
+            <select 
+              id="tipoActividad"
+              [(ngModel)]="tipoActividadId"
+              class="form-select"
+              required>
+              <option [value]="null" disabled selected>Selecciona una actividad</option>
+              <option *ngFor="let tipo of tiposActividad" [value]="tipo.id">
+                {{ tipo.nombre }}
+              </option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================ -->
+      <!-- Vista de Progreso (durante importación)     -->
+      <!-- ============================================ -->
+      <div *ngIf="importando" class="progress-container">
+        <h3>⏳ Importando...</h3>
+        
+        <!-- Barra de Progreso -->
+        <div class="progress-bar-container">
+          <div class="progress-bar" [style.width.%]="progresoSubida">
+            {{ progresoSubida }}%
+          </div>
+        </div>
+
+        <!-- Mensaje de Progreso -->
+        <p class="progress-message">{{ mensajeProgreso }}</p>
+
+        <!-- Spinner -->
+        <div class="spinner"></div>
+      </div>
+
+    </div>
+
+    <!-- Footer del Modal -->
+    <div class="modal-footer">
+      <button 
+        class="btn btn-cancel" 
+        (click)="cancelarImportacion()"
+        [disabled]="importando">
+        Cancelar
+      </button>
+      <button 
+        class="btn btn-confirm" 
+        (click)="confirmarImportacion()"
+        [disabled]="importando || !destinoViaje || !tipoActividadId">
+        Importar
+      </button>
+    </div>
+
+  </div>
+</div>

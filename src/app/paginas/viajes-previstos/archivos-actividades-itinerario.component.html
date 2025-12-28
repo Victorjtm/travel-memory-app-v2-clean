@@ -1,0 +1,339 @@
+<!-- ════════════════════════════════════════════════════════════════════════════ -->
+<!-- 📋 CONTENEDOR PRINCIPAL - Gestión de Archivos por Actividad -->
+<!-- ════════════════════════════════════════════════════════════════════════════ -->
+
+<div class="contenedor">
+
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <!-- 📌 ENCABEZADO -->
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <h2 *ngIf="actividadId">Archivos para la Actividad {{ actividadId }}</h2>
+
+  <!-- Botón para añadir nuevo archivo -->
+  <button [routerLink]="[
+      '/viajes-previstos',
+      viajePrevistoId,
+      'itinerarios',
+      itinerarioId,
+      'actividades',
+      actividadId,
+      'archivos',
+      'nuevo'
+    ]" class="btn-agregar" title="Añadir nuevo archivo a esta actividad">
+    <i class="fa fa-plus-circle"></i> Añadir Archivo
+  </button>
+
+  <router-outlet></router-outlet>
+  <hr>
+
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <!-- 📁 LISTA DE ARCHIVOS O MENSAJE DE LISTA VACÍA -->
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+
+  <div *ngIf="archivos && archivos.length > 0; else sinArchivos" class="lista-archivos">
+
+    <!-- 🔄 ITERACIÓN: Cada archivo -->
+    <div *ngFor="let archivo of archivos" class="archivo-item">
+
+      <!-- ╔════════════════════════════════════════════════════════════════╗ -->
+      <!-- ║ SECCIÓN 1: PREVIEW DEL ARCHIVO (Imagen, Video o Audio) -->
+      <!-- ╚════════════════════════════════════════════════════════════════╝ -->
+      <div class="preview-container">
+
+        <!-- Vista previa: Foto/Imagen -->
+        <div *ngIf="archivo.tipo === 'foto' || archivo.tipo === 'imagen'" class="image-preview">
+          <img [src]="getFileUrl(archivo)" [alt]="archivo.descripcion || 'Imagen sin descripción'"
+            (click)="abrirModal(archivo)" (error)="onImgError($event)" class="clickable-media" loading="lazy"
+            crossorigin="anonymous" title="Clic para abrir en modal ampliado">
+        </div>
+
+        <!-- Vista previa: Video -->
+        <div *ngIf="archivo.tipo === 'video'" class="video-preview">
+          <video controls preload="metadata" (click)="abrirModal(archivo)" class="clickable-media"
+            title="Clic para abrir en modal ampliado">
+            <source [src]="getFileUrl(archivo)" [type]="'video/' + getFileExtension(archivo.nombreArchivo)">
+            Tu navegador no soporta el elemento de video.
+          </video>
+        </div>
+
+        <!-- Vista previa: Audio -->
+        <div *ngIf="archivo.tipo === 'audio'" class="audio-preview">
+          <audio controls preload="metadata" (click)="abrirModal(archivo)" class="clickable-media"
+            title="Clic para abrir en modal ampliado">
+            <source [src]="getFileUrl(archivo)" [type]="'audio/' + getFileExtension(archivo.nombreArchivo)">
+            Tu navegador no soporta el elemento de audio.
+          </audio>
+        </div>
+
+        <!-- Indicador de carga -->
+        <div
+          *ngIf="!urlsArchivos[archivo.id] && (archivo.tipo === 'foto' || archivo.tipo === 'imagen' || archivo.tipo === 'video' || archivo.tipo === 'audio')"
+          class="loading-indicator">
+          <i class="fa fa-spinner fa-spin"></i> Cargando...
+        </div>
+      </div>
+
+      <!-- ╔════════════════════════════════════════════════════════════════╗ -->
+      <!-- ║ SECCIÓN 2: INFORMACIÓN DEL ARCHIVO -->
+      <!-- ╚════════════════════════════════════════════════════════════════╝ -->
+      <div class="info-archivo">
+        <h3>{{ archivo.nombreArchivo }}</h3>
+        <p><strong>Tipo:</strong> {{ archivo.tipo }}</p>
+        <p><strong>Descripción:</strong> {{ archivo.descripcion || 'Sin descripción' }}</p>
+        <p><strong>Hora de captura:</strong> {{ archivo.horaCaptura || 'No especificada' }}</p>
+
+        <!-- Ubicación (Dirección) -->
+        <p class="ubicacion-field">
+          <strong>📍 Ubicación:</strong>
+          <span class="direccion-text">{{ getDireccionDisplay(archivo) }}</span>
+        </p>
+
+        <p><strong>Creación:</strong> {{ archivo.fechaCreacion | date:'dd/MM/yyyy' }}</p>
+      </div>
+
+      <!-- ╔════════════════════════════════════════════════════════════════╗ -->
+      <!-- ║ SECCIÓN 3: BOTONES DE ACCIONES -->
+      <!-- ╚════════════════════════════════════════════════════════════════╝ -->
+      <div class="acciones">
+
+        <!-- 🎯 BOTONES DE ARCHIVOS ASOCIADOS (Generados dinámicamente) -->
+
+        <!-- Audio asociado -->
+        <button class="btn-asociado btn-audio" *ngIf="tieneArchivoAsociado(archivo, 'audio')"
+          (click)="abrirArchivoAsociado(archivo, 'audio')" title="Reproducir audio asociado">
+          <i class="fa fa-volume-up"></i>
+        </button>
+
+        <!-- GPX asociado - Abre mapa satelital -->
+        <button class="btn-asociado btn-gpx" *ngIf="tieneArchivoAsociado(archivo, 'gpx')"
+          (click)="abrirArchivoAsociado(archivo, 'gpx')" title="Ver ruta GPX en mapa satelital">
+          <i class="fa fa-map-marked-alt"></i>
+        </button>
+
+        <!-- Mapa de ubicación (PNG) -->
+        <button class="btn-asociado btn-imagen" *ngIf="tieneArchivoAsociado(archivo, 'mapa_ubicacion')"
+          (click)="abrirArchivoAsociado(archivo, 'mapa_ubicacion')" title="Ver mapa PNG">
+          <i class="fa fa-map"></i>
+        </button>
+
+        <!-- Manifest JSON -->
+        <button class="btn-asociado btn-manifest" *ngIf="tieneArchivoAsociado(archivo, 'manifest')"
+          (click)="abrirArchivoAsociado(archivo, 'manifest')" title="Ver manifest JSON">
+          <i class="fa fa-file-code"></i>
+        </button>
+
+        <!-- Estadísticas JSON -->
+        <button class="btn-asociado btn-estadisticas" *ngIf="tieneArchivoAsociado(archivo, 'estadisticas')"
+          (click)="abrirArchivoAsociado(archivo, 'estadisticas')" title="Ver estadísticas">
+          <i class="fa fa-chart-bar"></i>
+        </button>
+
+        <!-- Texto asociado -->
+        <button class="btn-asociado btn-texto" *ngIf="tieneArchivoAsociado(archivo, 'texto')"
+          (click)="abrirArchivoAsociado(archivo, 'texto')" title="Ver texto asociado">
+          <i class="fa fa-file-text"></i>
+        </button>
+
+        <!-- Buscar en AudioPhotoApp (solo si NO tiene archivos asociados) -->
+        <button class="btn-asociado btn-buscar-audio" *ngIf="!tieneArchivosAsociados(archivo)"
+          (click)="buscarEnAudioPhotoApp(archivo)" title="Buscar archivos asociados en AudioPhotoApp">
+          <i class="fa fa-folder-open"></i>
+        </button>
+
+        <!-- Separador visual -->
+        <span class="separador-botones"></span>
+
+        <!-- 🎯 BOTONES DE GESTIÓN DEL ARCHIVO -->
+
+        <!-- Descargar -->
+        <button class="btn-descargar" (click)="descargarArchivo(archivo.id)" title="Descargar archivo">
+          <i class="fa fa-download"></i>
+        </button>
+
+        <!-- Eliminar -->
+        <button class="btn-eliminar" (click)="eliminarArchivo(archivo.id)" title="Eliminar archivo">
+          <i class="fa fa-trash"></i>
+        </button>
+
+        <!-- Editar -->
+        <button class="btn-actualizar" [routerLink]="[
+            '/viajes-previstos',
+            viajePrevistoId,
+            'itinerarios',
+            itinerarioId,
+            'actividades',
+            actividadId,
+            'archivos',
+            'editar',
+            archivo.id
+          ]" title="Editar archivo">
+          <i class="fa fa-edit"></i>
+        </button>
+
+      </div>
+      <!-- FIN: Botones de acciones -->
+
+    </div>
+    <!-- FIN: Iteración de archivos -->
+
+  </div>
+  <!-- FIN: Lista de archivos -->
+
+  <!-- Mensaje cuando no hay archivos -->
+  <ng-template #sinArchivos>
+    <p class="sin-archivos">
+      <em>No hay archivos registrados para esta actividad.</em>
+    </p>
+  </ng-template>
+
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <!-- 🪟 MODAL 1: VISUALIZACIÓN AMPLIADA DE ARCHIVO (Foto/Video/Audio) -->
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <div class="modal-backdrop" *ngIf="archivoSeleccionado" (click)="cerrarModal()" role="dialog"
+    aria-label="Vista ampliada del archivo">
+
+    <div class="modal-content" (click)="$event.stopPropagation()">
+
+      <!-- Botón cerrar -->
+      <button class="btn-cerrar-modal" (click)="cerrarModal()" title="Cerrar modal (ESC)">
+        <i class="fa fa-times"></i>
+      </button>
+
+      <!-- Contenido media: Imagen -->
+      <div *ngIf="archivoSeleccionado.tipo === 'foto' || archivoSeleccionado.tipo === 'imagen'" class="modal-media">
+        <img [src]="getFileUrl(archivoSeleccionado)" [alt]="archivoSeleccionado.descripcion"
+          (error)="onImgError($event)" crossorigin="anonymous">
+      </div>
+
+      <!-- Contenido media: Video -->
+      <div *ngIf="archivoSeleccionado.tipo === 'video'" class="modal-media">
+        <video controls autoplay>
+          <source [src]="getFileUrl(archivoSeleccionado)"
+            [type]="'video/' + getFileExtension(archivoSeleccionado.nombreArchivo)">
+          Tu navegador no soporta el elemento de video.
+        </video>
+      </div>
+
+      <!-- Contenido media: Audio -->
+      <div *ngIf="archivoSeleccionado.tipo === 'audio'" class="modal-media">
+        <audio controls autoplay>
+          <source [src]="getFileUrl(archivoSeleccionado)"
+            [type]="'audio/' + getFileExtension(archivoSeleccionado.nombreArchivo)">
+          Tu navegador no soporta el elemento de audio.
+        </audio>
+      </div>
+
+      <!-- Información del archivo -->
+      <div class="modal-info">
+        <h3>{{ archivoSeleccionado.nombreArchivo }}</h3>
+        <p><strong>Descripción:</strong> {{ archivoSeleccionado.descripcion || 'Sin descripción' }}</p>
+        <p><strong>Fecha:</strong> {{ archivoSeleccionado.fechaCreacion | date:'dd/MM/yyyy' }}</p>
+        <p><strong>Hora:</strong> {{ archivoSeleccionado.horaCaptura || 'No especificada' }}</p>
+
+        <!-- Ubicación -->
+        <p class="ubicacion-modal">
+          <strong>📍 Ubicación:</strong>
+          <span>{{ getDireccionDisplay(archivoSeleccionado) }}</span>
+        </p>
+      </div>
+
+    </div>
+  </div>
+  <!-- FIN: Modal de visualización ampliada -->
+
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <!-- 🗺️ MODAL 2: MAPA SATELITAL CON RUTA GPX INDIVIDUAL -->
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <div class="modal-backdrop" *ngIf="mostrarModalGPXIndividual" (click)="cerrarModalGPXIndividual()" role="dialog"
+    aria-label="Mapa satelital con ruta GPX">
+
+    <div class="modal-content" (click)="$event.stopPropagation()">
+
+      <!-- Botón cerrar -->
+      <button class="btn-cerrar-modal" (click)="cerrarModalGPXIndividual()" title="Cerrar mapa">
+        <i class="fa fa-times"></i>
+      </button>
+
+      <!-- Encabezado -->
+      <h2 style="margin-top: 0;">🗺️ Ruta GPX Individual</h2>
+      <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+        Vista satelital de la ruta capturada en esta foto
+      </p>
+
+      <!-- ✨ CONTENEDOR DEL MAPA LEAFLET ✨ -->
+      <!-- Leaflet se inicializa aquí con Satellite + Ruta + Marcadores -->
+      <div id="mapa-gpx-individual" style="height: 500px; width: 100%; border-radius: 8px; margin-bottom: 20px;">
+        <!-- El mapa se renderiza aquí por inicializarMapaGPXIndividual() -->
+      </div>
+
+      <!-- Botón cerrar modal -->
+      <button class="btn-descargar" (click)="cerrarModalGPXIndividual()" style="width: 100%;">
+        <i class="fa fa-times"></i> Cerrar
+      </button>
+
+    </div>
+  </div>
+  <!-- FIN: Modal GPX Individual -->
+
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <!-- 🔍 MODAL 3: SELECCIÓN DE ARCHIVOS DE AUDIOPHOTOAPP -->
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <div class="modal-backdrop" *ngIf="mostrarModalBusquedaAudio" (click)="cerrarModalBusquedaAudio()" role="dialog"
+    aria-label="Selección de archivos encontrados">
+
+    <div class="modal-content modal-busqueda" (click)="$event.stopPropagation()">
+
+      <button class="btn-cerrar-modal" (click)="cerrarModalBusquedaAudio()" title="Cerrar">
+        <i class="fa fa-times"></i>
+      </button>
+
+      <h2 style="margin-top: 0;">🔍 Archivos Encontrados</h2>
+      <p style="color: #666; font-size: 14px;">
+        Buscando: <strong>{{ nombreBaseBusqueda }}</strong>
+      </p>
+
+      <!-- Lista de archivos encontrados -->
+      <div class="archivos-encontrados-lista">
+        <div *ngFor="let archivoEnc of archivosEncontradosAudio" class="archivo-encontrado-item">
+          <label>
+            <input type="checkbox" [(ngModel)]="archivoEnc.seleccionado">
+            <i [class]="getIconoTipo(archivoEnc.tipo)"></i>
+            <span class="nombre-archivo">{{ archivoEnc.nombre }}</span>
+            <span class="tipo-archivo">({{ archivoEnc.tipo }})</span>
+          </label>
+        </div>
+
+        <p *ngIf="archivosEncontradosAudio.length === 0" class="sin-resultados">
+          No se encontraron archivos asociados
+        </p>
+      </div>
+
+      <!-- Botones de acción -->
+      <div class="modal-acciones" style="margin-top: 20px; display: flex; gap: 10px;">
+        <button class="btn-volver" (click)="cerrarModalBusquedaAudio()">
+          Cancelar
+        </button>
+        <button class="btn-agregar" (click)="importarArchivosSeleccionados()" [disabled]="!hayArchivosSeleccionados()">
+          <i class="fa fa-download"></i> Importar Seleccionados
+        </button>
+      </div>
+
+    </div>
+  </div>
+  <!-- FIN: Modal AudioPhotoApp -->
+
+
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <!-- 🔘 BOTONES DE NAVEGACIÓN INFERIORES -->
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+
+  <button class="btn-volver" (click)="volverAItinerario()" title="Volver a la lista de actividades">
+    <i class="fa fa-arrow-left"></i> Volver a Actividades por Itinerario
+  </button>
+
+  <button class="btn-libro" (click)="verEnFormatoLibro()" title="Ver en formato libro/álbum">
+    <i class="fas fa-book"></i> Ver en libro
+  </button>
+
+</div>
+<!-- FIN: Contenedor principal -->

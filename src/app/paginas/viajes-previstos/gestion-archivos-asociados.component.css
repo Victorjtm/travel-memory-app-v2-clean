@@ -1,0 +1,459 @@
+/* ===== CONTENEDOR PRINCIPAL ===== */
+.contenedor-gestion {
+  max-width: 1000px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: #fdfdfd;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.contenedor-gestion h2 {
+  text-align: center;
+  color: #3f51b5;
+  margin-bottom: 0.5rem;
+  font-size: 1.8rem;
+}
+
+.subtitulo {
+  text-align: center;
+  color: #666;
+  margin-bottom: 2rem;
+  font-style: italic;
+}
+
+/* ===== FORMULARIO DE ARCHIVO ASOCIADO ===== */
+.formulario-archivo-asociado {
+  background: #f8f9fa;
+  padding: 1.5rem;
+  border-radius: 10px;
+  margin-bottom: 2rem;
+  border-left: 4px solid #ff9800;
+}
+
+.formulario-archivo-asociado h3 {
+  color: #ff9800;
+  margin-bottom: 1.2rem;
+  font-size: 1.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.formulario-archivo-asociado form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.campo-formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.campo-formulario label {
+  font-weight: 600;
+  color: #444;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.campo-formulario label i {
+  color: #ff9800;
+}
+
+.campo-formulario input,
+.campo-formulario select,
+.campo-formulario textarea {
+  padding: 0.7rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  width: 100%;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.campo-formulario input:focus,
+.campo-formulario select:focus,
+.campo-formulario textarea:focus {
+  outline: none;
+  border-color: #ff9800;
+  box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.2);
+}
+
+.campo-formulario textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.campo-formulario small {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 0.3rem;
+}
+
+/* ===== BOTONES DEL FORMULARIO ===== */
+.botones-formulario {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.btn-guardar {
+  background: #4caf50;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-guardar:hover {
+  background: #2e7d32;
+  transform: translateY(-1px);
+}
+
+.btn-guardar:disabled {
+  background: #a5d6a7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-cancelar {
+  background: #757575;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-cancelar:hover {
+  background: #424242;
+  transform: translateY(-1px);
+}
+
+/* ===== LISTA DE ARCHIVOS ASOCIADOS ===== */
+.lista-archivos-asociados {
+  margin-bottom: 2rem;
+}
+
+.lista-archivos-asociados h3 {
+  color: #555;
+  margin-bottom: 1rem;
+  font-size: 1.3rem;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 0.5rem;
+}
+
+.sin-archivos {
+  text-align: center;
+  padding: 3rem;
+  color: #666;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px dashed #ddd;
+}
+
+.sin-archivos i {
+  font-size: 3rem;
+  color: #ccc;
+  margin-bottom: 1rem;
+}
+
+.sin-archivos p {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+/* ===== ITEMS DE ARCHIVO ASOCIADO ===== */
+.archivo-asociado-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  border-left: 4px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.archivo-asociado-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.archivo-asociado-item .archivo-info {
+  flex-grow: 1;
+  margin-right: 1rem;
+}
+
+.archivo-header {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.tipo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.tipo-badge.tipo-audio {
+  background: #e1f5fe;
+  color: #0277bd;
+  border-left-color: #0277bd;
+}
+
+.tipo-badge.tipo-texto {
+  background: #f3e5f5;
+  color: #7b1fa2;
+  border-left-color: #7b1fa2;
+}
+
+.archivo-asociado-item .archivo-header h4 {
+  margin: 0;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.descripcion {
+  color: #666;
+  margin: 0.5rem 0;
+  line-height: 1.4;
+}
+
+.archivo-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.8rem;
+}
+
+.archivo-metadata small {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #888;
+  font-size: 0.75rem;
+}
+
+.archivo-metadata i {
+  color: #bbb;
+}
+
+/* ===== ACCIONES DE ARCHIVO ===== */
+.archivo-acciones {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.btn-accion {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 0.5rem;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-accion:hover {
+  transform: scale(1.1);
+}
+
+.btn-descargar {
+  color: #4caf50;
+}
+
+.btn-descargar:hover {
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.btn-editar {
+  color: #ff9800;
+}
+
+.btn-editar:hover {
+  background: rgba(255, 152, 0, 0.1);
+}
+
+.btn-eliminar {
+  color: #f44336;
+}
+
+.btn-eliminar:hover {
+  background: rgba(244, 67, 54, 0.1);
+}
+
+/* ===== BOTONES DE NAVEGACIÓN ===== */
+.botones-navegacion {
+  text-align: center;
+  margin-top: 2rem;
+}
+
+.btn-volver {
+  background: #607d8b;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+}
+
+.btn-volver:hover {
+  background: #455a64;
+  transform: translateY(-1px);
+}
+
+/* ===== MODAL DE CONFIRMACIÓN ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+}
+
+.modal-content h3 {
+  color: #333;
+  margin-bottom: 1rem;
+}
+
+.modal-content p {
+  color: #666;
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+
+.advertencia {
+  color: #f44336 !important;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.modal-botones {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.modal-botones .btn-eliminar {
+  background: #f44336;
+  color: white;
+  border: none;
+  padding: 0.7rem 1.2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background 0.2s ease;
+}
+
+.modal-botones .btn-eliminar:hover {
+  background: #d32f2f;
+}
+
+.modal-botones .btn-cancelar {
+  background: #757575;
+  color: white;
+  border: none;
+  padding: 0.7rem 1.2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background 0.2s ease;
+}
+
+.modal-botones .btn-cancelar:hover {
+  background: #616161;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .contenedor-gestion {
+    padding: 1rem;
+    margin: 1rem;
+  }
+
+  .archivo-asociado-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .archivo-acciones {
+    margin-top: 1rem;
+    align-self: flex-end;
+  }
+
+  .botones-formulario {
+    flex-direction: column;
+  }
+
+  .archivo-metadata {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .modal-content {
+    padding: 1.5rem;
+  }
+
+  .modal-botones {
+    flex-direction: column;
+  }
+}

@@ -1,0 +1,32 @@
+<section class="configuracion">
+  <h2>Configuración de la Aplicación</h2>
+  
+  <div class="opciones-configuracion">
+    <a routerLink="/configuracion/tipos-actividad" class="opcion">
+      ➕ Tipos de Actividad
+    </a>
+    
+    <a routerLink="/configuracion/archivos-sin-asignacion" class="opcion">
+      📁 Archivos sin Asignación
+    </a>
+    
+    <!-- 🆕 NUEVO BOTÓN -->
+    <button 
+      class="opcion opcion-procesamiento" 
+      (click)="procesarGeolocalizacionMasiva()"
+      [disabled]="procesando">
+      <span *ngIf="!procesando">
+        📍 Extraer Geolocalización de Archivos
+      </span>
+      <span *ngIf="procesando">
+        ⏳ Procesando... Por favor espera
+      </span>
+    </button>
+  </div>
+
+  <!-- Barra de progreso (opcional) -->
+  <div *ngIf="procesando" class="progreso-container">
+    <mat-progress-bar mode="indeterminate" color="primary"></mat-progress-bar>
+    <p class="progreso-texto">Extrayendo coordenadas GPS de las fotos...</p>
+  </div>
+</section>

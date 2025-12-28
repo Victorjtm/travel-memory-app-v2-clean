@@ -1,0 +1,11 @@
+<div class="recuerdos-container">
+    <h1>Mis Recuerdos</h1>
+    <ul>
+      <li *ngFor="let recuerdo of recuerdos">
+        <h2>{{ recuerdo.nombre }}</h2>
+        <p>{{ recuerdo.descripcion }}</p>
+      </li>
+    </ul>
+    <a routerLink="/inicio" class="btn">Volver al Inicio</a>
+  </div>
+  

@@ -1,0 +1,361 @@
+.inicio-container {
+    text-align: center;
+    margin-top: 30px; // ← menos margen arriba
+    display: flex;
+    flex-direction: column;
+    align-items: center; // ← centrados, no estirados
+    gap: 20px; // ← más separación
+    padding: 0 12px; // ← menos padding lateral
+}
+
+.inicio-container .btn {
+    background-color: #4CAF50;
+    color: white;
+    padding: 12px 20px; // ← más ancho interno
+    text-decoration: none;
+    border-radius: 8px; // ← esquinas más redondas
+    font-size: 15px; // ← ligeramente más pequeño
+    display: inline-block; // ← respeta ancho del texto
+    min-width: 220px; // ← tamaño mínimo razonable
+    max-width: 90vw; // ← nunca más ancho que la pantalla
+    text-align: center;
+    box-sizing: border-box;
+    transition: background-color 0.3s ease;
+}
+
+@media (max-width: 768px) {
+    .inicio-container {
+        margin-top: 20px;
+        gap: 24px; // ← más separación en móvil
+    }
+    .inicio-container .btn {
+        font-size: 14px; // ← texto más pequeño
+        padding: 14px 16px;
+        min-width: 180px;
+        max-width: 85vw; // ← dejamos margen visible
+    }
+}
+
+// ====================================================================
+// NUEVO: Estilos para Importación desde Móvil
+// ====================================================================
+
+// Botón de importación (color diferente)
+.btn-import {
+    background-color: #FF9800 !important; // Naranja para destacar
+    
+    &:hover {
+        background-color: #F57C00 !important;
+    }
+}
+
+// ====================================================================
+// Modal de Importación
+// ====================================================================
+
+// Overlay oscuro de fondo
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+// Contenedor del modal
+.modal-import {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    max-width: 600px;
+    width: 100%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+// Header del modal
+.modal-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    h2 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 600;
+    }
+
+    .btn-close {
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        font-size: 20px;
+        cursor: pointer;
+        transition: background 0.2s ease;
+
+        &:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    }
+}
+
+// Body del modal (scrollable)
+.modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+// Información del tracking
+.tracking-info {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+
+    h3 {
+        margin: 0 0 12px 0;
+        font-size: 18px;
+        color: #333;
+    }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+    }
+
+    .info-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        strong {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        span {
+            font-size: 16px;
+            color: #333;
+            font-weight: 500;
+        }
+    }
+}
+
+// Separador
+.divider {
+    border: none;
+    height: 1px;
+    background: #e0e0e0;
+    margin: 24px 0;
+}
+
+// Formulario de configuración
+.config-form {
+    h3 {
+        margin: 0 0 16px 0;
+        font-size: 18px;
+        color: #333;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-input,
+        .form-select {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            box-sizing: border-box;
+            transition: border-color 0.2s ease;
+            font-family: inherit;
+
+            &:focus {
+                outline: none;
+                border-color: #667eea;
+            }
+
+            &::placeholder {
+                color: #999;
+            }
+        }
+
+        .form-select {
+            cursor: pointer;
+            background-color: white;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+    }
+}
+
+// Contenedor de progreso
+.progress-container {
+    text-align: center;
+    padding: 20px;
+
+    h3 {
+        margin: 0 0 24px 0;
+        font-size: 20px;
+        color: #333;
+    }
+
+    .progress-bar-container {
+        width: 100%;
+        height: 32px;
+        background: #e0e0e0;
+        border-radius: 16px;
+        overflow: hidden;
+        margin-bottom: 16px;
+        position: relative;
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            transition: width 0.3s ease;
+            min-width: 32px; // Mostrar % incluso en 0%
+        }
+    }
+
+    .progress-message {
+        font-size: 14px;
+        color: #666;
+        margin: 16px 0 24px 0;
+    }
+
+    // Spinner animado
+    .spinner {
+        margin: 0 auto;
+        width: 48px;
+        height: 48px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+}
+
+// Footer del modal
+.modal-footer {
+    padding: 16px 24px;
+    background: #f8f9fa;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    border-top: 1px solid #e0e0e0;
+
+    .btn {
+        padding: 10px 24px;
+        font-size: 15px;
+        font-weight: 600;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        min-width: 100px;
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    }
+
+    .btn-cancel {
+        background: #e0e0e0;
+        color: #333;
+
+        &:hover:not(:disabled) {
+            background: #d0d0d0;
+        }
+    }
+
+    .btn-confirm {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+
+        &:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+    }
+}
+
+// ====================================================================
+// Responsive para Modal
+// ====================================================================
+
+@media (max-width: 768px) {
+    .modal-import {
+        max-width: 95vw;
+        max-height: 95vh;
+    }
+
+    .modal-header h2 {
+        font-size: 18px;
+    }
+
+    .modal-body {
+        padding: 16px;
+    }
+
+    .tracking-info .info-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .modal-footer {
+        flex-direction: column;
+        gap: 8px;
+
+        .btn {
+            width: 100%;
+        }
+    }
+}

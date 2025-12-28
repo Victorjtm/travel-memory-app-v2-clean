@@ -1,0 +1,22 @@
+.recuerdos-container {
+    padding: 20px;
+    text-align: center;
+  }
+  
+  .recuerdos-container ul {
+    list-style: none;
+    padding: 0;
+  }
+  
+  .recuerdos-container .btn {
+    background-color: #f44336;
+    color: white;
+    padding: 10px 20px;
+    text-decoration: none;
+    border-radius: 5px;
+  }
+  
+  .recuerdos-container .btn:hover {
+    background-color: #e53935;
+  }
+  

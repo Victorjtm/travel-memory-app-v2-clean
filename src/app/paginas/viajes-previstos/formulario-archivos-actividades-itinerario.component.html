@@ -1,0 +1,160 @@
+<div class="contenedor" [class.modo-edicion]="modoEdicion">
+  <!-- ===== Título principal según modo de edición ===== -->
+  <h2>{{ modoEdicion ? 'Editar Archivo' : 'Archivos de la Actividad' }}</h2>
+
+  <!-- ===== Formulario para agregar/editar archivos ===== -->
+  <div class="formulario-subida">
+    <h3>{{ modoEdicion ? 'Editar metadatos y archivo' : 'Añadir nuevos archivos' }}</h3>
+    <form (ngSubmit)="subirArchivos()" #formArchivos="ngForm" enctype="multipart/form-data">
+      
+      <!-- ===== Selector de archivos ===== -->
+      <div class="campo-formulario">
+        <label>
+          <i class="fa fa-file-upload"></i> 
+          Seleccionar archivo {{ modoEdicion ? '(nuevo reemplaza al anterior)' : '' }}:
+        </label>
+        <input type="file" 
+               id="archivosInput" 
+               [multiple]="!modoEdicion" 
+               (change)="onFileSelected($event)" 
+               accept="image/*,video/*,audio/*,.txt,.pdf,.doc,.docx"
+               [required]="!modoEdicion && archivosSeleccionados.length === 0">
+        <small *ngIf="!modoEdicion">Puedes seleccionar múltiples archivos</small>
+      </div>
+
+      <!-- ===== Tipo de archivo ===== -->
+      <div class="campo-formulario">
+        <label><i class="fa fa-tags"></i> Tipo de archivo:</label>
+        <select [(ngModel)]="nuevoArchivo.tipo" name="tipo" required>
+          <option value="foto">Foto</option>
+          <option value="video">Video</option>
+          <option value="audio">Audio</option>
+          <option value="texto">Texto</option>
+          <option value="imagen">Imagen (gráfico/dibujo)</option>
+        </select>
+      </div>
+
+      <!-- ===== Descripción del archivo ===== -->
+      <div class="campo-formulario">
+        <label><i class="fa fa-align-left"></i> Descripción:</label>
+        <textarea [(ngModel)]="nuevoArchivo.descripcion" name="descripcion"></textarea>
+      </div>
+
+      <!-- ===== Hora de captura del archivo ===== -->
+      <div class="campo-formulario">
+        <label><i class="fa fa-clock"></i> Hora de captura:</label>
+        <input type="time" [(ngModel)]="nuevoArchivo.horaCaptura" name="horaCaptura">
+      </div>
+
+      <!-- ===== Geolocalización del archivo ===== -->
+<div class="ubicacion-controls">
+<mat-form-field appearance="outline" class="full-width">
+  <mat-label>Ubicación (coordenadas)</mat-label>
+  <input matInput 
+         [(ngModel)]="nuevoArchivo.geolocalizacion"
+         name="geolocalizacion"
+         (ngModelChange)="onUbicacionChange()"
+         placeholder="Coordenadas GPS o seleccionar en mapa">
+</mat-form-field>
+  
+  <div class="ubicacion-buttons">
+    <button type="button" 
+            mat-raised-button 
+            color="accent"
+            (click)="abrirSelectorUbicacion()">
+      <mat-icon>map</mat-icon>
+      Seleccionar en Mapa
+    </button>
+    
+    <button type="button" 
+            mat-stroked-button 
+            (click)="capturarGeolocalizacion()">
+      <mat-icon>my_location</mat-icon>
+      Mi Ubicación
+    </button>
+  </div>
+</div>
+
+      <!-- ===== Previsualización de archivos en creación ===== -->
+      <div *ngIf="!modoEdicion && archivosSeleccionados.length > 0" class="previsualizacion">
+        <h4>Archivos a subir:</h4>
+        <ul>
+          <li *ngFor="let archivo of archivosSeleccionados">
+            {{archivo.name}} ({{archivo.size | filesize}})
+          </li>
+        </ul>
+      </div>
+
+      <!-- ===== Previsualización archivo nuevo en edición ===== -->
+      <div *ngIf="modoEdicion && archivoNuevoSeleccionado" class="previsualizacion">
+        <h4>Archivo nuevo seleccionado para reemplazar:</h4>
+        <p>{{ archivoNuevoSeleccionado.name }} ({{ archivoNuevoSeleccionado.size | filesize }})</p>
+      </div>
+
+      <!-- ===== Barra de progreso de subida de archivos ===== -->
+      <div *ngIf="subiendoArchivos" class="progress-container">
+        <div class="progress-header">
+          <mat-spinner diameter="24"></mat-spinner>
+          <h3>Subiendo archivos...</h3>
+        </div>
+        
+        <div class="progress-info">
+          <p>Archivo {{archivoActualIndex + 1}} de {{totalArchivos}}</p>
+          <p class="current-file">{{nombreArchivoActual}}</p>
+        </div>
+        
+        <div class="progress-bars">
+          <!-- Barra de progreso global -->
+          <div class="progress-label">
+            <span>Progreso total</span>
+            <span class="percentage">{{progresoGlobal}}%</span>
+          </div>
+          <mat-progress-bar 
+            mode="determinate" 
+            [value]="progresoGlobal"
+            color="primary">
+          </mat-progress-bar>
+          
+          <!-- Barra del archivo actual -->
+          <div class="progress-label">
+            <span>Archivo actual</span>
+            <span class="percentage">{{porcentajeArchivoActual}}%</span>
+          </div>
+          <mat-progress-bar 
+            mode="determinate" 
+            [value]="porcentajeArchivoActual"
+            color="accent">
+          </mat-progress-bar>
+        </div>
+
+        <!-- ===== Botón para cancelar subida ===== -->
+        <div class="progress-actions">
+          <button mat-button color="warn" (click)="cancelarSubida()">
+            <mat-icon>cancel</mat-icon>
+            Cancelar
+          </button>
+        </div>  
+      </div>
+
+      <!-- ===== Botón de submit del formulario ===== -->
+      <button type="submit" 
+              [disabled]="!formArchivos.form.valid || (!modoEdicion && archivosSeleccionados.length === 0)"
+              class="{{ modoEdicion ? 'btn-actualizar' : 'btn-subir' }}">
+        <i class="fa {{ modoEdicion ? 'fa-save' : 'fa-cloud-upload-alt' }}"></i> 
+        {{ modoEdicion ? 'Guardar Cambios' : 'Subir Archivos' }}
+      </button>
+    </form>
+  </div>
+
+<!-- ===== Botón de gestión de archivos asociados ===== -->
+  <div class="botones-gestion">
+    <button class="btn-archivos-asociados" (click)="abrirGestionArchivosAsociados()">
+      <i class="fa fa-link"></i> Gestionar Archivos Asociados
+    </button>
+  </div>
+
+  <!-- ===== Botón para volver a la actividad ===== -->
+  <button class="btn-volver" (click)="volverAActividad()">
+    <i class="fa fa-arrow-left"></i> Volver a la Actividad
+  </button>
+</div>

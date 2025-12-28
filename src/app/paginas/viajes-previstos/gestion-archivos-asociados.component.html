@@ -1,0 +1,146 @@
+<div class="contenedor-gestion">
+  <!-- ===== Título principal ===== -->
+  <h2>Gestión de Archivos Asociados</h2>
+  <p class="subtitulo">Gestiona archivos de audio y texto asociados al archivo principal</p>
+
+  <!-- ===== Formulario para crear/editar archivos asociados ===== -->
+  <div class="formulario-archivo-asociado">
+    <h3>{{ modoEdicion ? 'Editar Archivo Asociado' : 'Añadir Nuevo Archivo Asociado' }}</h3>
+    
+    <form (ngSubmit)="guardarArchivoAsociado()" #formArchivoAsociado="ngForm">
+      <!-- ===== Tipo de archivo ===== -->
+      <div class="campo-formulario">
+        <label><i class="fa fa-tags"></i> Tipo de archivo:</label>
+<select [(ngModel)]="archivoAsociadoForm.tipo" name="tipo" required>
+  <option value="audio">Audio</option>
+  <option value="texto">Texto</option>
+  <option value="imagen">Imagen</option>
+</select>
+      </div>
+
+      <!-- ===== Selector de archivo ===== -->
+      <div class="campo-formulario">
+        <label><i class="fa fa-file"></i> Seleccionar archivo:</label>
+<input type="file" 
+       (change)="onArchivoSeleccionado($event)"
+       [accept]="obtenerTiposAceptados()"
+       required>
+        <small *ngIf="archivoSeleccionado">
+          Archivo seleccionado: {{ archivoSeleccionado.name }} ({{ archivoSeleccionado.size | filesize }})
+        </small>
+      </div>
+
+      <!-- ===== Descripción ===== -->
+      <div class="campo-formulario">
+        <label><i class="fa fa-align-left"></i> Descripción:</label>
+        <textarea [(ngModel)]="archivoAsociadoForm.descripcion" 
+                  name="descripcion" 
+                  placeholder="Descripción opcional del archivo asociado"
+                  rows="3"></textarea>
+      </div>
+
+      <!-- ===== Botones del formulario ===== -->
+      <div class="botones-formulario">
+        <button type="submit" 
+                [disabled]="!formArchivoAsociado.form.valid || !archivoSeleccionado"
+                class="btn-guardar">
+          <i class="fa fa-save"></i> 
+          {{ modoEdicion ? 'Actualizar' : 'Guardar' }}
+        </button>
+        
+        <button type="button" 
+                *ngIf="modoEdicion"
+                (click)="cancelarEdicion()"
+                class="btn-cancelar">
+          <i class="fa fa-times"></i> Cancelar
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ===== Lista de archivos asociados existentes ===== -->
+  <div class="lista-archivos-asociados">
+    <h3>Archivos Asociados Existentes</h3>
+    
+    <div *ngIf="archivosAsociados.length === 0" class="sin-archivos">
+      <i class="fa fa-folder-open"></i>
+      <p>No hay archivos asociados para este archivo principal</p>
+    </div>
+
+    <div *ngFor="let archivo of archivosAsociados" class="archivo-asociado-item">
+      <div class="archivo-info">
+        <div class="archivo-header">
+          <span class="tipo-badge" [class]="'tipo-' + archivo.tipo">
+<i class="fa" [class]="obtenerIconoTipo(archivo.tipo)"></i>
+{{ archivo.tipo | titlecase }}
+          </span>
+          <h4>{{ archivo.nombreArchivo }}</h4>
+        </div>
+        
+        <p class="descripcion" *ngIf="archivo.descripcion">
+          {{ archivo.descripcion }}
+        </p>
+        
+        <div class="archivo-metadata">
+          <small>
+            <i class="fa fa-calendar"></i> 
+            Creado: {{ archivo.fechaCreacion | date:'dd/MM/yyyy HH:mm' }}
+          </small>
+          <small *ngIf="archivo.fechaActualizacion !== archivo.fechaCreacion">
+            <i class="fa fa-edit"></i> 
+            Actualizado: {{ archivo.fechaActualizacion | date:'dd/MM/yyyy HH:mm' }}
+          </small>
+          <small>
+            <i class="fa fa-code-branch"></i> 
+            Versión: {{ archivo.version }}
+          </small>
+        </div>
+      </div>
+
+      <div class="archivo-acciones">
+        <button (click)="descargarArchivo(archivo)" 
+                class="btn-accion btn-descargar"
+                title="Descargar archivo">
+          <i class="fa fa-download"></i>
+        </button>
+        
+        <button (click)="editarArchivo(archivo)" 
+                class="btn-accion btn-editar"
+                title="Editar archivo">
+          <i class="fa fa-edit"></i>
+        </button>
+        
+        <button (click)="eliminarArchivo(archivo)" 
+                class="btn-accion btn-eliminar"
+                title="Eliminar archivo">
+          <i class="fa fa-trash"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Botón para volver ===== -->
+  <div class="botones-navegacion">
+    <button class="btn-volver" (click)="volver()">
+      <i class="fa fa-arrow-left"></i> Volver
+    </button>
+  </div>
+</div>
+
+<!-- ===== Modal de confirmación de eliminación ===== -->
+<div *ngIf="mostrarModalEliminar" class="modal-overlay" (click)="cancelarEliminacion()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <h3>Confirmar Eliminación</h3>
+    <p>¿Estás seguro de que deseas eliminar el archivo "{{ archivoAEliminar?.nombreArchivo }}"?</p>
+    <p class="advertencia">Esta acción no se puede deshacer.</p>
+    
+    <div class="modal-botones">
+      <button class="btn-cancelar" (click)="cancelarEliminacion()">
+        <i class="fa fa-times"></i> Cancelar
+      </button>
+      <button class="btn-eliminar" (click)="confirmarEliminacion()">
+        <i class="fa fa-trash"></i> Eliminar
+      </button>
+    </div>
+  </div>
+</div>

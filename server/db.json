@@ -1,0 +1,22 @@
+{
+  "viajes": [
+    {
+      "id": 1,
+      "destino": "Barcelona",
+      "fecha": "2025-06-01",
+      "descripcion": "Viaje a la playa en Barcelona."
+    },
+    {
+      "id": 2,
+      "destino": "Madrid",
+      "fecha": "2025-07-15",
+      "descripcion": "Turismo por Madrid."
+    },
+    {
+      "destino": "montbrio del camp",
+      "fecha": "2025-05-08",
+      "descripcion": "Parque Termal\nImagina un espacio donde la diversión y el placer se fusionan en un entorno extraordinario. Aquatonic Spa, el centro termal lúdico por excelencia, ofrece un circuito de aguas termales naturales con propiedades mineromedicinales extraídas de un pozo cercano al Hotel Termes Montbrió. En Aquatonic Spa, encontrarás piscinas termales, rápidos circulares, cascadas cervicales, hidromasajes, jacuzzis, baño turco, grutas romanas en las que encontrarás caldarium, frigidarium y mucho más… ¡Ven a descubrirlo!",
+      "id": 3
+    }
+  ]
+}

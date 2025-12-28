@@ -1,0 +1,90 @@
+<div class="crud-container">
+  <h2>Tipos de Actividad</h2>
+  
+  <!-- Alertas -->
+  <div *ngIf="showAlert" class="alert" [class.alert-success]="alertType === 'success'" [class.alert-error]="alertType === 'error'">
+    {{ alertMessage }}
+    <button (click)="showAlert = false" class="alert-close">&times;</button>
+  </div>
+
+  <!-- Botón Volver -->
+  <div class="header-actions" style="justify-content: flex-start; margin-bottom: 1rem;">
+    <button 
+      routerLink="/configuracion"
+      class="btn btn-secondary">
+      <i class="fas fa-arrow-left"></i> Volver a configuracion
+    </button>
+  </div>
+  
+  <div class="header-actions" style="justify-content: flex-end; margin-bottom: 1.5rem;">
+    <!-- Botón para añadir nuevo tipo de actividad -->
+    <button 
+      routerLink="/configuracion/tipos-actividad/nuevo"
+      class="btn btn-primary">
+      <i class="fas fa-plus"></i> Nuevo Tipo
+    </button>
+  </div>      
+
+  <div class="table-responsive" *ngIf="tiposActividad.length > 0; else noDataTemplate">
+    <table class="crud-table">
+      <thead>
+        <tr>
+          <!-- Eliminamos la columna ID -->
+          <th>Nombre</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let tipo of tiposActividad">
+          <td class="tooltip-container">
+            {{ tipo.nombre }}
+            <span class="tooltip-text">{{ tipo.descripcion || 'Sin descripción' }}</span>
+          </td>
+          <td class="actions">
+            <button 
+              [routerLink]="['/configuracion/tipos-actividad/editar', tipo.id]"
+              class="btn btn-edit">
+              <i class="fas fa-edit"></i> Editar
+            </button>
+            <button 
+              (click)="confirmarEliminacion(tipo.id)"
+              class="btn btn-delete">
+              <i class="fas fa-trash"></i> Eliminar
+            </button>
+
+            <button 
+              [routerLink]="['/configuracion/actividades-disponibles']"
+              [queryParams]="{ tipo: tipo.id }"
+              class="btn btn-secondary"
+              title="Ver actividades para este tipo">
+              <i class="fas fa-list"></i> Ver
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ng-template #noDataTemplate>
+    <div class="no-data">
+      <p>No hay tipos de actividad registrados</p>
+    </div>
+  </ng-template>
+
+  <!-- Diálogo de confirmación -->
+  <div *ngIf="showDeleteConfirm" class="confirmation-overlay">
+    <div class="confirmation-dialog">
+      <h3>Confirmar Eliminación</h3>
+      <p>¿Estás seguro de eliminar este tipo de actividad?</p>
+      <div class="dialog-actions">
+        <button (click)="eliminarTipoActividad()" class="btn btn-confirm">
+          <i class="fas fa-check"></i> Confirmar
+        </button>
+        <button (click)="cancelarEliminacion()" class="btn btn-cancel">
+          <i class="fas fa-times"></i> Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+

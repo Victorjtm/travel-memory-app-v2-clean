@@ -1,0 +1,30 @@
+<div class="visor-fullscreen" (click)="cerrar()">
+    <div class="visor-content" (click)="$event.stopPropagation()">
+      <button class="btn-cerrar" (click)="cerrar()">
+        <i class="fa fa-times"></i>
+      </button>
+      
+      <!-- Contenido multimedia -->
+      <div *ngIf="archivo.tipo === 'foto' || archivo.tipo === 'imagen'" class="image-viewer">
+        <img [src]="getFileUrl(archivo)" [alt]="archivo.descripcion || 'Imagen'">
+      </div>
+  
+      <div *ngIf="archivo.tipo === 'video'" class="video-viewer">
+        <video controls autoplay>
+          <source [src]="getFileUrl(archivo)" [type]="'video/' + getFileExtension(archivo.nombreArchivo)">
+        </video>
+      </div>
+  
+      <div *ngIf="archivo.tipo === 'audio'" class="audio-viewer">
+        <audio controls autoplay>
+          <source [src]="getFileUrl(archivo)" [type]="'audio/' + getFileExtension(archivo.nombreArchivo)">
+        </audio>
+      </div>
+  
+      <!-- Información del archivo -->
+      <div class="visor-info">
+        <h3>{{ archivo.nombreArchivo }}</h3>
+        <p>{{ archivo.descripcion || 'Sin descripción' }}</p>
+      </div>
+    </div>
+  </div>

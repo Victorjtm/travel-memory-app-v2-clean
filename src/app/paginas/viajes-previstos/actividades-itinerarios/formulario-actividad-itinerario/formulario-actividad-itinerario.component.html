@@ -1,0 +1,67 @@
+<div class="contenedor">
+    <h2>{{ itinerarioId ? 'Editar' : 'Agregar' }} Actividad para Itinerario</h2>
+  
+    <form (ngSubmit)="guardarActividad()" #formActividad="ngForm">
+      <!-- Campo oculto para itinerarioId -->
+      <input type="hidden" [(ngModel)]="actividad.itinerarioId" name="itinerarioId">
+  
+      <!-- Selección de Tipo de Actividad -->
+      <div>
+        <label><i class="fa fa-tags"></i> Tipo de Actividad:</label>
+        <select [(ngModel)]="tipoActividadSeleccionado" name="tipoActividad" 
+                (change)="cargarActividadesDisponibles()" required>
+          <option value="">-- Seleccione un tipo --</option>
+          <option *ngFor="let tipo of tiposActividad" [value]="tipo.id">
+            {{ tipo.nombre }}
+          </option>
+        </select>
+      </div>
+  
+      <!-- Selección de Actividad Disponible (se muestra solo cuando hay tipo seleccionado) -->
+      <div *ngIf="actividadesDisponibles.length > 0">
+        <label><i class="fa fa-list-alt"></i> Actividad Disponible:</label>
+        <select [(ngModel)]="actividad.actividadDisponibleId" name="actividadDisponibleId"
+                (change)="actualizarCamposDesdeActividad()">
+          <option value="">-- Seleccione una actividad --</option>
+          <option *ngFor="let act of actividadesDisponibles" [value]="act.id">
+            {{ act.descripcion }}
+          </option>
+        </select>
+      </div>
+  
+      <!-- Nombre (puede autocompletarse o editarse) -->
+      <div>
+        <label><i class="fa fa-header"></i> Nombre:</label>
+        <input type="text" [(ngModel)]="actividad.nombre" name="nombre">
+      </div>
+  
+      <!-- Descripción -->
+      <div>
+        <label><i class="fa fa-align-left"></i> Descripción:</label>
+        <textarea [(ngModel)]="actividad.descripcion" name="descripcion"></textarea>
+      </div>
+  
+      <!-- Horario -->
+      <div class="horario-container">
+        <div>
+          <label><i class="fa fa-clock"></i> Hora Inicio:</label>
+          <input type="time" [(ngModel)]="actividad.horaInicio" name="horaInicio" required>
+        </div>
+        
+        <div>
+          <label><i class="fa fa-clock"></i> Hora Fin:</label>
+          <input type="time" [(ngModel)]="actividad.horaFin" name="horaFin" required>
+        </div>
+      </div>
+  
+      <!-- Botones -->
+      <div class="botones-container">
+        <button type="submit" [disabled]="!formActividad.form.valid" class="btn-guardar">
+          <i class="fa fa-save"></i> {{ actividad.id ? 'Actualizar' : 'Guardar' }}
+        </button>
+        <button type="button" (click)="cancelar()" class="btn-cancelar">
+          <i class="fa fa-times"></i> Cancelar
+        </button>
+      </div>
+    </form>
+  </div>

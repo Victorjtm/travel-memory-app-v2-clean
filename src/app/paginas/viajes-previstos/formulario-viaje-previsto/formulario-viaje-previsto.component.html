@@ -1,0 +1,88 @@
+<form (ngSubmit)="guardar()" #formulario="ngForm" enctype="multipart/form-data">
+  <!-- Campo Nombre del viaje -->
+  <div>
+    <label for="nombre">Nombre del viaje:</label>
+    <input type="text" id="nombre" [(ngModel)]="viaje.nombre" name="nombre" required />
+  </div>
+
+  <!-- Campo Destino del viaje -->
+  <div>
+    <label for="destino">Destino:</label>
+    <input type="text" id="destino" [(ngModel)]="viaje.destino" name="destino" required />
+  </div>
+
+  <!-- Campo Fecha de inicio -->
+  <div>
+    <label for="fecha_inicio">Fecha de inicio:</label>
+    <input type="date" id="fecha_inicio" [(ngModel)]="viaje.fecha_inicio" name="fecha_inicio" required />
+  </div>
+
+  <!-- Campo Fecha de fin -->
+  <div>
+    <label for="fecha_fin">Fecha de fin:</label>
+    <input type="date" id="fecha_fin" [(ngModel)]="viaje.fecha_fin" name="fecha_fin" required />
+  </div>
+
+  <!-- Campo Descripción del viaje -->
+  <div>
+    <label for="descripcion">Descripción:</label>
+    <textarea id="descripcion" [(ngModel)]="viaje.descripcion" name="descripcion" rows="4"></textarea>
+  </div>
+
+<!-- Campo para subir una imagen -->
+<div>
+  <label for="imagen">Imagen del viaje:</label>
+  <input type="file" id="imagen" (change)="onFileSelected($event)" accept="image/*" />
+  
+  <!-- Vista previa de la imagen seleccionada -->
+  <div *ngIf="imagenPrevia" class="imagen-previa-container">
+    <img [src]="imagenPrevia" alt="Vista previa" class="imagen-previa" />
+    <!-- Botón para eliminar la imagen cargada -->
+    <button type="button" (click)="eliminarImagen()" class="btn-eliminar-imagen">
+      Eliminar imagen
+    </button>
+  </div>
+  
+  <!-- Mensaje que muestra la imagen actual cuando estás en modo edición y no has cambiado la foto -->
+  <div *ngIf="viajeId !== null && viaje.imagen && !imagenPrevia">
+    <p>Imagen actual: {{ viaje.imagen }}</p>
+  </div>
+</div>
+
+<!-- Campo para subir un audio -->
+<div>
+  <label for="audio">Audio del viaje:</label>
+  <input type="file" id="audio" (change)="onAudioSelected($event)" accept="audio/*" />
+  
+  <!-- Reproductor de audio si hay un archivo seleccionado o cargado -->
+  <div *ngIf="audioSeleccionado || audioActual">
+    <div style="margin-top: 0.5rem;">
+      <audio controls style="width: 100%; max-width: 400px;">
+        <source [src]="audioSeleccionado ? null : audioActual" *ngIf="!audioSeleccionado && audioActual" />
+        Tu navegador no soporta el elemento de audio.
+      </audio>
+      <p *ngIf="audioSeleccionado" style="font-size: 0.9rem; color: #666; margin-top: 0.3rem;">
+        🎵 Nuevo audio seleccionado: {{ audioSeleccionado.name }}
+      </p>
+      <p *ngIf="!audioSeleccionado && audioActual" style="font-size: 0.9rem; color: #666; margin-top: 0.3rem;">
+        🎵 Audio actual cargado
+      </p>
+    </div>
+    <!-- Botón para eliminar el audio -->
+    <button type="button" (click)="eliminarAudio()" class="btn-eliminar-imagen" style="margin-top: 0.5rem;">
+      Eliminar audio
+    </button>
+  </div>
+  
+  <!-- Mensaje cuando no hay audio -->
+  <div *ngIf="viajeId !== null && viaje.audio && !audioActual && !audioSeleccionado">
+    <p style="font-size: 0.9rem; color: #666;">Audio actual: {{ viaje.audio }}</p>
+  </div>
+</div>
+
+<!-- Botón para enviar el formulario -->
+<button type="submit" [disabled]="formulario.invalid">
+    <!-- Cambia dinámicamente el texto según sea edición o creación -->
+    {{ viajeId !== null ? 'Actualizar viaje' : 'Agregar viaje' }}
+  </button>
+</form>

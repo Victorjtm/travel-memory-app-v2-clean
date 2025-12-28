@@ -1,0 +1,8 @@
+﻿node_modules/
+dist/
+.angular/
+uploads/
+*.db
+*.sqbpro
+.DS_Store
+Thumbs.db

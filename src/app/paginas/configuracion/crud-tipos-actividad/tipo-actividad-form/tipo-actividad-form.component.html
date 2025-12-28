@@ -1,0 +1,42 @@
+<div class="form-container">
+    <h2>{{ editMode ? 'Editar Tipo de Actividad' : 'Nuevo Tipo de Actividad' }}</h2>
+    
+    <form (ngSubmit)="onSubmit()" #tipoActividadForm="ngForm">
+      <div class="form-group">
+        <label for="nombre">Nombre*</label>
+        <input 
+          type="text" 
+          id="nombre" 
+          [(ngModel)]="tipoActividad.nombre" 
+          name="nombre" 
+          required
+          placeholder="Ej: Cultural, Deportiva, Gastronómica">
+      </div>
+  
+      <div class="form-group">
+        <label for="descripcion">Descripción</label>
+        <textarea 
+          id="descripcion" 
+          [(ngModel)]="tipoActividad.descripcion" 
+          name="descripcion" 
+          rows="3"
+          placeholder="Descripción opcional del tipo de actividad"></textarea>
+      </div>
+  
+      <div class="form-actions">
+        <button 
+          type="submit" 
+          [disabled]="!tipoActividadForm.form.valid"
+          class="btn btn-primary">
+          {{ editMode ? 'Actualizar' : 'Guardar' }}
+        </button>
+        
+        <button 
+          type="button" 
+          (click)="onCancel()"
+          class="btn btn-secondary">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  </div>

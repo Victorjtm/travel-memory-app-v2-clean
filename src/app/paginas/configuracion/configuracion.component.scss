@@ -1,0 +1,74 @@
+/* Estilos para la sección de configuración */
+.configuracion {
+    text-align: center;
+    padding: 20px;
+  }
+  
+  h2 {
+    font-size: 24px;
+    color: #2c3e50;
+    margin-bottom: 20px;
+  }
+  
+  .opciones-configuracion {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    align-items: center;
+  }
+  
+  .opcion {
+    background-color: #ecf0f1;
+    padding: 15px 25px;
+    border-radius: 8px;
+    font-size: 18px;
+    color: #2980b9;
+    font-weight: bold;
+    text-decoration: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    cursor: pointer; /* 👈 Esto es clave */
+    display: inline-block;
+  }
+  
+  .opcion:hover {
+    background-color: #d0dce5;
+    transform: translateY(-3px);
+  }
+  
+  .opcion:active {
+    transform: translateY(1px);
+  }
+  
+  /* Estilos existentes... */
+
+.opcion-procesamiento {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  
+  &:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #653a91 100%);
+    transform: translateY(-3px);
+  }
+  
+  &:disabled {
+    background: #95a5a6;
+    cursor: not-allowed;
+    transform: none;
+  }
+}
+
+.progreso-container {
+  margin-top: 20px;
+  width: 100%;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.progreso-texto {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #7f8c8d;
+  text-align: center;
+}

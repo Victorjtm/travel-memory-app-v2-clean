@@ -1,0 +1,32 @@
+-- Día 1
+INSERT INTO ItinerarioGeneral (
+  viajePrevistoId, fechaInicio, fechaFin, duracionDias, destinosPorDia,
+  descripcionGeneral, horaInicio, horaFin, climaGeneral, tipoDeViaje
+) VALUES (
+  2, '2025-05-01', '2025-05-01', 1,
+  'Cambrils, Montbrió del Camp',
+  'Playa de Cambrils por la mañana, comida en Korkó, visita al centro histórico de Montbrió, Circuito Aquatonic por la tarde.',
+  '08:00', '17:00', 'Soleado, 22°C', 'rural'
+);
+
+-- Día 2
+INSERT INTO ItinerarioGeneral (
+  viajePrevistoId, fechaInicio, fechaFin, duracionDias, destinosPorDia,
+  descripcionGeneral, horaInicio, horaFin, climaGeneral, tipoDeViaje
+) VALUES (
+  2, '2025-05-02', '2025-05-02', 1,
+  'La Pineda, Camino Els Degotalls, Montbrió del Camp',
+  'Desayuno, playa en La Pineda, picnic y senderismo en Els Degotalls, regreso al hotel y Circuito Aquatonic.',
+  '09:00', '17:00', 'Parcialmente nublado, 20°C', 'naturaleza'
+);
+
+-- Día 3
+INSERT INTO ItinerarioGeneral (
+  viajePrevistoId, fechaInicio, fechaFin, duracionDias, destinosPorDia,
+  descripcionGeneral, horaInicio, horaFin, climaGeneral, tipoDeViaje
+) VALUES (
+  2, '2025-05-03', '2025-05-03', 1,
+  'Salou, Cambrils',
+  'Playa en Playa de Llevant por la mañana, gastronomía en Cambrils por la tarde, Circuito Aquatonic al final del día.',
+  '10:00', '17:00', 'Soleado, 23°C', 'costa'
+);

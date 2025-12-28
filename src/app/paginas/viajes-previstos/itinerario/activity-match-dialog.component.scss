@@ -1,0 +1,60 @@
+/* MEJORAS AÑADIDAS (para integrar) */
+mat-radio-group {
+  // Refuerza el contenedor
+  background: #fff;
+  padding: 12px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+
+  mat-radio-button {
+    // Mejora la interacción
+    transition: all 0.2s ease;
+    border-radius: 4px;
+    padding: 8px 12px; // Más área de click
+    
+    &:hover {
+      background: #f5f5f5;
+    }
+    
+    &.mat-radio-checked {
+      background: #e8f5e9; // Verde claro al seleccionar
+    }
+    
+    .mat-radio-label-content {
+      // Organiza nombre y detalles
+      display: flex;
+      flex-direction: column;
+    }
+  }
+}
+
+.activity-info {
+  // Estructura para nombre y detalles
+  &-name {
+    font-weight: 500;
+    color: #333;
+  }
+  
+  &-details {
+    font-size: 0.85rem;
+    color: #666;
+    margin-top: 2px;
+  }
+}
+
+.dialog-actions button {
+  // Estilo coherente con tus otros botones
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  
+  &.btn-aceptar {
+    background: #3f51b5;
+    color: white;
+  }
+  
+  &.btn-cancelar {
+    background: #f5f5f5;
+    color: #666;
+  }
+}

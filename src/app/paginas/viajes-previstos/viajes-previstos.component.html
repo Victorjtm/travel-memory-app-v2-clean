@@ -1,0 +1,37 @@
+<h2>Viajes previstos</h2>
+
+<ul>
+  <li *ngFor="let viaje of viajesPrevistos; index as i" class="viaje-item">
+    <div class="viaje-info">
+      <strong class="destino">{{ viaje.destino }}</strong>
+      <span class="fecha">{{ viaje.fecha }}</span>
+      <p class="descripcion">{{ viaje.descripcion }}</p>
+    </div>
+    <div class="acciones">
+      <button (click)="verAlbumEnLibro(viaje.id)" class="btn-album">
+        <i class="fa fa-book"></i> Álbum
+      </button>
+
+      <button (click)="eliminarViaje(viaje.id)" class="btn-eliminar">
+        <i class="fa fa-trash"></i> Eliminar
+      </button>
+      <button (click)="irAEditarViaje(viaje.id)" class="btn-actualizar">
+        <i class="fa fa-pencil"></i> Actualizar
+      </button>
+      <!-- Agregamos un botón que navegue a la página de itinerarios del viaje -->
+      <button [routerLink]="['/itinerarios', viaje.id]" class="btn-itinerarios">
+        <i class="fa fa-map"></i> Ver itinerarios
+      </button>
+    </div>
+  </li>
+</ul>
+
+<div class="acciones-globales">
+  <button (click)="irAlFormulario()" class="btn-agregar">
+    <i class="fa fa-plus"></i> Añadir viaje
+  </button>
+  
+  <button (click)="ejecutarUnificacion()" class="btn-unificar">
+    <i class="fa fa-compress"></i> Unificar Destinos
+  </button>
+</div>
