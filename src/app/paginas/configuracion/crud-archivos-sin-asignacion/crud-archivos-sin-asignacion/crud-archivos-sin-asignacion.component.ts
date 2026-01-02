@@ -15,7 +15,7 @@ interface ArchivoEncontrado {
   nombre: string;
   rutaCompleta: string;
   tamano: number;
-  fechaCreacion: string;  // Cambiar Date a string para coincidir con el modelo Archivo
+  fechaCreacion: string; // Cambiar Date a string para coincidir con el modelo Archivo
   extension: string;
   tipo: 'imagen' | 'video' | 'audio' | 'foto' | 'texto';
 }
@@ -23,14 +23,9 @@ interface ArchivoEncontrado {
 @Component({
   selector: 'app-archivos-sin-asignacion',
   standalone: true,
-  imports: [
-    CommonModule,
-    RouterModule,
-    HttpClientModule,
-    FormsModule
-  ],
+  imports: [CommonModule, RouterModule, HttpClientModule, FormsModule],
   templateUrl: './crud-archivos-sin-asignacion.component.html',
-  styleUrls: ['./crud-archivos-sin-asignacion.component.scss']
+  styleUrls: ['./crud-archivos-sin-asignacion.component.scss'],
 })
 export class CrudArchivosSinAsignacionComponent implements OnInit {
   // ========== PROPIEDADES ORIGINALES ==========
@@ -45,6 +40,12 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   actividades: Actividad[] = [];
   itinerarios: any[] = [];
   actividadesDelDiaSeleccionado: Actividad[] = [];
+
+  // ✅ NUEVO: Propiedades para selector de rutas
+  mostrarRutasComunes = false;
+  rutaValida = false;
+  soportaSelector = false;
+  usuarioActual = '';
 
   // ========== NUEVAS PROPIEDADES - SELECCIÓN MÚLTIPLE ==========
   /** Map que agrupa archivos por fecha (YYYY-MM-DD) */
@@ -111,16 +112,48 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   /** ✅ NUEVO: Toggle para mostrar/ocultar imágenes en preview */
   mostrarImagenesEncontradas: boolean = false;
 
-
-
   /** Mapa de extensiones seleccionadas {extensión: boolean} */
   extensionesSeleccionadas: { [key: string]: boolean } = {};
 
   // Extensiones válidas por tipo (públicas para usar en template)
-  readonly EXTENSIONES_IMAGEN = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp'];
-  readonly EXTENSIONES_VIDEO = ['mp4', 'mov', 'avi', 'mkv', 'wmv', 'flv', 'webm', 'm4v'];
-  readonly EXTENSIONES_AUDIO = ['mp3', 'wav', 'ogg', 'aac', 'm4a', 'flac', 'wma'];
-  readonly EXTENSIONES_TEXTO = ['txt', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv'];
+  readonly EXTENSIONES_IMAGEN = [
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'webp',
+    'heic',
+    'heif',
+    'bmp',
+  ];
+  readonly EXTENSIONES_VIDEO = [
+    'mp4',
+    'mov',
+    'avi',
+    'mkv',
+    'wmv',
+    'flv',
+    'webm',
+    'm4v',
+  ];
+  readonly EXTENSIONES_AUDIO = [
+    'mp3',
+    'wav',
+    'ogg',
+    'aac',
+    'm4a',
+    'flac',
+    'wma',
+  ];
+  readonly EXTENSIONES_TEXTO = [
+    'txt',
+    'pdf',
+    'doc',
+    'docx',
+    'xls',
+    'xlsx',
+    'csv',
+  ];
 
   constructor(
     private archivoService: ArchivoService,
@@ -133,6 +166,11 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     this.cargarTodosLosArchivos();
     this.cargarActividades();
     this.cargarItinerarios();
+    // ✅ NUEVO: Detectar soporte de selector de carpetas
+    this.soportaSelector = 'webkitdirectory' in document.createElement('input');
+
+    // ✅ NUEVO: Obtener usuario actual (solo funciona en entorno local)
+    this.usuarioActual = this.obtenerUsuarioActual();
   }
 
   /**
@@ -140,44 +178,46 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
    */
   cargarTodosLosArchivos(): void {
     this.archivoService.getArchivos().subscribe({
-      next: archivos => {
+      next: (archivos) => {
         // Filtrar archivos con actividadId === 0 (sin asignar)
-        this.archivos = (archivos ?? []).filter(archivo => archivo.actividadId === 0);
+        this.archivos = (archivos ?? []).filter(
+          (archivo) => archivo.actividadId === 0
+        );
         this.agruparArchivosPorDia();
         this.filtrarArchivos();
       },
-      error: err => {
+      error: (err) => {
         console.error('Error cargando archivos:', err);
         this.archivos = [];
         this.archivosFiltrados = [];
         this.archivosPorDia.clear();
         this.diasOrdenados = [];
-      }
+      },
     });
   }
 
   cargarActividades(): void {
     this.actividadService.getActividades().subscribe({
-      next: actividades => {
+      next: (actividades) => {
         this.actividades = actividades ?? [];
       },
-      error: err => {
+      error: (err) => {
         console.error('Error cargando actividades:', err);
         this.actividades = [];
-      }
+      },
     });
   }
 
   cargarItinerarios(): void {
     this.itinerarioService.getItinerarios().subscribe({
-      next: itinerarios => {
+      next: (itinerarios) => {
         this.itinerarios = itinerarios ?? [];
         console.log('✅ Itinerarios cargados:', this.itinerarios.length);
       },
-      error: err => {
+      error: (err) => {
         console.error('Error cargando itinerarios:', err);
         this.itinerarios = [];
-      }
+      },
     });
   }
 
@@ -196,7 +236,9 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
       this.archivosPorDia.get(fecha)!.push(archivo);
     }
 
-    this.diasOrdenados = Array.from(this.archivosPorDia.keys()).sort().reverse();
+    this.diasOrdenados = Array.from(this.archivosPorDia.keys())
+      .sort()
+      .reverse();
     console.log(`✅ Archivos agrupados por ${this.diasOrdenados.length} días`);
   }
 
@@ -226,7 +268,7 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
         day: 'numeric',
         month: 'long',
         year: 'numeric',
-        weekday: 'long'
+        weekday: 'long',
       };
 
       return date.toLocaleDateString('es-ES', opciones);
@@ -237,31 +279,93 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   }
 
   obtenerActividadesDelDia(fecha: string | null): Actividad[] {
+    console.log(
+      '\n🔍 ========== DIAGNÓSTICO obtenerActividadesDelDia =========='
+    );
+    console.log('📅 Fecha recibida:', fecha);
+    console.log('📋 Total itinerarios cargados:', this.itinerarios.length);
+    console.log('🎯 Total actividades cargadas:', this.actividades.length);
+
     if (!fecha || fecha === 'sin-fecha') {
+      console.warn('❌ Fecha inválida o "sin-fecha"');
       return [];
     }
 
-    const fechaSeleccionada = new Date(fecha);
+    // Parsear fecha SIN hora para evitar problemas de zona horaria
+    const [año, mes, dia] = fecha.split('-');
+    const fechaSeleccionada = new Date(
+      parseInt(año),
+      parseInt(mes) - 1,
+      parseInt(dia)
+    );
 
-    const itinerariosDelDia = this.itinerarios.filter(itinerario => {
-      const fechaInicio = new Date(itinerario.fechaInicio);
-      const fechaFin = new Date(itinerario.fechaFin);
+    console.log(
+      '📆 Fecha parseada (sin hora):',
+      fechaSeleccionada.toISOString().split('T')[0]
+    );
 
-      return fechaSeleccionada >= fechaInicio && fechaSeleccionada <= fechaFin;
+    // Buscar itinerarios que contengan esta fecha
+    const itinerariosDelDia = this.itinerarios.filter((itinerario) => {
+      const [añoIni, mesIni, diaIni] = itinerario.fechaInicio
+        .split('T')[0]
+        .split('-');
+      const fechaInicio = new Date(
+        parseInt(añoIni),
+        parseInt(mesIni) - 1,
+        parseInt(diaIni)
+      );
+
+      const [añoFin, mesFin, diaFin] = itinerario.fechaFin
+        .split('T')[0]
+        .split('-');
+      const fechaFin = new Date(
+        parseInt(añoFin),
+        parseInt(mesFin) - 1,
+        parseInt(diaFin)
+      );
+
+      const coincide =
+        fechaSeleccionada >= fechaInicio && fechaSeleccionada <= fechaFin;
+
+      console.log(`   📂 Itinerario ${itinerario.id}:`, {
+        fechaInicio: fechaInicio.toISOString().split('T')[0],
+        fechaFin: fechaFin.toISOString().split('T')[0],
+        coincide: coincide ? '✅' : '❌',
+      });
+
+      return coincide;
     });
+
+    console.log(`✅ Itinerarios que coinciden: ${itinerariosDelDia.length}`);
 
     if (itinerariosDelDia.length === 0) {
       console.warn(`⚠️ No hay itinerarios para la fecha ${fecha}`);
+      console.warn(
+        '💡 Verifica que existan itinerarios con esa fecha en la BD'
+      );
       return [];
     }
 
-    const idsItinerarios = itinerariosDelDia.map(it => it.id);
+    const idsItinerarios = itinerariosDelDia.map((it) => it.id);
+    console.log('🔑 IDs de itinerarios:', idsItinerarios);
 
-    const actividadesFiltradas = this.actividades.filter(actividad =>
-      idsItinerarios.includes(actividad.itinerarioId)
+    const actividadesFiltradas = this.actividades.filter((actividad) => {
+      const coincide = idsItinerarios.includes(actividad.itinerarioId);
+
+      if (coincide) {
+        console.log(
+          `   ✅ Actividad ${actividad.id}: "${actividad.nombre}" (itinerario ${actividad.itinerarioId})`
+        );
+      }
+
+      return coincide;
+    });
+
+    console.log(
+      `📊 RESULTADO: ${actividadesFiltradas.length} actividades encontradas`
     );
+    console.log('========================================================\n');
 
-    console.log(`📅 Actividades encontradas para ${fecha}:`, actividadesFiltradas.length);
     return actividadesFiltradas;
   }
 
@@ -269,7 +373,9 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
 
   toggleSeleccionArchivo(archivo: Archivo): void {
     if (!this.puedeSeleccionar(archivo)) {
-      alert('⚠️ Solo puedes seleccionar archivos del mismo día.\nPor favor, deselecciona los archivos del otro día primero.');
+      alert(
+        '⚠️ Solo puedes seleccionar archivos del mismo día.\nPor favor, deselecciona los archivos del otro día primero.'
+      );
       return;
     }
 
@@ -308,22 +414,28 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
 
   seleccionarTodosDelDia(fecha: string): void {
     if (this.diaSeleccionado && this.diaSeleccionado !== fecha) {
-      alert('⚠️ Ya tienes archivos seleccionados de otro día.\nPor favor, deselecciona todo primero.');
+      alert(
+        '⚠️ Ya tienes archivos seleccionados de otro día.\nPor favor, deselecciona todo primero.'
+      );
       return;
     }
 
     const archivosDelDia = this.archivosPorDia.get(fecha) || [];
 
-    const todosSeleccionados = archivosDelDia.every(a => this.archivosSeleccionados.has(a.id));
+    const todosSeleccionados = archivosDelDia.every((a) =>
+      this.archivosSeleccionados.has(a.id)
+    );
 
     if (todosSeleccionados) {
-      archivosDelDia.forEach(a => this.archivosSeleccionados.delete(a.id));
+      archivosDelDia.forEach((a) => this.archivosSeleccionados.delete(a.id));
       this.diaSeleccionado = null;
       console.log(`🔄 Todos los archivos del día ${fecha} deseleccionados`);
     } else {
       this.diaSeleccionado = fecha;
-      archivosDelDia.forEach(a => this.archivosSeleccionados.add(a.id));
-      console.log(`✅ Todos los ${archivosDelDia.length} archivos del día ${fecha} seleccionados`);
+      archivosDelDia.forEach((a) => this.archivosSeleccionados.add(a.id));
+      console.log(
+        `✅ Todos los ${archivosDelDia.length} archivos del día ${fecha} seleccionados`
+      );
     }
   }
 
@@ -340,11 +452,12 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
 
   contarSeleccionadosDelDia(fecha: string): number {
     const archivosDelDia = this.archivosPorDia.get(fecha) || [];
-    return archivosDelDia.filter(a => this.archivosSeleccionados.has(a.id)).length;
+    return archivosDelDia.filter((a) => this.archivosSeleccionados.has(a.id))
+      .length;
   }
 
   obtenerArchivoPorId(id: number): Archivo {
-    return this.archivos.find(a => a.id === id) || ({} as Archivo);
+    return this.archivos.find((a) => a.id === id) || ({} as Archivo);
   }
 
   obtenerIconoTipo(archivo: Archivo): string {
@@ -369,23 +482,35 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   // ========== FILTRADO MODIFICADO ==========
 
   filtrarArchivos(): void {
-    const archivosFiltradosPorBusquedaYTipo = this.archivos.filter(archivo => {
-      const coincideBusqueda = !this.terminoBusqueda ||
-        archivo.nombreArchivo.toLowerCase().includes(this.terminoBusqueda.toLowerCase()) ||
-        (archivo.descripcion && archivo.descripcion.toLowerCase().includes(this.terminoBusqueda.toLowerCase()));
+    const archivosFiltradosPorBusquedaYTipo = this.archivos.filter(
+      (archivo) => {
+        const coincideBusqueda =
+          !this.terminoBusqueda ||
+          archivo.nombreArchivo
+            .toLowerCase()
+            .includes(this.terminoBusqueda.toLowerCase()) ||
+          (archivo.descripcion &&
+            archivo.descripcion
+              .toLowerCase()
+              .includes(this.terminoBusqueda.toLowerCase()));
 
-      const coincideTipo = !this.filtroTipo || archivo.tipo === this.filtroTipo;
+        const coincideTipo =
+          !this.filtroTipo || archivo.tipo === this.filtroTipo;
 
-      return coincideBusqueda && coincideTipo;
-    });
+        return coincideBusqueda && coincideTipo;
+      }
+    );
 
     this.archivosFiltrados = this.diaSeleccionadoFiltro
       ? archivosFiltradosPorBusquedaYTipo.filter(
-        archivo => this.obtenerFechaDelArchivo(archivo) === this.diaSeleccionadoFiltro
+        (archivo) =>
+          this.obtenerFechaDelArchivo(archivo) === this.diaSeleccionadoFiltro
       )
       : archivosFiltradosPorBusquedaYTipo;
 
-    console.log(`📊 Archivos filtrados: ${this.archivosFiltrados.length}/${this.archivos.length}`);
+    console.log(
+      `📊 Archivos filtrados: ${this.archivosFiltrados.length}/${this.archivos.length}`
+    );
   }
 
   // ========== MÉTODOS DE TIPO DE ARCHIVO ==========
@@ -403,7 +528,11 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   }
 
   esDocumento(archivo: Archivo): boolean {
-    return !this.esImagen(archivo) && !this.esVideo(archivo) && !this.esAudio(archivo);
+    return (
+      !this.esImagen(archivo) &&
+      !this.esVideo(archivo) &&
+      !this.esAudio(archivo)
+    );
   }
 
   // ========== MÉTODOS DE MODAL INDIVIDUAL (1x1) ==========
@@ -427,20 +556,24 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
 
   confirmarAsignacion(): void {
     if (this.archivoParaAsignar && this.actividadSeleccionada) {
-      this.archivoService.asignarArchivoAActividad(
-        this.archivoParaAsignar.id,
-        this.actividadSeleccionada
-      ).subscribe({
-        next: () => {
-          this.cerrarModalAsignacion();
-          this.cargarTodosLosArchivos();
-          alert('✅ Archivo asignado correctamente a la actividad.');
-        },
-        error: err => {
-          console.error('Error al asignar archivo:', err);
-          alert('❌ No se pudo asignar el archivo a la actividad. Inténtalo de nuevo.');
-        }
-      });
+      this.archivoService
+        .asignarArchivoAActividad(
+          this.archivoParaAsignar.id,
+          this.actividadSeleccionada
+        )
+        .subscribe({
+          next: () => {
+            this.cerrarModalAsignacion();
+            this.cargarTodosLosArchivos();
+            alert('✅ Archivo asignado correctamente a la actividad.');
+          },
+          error: (err) => {
+            console.error('Error al asignar archivo:', err);
+            alert(
+              '❌ No se pudo asignar el archivo a la actividad. Inténtalo de nuevo.'
+            );
+          },
+        });
     } else {
       alert('⚠️ Por favor, selecciona una actividad para asignar el archivo.');
     }
@@ -497,47 +630,58 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     let completados = 0;
     let errores = 0;
 
-    archivoIds.forEach(id => {
-      this.archivoService.asignarArchivoAActividad(id, this.actividadSeleccionadaMultiples!).subscribe({
-        next: () => {
-          completados++;
-          console.log(`✅ Archivo ${id} asignado (${completados}/${cantidadArchivos})`);
+    archivoIds.forEach((id) => {
+      this.archivoService
+        .asignarArchivoAActividad(id, this.actividadSeleccionadaMultiples!)
+        .subscribe({
+          next: () => {
+            completados++;
+            console.log(
+              `✅ Archivo ${id} asignado (${completados}/${cantidadArchivos})`
+            );
 
-          if (completados + errores === cantidadArchivos) {
-            this.finalizarAsignacionMultiple(completados, errores);
-          }
-        },
-        error: err => {
-          errores++;
-          console.error(`❌ Error al asignar archivo ${id}:`, err);
+            if (completados + errores === cantidadArchivos) {
+              this.finalizarAsignacionMultiple(completados, errores);
+            }
+          },
+          error: (err) => {
+            errores++;
+            console.error(`❌ Error al asignar archivo ${id}:`, err);
 
-          if (completados + errores === cantidadArchivos) {
-            this.finalizarAsignacionMultiple(completados, errores);
-          }
-        }
-      });
+            if (completados + errores === cantidadArchivos) {
+              this.finalizarAsignacionMultiple(completados, errores);
+            }
+          },
+        });
     });
   }
 
-  private finalizarAsignacionMultiple(completados: number, errores: number): void {
+  private finalizarAsignacionMultiple(
+    completados: number,
+    errores: number
+  ): void {
     this.cerrarModalAsignacionMultiple();
     this.deseleccionarTodos();
     this.cargarTodosLosArchivos();
 
     if (errores === 0) {
-      alert(`✅ ¡Excelente! Se asignaron ${completados} archivo(s) correctamente.`);
+      alert(
+        `✅ ¡Excelente! Se asignaron ${completados} archivo(s) correctamente.`
+      );
     } else {
-      alert(`⚠️ Se asignaron ${completados} archivo(s).\n❌ Hubo ${errores} error(es) en la asignación.`);
+      alert(
+        `⚠️ Se asignaron ${completados} archivo(s).\n❌ Hubo ${errores} error(es) en la asignación.`
+      );
     }
   }
 
   // ========== MÉTODOS DESCARGA Y ELIMINACIÓN ==========
 
   descargarArchivo(id: number): void {
-    this.archivoService.descargarArchivo(id).subscribe(blob => {
+    this.archivoService.descargarArchivo(id).subscribe((blob) => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      const archivo = this.archivos.find(a => a.id === id);
+      const archivo = this.archivos.find((a) => a.id === id);
       a.href = url;
       a.download = archivo?.nombreArchivo || 'archivo';
       document.body.appendChild(a);
@@ -548,10 +692,14 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   }
 
   eliminarArchivo(id: number): void {
-    if (confirm('¿Estás seguro de que quieres eliminar permanentemente este archivo?')) {
+    if (
+      confirm(
+        '¿Estás seguro de que quieres eliminar permanentemente este archivo?'
+      )
+    ) {
       this.archivoService.eliminarArchivo(id).subscribe({
         next: () => {
-          this.archivos = this.archivos.filter(a => a.id !== id);
+          this.archivos = this.archivos.filter((a) => a.id !== id);
           this.agruparArchivosPorDia();
           this.filtrarArchivos();
 
@@ -563,10 +711,10 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
 
           alert('✅ Archivo eliminado correctamente.');
         },
-        error: err => {
+        error: (err) => {
           console.error('Error al eliminar archivo:', err);
           alert('❌ No se pudo eliminar el archivo. Inténtalo de nuevo.');
-        }
+        },
       });
     }
   }
@@ -581,7 +729,7 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     // Si se especifica fecha, solo tomamos los seleccionados de esa fecha
     if (fecha) {
       const archivosDelDia = this.archivosPorDia.get(fecha) || [];
-      archivosDelDia.forEach(a => {
+      archivosDelDia.forEach((a) => {
         if (this.archivosSeleccionados.has(a.id)) {
           idsAEliminar.push(a.id);
         }
@@ -596,7 +744,11 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
       return;
     }
 
-    if (!confirm(`⚠️ ALERTA: ¿Estás seguro de que quieres eliminar permanentemente ${idsAEliminar.length} archivos?\n\nEsta acción NO se puede deshacer.`)) {
+    if (
+      !confirm(
+        `⚠️ ALERTA: ¿Estás seguro de que quieres eliminar permanentemente ${idsAEliminar.length} archivos?\n\nEsta acción NO se puede deshacer.`
+      )
+    ) {
       return;
     }
 
@@ -607,12 +759,12 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     // Mostrar indicador de carga...
     // (Opcional: podrías agregar una variable loading si quisieras bloquear la UI)
 
-    idsAEliminar.forEach(id => {
+    idsAEliminar.forEach((id) => {
       this.archivoService.eliminarArchivo(id).subscribe({
         next: () => {
           eliminados++;
           // Eliminar de la lista local inmediatamente para feedback visual
-          this.archivos = this.archivos.filter(a => a.id !== id);
+          this.archivos = this.archivos.filter((a) => a.id !== id);
           this.archivosSeleccionados.delete(id);
           this.checkFinalizarEliminacionMasiva(eliminados, errores, total);
         },
@@ -620,19 +772,25 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
           console.error(`Error eliminando archivo ${id}:`, err);
           errores++;
           this.checkFinalizarEliminacionMasiva(eliminados, errores, total);
-        }
+        },
       });
     });
   }
 
-  private checkFinalizarEliminacionMasiva(eliminados: number, errores: number, total: number): void {
+  private checkFinalizarEliminacionMasiva(
+    eliminados: number,
+    errores: number,
+    total: number
+  ): void {
     if (eliminados + errores === total) {
       // Re-agrupar y filtrar para actualizar la vista
       this.agruparArchivosPorDia();
       this.filtrarArchivos();
 
       if (errores > 0) {
-        alert(`⚠️ Proceso finalizado.\n\n✅ Eliminados: ${eliminados}\n❌ Errores: ${errores}`);
+        alert(
+          `⚠️ Proceso finalizado.\n\n✅ Eliminados: ${eliminados}\n❌ Errores: ${errores}`
+        );
       } else {
         alert(`✅ Se han eliminado ${eliminados} archivos correctamente.`);
       }
@@ -645,10 +803,10 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
         this.cargarTodosLosArchivos();
         alert('✅ Archivo desasignado correctamente.');
       },
-      error: err => {
+      error: (err) => {
         console.error('Error al desasignar archivo:', err);
         alert('❌ No se pudo desasignar el archivo. Inténtalo de nuevo.');
-      }
+      },
     });
   }
 
@@ -712,14 +870,15 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   }
 
   /**
-     * ✅ NUEVO: Abre selector de carpeta nativo (Electron o File System Access API)
-     */
+   * ✅ NUEVO: Abre selector de carpeta nativo (Electron o File System Access API)
+   */
   private seleccionandoCarpeta = false; // Añadir esta propiedad arriba en las propiedades de la clase
 
-  async seleccionarCarpetaNavegador(): Promise<void> {
-    // Prevenir dobles clics
-    if (this.seleccionandoCarpeta) {
-      console.log('⚠️ Selector de carpeta ya está activo');
+  async seleccionarCarpetaNavegador() {
+    if (!this.soportaSelector) {
+      alert(
+        '❌ Tu navegador no soporta el selector de carpetas.\n\nPor favor, introduce la ruta manualmente.'
+      );
       return;
     }
 
@@ -734,40 +893,54 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
 
           if (rutaSeleccionada) {
             this.rutaEscaneo = rutaSeleccionada;
-            console.log('📁 [Electron] Carpeta seleccionada:', rutaSeleccionada);
+            this.validarRutaEscaneo();
+            console.log(
+              '📁 [Electron] Carpeta seleccionada:',
+              rutaSeleccionada
+            );
           }
           this.seleccionandoCarpeta = false;
           return;
         } catch (electronError) {
-          console.warn('Electron dialog no disponible:', electronError);
+          console.warn('⚠️ Electron dialog no disponible:', electronError);
           // Continuar con File System Access API
         }
       }
 
       // OPCIÓN 2: Usar File System Access API (navegadores modernos)
       if (!('showDirectoryPicker' in window)) {
-        alert('❌ Tu navegador no soporta la selección de carpetas.\n\n' +
+        alert(
+          '❌ Tu navegador no soporta la selección de carpetas.\n\n' +
           'Opciones:\n' +
           '1. Usa Chrome/Edge 86+\n' +
-          '2. Implementa con Electron para desktop\n' +
-          '3. O escribe la ruta manualmente');
+          '2. Usa Firefox con entrada manual\n' +
+          '3. O escribe la ruta manualmente'
+        );
         this.seleccionandoCarpeta = false;
         return;
       }
 
       const directoryHandle = await (window as any).showDirectoryPicker({
-        mode: 'read'
+        mode: 'read',
       });
 
-      this.rutaEscaneo = directoryHandle.name;
-      console.log('📁 [Browser] Carpeta seleccionada:', directoryHandle.name);
-
+      // Guardar el handle para uso posterior
       (this as any).directoryHandle = directoryHandle;
 
+      // Usar el nombre como referencia visual
+      this.rutaEscaneo = directoryHandle.name;
+      this.validarRutaEscaneo();
+
+      console.log('📁 [Browser] Carpeta seleccionada:', directoryHandle.name);
+      console.log(
+        '💡 Nota: En navegadores web, solo se muestra el nombre de la carpeta por seguridad'
+      );
     } catch (error: any) {
       if (error.name !== 'AbortError') {
-        console.error('Error seleccionando carpeta:', error);
+        console.error('❌ Error seleccionando carpeta:', error);
         alert('❌ Error al seleccionar la carpeta: ' + error.message);
+      } else {
+        console.log('ℹ️ Selección de carpeta cancelada por el usuario');
       }
     } finally {
       this.seleccionandoCarpeta = false;
@@ -786,12 +959,16 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     await this.procesarDirectorioNavegador(directoryHandle);
 
     if (!this.cancelarEscaneoFlag) {
-      this.archivosEncontrados.sort((a, b) =>
-        new Date(b.fechaCreacion).getTime() - new Date(a.fechaCreacion).getTime()
+      this.archivosEncontrados.sort(
+        (a, b) =>
+          new Date(b.fechaCreacion).getTime() -
+          new Date(a.fechaCreacion).getTime()
       );
       this.progresoEscaneo = 100;
       this.escaneoCompletado = true;
-      console.log(`✅ Escaneo completado: ${this.archivosEncontrados.length} archivos encontrados`);
+      console.log(
+        `✅ Escaneo completado: ${this.archivosEncontrados.length} archivos encontrados`
+      );
     }
 
     this.escaneando = false;
@@ -800,7 +977,10 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   /**
    * ✅ NUEVO: Procesa recursivamente directorios con File System Access API
    */
-  private async procesarDirectorioNavegador(directoryHandle: any, rutaBase: string = ''): Promise<void> {
+  private async procesarDirectorioNavegador(
+    directoryHandle: any,
+    rutaBase: string = ''
+  ): Promise<void> {
     if (this.cancelarEscaneoFlag) return;
 
     this.carpetasProcesadas++;
@@ -809,7 +989,9 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
       for await (const entry of directoryHandle.values()) {
         if (this.cancelarEscaneoFlag) break;
 
-        const rutaCompleta = rutaBase ? `${rutaBase}/${entry.name}` : entry.name;
+        const rutaCompleta = rutaBase
+          ? `${rutaBase}/${entry.name}`
+          : entry.name;
 
         if (entry.kind === 'directory') {
           // Recursión en subdirectorios
@@ -825,7 +1007,7 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
               tamano: file.size,
               fechaCreacion: new Date(file.lastModified).toISOString(),
               extension: extension,
-              tipo: this.determinarTipo(extension)
+              tipo: this.determinarTipo(extension),
             };
 
             if (!this.esDuplicado(archivoEncontrado)) {
@@ -834,7 +1016,10 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
           }
         }
 
-        this.progresoEscaneo = Math.min(95, Math.floor((this.archivosEncontrados.length / 100) * 100));
+        this.progresoEscaneo = Math.min(
+          95,
+          Math.floor((this.archivosEncontrados.length / 100) * 100)
+        );
       }
     } catch (error) {
       console.error('Error procesando directorio:', error);
@@ -893,17 +1078,23 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
 
       if (!this.cancelarEscaneoFlag) {
         // Ordenar archivos por fecha (más reciente primero)
-        this.archivosEncontrados.sort((a, b) =>
-          new Date(b.fechaCreacion).getTime() - new Date(a.fechaCreacion).getTime()
+        this.archivosEncontrados.sort(
+          (a, b) =>
+            new Date(b.fechaCreacion).getTime() -
+            new Date(a.fechaCreacion).getTime()
         );
 
         this.progresoEscaneo = 100;
         this.escaneoCompletado = true;
-        console.log(`✅ Escaneo completado: ${this.archivosEncontrados.length} archivos encontrados`);
+        console.log(
+          `✅ Escaneo completado: ${this.archivosEncontrados.length} archivos encontrados`
+        );
       }
     } catch (error) {
       console.error('❌ Error durante el escaneo:', error);
-      alert('❌ Error durante el escaneo. Por favor, verifica la ruta e inténtalo de nuevo.');
+      alert(
+        '❌ Error durante el escaneo. Por favor, verifica la ruta e inténtalo de nuevo.'
+      );
     } finally {
       this.escaneando = false;
     }
@@ -941,7 +1132,7 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
               tamano: item.tamano,
               fechaCreacion: await this.obtenerFechaArchivo(item, extension),
               extension: extension,
-              tipo: this.determinarTipo(extension)
+              tipo: this.determinarTipo(extension),
             };
 
             // Verificar duplicados
@@ -1005,22 +1196,27 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
           rutaCompleta: rutaCompleta,
           esDirectorio: item.isDirectory(),
           tamano: tamano,
-          fechaModificacion: fechaModificacion
+          fechaModificacion: fechaModificacion,
         };
       });
 
       console.log(`📂 Leyendo ${ruta}: ${resultado.length} items encontrados`);
       return resultado;
-
     } catch (error: any) {
       // ✅ MEJORADO: Manejo de errores más silencioso para carpetas restringidas
       if (error.code === 'ENOENT') {
         console.warn(`⚠️ Ruta no encontrada: ${ruta}`);
       } else if (error.code === 'EACCES' || error.code === 'EPERM') {
-        console.warn(`⚠️ Acceso denegado (normal en carpetas del sistema): ${ruta}`);
+        console.warn(
+          `⚠️ Acceso denegado (normal en carpetas del sistema): ${ruta}`
+        );
       } else if (error.message && error.message.includes('require')) {
-        console.error('❌ Node.js no disponible. Usa Electron o implementa con Capacitor Filesystem para móvil.');
-        alert('⚠️ Esta funcionalidad requiere Electron o un entorno con acceso al filesystem.\n\nPara aplicaciones web, considera usar la API File System Access o implementar la carga manual de archivos.');
+        console.error(
+          '❌ Node.js no disponible. Usa Electron o implementa con Capacitor Filesystem para móvil.'
+        );
+        alert(
+          '⚠️ Esta funcionalidad requiere Electron o un entorno con acceso al filesystem.\n\nPara aplicaciones web, considera usar la API File System Access o implementar la carga manual de archivos.'
+        );
       } else {
         console.error(`❌ Error leyendo directorio ${ruta}:`, error);
       }
@@ -1032,9 +1228,15 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
    * Obtiene la fecha de creación del archivo
    * Prioridad: EXIF > Metadatos del archivo > Fecha de modificación
    */
-  private async obtenerFechaArchivo(item: any, extension: string): Promise<string> {
+  private async obtenerFechaArchivo(
+    item: any,
+    extension: string
+  ): Promise<string> {
     // Si está habilitado leer EXIF y es imagen/video
-    if (this.leerFechaExif && (this.esExtensionImagen(extension) || this.esExtensionVideo(extension))) {
+    if (
+      this.leerFechaExif &&
+      (this.esExtensionImagen(extension) || this.esExtensionVideo(extension))
+    ) {
       try {
         // En producción, leer EXIF aquí
         // const exifData = await this.leerExif(item.rutaCompleta);
@@ -1074,14 +1276,17 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
       return;
     }
 
-    console.log(`📥 Iniciando importación de ${this.archivosEncontradosSeleccionados.size} archivos...`);
+    console.log(
+      `📥 Iniciando importación de ${this.archivosEncontradosSeleccionados.size} archivos...`
+    );
 
     let importados = 0;
     let errores = 0;
 
     // Obtener solo los archivos seleccionados
-    const archivosAImportar = Array.from(this.archivosEncontradosSeleccionados)
-      .map(index => this.archivosEncontrados[index]);
+    const archivosAImportar = Array.from(
+      this.archivosEncontradosSeleccionados
+    ).map((index) => this.archivosEncontrados[index]);
 
     for (const archivoEncontrado of archivosAImportar) {
       try {
@@ -1106,16 +1311,22 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     this.cerrarModalEscaneo();
 
     if (errores === 0) {
-      alert(`✅ ¡Excelente! Se importaron ${importados} archivo(s) correctamente.`);
+      alert(
+        `✅ ¡Excelente! Se importaron ${importados} archivo(s) correctamente.`
+      );
     } else {
-      alert(`⚠️ Se importaron ${importados} archivo(s).\n❌ Hubo ${errores} error(es).`);
+      alert(
+        `⚠️ Se importaron ${importados} archivo(s).\n❌ Hubo ${errores} error(es).`
+      );
     }
   }
 
   /**
    * Copia un archivo a la carpeta uploads
    */
-  private async copiarArchivoAUploads(archivo: ArchivoEncontrado): Promise<string> {
+  private async copiarArchivoAUploads(
+    archivo: ArchivoEncontrado
+  ): Promise<string> {
     try {
       // Generar nombre único con timestamp
       const nombreDestino = `${Date.now()}_${archivo.nombre}`;
@@ -1124,10 +1335,16 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
       if ((window as any).require) {
         const { ipcRenderer } = (window as any).require('electron');
 
-        const resultado = await ipcRenderer.invoke('copy-file-to-uploads', archivo.rutaCompleta, nombreDestino);
+        const resultado = await ipcRenderer.invoke(
+          'copy-file-to-uploads',
+          archivo.rutaCompleta,
+          nombreDestino
+        );
 
         if (resultado.success) {
-          console.log(`✅ Archivo copiado: ${archivo.nombre} -> ${nombreDestino}`);
+          console.log(
+            `✅ Archivo copiado: ${archivo.nombre} -> ${nombreDestino}`
+          );
           return nombreDestino;
         } else {
           throw new Error('Error al copiar archivo');
@@ -1137,7 +1354,6 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
         console.warn('⚠️ No estamos en Electron, archivo no copiado');
         return archivo.nombre;
       }
-
     } catch (error) {
       console.error(`❌ Error copiando archivo ${archivo.nombre}:`, error);
       throw error;
@@ -1147,7 +1363,10 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   /**
    * Crea un registro de archivo en la base de datos
    */
-  private async crearRegistroArchivo(archivo: ArchivoEncontrado, nombreArchivo: string): Promise<void> {
+  private async crearRegistroArchivo(
+    archivo: ArchivoEncontrado,
+    nombreArchivo: string
+  ): Promise<void> {
     const nuevoArchivo: Omit<Archivo, 'id'> = {
       nombreArchivo: archivo.nombre,
       rutaArchivo: `uploads/${nombreArchivo}`,
@@ -1162,30 +1381,35 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
       horaCaptura: new Date(archivo.fechaCreacion).toLocaleTimeString('es-ES', {
         hour: '2-digit',
         minute: '2-digit',
-        second: '2-digit'
+        second: '2-digit',
       }),
       version: 1,
       geolocalizacion: undefined,
       metadatos: JSON.stringify({
         rutaOriginal: archivo.rutaCompleta,
         importadoDesde: 'escaneo-disco',
-        fechaImportacion: new Date().toISOString()
+        fechaImportacion: new Date().toISOString(),
       }),
       tipoMime: this.obtenerTipoMime(archivo.extension),
-      archivosAsociados: []
+      archivosAsociados: [],
     };
 
     // Llamar al servicio para crear el archivo en la BD
     return new Promise((resolve, reject) => {
       this.archivoService.crearArchivo(nuevoArchivo).subscribe({
         next: (resultado) => {
-          console.log(`✅ Registro creado en BD para: ${archivo.nombre} (ID: ${resultado.id})`);
+          console.log(
+            `✅ Registro creado en BD para: ${archivo.nombre} (ID: ${resultado.id})`
+          );
           resolve();
         },
         error: (error) => {
-          console.error(`❌ Error creando registro para ${archivo.nombre}:`, error);
+          console.error(
+            `❌ Error creando registro para ${archivo.nombre}:`,
+            error
+          );
           reject(error);
-        }
+        },
       });
     });
   }
@@ -1202,19 +1426,21 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
    */
   private esDuplicado(archivo: ArchivoEncontrado): boolean {
     return this.archivosEncontrados.some(
-      a => a.nombre === archivo.nombre &&
-        a.fechaCreacion === archivo.fechaCreacion
+      (a) =>
+        a.nombre === archivo.nombre && a.fechaCreacion === archivo.fechaCreacion
     );
   }
 
   /**
    * Determina el tipo de archivo según su extensión
    */
-  private determinarTipo(extension: string): 'imagen' | 'video' | 'audio' | 'foto' | 'texto' {
+  private determinarTipo(
+    extension: string
+  ): 'imagen' | 'video' | 'audio' | 'foto' | 'texto' {
     if (this.esExtensionImagen(extension)) return 'imagen';
     if (this.esExtensionVideo(extension)) return 'video';
     if (this.esExtensionAudio(extension)) return 'audio';
-    return 'texto';  // Cambiar 'documento' por 'texto'
+    return 'texto'; // Cambiar 'documento' por 'texto'
   }
 
   /**
@@ -1258,10 +1484,18 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
    */
   private inicializarExtensionesSeleccionadas(): void {
     // Por defecto, seleccionar todas las imágenes y videos
-    this.EXTENSIONES_IMAGEN.forEach(ext => this.extensionesSeleccionadas[ext] = true);
-    this.EXTENSIONES_VIDEO.forEach(ext => this.extensionesSeleccionadas[ext] = true);
-    this.EXTENSIONES_AUDIO.forEach(ext => this.extensionesSeleccionadas[ext] = false);
-    this.EXTENSIONES_TEXTO.forEach(ext => this.extensionesSeleccionadas[ext] = false);
+    this.EXTENSIONES_IMAGEN.forEach(
+      (ext) => (this.extensionesSeleccionadas[ext] = true)
+    );
+    this.EXTENSIONES_VIDEO.forEach(
+      (ext) => (this.extensionesSeleccionadas[ext] = true)
+    );
+    this.EXTENSIONES_AUDIO.forEach(
+      (ext) => (this.extensionesSeleccionadas[ext] = false)
+    );
+    this.EXTENSIONES_TEXTO.forEach(
+      (ext) => (this.extensionesSeleccionadas[ext] = false)
+    );
   }
 
   /**
@@ -1287,12 +1521,19 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     }
 
     // Verificar si todas están seleccionadas
-    const todasSeleccionadas = extensiones.every(ext => this.extensionesSeleccionadas[ext]);
+    const todasSeleccionadas = extensiones.every(
+      (ext) => this.extensionesSeleccionadas[ext]
+    );
 
     // Si todas están seleccionadas, deseleccionar. Si no, seleccionar todas
-    extensiones.forEach(ext => this.extensionesSeleccionadas[ext] = !todasSeleccionadas);
+    extensiones.forEach(
+      (ext) => (this.extensionesSeleccionadas[ext] = !todasSeleccionadas)
+    );
 
-    console.log(`🔄 Grupo ${tipo}: ${!todasSeleccionadas ? 'Todas seleccionadas' : 'Todas deseleccionadas'}`);
+    console.log(
+      `🔄 Grupo ${tipo}: ${!todasSeleccionadas ? 'Todas seleccionadas' : 'Todas deseleccionadas'
+      }`
+    );
   }
 
   /**
@@ -1318,7 +1559,9 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     this.archivosEncontrados.forEach((_, index) => {
       this.archivosEncontradosSeleccionados.add(index);
     });
-    console.log(`✅ Todos los ${this.archivosEncontrados.length} archivos seleccionados`);
+    console.log(
+      `✅ Todos los ${this.archivosEncontrados.length} archivos seleccionados`
+    );
   }
 
   /**
@@ -1331,9 +1574,9 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   }
 
   /**
- * ✅ NUEVO: Verifica si una carpeta debe ser saltada durante el escaneo
- * PONER DESPUÉS DE: deseleccionarTodosEncontrados()
- */
+   * ✅ NUEVO: Verifica si una carpeta debe ser saltada durante el escaneo
+   * PONER DESPUÉS DE: deseleccionarTodosEncontrados()
+   */
   private debeSaltarDirectorio(nombreCarpeta: string): boolean {
     const carpetasAIgnorar = [
       // Carpetas del sistema Windows
@@ -1433,7 +1676,7 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
       '.dart_tool',
       'venv',
       '.venv',
-      'env'
+      'env',
     ];
 
     const nombre = nombreCarpeta.toLowerCase();
@@ -1457,48 +1700,48 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   }
 
   /**
- * ✅ NUEVO: Obtiene el tipo MIME según la extensión
- * Poner después de: debeSaltarDirectorio()
- */
+   * ✅ NUEVO: Obtiene el tipo MIME según la extensión
+   * Poner después de: debeSaltarDirectorio()
+   */
   private obtenerTipoMime(extension: string): string {
     const mimeTypes: { [key: string]: string } = {
       // Imágenes
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'webp': 'image/webp',
-      'heic': 'image/heic',
-      'heif': 'image/heif',
-      'bmp': 'image/bmp',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      heic: 'image/heic',
+      heif: 'image/heif',
+      bmp: 'image/bmp',
 
       // Videos
-      'mp4': 'video/mp4',
-      'mov': 'video/quicktime',
-      'avi': 'video/x-msvideo',
-      'mkv': 'video/x-matroska',
-      'wmv': 'video/x-ms-wmv',
-      'flv': 'video/x-flv',
-      'webm': 'video/webm',
-      'm4v': 'video/x-m4v',
+      mp4: 'video/mp4',
+      mov: 'video/quicktime',
+      avi: 'video/x-msvideo',
+      mkv: 'video/x-matroska',
+      wmv: 'video/x-ms-wmv',
+      flv: 'video/x-flv',
+      webm: 'video/webm',
+      m4v: 'video/x-m4v',
 
       // Audio
-      'mp3': 'audio/mpeg',
-      'wav': 'audio/wav',
-      'ogg': 'audio/ogg',
-      'aac': 'audio/aac',
-      'm4a': 'audio/mp4',
-      'flac': 'audio/flac',
-      'wma': 'audio/x-ms-wma',
+      mp3: 'audio/mpeg',
+      wav: 'audio/wav',
+      ogg: 'audio/ogg',
+      aac: 'audio/aac',
+      m4a: 'audio/mp4',
+      flac: 'audio/flac',
+      wma: 'audio/x-ms-wma',
 
       // Documentos
-      'txt': 'text/plain',
-      'pdf': 'application/pdf',
-      'doc': 'application/msword',
-      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'xls': 'application/vnd.ms-excel',
-      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'csv': 'text/csv'
+      txt: 'text/plain',
+      pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      csv: 'text/csv',
     };
 
     return mimeTypes[extension.toLowerCase()] || 'application/octet-stream';
@@ -1547,10 +1790,92 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     }
   }
 
-  /**
-   * ✅ CORREGIDO: Solo permite activar en Electron
-   * PONER DESPUÉS DE: onImagenError()
-   */
+  // ✅ NUEVO: Obtener nombre de usuario del sistema
+  // ✅ DESPUÉS (corregido)
+  obtenerUsuarioActual(): string {
+    // 1. Intentar obtener del path del navegador
+    const path = window.location.pathname;
+    if (path.includes('/home/')) {
+      const match = path.match(/\/home\/([^\/]+)/);
+      if (match) {
+        console.log('✅ Usuario detectado desde path:', match[1]);
+        return match[1];
+      }
+    }
+
+    // 2. Intentar obtener de process (solo Electron)
+    try {
+      const proc = (window as any).process;
+      if (proc && proc.env) {
+        const usuario =
+          proc.env['USER'] || proc.env['USERNAME'] || proc.env['LOGNAME'];
+        if (usuario) {
+          console.log('✅ Usuario detectado desde process.env:', usuario);
+          return usuario;
+        }
+      }
+    } catch (e) {
+      console.log('ℹ️ process.env no disponible (navegador web normal)');
+    }
+
+    // 3. Fallback: usuario por defecto de Deepin
+    console.log('ℹ️ Usando usuario por defecto: Victor');
+    return 'Victor';
+  }
+
+  // ✅ NUEVO: Validar formato de ruta
+  validarRutaEscaneo() {
+    const ruta = this.rutaEscaneo.trim();
+
+    if (!ruta) {
+      this.rutaValida = false;
+      return;
+    }
+
+    // Validar formatos comunes
+    const esRutaLinux = /^\/[a-zA-Z0-9_\-\/\.~]+$/.test(ruta); // /home/user/Pictures
+    const esRutaWindows = /^[a-zA-Z]:\\[^<>:"|?*]+$/.test(ruta); // D:\Fotos
+    const esRutaAndroid =
+      /^\/storage\/emulated\/[0-9]+\/[a-zA-Z0-9_\-\/]+$/.test(ruta); // /storage/emulated/0/DCIM
+
+    this.rutaValida = esRutaLinux || esRutaWindows || esRutaAndroid;
+
+    console.log('🔍 Validación de ruta:', {
+      ruta,
+      esRutaLinux,
+      esRutaWindows,
+      esRutaAndroid,
+      rutaValida: this.rutaValida,
+    });
+  }
+
+  // ✅ NUEVO: Seleccionar ruta sugerida
+  seleccionarRuta(ruta: string) {
+    this.rutaEscaneo = ruta;
+    this.mostrarRutasComunes = false;
+    this.validarRutaEscaneo();
+
+    console.log('📂 Ruta seleccionada:', ruta);
+  }
+
+  // ✅ NUEVO: Abrir input para ruta personalizada
+  abrirInputPersonalizado() {
+    this.mostrarRutasComunes = false;
+
+    const rutaPersonalizada = prompt(
+      '📂 Introduce la ruta completa de la carpeta:\n\n' +
+      'Ejemplos:\n' +
+      '• Linux: /home/tu_usuario/Pictures\n' +
+      '• Windows: D:\\Fotos\n' +
+      '• Android: /storage/emulated/0/DCIM'
+    );
+
+    if (rutaPersonalizada) {
+      this.rutaEscaneo = rutaPersonalizada.trim();
+      this.validarRutaEscaneo();
+    }
+  }
+
   onToggleImagenesEncontradas(): void {
     // Verificar si estamos en Electron
     const enElectron = !!(window as any).require;
@@ -1558,10 +1883,14 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     if (this.mostrarImagenesEncontradas && !enElectron) {
       // Desactivar si se intenta activar fuera de Electron
       this.mostrarImagenesEncontradas = false;
-      alert('⚠️ La vista previa de imágenes solo está disponible en la aplicación de escritorio (Electron).\n\nPara usarla, ejecuta:\nnpx electron .');
+      alert(
+        '⚠️ La vista previa de imágenes solo está disponible en la aplicación de escritorio (Electron).\n\nPara usarla, ejecuta:\nnpx electron .'
+      );
       return;
     }
 
-    console.log(`🖼️ Vista de imágenes: ${this.mostrarImagenesEncontradas ? 'ON' : 'OFF'}`);
+    console.log(
+      `🖼️ Vista de imágenes: ${this.mostrarImagenesEncontradas ? 'ON' : 'OFF'}`
+    );
   }
 }

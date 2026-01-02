@@ -16,7 +16,7 @@
     <!-- Filtros y búsqueda -->
     <div class="filtros">
         <input type="text" placeholder="Buscar archivos..." [(ngModel)]="terminoBusqueda" (input)="filtrarArchivos()"
-            class="buscador">
+            class="buscador" />
 
         <!-- Filtro por fecha -->
         <select [(ngModel)]="diaSeleccionadoFiltro" (change)="filtrarArchivos()" class="filtro-select">
@@ -43,14 +43,12 @@
         </button>
     </div>
 
-    <hr>
+    <hr />
 
     <!-- Estructura de acordeón por días -->
     <div *ngIf="diasOrdenados.length > 0; else sinArchivos" class="lista-dias">
-
         <div *ngFor="let fecha of diasOrdenados" class="dia-container"
             [class.dia-con-seleccion]="contarSeleccionadosDelDia(fecha) > 0">
-
             <!-- Cabecera del día -->
             <div class="dia-header" (click)="toggleExpandirDia(fecha)">
                 <div class="dia-header-left">
@@ -74,12 +72,16 @@
 
                 <ng-container *ngIf="contarSeleccionadosDelDia(fecha) > 0">
                     <button class="btn-asignar-multiples" (click)="abrirModalAsignacionMultiple()">
-                        <i class="fa fa-link"></i> Asignar ({{ contarSeleccionadosDelDia(fecha) }})
+                        <i class="fa fa-link"></i> Asignar ({{
+                        contarSeleccionadosDelDia(fecha)
+                        }})
                     </button>
 
                     <!-- ✅ NUEVO: Botón Eliminar Múltiples -->
                     <button class="btn-eliminar-multiples" (click)="eliminarArchivosSeleccionados(fecha)">
-                        <i class="fa fa-trash"></i> Eliminar ({{ contarSeleccionadosDelDia(fecha) }})
+                        <i class="fa fa-trash"></i> Eliminar ({{
+                        contarSeleccionadosDelDia(fecha)
+                        }})
                     </button>
                 </ng-container>
             </div>
@@ -89,12 +91,11 @@
                 <div *ngFor="let archivo of obtenerArchivosDelDia(fecha)" class="archivo-item"
                     [class.archivo-seleccionado]="estaSeleccionado(archivo.id)"
                     [class.archivo-deshabilitado]="!puedeSeleccionar(archivo)">
-
                     <!-- Checkbox -->
                     <div class="checkbox-container">
                         <input type="checkbox" [id]="'archivo-' + archivo.id" [checked]="estaSeleccionado(archivo.id)"
                             [disabled]="!puedeSeleccionar(archivo)" (change)="toggleSeleccionArchivo(archivo)"
-                            class="archivo-checkbox">
+                            class="archivo-checkbox" />
                         <label [for]="'archivo-' + archivo.id"></label>
                     </div>
 
@@ -102,13 +103,13 @@
                     <div class="preview-container">
                         <div *ngIf="esImagen(archivo)" class="image-preview">
                             <img [src]="getFileUrl(archivo)" [alt]="archivo.descripcion || 'Imagen sin descripción'"
-                                (click)="abrirModal(archivo)" class="clickable-media">
+                                (click)="abrirModal(archivo)" class="clickable-media" />
                         </div>
 
                         <div *ngIf="esVideo(archivo)" class="video-preview">
                             <video controls (click)="abrirModal(archivo)" class="clickable-media">
                                 <source [src]="getFileUrl(archivo)"
-                                    [type]="'video/' + getFileExtension(archivo.nombreArchivo)">
+                                    [type]="'video/' + getFileExtension(archivo.nombreArchivo)" />
                                 Tu navegador no soporta el elemento de video.
                             </video>
                         </div>
@@ -116,14 +117,16 @@
                         <div *ngIf="esAudio(archivo)" class="audio-preview">
                             <audio controls (click)="abrirModal(archivo)" class="clickable-media">
                                 <source [src]="getFileUrl(archivo)"
-                                    [type]="'audio/' + getFileExtension(archivo.nombreArchivo)">
+                                    [type]="'audio/' + getFileExtension(archivo.nombreArchivo)" />
                                 Tu navegador no soporta el elemento de audio.
                             </audio>
                         </div>
 
                         <div *ngIf="esDocumento(archivo)" class="documento-preview">
                             <i class="fa fa-file-text-o icono-documento"></i>
-                            <span class="extension">{{ getFileExtension(archivo.nombreArchivo) }}</span>
+                            <span class="extension">{{
+                                getFileExtension(archivo.nombreArchivo)
+                                }}</span>
                         </div>
                     </div>
 
@@ -131,11 +134,18 @@
                     <div class="info-archivo">
                         <h3>{{ archivo.nombreArchivo }}</h3>
                         <p><strong>Tipo:</strong> {{ archivo.tipo }}</p>
-                        <p><strong>Descripción:</strong> {{ archivo.descripcion || 'Sin descripción' }}</p>
-                        <p><strong>Subido el:</strong> {{ archivo.fechaCreacion | date:'dd/MM/yyyy HH:mm' }}</p>
+                        <p>
+                            <strong>Descripción:</strong>
+                            {{ archivo.descripcion || "Sin descripción" }}
+                        </p>
+                        <p>
+                            <strong>Subido el:</strong>
+                            {{ archivo.fechaCreacion | date : "dd/MM/yyyy HH:mm" }}
+                        </p>
 
                         <div class="no-asignado" *ngIf="!archivo.actividadId">
-                            <i class="fa fa-warning"></i> <strong>No asignado a ninguna actividad</strong>
+                            <i class="fa fa-warning"></i>
+                            <strong>No asignado a ninguna actividad</strong>
                         </div>
 
                         <div class="asignado" *ngIf="archivo.actividadId">
@@ -174,378 +184,471 @@
         <p class="sin-archivos"><em>No hay archivos sin asignar.</em></p>
     </ng-template>
 
-    <!-- ========== MODAL ESCANEO DE DISCO (NUEVO) ========== -->
-    <div class="modal-backdrop modal-escanear" *ngIf="mostrarModalEscaneo" (click)="cerrarModalEscaneo()">
-        <div class="modal-content modal-escaneo-content" (click)="$event.stopPropagation()">
-            <button class="btn-cerrar-modal" (click)="cerrarModalEscaneo()">
-                <i class="fa fa-times"></i>
-            </button>
+    <!-- Estadísticas -->
+    <div class="estadisticas">
+        <div class="estadistica-item">
+            <span class="numero">{{ archivos.length || 0 }}</span>
+            <span class="label">Archivos totales</span>
+        </div>
+        <div class="estadistica-item">
+            <span class="numero">{{ contarArchivosSinAsignar() }}</span>
+            <span class="label">Sin asignar</span>
+        </div>
+        <div class="estadistica-item">
+            <span class="numero">{{ contarArchivosAsignados() }}</span>
+            <span class="label">Asignados</span>
+        </div>
+        <div class="estadistica-item" *ngIf="archivosSeleccionados.size > 0">
+            <span class="numero">{{ archivosSeleccionados.size }}</span>
+            <span class="label">Seleccionados</span>
+        </div>
+    </div>
+</div>
 
-            <h3><i class="fa fa-search-plus"></i> Escanear Disco/Carpeta</h3>
+<!-- ========== MODAL ESCANEO DE DISCO ========== -->
+<div class="modal-backdrop modal-escanear" *ngIf="mostrarModalEscaneo" (click)="cerrarModalEscaneo()">
+    <div class="modal-content modal-escaneo-content" (click)="$event.stopPropagation()">
+        <button class="btn-cerrar-modal" (click)="cerrarModalEscaneo()">
+            <i class="fa fa-times"></i>
+        </button>
 
-            <!-- Fase 1: Configuración -->
-            <div class="escaneo-configuracion" *ngIf="!escaneando && archivosEncontrados.length === 0">
-                <div class="form-group">
-                    <label for="rutaEscaneo">Ruta del disco o carpeta:</label>
-                    <div class="input-group-ruta">
-                        <input type="text" id="rutaEscaneo" [(ngModel)]="rutaEscaneo"
-                            placeholder="Ej: D:\Fotos o /storage/emulated/0/DCIM" class="input-ruta">
-                        <button class="btn-seleccionar-carpeta" (click)="seleccionarCarpetaNavegador()"
-                            title="Seleccionar carpeta desde el explorador">
-                            <i class="fa fa-folder-open"></i>
-                        </button>
-                    </div>
-                    <small class="ayuda-texto">
-                        💡 Windows: D:\Fotos | Android: /storage/emulated/0/DCIM | O haz clic en 📁 para seleccionar
-                    </small>
+        <h3><i class="fa fa-search-plus"></i> Escanear Disco/Carpeta</h3>
+
+        <!-- Fase 1: Configuración -->
+        <div class="escaneo-configuracion" *ngIf="!escaneando && archivosEncontrados.length === 0">
+            <div class="form-group">
+                <label for="rutaEscaneo">Ruta del disco o carpeta:</label>
+                <div class="input-group-ruta">
+                    <input type="text" id="rutaEscaneo" [(ngModel)]="rutaEscaneo"
+                        placeholder="Introduce la ruta completa de la carpeta" class="input-ruta"
+                        (input)="validarRutaEscaneo()" />
+
+                    <!-- Botón selector (solo si el navegador lo soporta) -->
+                    <button class="btn-seleccionar-carpeta" (click)="seleccionarCarpetaNavegador()"
+                        *ngIf="soportaSelector" title="Seleccionar carpeta desde el explorador">
+                        <i class="fa fa-folder-open"></i>
+                    </button>
+
+                    <!-- Botón rutas comunes -->
+                    <button class="btn-rutas-comunes" (click)="mostrarRutasComunes = !mostrarRutasComunes"
+                        title="Ver rutas comunes">
+                        <i class="fa fa-list"></i>
+                    </button>
                 </div>
 
-                <div class="opciones-escaneo">
-                    <label class="checkbox-label">
-                        <input type="checkbox" [(ngModel)]="leerFechaExif">
-                        <span>Leer fecha EXIF de metadatos</span>
-                    </label>
-
-                    <label class="checkbox-label">
-                        <input type="checkbox" [(ngModel)]="copiarArchivos" checked>
-                        <span>Copiar archivos a la carpeta uploads</span>
-                    </label>
-                </div>
-
-                <!-- ✅ NUEVO: Selector de extensiones personalizado -->
-                <div class="selector-extensiones">
-                    <h4>📂 Tipos de archivos a buscar:</h4>
-
-                    <div class="grupo-extensiones">
-                        <h5>🖼️ Imágenes</h5>
-                        <div class="lista-checkboxes">
-                            <label *ngFor="let ext of EXTENSIONES_IMAGEN" class="checkbox-extension">
-                                <input type="checkbox" [(ngModel)]="extensionesSeleccionadas[ext]">
-                                <span>.{{ ext }}</span>
-                            </label>
-                        </div>
-                        <button class="btn-toggle-grupo" (click)="toggleGrupo('imagen')">
-                            <i class="fa fa-check-square-o"></i> Todas/Ninguna
+                <!-- Dropdown con rutas comunes -->
+                <div class="rutas-comunes-dropdown" *ngIf="mostrarRutasComunes">
+                    <h5>📂 Rutas comunes:</h5>
+                    <div class="lista-rutas">
+                        <!-- Linux/Deepin -->
+                        <button class="ruta-sugerida" (click)="seleccionarRuta('/home/' + usuarioActual + '/Pictures')">
+                            <i class="fa fa-picture-o"></i> Imágenes (~/Pictures)
                         </button>
-                    </div>
-
-                    <div class="grupo-extensiones">
-                        <h5>🎥 Videos</h5>
-                        <div class="lista-checkboxes">
-                            <label *ngFor="let ext of EXTENSIONES_VIDEO" class="checkbox-extension">
-                                <input type="checkbox" [(ngModel)]="extensionesSeleccionadas[ext]">
-                                <span>.{{ ext }}</span>
-                            </label>
-                        </div>
-                        <button class="btn-toggle-grupo" (click)="toggleGrupo('video')">
-                            <i class="fa fa-check-square-o"></i> Todas/Ninguna
+                        <button class="ruta-sugerida" (click)="seleccionarRuta('/home/' + usuarioActual + '/Videos')">
+                            <i class="fa fa-video-camera"></i> Videos (~/Videos)
                         </button>
-                    </div>
-
-                    <div class="grupo-extensiones">
-                        <h5>🎵 Audios</h5>
-                        <div class="lista-checkboxes">
-                            <label *ngFor="let ext of EXTENSIONES_AUDIO" class="checkbox-extension">
-                                <input type="checkbox" [(ngModel)]="extensionesSeleccionadas[ext]">
-                                <span>.{{ ext }}</span>
-                            </label>
-                        </div>
-                        <button class="btn-toggle-grupo" (click)="toggleGrupo('audio')">
-                            <i class="fa fa-check-square-o"></i> Todas/Ninguna
+                        <button class="ruta-sugerida"
+                            (click)="seleccionarRuta('/home/' + usuarioActual + '/Downloads')">
+                            <i class="fa fa-download"></i> Descargas (~/Downloads)
                         </button>
-                    </div>
+                        <button class="ruta-sugerida"
+                            (click)="seleccionarRuta('/home/' + usuarioActual + '/Documents')">
+                            <i class="fa fa-file-text"></i> Documentos (~/Documents)
+                        </button>
 
-                    <div class="grupo-extensiones">
-                        <h5>📄 Documentos</h5>
-                        <div class="lista-checkboxes">
-                            <label *ngFor="let ext of EXTENSIONES_TEXTO" class="checkbox-extension">
-                                <input type="checkbox" [(ngModel)]="extensionesSeleccionadas[ext]">
-                                <span>.{{ ext }}</span>
-                            </label>
-                        </div>
-                        <button class="btn-toggle-grupo" (click)="toggleGrupo('texto')">
-                            <i class="fa fa-check-square-o"></i> Todas/Ninguna
+                        <!-- Tarjeta SD / USB -->
+                        <button class="ruta-sugerida" (click)="seleccionarRuta('/media/' + usuarioActual)">
+                            <i class="fa fa-usb"></i> Dispositivos externos (/media)
+                        </button>
+
+                        <!-- Personalizado -->
+                        <button class="ruta-sugerida ruta-personalizada" (click)="abrirInputPersonalizado()">
+                            <i class="fa fa-folder-open"></i> Otra ubicación...
                         </button>
                     </div>
                 </div>
 
-                <div class="modal-acciones">
-                    <button class="btn-cancelar" (click)="cerrarModalEscaneo()">Cancelar</button>
-                    <button class="btn-confirmar" (click)="iniciarEscaneo()" [disabled]="!rutaEscaneo.trim()">
-                        <i class="fa fa-play"></i> Iniciar Escaneo
+                <!-- Validación de ruta -->
+                <div class="validacion-ruta" *ngIf="rutaEscaneo.trim()">
+                    <span class="icono-validacion" [class.valido]="rutaValida" [class.invalido]="!rutaValida">
+                        <i class="fa" [class.fa-check-circle]="rutaValida"
+                            [class.fa-exclamation-triangle]="!rutaValida"></i>
+                    </span>
+                    <span class="texto-validacion" *ngIf="!rutaValida">
+                        Por favor, introduce una ruta válida (ej: /home/usuario/Pictures)
+                    </span>
+                    <span class="texto-validacion" *ngIf="rutaValida">
+                        Ruta válida ✓
+                    </span>
+                </div>
+
+                <small class="ayuda-texto">
+                    💡 <strong>Linux/Deepin:</strong> /home/tu_usuario/Pictures |
+                    <strong>Windows:</strong> D:\Fotos |
+                    <strong>Android:</strong> /storage/emulated/0/DCIM
+                </small>
+            </div>
+
+            <div class="opciones-escaneo">
+                <label class="checkbox-label">
+                    <input type="checkbox" [(ngModel)]="leerFechaExif" />
+                    <span>Leer fecha EXIF de metadatos</span>
+                </label>
+
+                <label class="checkbox-label">
+                    <input type="checkbox" [(ngModel)]="copiarArchivos" checked />
+                    <span>Copiar archivos a la carpeta uploads</span>
+                </label>
+            </div>
+
+            <!-- Selector de extensiones personalizado -->
+            <div class="selector-extensiones">
+                <h4>📂 Tipos de archivos a buscar:</h4>
+
+                <div class="grupo-extensiones">
+                    <h5>🖼️ Imágenes</h5>
+                    <div class="lista-checkboxes">
+                        <label *ngFor="let ext of EXTENSIONES_IMAGEN" class="checkbox-extension">
+                            <input type="checkbox" [(ngModel)]="extensionesSeleccionadas[ext]" />
+                            <span>.{{ ext }}</span>
+                        </label>
+                    </div>
+                    <button class="btn-toggle-grupo" (click)="toggleGrupo('imagen')">
+                        <i class="fa fa-check-square-o"></i> Todas/Ninguna
+                    </button>
+                </div>
+
+                <div class="grupo-extensiones">
+                    <h5>🎥 Videos</h5>
+                    <div class="lista-checkboxes">
+                        <label *ngFor="let ext of EXTENSIONES_VIDEO" class="checkbox-extension">
+                            <input type="checkbox" [(ngModel)]="extensionesSeleccionadas[ext]" />
+                            <span>.{{ ext }}</span>
+                        </label>
+                    </div>
+                    <button class="btn-toggle-grupo" (click)="toggleGrupo('video')">
+                        <i class="fa fa-check-square-o"></i> Todas/Ninguna
+                    </button>
+                </div>
+
+                <div class="grupo-extensiones">
+                    <h5>🎵 Audios</h5>
+                    <div class="lista-checkboxes">
+                        <label *ngFor="let ext of EXTENSIONES_AUDIO" class="checkbox-extension">
+                            <input type="checkbox" [(ngModel)]="extensionesSeleccionadas[ext]" />
+                            <span>.{{ ext }}</span>
+                        </label>
+                    </div>
+                    <button class="btn-toggle-grupo" (click)="toggleGrupo('audio')">
+                        <i class="fa fa-check-square-o"></i> Todas/Ninguna
+                    </button>
+                </div>
+
+                <div class="grupo-extensiones">
+                    <h5>📄 Documentos</h5>
+                    <div class="lista-checkboxes">
+                        <label *ngFor="let ext of EXTENSIONES_TEXTO" class="checkbox-extension">
+                            <input type="checkbox" [(ngModel)]="extensionesSeleccionadas[ext]" />
+                            <span>.{{ ext }}</span>
+                        </label>
+                    </div>
+                    <button class="btn-toggle-grupo" (click)="toggleGrupo('texto')">
+                        <i class="fa fa-check-square-o"></i> Todas/Ninguna
                     </button>
                 </div>
             </div>
 
-            <!-- Fase 2: Escaneando (Progreso) -->
-            <div class="escaneo-progreso" *ngIf="escaneando">
-                <div class="progreso-info">
-                    <p><strong>Escaneando:</strong> {{ rutaEscaneo }}</p>
-                    <div class="estadisticas-escaneo">
-                        <div class="stat-item">
-                            <i class="fa fa-folder-o"></i>
-                            <span><strong>Carpetas procesadas:</strong> {{ carpetasProcesadas }}</span>
-                        </div>
-                        <div class="stat-item">
-                            <i class="fa fa-file-image-o"></i>
-                            <span><strong>Archivos encontrados:</strong> {{ archivosEncontrados.length }}</span>
-                        </div>
-                    </div>
-                </div>
+            <div class="modal-acciones">
+                <button class="btn-cancelar" (click)="cerrarModalEscaneo()">
+                    Cancelar
+                </button>
+                <button class="btn-confirmar" (click)="iniciarEscaneo()" [disabled]="!rutaEscaneo.trim()">
+                    <i class="fa fa-play"></i> Iniciar Escaneo
+                </button>
+            </div>
+        </div>
 
-                <div class="barra-progreso-contenedor">
-                    <div class="barra-progreso">
-                        <div class="barra-progreso-relleno" [style.width.%]="progresoEscaneo"></div>
+        <!-- Fase 2: Escaneando (Progreso) -->
+        <div class="escaneo-progreso" *ngIf="escaneando">
+            <div class="progreso-info">
+                <p><strong>Escaneando:</strong> {{ rutaEscaneo }}</p>
+                <div class="estadisticas-escaneo">
+                    <div class="stat-item">
+                        <i class="fa fa-folder-o"></i>
+                        <span><strong>Carpetas procesadas:</strong>
+                            {{ carpetasProcesadas }}</span>
                     </div>
-                    <span class="progreso-texto">{{ progresoEscaneo }}%</span>
-                </div>
-
-                <div class="modal-acciones">
-                    <button class="btn-cancelar" (click)="cancelarEscaneo()">
-                        <i class="fa fa-stop"></i> Cancelar Escaneo
-                    </button>
+                    <div class="stat-item">
+                        <i class="fa fa-file-image-o"></i>
+                        <span><strong>Archivos encontrados:</strong>
+                            {{ archivosEncontrados.length }}</span>
+                    </div>
                 </div>
             </div>
 
-            <!-- Fase 3: Resultados y Preview -->
-            <div class="escaneo-resultados" *ngIf="!escaneando && archivosEncontrados.length > 0">
-                <div class="resumen-escaneo">
-                    <h4><i class="fa fa-check-circle"></i> Escaneo Completado</h4>
-                    <p><strong>Se encontraron {{ archivosEncontrados.length }} archivos</strong></p>
-                    <p class="ruta-escaneada">📂 {{ rutaEscaneo }}</p>
+            <div class="barra-progreso-contenedor">
+                <div class="barra-progreso">
+                    <div class="barra-progreso-relleno" [style.width.%]="progresoEscaneo"></div>
+                </div>
+                <span class="progreso-texto">{{ progresoEscaneo }}%</span>
+            </div>
+
+            <div class="modal-acciones">
+                <button class="btn-cancelar" (click)="cancelarEscaneo()">
+                    <i class="fa fa-stop"></i> Cancelar Escaneo
+                </button>
+            </div>
+        </div>
+
+        <!-- Fase 3: Resultados y Preview -->
+        <div class="escaneo-resultados" *ngIf="!escaneando && archivosEncontrados.length > 0">
+            <div class="resumen-escaneo">
+                <h4><i class="fa fa-check-circle"></i> Escaneo Completado</h4>
+                <p>
+                    <strong>Se encontraron {{ archivosEncontrados.length }} archivos</strong>
+                </p>
+                <p class="ruta-escaneada">📂 {{ rutaEscaneo }}</p>
+            </div>
+
+            <div class="preview-encontrados">
+                <div class="header-preview">
+                    <h5>Vista previa de archivos (ordenados por fecha):</h5>
+
+                    <!-- Toggle para mostrar/ocultar imágenes -->
+                    <div class="toggle-vista-imagenes">
+                        <label class="checkbox-label toggle-imagenes-label">
+                            <input type="checkbox" [(ngModel)]="mostrarImagenesEncontradas"
+                                (change)="onToggleImagenesEncontradas()" />
+                            <i class="fa fa-image"></i>
+                            <span>Mostrar imágenes</span>
+                        </label>
+                    </div>
+
+                    <div class="acciones-preview">
+                        <button class="btn-seleccionar-preview" (click)="seleccionarTodosEncontrados()">
+                            <i class="fa fa-check-square-o"></i> Seleccionar todos
+                        </button>
+                        <button class="btn-deseleccionar-preview" (click)="deseleccionarTodosEncontrados()">
+                            <i class="fa fa-square-o"></i> Deseleccionar todos
+                        </button>
+                        <span class="contador-seleccionados">
+                            {{ archivosEncontradosSeleccionados.size }} /
+                            {{ archivosEncontrados.length }}
+                            seleccionados
+                        </span>
+                    </div>
                 </div>
 
-                <div class="preview-encontrados">
-                    <div class="header-preview">
-                        <h5>Vista previa de archivos (ordenados por fecha):</h5>
+                <div class="lista-preview-archivos">
+                    <div *ngFor="let archivo of archivosEncontrados; let i = index" class="preview-item-encontrado"
+                        [class.item-seleccionado]="archivosEncontradosSeleccionados.has(i)" [class.con-imagen]="
+              mostrarImagenesEncontradas && esExtensionImagen(archivo.extension)
+            ">
+                        <!-- Checkbox para seleccionar -->
+                        <input type="checkbox" [checked]="archivosEncontradosSeleccionados.has(i)"
+                            (change)="toggleSeleccionArchivoEncontrado(i)" class="checkbox-preview" />
 
-                        <!-- ✅ NUEVO: Toggle para mostrar/ocultar imágenes -->
-                        <div class="toggle-vista-imagenes">
-                            <label class="checkbox-label toggle-imagenes-label">
-                                <input type="checkbox" [(ngModel)]="mostrarImagenesEncontradas"
-                                    (change)="onToggleImagenesEncontradas()">
-                                <i class="fa fa-image"></i>
-                                <span>Mostrar imágenes</span>
-                            </label>
+                        <span class="numero">{{ i + 1 }}.</span>
+
+                        <!-- Preview de imagen condicional -->
+                        <div class="preview-imagen-contenedor" *ngIf="
+                mostrarImagenesEncontradas &&
+                esExtensionImagen(archivo.extension)
+              ">
+                            <img [src]="obtenerUrlPreviewArchivo(archivo)" [alt]="archivo.nombre"
+                                class="preview-imagen-encontrada" (error)="onImagenError($event, archivo)" />
                         </div>
 
-                        <div class="acciones-preview">
-                            <button class="btn-seleccionar-preview" (click)="seleccionarTodosEncontrados()">
-                                <i class="fa fa-check-square-o"></i> Seleccionar todos
-                            </button>
-                            <button class="btn-deseleccionar-preview" (click)="deseleccionarTodosEncontrados()">
-                                <i class="fa fa-square-o"></i> Deseleccionar todos
-                            </button>
-                            <span class="contador-seleccionados">
-                                {{ archivosEncontradosSeleccionados.size }} / {{ archivosEncontrados.length }}
-                                seleccionados
+                        <!-- Icono (se muestra cuando NO hay imagen o toggle OFF) -->
+                        <i class="fa icono-tipo-archivo" *ngIf="
+                !mostrarImagenesEncontradas ||
+                !esExtensionImagen(archivo.extension)
+              " [ngClass]="{
+                'fa-image': esExtensionImagen(archivo.extension),
+                'fa-video-camera': esExtensionVideo(archivo.extension),
+                'fa-music': esExtensionAudio(archivo.extension),
+                'fa-file':
+                  !esExtensionImagen(archivo.extension) &&
+                  !esExtensionVideo(archivo.extension) &&
+                  !esExtensionAudio(archivo.extension)
+              }">
+                        </i>
+
+                        <div class="info-preview">
+                            <span class="nombre-archivo">{{ archivo.nombre }}</span>
+                            <span class="detalles-archivo">
+                                {{ formatBytes(archivo.tamano) }} |
+                                {{ archivo.fechaCreacion | date : "dd/MM/yyyy HH:mm" }}
                             </span>
                         </div>
                     </div>
-
-                    <div class="lista-preview-archivos">
-                        <div *ngFor="let archivo of archivosEncontrados; let i = index" class="preview-item-encontrado"
-                            [class.item-seleccionado]="archivosEncontradosSeleccionados.has(i)"
-                            [class.con-imagen]="mostrarImagenesEncontradas && esExtensionImagen(archivo.extension)">
-
-                            <!-- Checkbox para seleccionar -->
-                            <input type="checkbox" [checked]="archivosEncontradosSeleccionados.has(i)"
-                                (change)="toggleSeleccionArchivoEncontrado(i)" class="checkbox-preview">
-
-                            <span class="numero">{{ i + 1 }}.</span>
-
-                            <!-- ✅ NUEVO: Preview de imagen condicional -->
-                            <div class="preview-imagen-contenedor"
-                                *ngIf="mostrarImagenesEncontradas && esExtensionImagen(archivo.extension)">
-                                <img [src]="obtenerUrlPreviewArchivo(archivo)" [alt]="archivo.nombre"
-                                    class="preview-imagen-encontrada" (error)="onImagenError($event, archivo)">
-                            </div>
-
-                            <!-- Icono (se muestra cuando NO hay imagen o toggle OFF) -->
-                            <i class="fa icono-tipo-archivo"
-                                *ngIf="!mostrarImagenesEncontradas || !esExtensionImagen(archivo.extension)" [ngClass]="{
-               'fa-image': esExtensionImagen(archivo.extension),
-               'fa-video-camera': esExtensionVideo(archivo.extension),
-               'fa-music': esExtensionAudio(archivo.extension),
-               'fa-file': !esExtensionImagen(archivo.extension) && !esExtensionVideo(archivo.extension) && !esExtensionAudio(archivo.extension)
-           }">
-                            </i>
-
-                            <div class="info-preview">
-                                <span class="nombre-archivo">{{ archivo.nombre }}</span>
-                                <span class="detalles-archivo">
-                                    {{ formatBytes(archivo.tamano) }} |
-                                    {{ archivo.fechaCreacion | date:'dd/MM/yyyy HH:mm' }}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="modal-acciones">
-                        <button class="btn-cancelar" (click)="reiniciarEscaneo()">
-                            <i class="fa fa-refresh"></i> Escanear otra carpeta
-                        </button>
-                        <button class="btn-confirmar btn-importar" (click)="importarArchivosEncontrados()"
-                            [disabled]="archivosEncontradosSeleccionados.size === 0">
-                            <i class="fa fa-download"></i> Importar {{ archivosEncontradosSeleccionados.size }}
-                            archivo(s)
-                            seleccionado(s)
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Mensaje sin resultados -->
-                <div class="escaneo-sin-resultados"
-                    *ngIf="!escaneando && escaneoCompletado && archivosEncontrados.length === 0">
-                    <i class="fa fa-info-circle"></i>
-                    <p>No se encontraron archivos multimedia en la ruta especificada.</p>
-                    <div class="modal-acciones">
-                        <button class="btn-confirmar" (click)="reiniciarEscaneo()">
-                            <i class="fa fa-refresh"></i> Intentar de nuevo
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Modal individual 1x1 -->
-        <div class="modal-backdrop" *ngIf="mostrarModalAsignacion" (click)="cerrarModalAsignacion()">
-            <div class="modal-content" (click)="$event.stopPropagation()">
-                <button class="btn-cerrar-modal" (click)="cerrarModalAsignacion()">
-                    <i class="fa fa-times"></i>
-                </button>
-
-                <h3>Asignar archivo a actividad</h3>
-                <p>Selecciona una actividad para asignar el archivo:</p>
-
-                <select [(ngModel)]="actividadSeleccionada" class="select-actividad">
-                    <option value="">Selecciona una actividad</option>
-                    <option *ngFor="let actividad of actividades" [value]="actividad.id">
-                        {{ actividad.nombre }}
-                    </option>
-                </select>
-
-                <div class="modal-acciones">
-                    <button class="btn-cancelar" (click)="cerrarModalAsignacion()">Cancelar</button>
-                    <button class="btn-confirmar" (click)="confirmarAsignacion()">Asignar</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Modal asignación múltiple -->
-        <div class="modal-backdrop" *ngIf="mostrarModalAsignacionMultiple" (click)="cerrarModalAsignacionMultiple()">
-            <div class="modal-content modal-asignacion-multiples" (click)="$event.stopPropagation()">
-                <button class="btn-cerrar-modal" (click)="cerrarModalAsignacionMultiple()">
-                    <i class="fa fa-times"></i>
-                </button>
-
-                <h3>Asignar {{ archivosSeleccionados.size }} archivos</h3>
-                <p *ngIf="diaSeleccionado"><strong>Fecha:</strong> {{ formatearFecha(diaSeleccionado) }}</p>
-                <p *ngIf="!diaSeleccionado"><strong>Fecha:</strong> Sin especificar</p>
-
-                <!-- Preview -->
-                <div class="preview-archivos-multiples">
-                    <h4>Archivos a asignar:</h4>
-                    <div class="lista-preview">
-                        <div *ngFor="let id of obtenerIdsSeleccionadosArray()" class="preview-item">
-                            <i class="fa" [ngClass]="obtenerIconoTipo(obtenerArchivoPorId(id))"></i>
-                            <span>{{ obtenerArchivoPorId(id).nombreArchivo }}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Selector de actividad -->
-                <div class="selector-actividad">
-                    <label for="actividad-multiples"><strong>Selecciona la actividad:</strong></label>
-
-                    <!-- Aviso si no hay actividades para esa fecha -->
-                    <div *ngIf="!diaSeleccionado || obtenerActividadesDelDia(diaSeleccionado).length === 0"
-                        class="aviso-sin-actividades">
-                        <i class="fa fa-info-circle"></i>
-                        <p>No hay actividades para la fecha seleccionada</p>
-                    </div>
-
-                    <select id="actividad-multiples" [(ngModel)]="actividadSeleccionadaMultiples"
-                        class="select-actividad"
-                        [disabled]="!diaSeleccionado || obtenerActividadesDelDia(diaSeleccionado).length === 0">
-                        <option value="">Selecciona una actividad</option>
-                        <option *ngFor="let actividad of obtenerActividadesDelDia(diaSeleccionado)"
-                            [value]="actividad.id">
-                            {{ actividad.nombre }}
-                        </option>
-                    </select>
                 </div>
 
                 <div class="modal-acciones">
-                    <button class="btn-cancelar" (click)="cerrarModalAsignacionMultiple()">Cancelar</button>
-                    <button class="btn-confirmar" (click)="confirmarAsignacionMultiple()"
-                        [disabled]="!actividadSeleccionadaMultiples">
-                        Asignar {{ archivosSeleccionados.size }} archivos
+                    <button class="btn-cancelar" (click)="reiniciarEscaneo()">
+                        <i class="fa fa-refresh"></i> Escanear otra carpeta
+                    </button>
+                    <button class="btn-confirmar btn-importar" (click)="importarArchivosEncontrados()"
+                        [disabled]="archivosEncontradosSeleccionados.size === 0">
+                        <i class="fa fa-download"></i> Importar
+                        {{ archivosEncontradosSeleccionados.size }}
+                        archivo(s) seleccionado(s)
                     </button>
                 </div>
             </div>
-        </div>
 
-        <!-- Modal visualización -->
-        <div class="modal-backdrop" *ngIf="archivoSeleccionado" (click)="cerrarModal()">
-            <div class="modal-content" (click)="$event.stopPropagation()">
-                <button class="btn-cerrar-modal" (click)="cerrarModal()">
-                    <i class="fa fa-times"></i>
-                </button>
-
-                <div *ngIf="esImagen(archivoSeleccionado)">
-                    <img [src]="getFileUrl(archivoSeleccionado)" [alt]="archivoSeleccionado.descripcion">
-                </div>
-
-                <div *ngIf="esVideo(archivoSeleccionado)">
-                    <video controls autoplay>
-                        <source [src]="getFileUrl(archivoSeleccionado)"
-                            [type]="'video/' + getFileExtension(archivoSeleccionado.nombreArchivo)">
-                        Tu navegador no soporta el elemento de video.
-                    </video>
-                </div>
-
-                <div *ngIf="esAudio(archivoSeleccionado)">
-                    <audio controls autoplay>
-                        <source [src]="getFileUrl(archivoSeleccionado)"
-                            [type]="'audio/' + getFileExtension(archivoSeleccionado.nombreArchivo)">
-                        Tu navegador no soporta el elemento de audio.
-                    </audio>
-                </div>
-
-                <div *ngIf="esDocumento(archivoSeleccionado)" class="documento-modal">
-                    <i class="fa fa-file-text-o icono-documento-grande"></i>
-                    <p>Documento: {{ archivoSeleccionado.nombreArchivo }}</p>
-                    <button class="btn-descargar" (click)="descargarArchivo(archivoSeleccionado.id)">
-                        <i class="fa fa-download"></i> Descargar documento
+            <!-- Mensaje sin resultados -->
+            <div class="escaneo-sin-resultados" *ngIf="
+          !escaneando && escaneoCompletado && archivosEncontrados.length === 0
+        ">
+                <i class="fa fa-info-circle"></i>
+                <p>No se encontraron archivos multimedia en la ruta especificada.</p>
+                <div class="modal-acciones">
+                    <button class="btn-confirmar" (click)="reiniciarEscaneo()">
+                        <i class="fa fa-refresh"></i> Intentar de nuevo
                     </button>
                 </div>
-
-                <div class="modal-info">
-                    <h3>{{ archivoSeleccionado.nombreArchivo }}</h3>
-                    <p><strong>Descripción:</strong> {{ archivoSeleccionado.descripcion || 'Sin descripción' }}</p>
-                    <p><strong>Fecha:</strong> {{ archivoSeleccionado.fechaCreacion | date:'dd/MM/yyyy HH:mm' }}</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Estadísticas -->
-        <div class="estadisticas">
-            <div class="estadistica-item">
-                <span class="numero">{{ archivos.length || 0 }}</span>
-                <span class="label">Archivos totales</span>
-            </div>
-            <div class="estadistica-item">
-                <span class="numero">{{ contarArchivosSinAsignar() }}</span>
-                <span class="label">Sin asignar</span>
-            </div>
-            <div class="estadistica-item">
-                <span class="numero">{{ contarArchivosAsignados() }}</span>
-                <span class="label">Asignados</span>
-            </div>
-            <div class="estadistica-item" *ngIf="archivosSeleccionados.size > 0">
-                <span class="numero">{{ archivosSeleccionados.size }}</span>
-                <span class="label">Seleccionados</span>
             </div>
         </div>
     </div>
+</div>
+
+<!-- ========== MODAL INDIVIDUAL 1x1 ========== -->
+<div class="modal-backdrop" *ngIf="mostrarModalAsignacion" (click)="cerrarModalAsignacion()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+        <button class="btn-cerrar-modal" (click)="cerrarModalAsignacion()">
+            <i class="fa fa-times"></i>
+        </button>
+
+        <h3>Asignar archivo a actividad</h3>
+        <p>Selecciona una actividad para asignar el archivo:</p>
+
+        <select [(ngModel)]="actividadSeleccionada" class="select-actividad">
+            <option value="">Selecciona una actividad</option>
+            <option *ngFor="let actividad of actividades" [value]="actividad.id">
+                {{ actividad.nombre }}
+            </option>
+        </select>
+
+        <div class="modal-acciones">
+            <button class="btn-cancelar" (click)="cerrarModalAsignacion()">
+                Cancelar
+            </button>
+            <button class="btn-confirmar" (click)="confirmarAsignacion()">
+                Asignar
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== MODAL ASIGNACIÓN MÚLTIPLE ========== -->
+<div class="modal-backdrop" *ngIf="mostrarModalAsignacionMultiple" (click)="cerrarModalAsignacionMultiple()">
+    <div class="modal-content modal-asignacion-multiples" (click)="$event.stopPropagation()">
+        <button class="btn-cerrar-modal" (click)="cerrarModalAsignacionMultiple()">
+            <i class="fa fa-times"></i>
+        </button>
+
+        <h3>Asignar {{ archivosSeleccionados.size }} archivos</h3>
+        <p *ngIf="diaSeleccionado">
+            <strong>Fecha:</strong> {{ formatearFecha(diaSeleccionado) }}
+        </p>
+        <p *ngIf="!diaSeleccionado"><strong>Fecha:</strong> Sin especificar</p>
+
+        <!-- Preview -->
+        <div class="preview-archivos-multiples">
+            <h4>Archivos a asignar:</h4>
+            <div class="lista-preview">
+                <div *ngFor="let id of obtenerIdsSeleccionadosArray()" class="preview-item">
+                    <i class="fa" [ngClass]="obtenerIconoTipo(obtenerArchivoPorId(id))"></i>
+                    <span>{{ obtenerArchivoPorId(id).nombreArchivo }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Selector de actividad -->
+        <div class="selector-actividad">
+            <label for="actividad-multiples"><strong>Selecciona la actividad:</strong></label>
+
+            <!-- Aviso si no hay actividades para esa fecha -->
+            <div *ngIf="
+          !diaSeleccionado ||
+          obtenerActividadesDelDia(diaSeleccionado).length === 0
+        " class="aviso-sin-actividades">
+                <i class="fa fa-info-circle"></i>
+                <p>No hay actividades para la fecha seleccionada</p>
+            </div>
+
+            <select id="actividad-multiples" [(ngModel)]="actividadSeleccionadaMultiples" class="select-actividad"
+                [disabled]="
+          !diaSeleccionado ||
+          obtenerActividadesDelDia(diaSeleccionado).length === 0
+        ">
+                <option value="">Selecciona una actividad</option>
+                <option *ngFor="let actividad of obtenerActividadesDelDia(diaSeleccionado)" [value]="actividad.id">
+                    {{ actividad.nombre }}
+                </option>
+            </select>
+        </div>
+
+        <div class="modal-acciones">
+            <button class="btn-cancelar" (click)="cerrarModalAsignacionMultiple()">
+                Cancelar
+            </button>
+            <button class="btn-confirmar" (click)="confirmarAsignacionMultiple()"
+                [disabled]="!actividadSeleccionadaMultiples">
+                Asignar {{ archivosSeleccionados.size }} archivos
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== MODAL VISUALIZACIÓN ========== -->
+<div class="modal-backdrop" *ngIf="archivoSeleccionado" (click)="cerrarModal()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+        <button class="btn-cerrar-modal" (click)="cerrarModal()">
+            <i class="fa fa-times"></i>
+        </button>
+
+        <div *ngIf="esImagen(archivoSeleccionado)">
+            <img [src]="getFileUrl(archivoSeleccionado)" [alt]="archivoSeleccionado.descripcion" />
+        </div>
+
+        <div *ngIf="esVideo(archivoSeleccionado)">
+            <video controls autoplay>
+                <source [src]="getFileUrl(archivoSeleccionado)" [type]="
+            'video/' + getFileExtension(archivoSeleccionado.nombreArchivo)
+          " />
+                Tu navegador no soporta el elemento de video.
+            </video>
+        </div>
+
+        <div *ngIf="esAudio(archivoSeleccionado)">
+            <audio controls autoplay>
+                <source [src]="getFileUrl(archivoSeleccionado)" [type]="
+            'audio/' + getFileExtension(archivoSeleccionado.nombreArchivo)
+          " />
+                Tu navegador no soporta el elemento de audio.
+            </audio>
+        </div>
+
+        <div *ngIf="esDocumento(archivoSeleccionado)" class="documento-modal">
+            <i class="fa fa-file-text-o icono-documento-grande"></i>
+            <p>Documento: {{ archivoSeleccionado.nombreArchivo }}</p>
+            <button class="btn-descargar" (click)="descargarArchivo(archivoSeleccionado.id)">
+                <i class="fa fa-download"></i> Descargar documento
+            </button>
+        </div>
+
+        <div class="modal-info">
+            <h3>{{ archivoSeleccionado.nombreArchivo }}</h3>
+            <p>
+                <strong>Descripción:</strong>
+                {{ archivoSeleccionado.descripcion || "Sin descripción" }}
+            </p>
+            <p>
+                <strong>Fecha:</strong>
+                {{ archivoSeleccionado.fechaCreacion | date : "dd/MM/yyyy HH:mm" }}
+            </p>
+        </div>
+    </div>
+</div>

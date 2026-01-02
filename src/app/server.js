@@ -2472,8 +2472,15 @@ app.get('/archivos/:id/descargar', (req, res) => {
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
 
-    // ✅ CORRECCIÓN: Construir ruta absoluta
-    const filePath = path.join(uploadsPath, row.rutaArchivo);
+    // ✅ CORRECCIÓN: Manejar rutas absolutas antiguas o relativas
+    // Si rutaArchivo es una ruta absoluta (contiene ':' como C:\...), extraer solo el nombre del archivo
+    let nombreArchivoFinal = row.rutaArchivo;
+    if (row.rutaArchivo && (row.rutaArchivo.includes(':') || row.rutaArchivo.includes('\\'))) {
+      // Es una ruta absoluta, extraer solo el nombre del archivo
+      nombreArchivoFinal = path.basename(row.rutaArchivo);
+      console.log('⚠️ Ruta absoluta detectada, usando solo nombre de archivo:', nombreArchivoFinal);
+    }
+    const filePath = path.join(uploadsPath, nombreArchivoFinal);
 
     console.log('📁 Ruta completa:', filePath);
 

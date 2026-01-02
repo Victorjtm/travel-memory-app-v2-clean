@@ -38,7 +38,7 @@ export class ArchivoService extends BaseHttpService {
 
   // Descargar archivo (usando downloadBlob del servicio base)
   descargarArchivo(id: number): Observable<Blob> {
-    return this.downloadBlob(`${this.apiUrl}/${id}/descargar`);
+    return this.downloadBlob(`${this.apiUrl}/${id}`);
   }
 
   // Eliminar archivo
