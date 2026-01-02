@@ -143,6 +143,13 @@ const db = new sqlite3.Database('./viajes.db', (err) => {
   }
 });
 
+// Helper para promesas de SQLite
+const dbQuery = {
+  get: (sql, params) => new Promise((resolve, reject) => db.get(sql, params, (err, row) => err ? reject(err) : resolve(row))),
+  all: (sql, params) => new Promise((resolve, reject) => db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows))),
+  run: (sql, params) => new Promise((resolve, reject) => db.run(sql, params, function (err) { err ? reject(err) : resolve(this) }))
+};
+
 // Configuración multer para subir archivos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -532,129 +539,70 @@ app.delete('/viajes/:id', async (req, res) => {
   try {
     console.log(`🗑️ Iniciando eliminación en cascada del viaje ${id}...`);
 
-    // 1. Obtener todos los itinerarios del viaje
-    const itinerarios = await new Promise((resolve, reject) => {
-      db.all(
-        'SELECT id FROM ItinerarioGeneral WHERE viajePrevistoId = ?',
-        [id],
-        (err, rows) => err ? reject(err) : resolve(rows || [])
-      );
-    });
-    console.log(`📋 Encontrados ${itinerarios.length} itinerarios`);
-
-    // 2. Para cada itinerario, eliminar actividades y sus archivos
-    let totalArchivosEliminados = 0;
-    for (const itin of itinerarios) {
-      const actividades = await new Promise((resolve, reject) => {
-        db.all(
-          'SELECT id FROM actividades WHERE itinerarioId = ?',
-          [itin.id],
-          (err, rows) => err ? reject(err) : resolve(rows || [])
-        );
-      });
-
-      // 2.1 Eliminar archivos y asociados de cada actividad
-      for (const act of actividades) {
-        // Obtener archivos para eliminar archivos físicos
-        const archivos = await new Promise((resolve, reject) => {
-          db.all(
-            'SELECT id, rutaArchivo FROM archivos WHERE actividadId = ?',
-            [act.id],
-            (err, rows) => err ? reject(err) : resolve(rows || [])
-          );
-        });
-
-        // Eliminar archivos asociados de cada archivo
-        for (const arch of archivos) {
-          // Eliminar archivos físicos asociados
-          await new Promise((resolve, reject) => {
-            db.all(
-              'SELECT rutaArchivo FROM archivos_asociados WHERE archivoPrincipalId = ?',
-              [arch.id],
-              (err, rows) => {
-                if (err) return reject(err);
-                rows?.forEach(row => {
-                  try {
-                    if (fs.existsSync(row.rutaArchivo)) {
-                      fs.unlinkSync(row.rutaArchivo);
-                      console.log(`  ✅ Archivo físico eliminado: ${row.rutaArchivo}`);
-                    }
-                  } catch (err) {
-                    console.warn(`  ⚠️ No se pudo eliminar: ${row.rutaArchivo}`);
-                  }
-                });
-                resolve();
-              }
-            );
-          });
-
-          // Eliminar registros de archivos asociados
-          await new Promise((resolve, reject) => {
-            db.run(
-              'DELETE FROM archivos_asociados WHERE archivoPrincipalId = ?',
-              [arch.id],
-              (err) => err ? reject(err) : resolve()
-            );
-          });
-
-          // Eliminar archivo físico principal
-          try {
-            if (fs.existsSync(arch.rutaArchivo)) {
-              fs.unlinkSync(arch.rutaArchivo);
-              console.log(`  ✅ Archivo físico eliminado: ${arch.rutaArchivo}`);
-              totalArchivosEliminados++;
-            }
-          } catch (err) {
-            console.warn(`  ⚠️ No se pudo eliminar: ${arch.rutaArchivo}`);
-          }
-        }
-
-        // Eliminar registros de archivos
-        await new Promise((resolve, reject) => {
-          db.run(
-            'DELETE FROM archivos WHERE actividadId = ?',
-            [act.id],
-            (err) => err ? reject(err) : resolve()
-          );
-        });
-      }
-
-      // 2.2 Eliminar actividades
-      await new Promise((resolve, reject) => {
-        db.run(
-          'DELETE FROM actividades WHERE itinerarioId = ?',
-          [itin.id],
-          (err) => err ? reject(err) : resolve()
-        );
-      });
-      console.log(`  ✅ Actividades eliminadas del itinerario ${itin.id}`);
+    // 0. Obtener datos del viaje para eliminar imagen/audio de portada
+    const viaje = await dbQuery.get('SELECT imagen, audio FROM viajes WHERE id = ?', [id]);
+    if (!viaje) {
+      return res.status(404).json({ error: 'Viaje no encontrado' });
     }
 
-    // 3. Eliminar itinerarios
-    await new Promise((resolve, reject) => {
-      db.run(
-        'DELETE FROM ItinerarioGeneral WHERE viajePrevistoId = ?',
-        [id],
-        (err) => err ? reject(err) : resolve()
-      );
-    });
-    console.log(`  ✅ Itinerarios eliminados`);
+    // 1. Obtener todos los itinerarios del viaje
+    const itinerarios = await dbQuery.all('SELECT id FROM ItinerarioGeneral WHERE viajePrevistoId = ?', [id]);
+    console.log(`📋 Encontrados ${itinerarios.length} itinerarios`);
 
-    // 4. Eliminar viaje
-    await new Promise((resolve, reject) => {
-      db.run(
-        'DELETE FROM viajes WHERE id = ?',
-        [id],
-        (err) => err ? reject(err) : resolve()
-      );
-    });
-    console.log(`  ✅ Viaje eliminado`);
+    let totalArchivosEliminados = 0;
 
-    // 5. Eliminar carpeta de viaje
+    // 2. Procesar itinerarios y actividades
+    for (const itin of itinerarios) {
+      const actividades = await dbQuery.all('SELECT id FROM actividades WHERE itinerarioId = ?', [itin.id]);
+
+      for (const act of actividades) {
+        // Obtener archivos de la actividad
+        const archivos = await dbQuery.all('SELECT id, rutaArchivo FROM archivos WHERE actividadId = ?', [act.id]);
+
+        for (const arch of archivos) {
+          // Eliminar archivos asociados físicos
+          const asociados = await dbQuery.all('SELECT rutaArchivo FROM archivos_asociados WHERE archivoPrincipalId = ?', [arch.id]);
+          for (const asoc of asociados) {
+            try {
+              const fullPathAsoc = path.isAbsolute(asoc.rutaArchivo) ? asoc.rutaArchivo : path.join(uploadsPath, asoc.rutaArchivo);
+              if (fs.existsSync(fullPathAsoc)) fs.unlinkSync(fullPathAsoc);
+            } catch (e) { console.warn(`  ⚠️ Error eliminando asociado: ${asoc.rutaArchivo}`); }
+          }
+
+          // Eliminar archivo principal físico
+          try {
+            const fullPathArch = path.isAbsolute(arch.rutaArchivo) ? arch.rutaArchivo : path.join(uploadsPath, arch.rutaArchivo);
+            if (fs.existsSync(fullPathArch)) {
+              fs.unlinkSync(fullPathArch);
+              totalArchivosEliminados++;
+            }
+          } catch (e) { console.warn(`  ⚠️ Error eliminando archivo: ${arch.rutaArchivo}`); }
+        }
+      }
+    }
+
+    // 3. Eliminar archivos de portada (viaje.imagen y viaje.audio)
+    [viaje.imagen, viaje.audio].forEach(fileName => {
+      if (fileName) {
+        try {
+          const fullPath = path.isAbsolute(fileName) ? fileName : path.join(uploadsPath, fileName);
+          if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+        } catch (e) { console.warn(`  ⚠️ Error eliminando recurso viaje: ${fileName}`); }
+      }
+    });
+
+    // 4. Ejecutar borrado en BD (suponiendo ON DELETE CASCADE, pero lo hacemos explícito para seguridad si falla el trigger)
+    // El orden importa si no hay FK cascade: asociados -> archivos -> actividades -> itinerarios -> viaje
+    // Pero asumiendo que viajes.db tiene FK habilitadas...
+    await dbQuery.run('DELETE FROM viajes WHERE id = ?', [id]);
+
+    // 5. Eliminar carpeta de viaje si existe (opcional, si se usa folders por ID)
     const viajeFolder = path.join(uploadsPath, id.toString());
     if (fs.existsSync(viajeFolder)) {
-      fs.rmSync(viajeFolder, { recursive: true, force: true });
-      console.log(`  ✅ Carpeta de viaje eliminada`);
+      try {
+        fs.rmSync(viajeFolder, { recursive: true, force: true });
+        console.log(`  ✅ Carpeta de viaje eliminada: ${viajeFolder}`);
+      } catch (e) { console.warn(`  ⚠️ No se pudo eliminar la carpeta del viaje: ${viajeFolder}`); }
     }
 
     res.json({
@@ -669,6 +617,7 @@ app.delete('/viajes/:id', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // Ruta para unificar viajes por destino
 app.post('/viajes/unificar', async (req, res) => {
@@ -776,6 +725,17 @@ app.post('/viajes/unificar', async (req, res) => {
                 (err) => err ? reject(err) : resolve()
               );
             });
+            // ✅ ACTUALIZAR RUTA DE ARCHIVOS (si contienen la ID del viaje como carpeta)
+            // Esto es importante si las rutas son relativas como "ID_VIAJE/..."
+            await new Promise((resolve, reject) => {
+              db.run(
+                `UPDATE archivos 
+                 SET rutaArchivo = REPLACE(rutaArchivo, '${viajeSecundario.id}/', '${maestro.id}/') 
+                 WHERE actividadId IN (SELECT id FROM actividades WHERE itinerarioId = ?)`,
+                [itinMaestro.id],
+                (err) => err ? reject(err) : resolve()
+              );
+            });
             // Eliminar itinerario secundario
             await new Promise((resolve, reject) => {
               db.run('DELETE FROM ItinerarioGeneral WHERE id = ?', [itinSec.id], err => err ? reject(err) : resolve());
@@ -794,6 +754,16 @@ app.post('/viajes/unificar', async (req, res) => {
               db.run(
                 'UPDATE actividades SET viajePrevistoId = ? WHERE itinerarioId = ?',
                 [maestro.id, itinSec.id],
+                (err) => err ? reject(err) : resolve()
+              );
+            });
+            // ✅ ACTUALIZAR RUTA DE ARCHIVOS
+            await new Promise((resolve, reject) => {
+              db.run(
+                `UPDATE archivos 
+                 SET rutaArchivo = REPLACE(rutaArchivo, '${viajeSecundario.id}/', '${maestro.id}/') 
+                 WHERE actividadId IN (SELECT id FROM actividades WHERE itinerarioId = ?)`,
+                [itinSec.id],
                 (err) => err ? reject(err) : resolve()
               );
             });
@@ -2345,7 +2315,7 @@ app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
         actividadFinal,
         tipo || archivo.mimetype.split('/')[0],
         archivo.originalname,
-        archivo.path,
+        archivo.filename, // ✅ USAR filename (relativo) en lugar de path (absoluto)
         descripcion || '',
         horaCaptura || horaExif || new Date().toISOString(),
         geolocalizacionFinal,
@@ -2390,56 +2360,43 @@ app.delete('/archivos/:id', async (req, res) => {
     console.log(`🗑️ Eliminando archivo ${id}...`);
 
     // 1. Obtener archivo principal
-    const archivo = await new Promise((resolve, reject) => {
-      db.get(
-        'SELECT rutaArchivo FROM archivos WHERE id = ?',
-        [id],
-        (err, row) => err ? reject(err) : resolve(row)
-      );
-    });
+    const archivo = await dbQuery.get('SELECT rutaArchivo FROM archivos WHERE id = ?', [id]);
 
     if (!archivo) {
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
 
-    // 2. Eliminar archivos asociados (físicos)
-    await new Promise((resolve) => {
-      db.all(
-        'SELECT rutaArchivo FROM archivos_asociados WHERE archivoPrincipalId = ?',
-        [id],
-        (err, rows) => {
-          rows?.forEach(row => {
-            try {
-              if (fs.existsSync(row.rutaArchivo)) fs.unlinkSync(row.rutaArchivo);
-            } catch (e) { }
-          });
-          resolve();
-        }
-      );
-    });
+    // 2. Obtener y eliminar archivos asociados (físicos)
+    const asociados = await dbQuery.all('SELECT rutaArchivo FROM archivos_asociados WHERE archivoPrincipalId = ?', [id]);
 
-    // 3. Eliminar registros de asociados
-    await new Promise((resolve) => {
-      db.run(
-        'DELETE FROM archivos_asociados WHERE archivoPrincipalId = ?',
-        [id],
-        () => resolve()
-      );
-    });
+    for (const row of asociados) {
+      try {
+        const fullPath = path.isAbsolute(row.rutaArchivo) ? row.rutaArchivo : path.join(uploadsPath, row.rutaArchivo);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+          console.log(`  ✅ Archivo asociado físico eliminado: ${fullPath}`);
+        }
+      } catch (e) {
+        console.warn(`  ⚠️ No se pudo eliminar asociado: ${row.rutaArchivo}`, e.message);
+      }
+    }
+
+    // 3. Eliminar registros de asociados en BD
+    await dbQuery.run('DELETE FROM archivos_asociados WHERE archivoPrincipalId = ?', [id]);
 
     // 4. Eliminar archivo físico principal
     try {
-      if (fs.existsSync(archivo.rutaArchivo)) {
-        fs.unlinkSync(archivo.rutaArchivo);
+      const fullPath = path.isAbsolute(archivo.rutaArchivo) ? archivo.rutaArchivo : path.join(uploadsPath, archivo.rutaArchivo);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+        console.log(`  ✅ Archivo físico principal eliminado: ${fullPath}`);
       }
     } catch (e) {
-      console.warn(`  ⚠️ No se pudo eliminar archivo físico: ${archivo.rutaArchivo}`);
+      console.warn(`  ⚠️ No se pudo eliminar archivo físico principal: ${archivo.rutaArchivo}`, e.message);
     }
 
-    // 5. Eliminar registro principal
-    await new Promise((resolve) => {
-      db.run('DELETE FROM archivos WHERE id = ?', [id], () => resolve());
-    });
+    // 5. Eliminar registro principal en BD
+    await dbQuery.run('DELETE FROM archivos WHERE id = ?', [id]);
 
     res.json({
       success: true,
@@ -2448,13 +2405,14 @@ app.delete('/archivos/:id', async (req, res) => {
     });
 
   } catch (error) {
-    console.error(`❌ Error: ${error.message}`);
+    console.error(`❌ Error eliminando archivo: ${error.message}`);
     res.status(500).json({ error: error.message });
   }
 });
 
-
+// ----------------------------------------
 // 8️⃣ GET descargar archivo
+// ----------------------------------------
 // 8️⃣ GET descargar archivo
 app.get('/archivos/:id/descargar', (req, res) => {
   const { id } = req.params;
@@ -2472,15 +2430,8 @@ app.get('/archivos/:id/descargar', (req, res) => {
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
 
-    // ✅ CORRECCIÓN: Manejar rutas absolutas antiguas o relativas
-    // Si rutaArchivo es una ruta absoluta (contiene ':' como C:\...), extraer solo el nombre del archivo
-    let nombreArchivoFinal = row.rutaArchivo;
-    if (row.rutaArchivo && (row.rutaArchivo.includes(':') || row.rutaArchivo.includes('\\'))) {
-      // Es una ruta absoluta, extraer solo el nombre del archivo
-      nombreArchivoFinal = path.basename(row.rutaArchivo);
-      console.log('⚠️ Ruta absoluta detectada, usando solo nombre de archivo:', nombreArchivoFinal);
-    }
-    const filePath = path.join(uploadsPath, nombreArchivoFinal);
+    // ✅ CORRECCIÓN: Manejar rutas relativas (nueva estructura) o absolutas (legacy)
+    const filePath = path.isAbsolute(row.rutaArchivo) ? row.rutaArchivo : path.join(uploadsPath, row.rutaArchivo);
 
     console.log('📁 Ruta completa:', filePath);
 
@@ -2505,19 +2456,13 @@ app.post('/archivos/procesar-geolocalizacion-masiva', async (req, res) => {
 
   try {
     // 1️⃣ Obtener todos los archivos de tipo foto/imagen
-    const archivos = await new Promise((resolve, reject) => {
-      db.all(
-        `SELECT id, nombreArchivo, rutaArchivo, geolocalizacion, tipo 
-         FROM archivos 
-         WHERE tipo IN ('foto', 'imagen')
-         ORDER BY id`,
-        [],
-        (err, rows) => {
-          if (err) return reject(err);
-          resolve(rows);
-        }
-      );
-    });
+    const archivos = await dbQuery.all(
+      `SELECT id, nombreArchivo, rutaArchivo, geolocalizacion, tipo 
+       FROM archivos 
+       WHERE tipo IN ('foto', 'imagen')
+       ORDER BY id`,
+      []
+    );
 
     console.log(`📊 Total de archivos a procesar: ${archivos.length}`);
 
@@ -2536,8 +2481,9 @@ app.post('/archivos/procesar-geolocalizacion-masiva', async (req, res) => {
         console.log(`\n📁 [${resultados.procesados + 1}/${archivos.length}] ${archivo.nombreArchivo}`);
 
         // Verificar que el archivo físico existe
-        if (!fs.existsSync(archivo.rutaArchivo)) {
-          console.warn(`⚠️ Archivo físico no existe`);
+        const fullPath = path.isAbsolute(archivo.rutaArchivo) ? archivo.rutaArchivo : path.join(uploadsPath, archivo.rutaArchivo);
+        if (!fs.existsSync(fullPath)) {
+          console.warn(`⚠️ Archivo físico no existe: ${fullPath}`);
           resultados.errores++;
           resultados.detalles.push({
             id: archivo.id,
@@ -2550,7 +2496,7 @@ app.post('/archivos/procesar-geolocalizacion-masiva', async (req, res) => {
         }
 
         // 3️⃣ Leer metadatos EXIF
-        const buffer = fs.readFileSync(archivo.rutaArchivo);
+        const buffer = fs.readFileSync(fullPath);
         const parser = ExifParser.create(buffer);
         const exifData = parser.parse();
         const tags = exifData.tags || {};
@@ -3065,7 +3011,7 @@ app.post('/archivos-asociados/subir', upload.single('archivo'), (req, res) => {
         archivoPrincipalId,
         tipo,
         archivo.originalname,
-        archivo.path,
+        archivo.filename, // ✅ Guardar solo nombre relativo
         descripcion || null,
         fechaActual,
         fechaActual,
@@ -3219,7 +3165,7 @@ app.put('/archivos-asociados/:id/archivo', upload.single('archivo'), (req, res) 
   }
 
   const campos = ['rutaArchivo = ?', 'nombreArchivo = ?'];
-  const valores = [archivo.path, archivo.originalname];
+  const valores = [archivo.filename, archivo.originalname]; // ✅ Usar filename relativo
 
   if (tipo !== undefined) { campos.push('tipo = ?'); valores.push(tipo); }
   if (descripcion !== undefined) { campos.push('descripcion = ?'); valores.push(descripcion); }
@@ -3280,11 +3226,11 @@ app.delete('/archivos-asociados/:id', (req, res) => {
 
       // Intentar eliminar archivo físico
       if (archivo.rutaArchivo) {
-        const fs = require('fs');
         try {
-          if (fs.existsSync(archivo.rutaArchivo)) {
-            fs.unlinkSync(archivo.rutaArchivo);
-            console.log('✅ Archivo físico eliminado:', archivo.rutaArchivo);
+          const fullPath = path.isAbsolute(archivo.rutaArchivo) ? archivo.rutaArchivo : path.join(uploadsPath, archivo.rutaArchivo);
+          if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+            console.log('✅ Archivo físico eliminado:', fullPath);
           }
         } catch (fsError) {
           console.warn('⚠️ No se pudo eliminar el archivo físico:', fsError.message);
