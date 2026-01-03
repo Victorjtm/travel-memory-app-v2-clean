@@ -2691,6 +2691,219 @@ app.post('/archivos/procesar-geolocalizacion-masiva', async (req, res) => {
 
 console.log('✅ Endpoint de procesamiento GPS registrado correctamente');
 
+// ========================================================================
+// NUEVO ENDPOINT: LEER METADATOS EXIF PARA AUTO-ASIGNACIÓN CON IA
+// ========================================================================
+
+console.log('📸 Registrando endpoint de lectura EXIF para auto-asignación...');
+
+/**
+ * GET /api/archivos/:id/exif
+ * Lee metadatos EXIF de un archivo (GPS, fecha, hora)
+ * Usado por el servicio de auto-asignación con IA
+ */
+app.get('/archivos/:id/exif', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log(`📸 Leyendo EXIF del archivo ID: ${id}`);
+
+    // 1. Buscar archivo en BD
+    const archivo = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM archivos WHERE id = ?', [id], (err, row) => {
+        if (err) return reject(err);
+        resolve(row);
+      });
+    });
+
+    if (!archivo) {
+      console.warn(`❌ Archivo ${id} no encontrado en BD`);
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
+
+    console.log(`  📁 Archivo encontrado: ${archivo.nombreArchivo}`);
+    console.log(`  📂 Tipo: ${archivo.tipo}`);
+
+    // 2. Verificar que sea imagen o video
+    if (!['imagen', 'foto', 'video'].includes(archivo.tipo)) {
+      console.log(`  ⚠️ No es imagen/video, devolviendo solo fecha de creación`);
+      return res.json({
+        gps: null,
+        fecha: archivo.fechaCreacion,
+        hora: archivo.horaCaptura,
+        ciudad: null,
+        region: null,
+        pais: null
+      });
+    }
+
+    // 3. Construir ruta completa del archivo
+    const rutaCompleta = path.isAbsolute(archivo.rutaArchivo)
+      ? archivo.rutaArchivo
+      : path.join(uploadsPath, archivo.rutaArchivo);
+
+    console.log(`  📍 Ruta completa: ${rutaCompleta}`);
+
+    // 4. Verificar que el archivo físico existe
+    if (!fs.existsSync(rutaCompleta)) {
+      console.warn(`  ❌ Archivo físico no existe: ${rutaCompleta}`);
+      return res.json({
+        gps: null,
+        fecha: archivo.fechaCreacion,
+        hora: archivo.horaCaptura,
+        ciudad: null,
+        region: null,
+        pais: null
+      });
+    }
+
+    // 5. Leer archivo físico
+    let archivoBuffer;
+    try {
+      archivoBuffer = fs.readFileSync(rutaCompleta);
+      console.log(`  ✅ Archivo leído correctamente (${archivoBuffer.length} bytes)`);
+    } catch (error) {
+      console.error(`  ❌ Error leyendo archivo:`, error.message);
+      return res.json({
+        gps: null,
+        fecha: archivo.fechaCreacion,
+        hora: archivo.horaCaptura,
+        ciudad: null,
+        region: null,
+        pais: null
+      });
+    }
+
+    // 6. Extraer EXIF
+    let exifData = null;
+    try {
+      const parser = ExifParser.create(archivoBuffer);
+      exifData = parser.parse();
+      console.log(`  📊 EXIF extraído: ${Object.keys(exifData.tags || {}).length} propiedades`);
+    } catch (error) {
+      console.warn(`  ⚠️ No se pudo leer EXIF:`, error.message);
+    }
+
+    // 7. Procesar datos EXIF
+    const metadatos = {
+      gps: null,
+      fecha: archivo.fechaCreacion,
+      hora: archivo.horaCaptura,
+      ciudad: null,
+      region: null,
+      pais: null
+    };
+
+    if (exifData && exifData.tags) {
+      // Extraer GPS
+      if (exifData.tags.GPSLatitude && exifData.tags.GPSLongitude) {
+        const lat = exifData.tags.GPSLatitude;
+        const lon = exifData.tags.GPSLongitude;
+
+        // Convertir a decimal si es necesario
+        const latDecimal = typeof lat === 'number' ? lat : (Array.isArray(lat) ? lat[0] + lat[1] / 60 + lat[2] / 3600 : lat);
+        const lonDecimal = typeof lon === 'number' ? lon : (Array.isArray(lon) ? lon[0] + lon[1] / 60 + lon[2] / 3600 : lon);
+
+        metadatos.gps = `${latDecimal},${lonDecimal}`;
+        console.log(`  🌍 GPS encontrado: ${metadatos.gps}`);
+
+        // Obtener ubicación desde GPS (geocoding reverso)
+        try {
+          const ubicacion = await obtenerUbicacionDesdeGPS(latDecimal, lonDecimal);
+          if (ubicacion) {
+            metadatos.ciudad = ubicacion.ciudad;
+            metadatos.region = ubicacion.region;
+            metadatos.pais = ubicacion.pais;
+            console.log(`  📍 Ubicación: ${ubicacion.ciudad}, ${ubicacion.region}, ${ubicacion.pais}`);
+          }
+        } catch (error) {
+          console.warn(`  ⚠️ Error en geocoding:`, error.message);
+        }
+      } else {
+        console.log(`  ⚠️ No hay datos GPS en EXIF`);
+      }
+
+      // Extraer fecha/hora EXIF (más precisa que la del filesystem)
+      if (exifData.tags.DateTimeOriginal) {
+        const dt = exifData.tags.DateTimeOriginal;
+        if (typeof dt === 'number') {
+          const fechaExif = new Date(dt * 1000);
+          metadatos.fecha = fechaExif.toISOString();
+          metadatos.hora = fechaExif.toTimeString().split(' ')[0];
+        } else if (typeof dt === 'string') {
+          const dateStr = dt.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(' ', 'T');
+          const fechaExif = new Date(dateStr);
+          metadatos.fecha = fechaExif.toISOString();
+          metadatos.hora = fechaExif.toTimeString().split(' ')[0];
+        } else if (dt instanceof Date) {
+          metadatos.fecha = dt.toISOString();
+          metadatos.hora = dt.toTimeString().split(' ')[0];
+        }
+        console.log(`  📅 Fecha EXIF: ${metadatos.fecha}`);
+      }
+    }
+
+    console.log(`✅ Metadatos EXIF procesados correctamente`);
+    res.json(metadatos);
+
+  } catch (error) {
+    console.error('❌ Error en endpoint EXIF:', error);
+    res.status(500).json({ error: 'Error al leer metadatos EXIF' });
+  }
+});
+
+/**
+ * 🌍 Función auxiliar: Obtiene ubicación desde coordenadas GPS (geocoding reverso)
+ * Usa la API gratuita de OpenStreetMap (Nominatim)
+ */
+async function obtenerUbicacionDesdeGPS(lat, lon) {
+  try {
+    const https = require('https');
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`;
+
+    return new Promise((resolve, reject) => {
+      https.get(url, {
+        headers: {
+          'User-Agent': 'TravelMemoryApp/1.0' // Requerido por Nominatim
+        }
+      }, (response) => {
+        let data = '';
+
+        response.on('data', chunk => {
+          data += chunk;
+        });
+
+        response.on('end', () => {
+          try {
+            const result = JSON.parse(data);
+
+            if (result && result.address) {
+              const address = result.address;
+
+              resolve({
+                ciudad: address.city || address.town || address.village || address.municipality,
+                region: address.state || address.province || address.region,
+                pais: address.country
+              });
+            } else {
+              resolve(null);
+            }
+          } catch (parseError) {
+            reject(parseError);
+          }
+        });
+      }).on('error', (error) => {
+        reject(error);
+      });
+    });
+  } catch (error) {
+    console.error('Error en geocoding:', error.message);
+    return null;
+  }
+}
+
+console.log('✅ Endpoint de lectura EXIF registrado correctamente');
+
 // Función auxiliar para extraer coordenadas GPS
 function extraerCoordendasGPS(exifTags) {
   try {

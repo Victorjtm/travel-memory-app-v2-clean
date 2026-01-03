@@ -77,6 +77,15 @@
                         }})
                     </button>
 
+                    <button class="btn-asignar-multiples" (click)="abrirModalAsignacionMultiple()">
+                        <i class="fa fa-link"></i> Asignar ({{ contarSeleccionadosDelDia(fecha) }})
+                    </button>
+
+                    <button class="btn-auto-asignar-ia" (click)="abrirAutoAsignacionIA()"
+                        title="Detecta automáticamente el destino desde GPS y crea toda la estructura">
+                        <i class="fa fa-magic"></i> 🚀 Auto-asignar con IA
+                    </button>
+
                     <!-- ✅ NUEVO: Botón Eliminar Múltiples -->
                     <button class="btn-eliminar-multiples" (click)="eliminarArchivosSeleccionados(fecha)">
                         <i class="fa fa-trash"></i> Eliminar ({{
@@ -649,6 +658,102 @@
                 <strong>Fecha:</strong>
                 {{ archivoSeleccionado.fechaCreacion | date : "dd/MM/yyyy HH:mm" }}
             </p>
+        </div>
+    </div>
+</div>
+<!-- ========== MODAL AUTO-ASIGNACIÓN CON IA ========== -->
+<div class="modal-backdrop" *ngIf="mostrarModalAutoAsignacion" (click)="cerrarModalAutoAsignacion()">
+    <div class="modal-content modal-auto-asignacion-ia" (click)="$event.stopPropagation()">
+        <button class="btn-cerrar-modal" (click)="cerrarModalAutoAsignacion()" [disabled]="autoAsignando">
+            <i class="fa fa-times"></i>
+        </button>
+        <h3><i class="fa fa-magic"></i> 🚀 Auto-asignación con IA</h3>
+
+        <!-- Fase 1: Analizando -->
+        <div class="fase-analizando" *ngIf="autoAsignando && !destinoDetectadoIA">
+            <div class="loading-spinner">
+                <i class="fa fa-spinner fa-spin fa-3x"></i>
+            </div>
+            <p class="mensaje-progreso">{{ mensajeProgreso }}</p>
+            <p class="detalle-progreso">
+                Analizando {{ archivosSeleccionados.size }} archivo(s)...<br>
+                • Leyendo metadatos EXIF (GPS, fecha, hora)<br>
+                • Detectando ubicación mediante geocodificación reversa<br>
+                • Identificando destino común
+            </p>
+        </div>
+
+        <!-- Fase 2: Confirmación de destino -->
+        <div class="fase-confirmacion" *ngIf="!autoAsignando || destinoDetectadoIA">
+            <div class="info-archivos">
+                <p><strong>Archivos seleccionados:</strong> {{ archivosSeleccionados.size }}</p>
+                <p *ngIf="diaSeleccionado"><strong>Fecha:</strong> {{ formatearFecha(diaSeleccionado) }}</p>
+            </div>
+
+            <!-- Destino detectado automáticamente -->
+            <div class="destino-detectado" *ngIf="destinoDetectadoIA">
+                <div class="icono-exito">
+                    <i class="fa fa-check-circle"></i>
+                </div>
+                <p class="mensaje-exito">
+                    <strong>✅ Destino detectado automáticamente:</strong>
+                </p>
+                <p class="destino-nombre">📍 {{ destinoDetectadoIA }}</p>
+                <small class="ayuda-texto">
+                    💡 Puedes editar el nombre del destino si lo deseas
+                </small>
+            </div>
+
+            <!-- Input para confirmar/editar destino -->
+            <div class="form-group">
+                <label for="destinoManualIA">
+                    <strong>{{ destinoDetectadoIA ? 'Confirmar o editar destino:' : 'Introduce el destino manualmente:'
+                        }}</strong>
+                </label>
+                <input type="text" id="destinoManualIA" [(ngModel)]="destinoManualIA"
+                    placeholder="Ej: París, Madrid, Barcelona..." class="input-destino" [disabled]="autoAsignando"
+                    autofocus />
+                <small class="ayuda-texto" *ngIf="!destinoDetectadoIA">
+                    ⚠️ No se pudo detectar ubicación GPS en las fotos.<br>
+                    Por favor, introduce el nombre de la ciudad o lugar.
+                </small>
+            </div>
+
+            <!-- Explicación de lo que se va a crear -->
+            <div class="explicacion-creacion">
+                <h4><i class="fa fa-info-circle"></i> Se creará automáticamente:</h4>
+                <ul class="lista-acciones">
+                    <li><i class="fa fa-plane"></i> Viaje genérico: "Viaje a {{ destinoManualIA || '[Destino]' }}"</li>
+                    <li><i class="fa fa-calendar"></i> Itinerario del día completo (00:00 - 23:59)</li>
+                    <li><i class="fa fa-map-marker"></i> Actividad: "Visita a {{ destinoManualIA || '[Destino]' }}"</li>
+                    <li><i class="fa fa-paperclip"></i> Asignación de {{ archivosSeleccionados.size }} archivo(s)</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Fase 3: Procesando asignación -->
+        <div class="fase-procesando" *ngIf="autoAsignando && destinoDetectadoIA">
+            <div class="loading-spinner">
+                <i class="fa fa-cog fa-spin fa-3x"></i>
+            </div>
+            <p class="mensaje-progreso">{{ mensajeProgreso }}</p>
+            <p class="detalle-progreso">
+                Por favor, espera...<br>
+                • Creando viaje e itinerario<br>
+                • Generando actividad<br>
+                • Asignando archivos
+            </p>
+        </div>
+
+        <!-- Botones de acción -->
+        <div class="modal-acciones" *ngIf="!autoAsignando">
+            <button class="btn-cancelar" (click)="cerrarModalAutoAsignacion()">
+                Cancelar
+            </button>
+            <button class="btn-confirmar btn-auto-asignar" (click)="confirmarAutoAsignacionIA()"
+                [disabled]="!destinoManualIA.trim()">
+                <i class="fa fa-magic"></i> 🚀 Auto-asignar
+            </button>
         </div>
     </div>
 </div>

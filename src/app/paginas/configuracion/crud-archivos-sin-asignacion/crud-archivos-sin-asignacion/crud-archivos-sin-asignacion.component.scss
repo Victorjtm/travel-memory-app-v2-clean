@@ -1804,3 +1804,344 @@
         padding: 8px 16px;
     }
 }
+
+/* ========================================
+   BOTÓN AUTO-ASIGNAR CON IA
+   ======================================== */
+
+.btn-auto-asignar-ia {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    font-size: 14px;
+
+    &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+    }
+
+    &:active {
+        transform: translateY(0);
+    }
+
+    i {
+        font-size: 16px;
+    }
+}
+
+/* ========================================
+   MODAL AUTO-ASIGNACIÓN CON IA
+   ======================================== */
+
+.modal-auto-asignacion-ia {
+    max-width: 600px;
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+    padding: 30px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+
+    h3 {
+        color: #667eea;
+        margin-bottom: 20px;
+        font-size: 24px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+}
+
+/* Fase: Analizando */
+.fase-analizando {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+
+    .loading-spinner {
+        margin-bottom: 20px;
+        color: #667eea;
+    }
+
+    .mensaje-progreso {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 10px;
+    }
+
+    .detalle-progreso {
+        font-size: 14px;
+        color: #666;
+        line-height: 1.8;
+    }
+}
+
+/* Fase: Confirmación */
+.fase-confirmacion {
+    .info-archivos {
+        background: #f8f9fa;
+        border-left: 4px solid #667eea;
+        padding: 15px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+
+        p {
+            margin: 5px 0;
+            color: #333;
+
+            strong {
+                color: #667eea;
+            }
+        }
+    }
+
+    .destino-detectado {
+        background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+        border: 2px solid #4caf50;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        text-align: center;
+
+        .icono-exito {
+            font-size: 48px;
+            color: #4caf50;
+            margin-bottom: 10px;
+
+            i {
+                animation: checkmarkBounce 0.6s ease;
+            }
+        }
+
+        .mensaje-exito {
+            font-size: 16px;
+            color: #2e7d32;
+            margin-bottom: 10px;
+        }
+
+        .destino-nombre {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1b5e20;
+            margin: 10px 0;
+        }
+
+        .ayuda-texto {
+            color: #558b2f;
+            font-size: 13px;
+        }
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-size: 15px;
+        }
+
+        .input-destino {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+
+            &:focus {
+                outline: none;
+                border-color: #667eea;
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            }
+
+            &:disabled {
+                background: #f5f5f5;
+                cursor: not-allowed;
+            }
+        }
+
+        .ayuda-texto {
+            display: block;
+            margin-top: 8px;
+            font-size: 13px;
+            color: #666;
+            line-height: 1.6;
+        }
+    }
+
+    .explicacion-creacion {
+        background: #fff3e0;
+        border-left: 4px solid #ff9800;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+
+        h4 {
+            color: #e65100;
+            font-size: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .lista-acciones {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+
+            li {
+                padding: 8px 0;
+                color: #5d4037;
+                font-size: 14px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+
+                i {
+                    color: #ff9800;
+                    min-width: 20px;
+                }
+            }
+        }
+    }
+}
+
+/* Fase: Procesando */
+.fase-procesando {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+
+    .loading-spinner {
+        margin-bottom: 20px;
+        color: #667eea;
+    }
+
+    .mensaje-progreso {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 10px;
+    }
+
+    .detalle-progreso {
+        font-size: 14px;
+        color: #666;
+        line-height: 1.8;
+    }
+}
+
+/* Botones del modal */
+.modal-auto-asignacion-ia .modal-acciones {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: auto;
+    padding-top: 20px;
+    border-top: 1px solid #e0e0e0;
+
+    .btn-auto-asignar {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 24px;
+
+        &:hover:not(:disabled) {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+    }
+}
+
+/* Animación del checkmark */
+@keyframes checkmarkBounce {
+    0% {
+        transform: scale(0);
+    }
+
+    50% {
+        transform: scale(1.2);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Spinner loading animation */
+.fa-spin {
+    animation: fa-spin 2s infinite linear;
+}
+
+@keyframes fa-spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .modal-auto-asignacion-ia {
+        max-width: 95%;
+        padding: 20px;
+
+        h3 {
+            font-size: 20px;
+        }
+    }
+
+    .btn-auto-asignar-ia {
+        padding: 8px 16px;
+        font-size: 13px;
+
+        i {
+            font-size: 14px;
+        }
+    }
+
+    .fase-confirmacion {
+        .destino-nombre {
+            font-size: 20px;
+        }
+
+        .explicacion-creacion {
+            .lista-acciones li {
+                font-size: 13px;
+            }
+        }
+    }
+}

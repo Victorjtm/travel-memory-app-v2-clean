@@ -9,6 +9,7 @@ import { FormsModule } from '@angular/forms';
 import { ActividadesItinerariosService } from '../../../../servicios/actividades-itinerarios.service';
 import { Actividad } from '../../../../modelos/actividad.model';
 import { ItinerarioService } from '../../../../servicios/itinerario.service';
+import { AutoAsignacionService } from '../../../../servicios/auto-asignacion.service';
 
 // ✅ NUEVO: Interfaces para escaneo de disco
 interface ArchivoEncontrado {
@@ -112,6 +113,17 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
   /** ✅ NUEVO: Toggle para mostrar/ocultar imágenes en preview */
   mostrarImagenesEncontradas: boolean = false;
 
+  /** Control para mostrar modal de auto-asignación con IA */
+  mostrarModalAutoAsignacion = false;
+  /** Destino detectado automáticamente por IA */
+  destinoDetectadoIA: string | null = null;
+  /** Destino introducido manualmente por el usuario */
+  destinoManualIA = '';
+  /** Indica si la auto-asignación está en progreso */
+  autoAsignando = false;
+  /** Mensaje de progreso durante auto-asignación */
+  mensajeProgreso = '';
+
   /** Mapa de extensiones seleccionadas {extensión: boolean} */
   extensionesSeleccionadas: { [key: string]: boolean } = {};
 
@@ -159,7 +171,8 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     private archivoService: ArchivoService,
     private actividadService: ActividadesItinerariosService,
     private itinerarioService: ItinerarioService,
-    private router: Router
+    private router: Router,
+    private autoAsignacionService: AutoAsignacionService
   ) { }
 
   ngOnInit(): void {
@@ -1892,5 +1905,139 @@ export class CrudArchivosSinAsignacionComponent implements OnInit {
     console.log(
       `🖼️ Vista de imágenes: ${this.mostrarImagenesEncontradas ? 'ON' : 'OFF'}`
     );
+  }
+
+  // ========== NUEVOS MÉTODOS DE AUTO-ASIGNACIÓN CON IA ==========
+
+  /**
+   * 🚀 Abre el modal de auto-asignación con IA
+   * Analiza los archivos seleccionados y detecta destino automáticamente
+   */
+  abrirAutoAsignacionIA(): void {
+    if (this.archivosSeleccionados.size === 0) {
+      alert('⚠️ Debes seleccionar al menos un archivo para auto-asignar.');
+      return;
+    }
+
+    console.log(`🚀 Iniciando análisis de ${this.archivosSeleccionados.size} archivos...`);
+
+    this.mostrarModalAutoAsignacion = true;
+    this.destinoDetectadoIA = null;
+    this.destinoManualIA = '';
+    this.autoAsignando = true;
+    this.mensajeProgreso = 'Analizando metadatos EXIF y detectando ubicación...';
+    document.body.style.overflow = 'hidden';
+
+    // Detectar destino automáticamente
+    const archivoIds = Array.from(this.archivosSeleccionados);
+
+    this.autoAsignacionService.autoAsignarConIA(archivoIds).subscribe({
+      next: (resultado) => {
+        this.autoAsignando = false;
+
+        if (!resultado.destinoDetectado) {
+          // No se detectó destino → pedir al usuario
+          this.mensajeProgreso = '';
+          alert(
+            '📍 No se pudo detectar un destino automáticamente.\n\n' +
+            'Por favor, introduce el nombre de la ciudad o lugar donde se tomaron las fotos.'
+          );
+        } else {
+          // Destino detectado → mostrar para confirmación
+          this.destinoDetectadoIA = resultado.destinoDetectado;
+          this.destinoManualIA = resultado.destinoDetectado;
+          this.mensajeProgreso = '';
+        }
+      },
+      error: (error) => {
+        this.autoAsignando = false;
+        this.mensajeProgreso = '';
+        console.error('❌ Error detectando destino:', error);
+        alert(
+          '⚠️ No se pudo analizar automáticamente.\n\n' +
+          'Por favor, introduce el destino manualmente.'
+        );
+      }
+    });
+  }
+
+  /**
+   * ✅ Confirma y ejecuta la auto-asignación con IA
+   */
+  confirmarAutoAsignacionIA(): void {
+    const destinoFinal = this.destinoManualIA.trim();
+
+    if (!destinoFinal) {
+      alert('⚠️ Por favor, introduce un destino válido.');
+      return;
+    }
+
+    const archivoIds = Array.from(this.archivosSeleccionados);
+    const cantidad = archivoIds.length;
+
+    const confirmar = confirm(
+      `🚀 ¿Confirmas la auto-asignación con IA?\n\n` +
+      `📍 Destino: ${destinoFinal}\n` +
+      `📁 Archivos: ${cantidad}\n\n` +
+      `Se creará automáticamente:\n` +
+      `• Viaje genérico\n` +
+      `• Itinerario del día\n` +
+      `• Actividad "${destinoFinal}"\n` +
+      `• Asignación de todos los archivos`
+    );
+
+    if (!confirmar) {
+      return;
+    }
+
+    this.autoAsignando = true;
+    this.mensajeProgreso = 'Creando estructura y asignando archivos...';
+
+    this.autoAsignacionService.autoAsignarConIA(archivoIds, destinoFinal).subscribe({
+      next: (resultado) => {
+        this.autoAsignando = false;
+        this.cerrarModalAutoAsignacion();
+
+        if (resultado.exito) {
+          this.deseleccionarTodos();
+          this.cargarTodosLosArchivos();
+
+          alert(
+            `✅ ¡Auto-asignación completada con éxito!\n\n` +
+            `📍 Destino: ${resultado.destinoDetectado}\n` +
+            `🎯 Viaje: ${resultado.viajeCreado?.nombre}\n` +
+            `📅 Itinerario: ${resultado.itinerarioCreado?.descripcionGeneral}\n` +
+            `🎨 Actividad: ${resultado.actividadCreada?.nombre}\n` +
+            `📁 Archivos asignados: ${resultado.archivosAsignados}`
+          );
+        } else {
+          alert(
+            `❌ Error en la auto-asignación:\n\n${resultado.mensaje}\n\n` +
+            (resultado.errores ? resultado.errores.join('\n') : '')
+          );
+        }
+      },
+      error: (error) => {
+        this.autoAsignando = false;
+        this.mensajeProgreso = '';
+        console.error('❌ Error en auto-asignación:', error);
+        alert(
+          `❌ Error durante la auto-asignación:\n\n${error.message || 'Error desconocido'}\n\n` +
+          'Por favor, intenta asignar manualmente.'
+        );
+      }
+    });
+  }
+
+  /**
+   * ❌ Cierra el modal de auto-asignación
+   */
+  cerrarModalAutoAsignacion(): void {
+    this.mostrarModalAutoAsignacion = false;
+    this.destinoDetectadoIA = null;
+    this.destinoManualIA = '';
+    this.autoAsignando = false;
+    this.mensajeProgreso = '';
+    document.body.style.overflow = 'auto';
   }
 }
