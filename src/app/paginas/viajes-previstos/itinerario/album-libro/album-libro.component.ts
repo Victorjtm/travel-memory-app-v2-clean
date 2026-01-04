@@ -1581,31 +1581,25 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       return '/assets/images/no-image.jpg';
     }
 
-    const ruta = archivo.rutaArchivo;
+    let ruta = archivo.rutaArchivo;
+
+    // Limpiar 'uploads/' si ya está ahí
+    if (ruta.startsWith('uploads/') || ruta.startsWith('uploads\\')) {
+      ruta = ruta.substring(8);
+    }
 
     // ✅ CASO 1: Ruta antigua (Windows absoluta)
-    // Formato: C:\TRAVEL\...\uploads\NOMBRE.jpg
-    if (ruta.includes('uploads') && ruta.includes('\\')) {
+    if (ruta.includes('\\')) {
       const nombreArchivo = ruta.substring(ruta.lastIndexOf('\\') + 1);
-      console.log('📁 Ruta antigua (Windows):', nombreArchivo);
       return `${environment.apiUrl}/uploads/${nombreArchivo}`;
     }
 
-    // ✅ CASO 2: Ruta nueva (relativa)
-    // Formato: 32/62/fotos/NOMBRE.jpg
-    if (!ruta.includes('uploads') && !ruta.includes('\\')) {
-      console.log('📁 Ruta nueva (relativa):', ruta);
-      return `${environment.apiUrl}/uploads/${ruta}`;
-    }
-
-    // ✅ CASO 3: URL ya completa
+    // ✅ CASO 2: URL ya completa
     if (ruta.startsWith('http')) {
-      console.log('📁 URL completa:', ruta);
       return ruta;
     }
 
-    // 🔧 Por defecto (fallback)
-    console.log('📁 Ruta por defecto:', ruta);
+    // 🔧 Por defecto / Nueva ruta
     return `${environment.apiUrl}/uploads/${ruta}`;
   }
 

@@ -370,23 +370,23 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   private getDirectFileUrl(archivo: Archivo): string {
     if (!archivo.rutaArchivo) return '';
 
-    // Si la ruta es relativa (no contiene C:\ ni barras al inicio), usarla directamente
-    if (!archivo.rutaArchivo.includes('C:\\') && !archivo.rutaArchivo.startsWith('/')) {
-      // Ruta relativa tipo: "10/40/fotos/foto.jpg"
-      if (environment.production) {
-        return `/uploads/${archivo.rutaArchivo}`;
-      } else {
-        return `${environment.apiUrl}/uploads/${archivo.rutaArchivo}`;
-      }
+    // Extraer el nombre de archivo o ruta relativa sin 'uploads/' si ya existe al inicio
+    let rutaLimpia = archivo.rutaArchivo;
+    if (rutaLimpia.startsWith('uploads/')) {
+      rutaLimpia = rutaLimpia.substring(8); // Eliminar 'uploads/'
+    } else if (rutaLimpia.startsWith('uploads\\')) {
+      rutaLimpia = rutaLimpia.substring(8); // Eliminar 'uploads\'
     }
 
-    // Ruta absoluta antigua (legacy): extraer solo el nombre del archivo
-    const nombre = archivo.rutaArchivo.split(/[\\/]/).pop() || '';
+    // Si la ruta es absoluta antigua (legacy): extraer solo el nombre del archivo
+    if (rutaLimpia.includes('C:\\') || rutaLimpia.startsWith('/')) {
+      rutaLimpia = rutaLimpia.split(/[\\/]/).pop() || '';
+    }
 
     if (environment.production) {
-      return `/uploads/${nombre}`;
+      return `/uploads/${rutaLimpia}`;
     } else {
-      return `${environment.apiUrl}/uploads/${nombre}`;
+      return `${environment.apiUrl}/uploads/${rutaLimpia}`;
     }
   }
 
