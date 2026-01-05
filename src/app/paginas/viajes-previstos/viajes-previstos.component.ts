@@ -37,11 +37,42 @@ export class ViajesPrevistosComponent implements OnInit {
   }
 
   eliminarViaje(id: number) {
+    // Buscar el viaje para mostrar su nombre
+    const viaje = this.viajesPrevistos.find(v => v.id === id);
+    const nombreViaje = viaje?.nombre || `Viaje #${id}`;
+
+    // Confirmación detallada
+    if (!confirm(`⚠️ ¿Estás seguro de eliminar "${nombreViaje}"?\n\nEsto eliminará:\n• El viaje\n• Todos sus itinerarios\n• Todas las actividades\n• Todos los archivos (fotos, videos, audios)\n\nEsta acción NO se puede deshacer.`)) {
+      return;
+    }
+
     console.log('[ELIMINAR] Enviando petición para eliminar viaje con id:', id);
-    this.viajesPrevistosService.eliminarViaje(id).subscribe(() => {
-      console.log('[ELIMINAR] Eliminado en servidor, actualizando lista local...');
-      this.viajesPrevistos = this.viajesPrevistos.filter((viaje) => viaje.id !== id);
-      console.log('[ELIMINAR] Lista actualizada:', this.viajesPrevistos);
+
+    // Opcional: Mostrar indicador de carga
+    // this.cargando = true;
+
+    this.viajesPrevistosService.eliminarViaje(id).subscribe({
+      next: (respuesta) => {
+        console.log('[ELIMINAR] ✅ Respuesta del servidor:', respuesta);
+
+        // Actualizar lista local
+        this.viajesPrevistos = this.viajesPrevistos.filter((viaje) => viaje.id !== id);
+        console.log('[ELIMINAR] Lista actualizada:', this.viajesPrevistos);
+
+        // Mostrar resumen de eliminación
+        if (respuesta?.archivosEliminados || respuesta?.itinerariosEliminados) {
+          alert(`✅ Viaje eliminado correctamente\n\n📊 Resumen:\n• Itinerarios eliminados: ${respuesta.itinerariosEliminados || 0}\n• Archivos eliminados: ${respuesta.archivosEliminados || 0}`);
+        } else {
+          alert('✅ Viaje eliminado correctamente');
+        }
+
+        // this.cargando = false;
+      },
+      error: (error) => {
+        console.error('[ELIMINAR] ❌ Error:', error);
+        alert(`❌ Error al eliminar el viaje:\n\n${error.error?.error || error.message}`);
+        // this.cargando = false;
+      }
     });
   }
 

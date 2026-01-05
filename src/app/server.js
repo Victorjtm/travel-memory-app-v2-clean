@@ -47,14 +47,10 @@ app.options('*', (req, res) => {
 // CORS y cabeceras de seguridad
 // ----------------------------
 
-// 1. Configuración CORS
+// 1. Configuración CORS DINÁMICA
 const allowedOrigins = [
   'http://localhost:4200',
-  'http://192.168.1.18:4200',   // ← IP CORRECTA del servidor
-  'http://192.168.1.18:4200',   // ← IP del móvil (mantener por si acaso)
   'https://localhost:4200',
-  'https://192.168.1.18:4200',  // ← HTTPS también
-  'https://192.168.1.18:4200',
   'http://localhost:3000',
   'https://b089c8b77672.ngrok-free.app',
   'https://d0bdb7a970da.ngrok-free.app'
@@ -67,6 +63,13 @@ app.use(cors({
       console.log('✅ [CORS] Sin origen: permitido');
       return callback(null, true);
     }
+
+    // ✅ NUEVO: Permitir cualquier IP de red local (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    if (/^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+):\d+$/.test(origin)) {
+      console.log('✅ [CORS] Red local permitida:', origin);
+      return callback(null, true);
+    }
+
     if (allowedOrigins.includes(origin)) {
       console.log('✅ [CORS] Origen permitido (lista blanca):', origin);
       return callback(null, true);
@@ -388,6 +391,42 @@ async function getFileMetadata(filePath, fileType) {
     };
   }
 }
+
+// ========================================
+// ENDPOINT: Información del servidor (para detección automática de IP)
+// ========================================
+app.get('/api/server-info', (req, res) => {
+  const os = require('os');
+  const interfaces = os.networkInterfaces();
+
+  // Buscar la primera IP de red local
+  let serverIP = 'localhost';
+
+  for (const name in interfaces) {
+    for (const iface of interfaces[name]) {
+      // Buscar IPv4 no loopback
+      if (iface.family === 'IPv4' && !iface.internal) {
+        serverIP = iface.address;
+        break;
+      }
+    }
+    if (serverIP !== 'localhost') break;
+  }
+
+  console.log('📡 [Server Info] IP detectada:', serverIP);
+
+  res.json({
+    ip: serverIP,
+    hostname: os.hostname(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ----------------------------------------
+// RUTAS PARA Viajes previstos
+// ----------------------------------------
+
+console.log('Registrando rutas de viajes...');
 
 // ----------------------------------------
 // RUTAS PARA Viajes prvistgos
