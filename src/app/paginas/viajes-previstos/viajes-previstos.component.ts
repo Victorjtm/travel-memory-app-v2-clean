@@ -17,6 +17,8 @@ import { HttpClientModule } from '@angular/common/http';
 })
 export class ViajesPrevistosComponent implements OnInit {
   viajesPrevistos: any[] = [];
+  rangosFechasPorViaje: { [viajeId: number]: any } = {};
+  desplegablesAbiertos: { [viajeId: number]: boolean } = {};
 
   constructor(
     private viajesPrevistosService: ViajesPrevistosService,
@@ -32,46 +34,73 @@ export class ViajesPrevistosComponent implements OnInit {
       this.viajesPrevistos = viajes.sort((a, b) => {
         return new Date(b.fecha_inicio).getTime() - new Date(a.fecha_inicio).getTime();
       });
+
+      // Cargar rangos de fechas para cada viaje
+      this.viajesPrevistos.forEach(viaje => {
+        this.cargarRangosFechas(viaje.id);
+      });
+
       console.log('[VIAJES ORDENADOS]', this.viajesPrevistos);
     });
   }
 
+  cargarRangosFechas(viajeId: number): void {
+    this.viajesPrevistosService.obtenerRangosFechas(viajeId).subscribe({
+      next: (resultado) => {
+        this.rangosFechasPorViaje[viajeId] = resultado;
+        console.log(`[RANGOS] Viaje ${viajeId}:`, resultado);
+      },
+      error: (error) => {
+        console.error(`[RANGOS] Error viaje ${viajeId}:`, error);
+      }
+    });
+  }
+
+  toggleDesplegable(viajeId: number): void {
+    this.desplegablesAbiertos[viajeId] = !this.desplegablesAbiertos[viajeId];
+  }
+
+  formatearFecha(fecha: string): string {
+    const date = new Date(fecha);
+    const dia = date.getDate().toString().padStart(2, '0');
+    const mes = (date.getMonth() + 1).toString().padStart(2, '0');
+    const año = date.getFullYear();
+    return `${dia}-${mes}-${año}`;
+  }
+
+  formatearRango(rango: any): string {
+    if (rango.dias === 1) {
+      return this.formatearFecha(rango.inicio);
+    }
+    return `${this.formatearFecha(rango.inicio)} al ${this.formatearFecha(rango.fin)}`;
+  }
+
   eliminarViaje(id: number) {
-    // Buscar el viaje para mostrar su nombre
     const viaje = this.viajesPrevistos.find(v => v.id === id);
     const nombreViaje = viaje?.nombre || `Viaje #${id}`;
 
-    // Confirmación detallada
     if (!confirm(`⚠️ ¿Estás seguro de eliminar "${nombreViaje}"?\n\nEsto eliminará:\n• El viaje\n• Todos sus itinerarios\n• Todas las actividades\n• Todos los archivos (fotos, videos, audios)\n\nEsta acción NO se puede deshacer.`)) {
       return;
     }
 
     console.log('[ELIMINAR] Enviando petición para eliminar viaje con id:', id);
 
-    // Opcional: Mostrar indicador de carga
-    // this.cargando = true;
-
     this.viajesPrevistosService.eliminarViaje(id).subscribe({
       next: (respuesta) => {
         console.log('[ELIMINAR] ✅ Respuesta del servidor:', respuesta);
 
-        // Actualizar lista local
         this.viajesPrevistos = this.viajesPrevistos.filter((viaje) => viaje.id !== id);
         console.log('[ELIMINAR] Lista actualizada:', this.viajesPrevistos);
 
-        // Mostrar resumen de eliminación
         if (respuesta?.archivosEliminados || respuesta?.itinerariosEliminados) {
           alert(`✅ Viaje eliminado correctamente\n\n📊 Resumen:\n• Itinerarios eliminados: ${respuesta.itinerariosEliminados || 0}\n• Archivos eliminados: ${respuesta.archivosEliminados || 0}`);
         } else {
           alert('✅ Viaje eliminado correctamente');
         }
-
-        // this.cargando = false;
       },
       error: (error) => {
         console.error('[ELIMINAR] ❌ Error:', error);
         alert(`❌ Error al eliminar el viaje:\n\n${error.error?.error || error.message}`);
-        // this.cargando = false;
       }
     });
   }
@@ -83,7 +112,6 @@ export class ViajesPrevistosComponent implements OnInit {
       const index = this.viajesPrevistos.findIndex((v) => v.id === id);
       if (index !== -1) {
         this.viajesPrevistos[index] = viaje;
-        // Reordenar después de actualizar
         this.viajesPrevistos = this.viajesPrevistos.sort((a, b) => {
           return new Date(b.fecha_inicio).getTime() - new Date(a.fecha_inicio).getTime();
         });
@@ -97,7 +125,6 @@ export class ViajesPrevistosComponent implements OnInit {
     this.viajesPrevistosService.crearViaje(viaje).subscribe((nuevoViaje) => {
       console.log('[AGREGAR] Respuesta del servidor:', nuevoViaje);
       this.viajesPrevistos.push(nuevoViaje);
-      // Reordenar después de añadir
       this.viajesPrevistos = this.viajesPrevistos.sort((a, b) => {
         return new Date(b.fecha_inicio).getTime() - new Date(a.fecha_inicio).getTime();
       });
@@ -110,7 +137,6 @@ export class ViajesPrevistosComponent implements OnInit {
     this.router.navigate(['/formulario-viaje-previsto', 'nuevo']);
   }
 
-
   irAEditarViaje(id: number) {
     console.log('[NAVIGATE] Editar viaje con ID:', id);
     this.router.navigate(['/formulario-viaje-previsto', id]);
@@ -122,8 +148,6 @@ export class ViajesPrevistosComponent implements OnInit {
     }
 
     console.log('[UNIFICAR] Iniciando proceso...');
-    // Mostrar feedback visual simple si no hay spinner global
-    // idealmente usaríamos un loading state, pero alert funciona como bloqueo sync-like para el usuario
 
     this.viajesPrevistosService.unificarViajes().subscribe({
       next: (res) => {
@@ -134,7 +158,6 @@ export class ViajesPrevistosComponent implements OnInit {
             msg += '\n\n⚠️ Conflictos no resueltos:\n' + res.errores.map((e: any) => `- ${e.destino}: ${e.error}`).join('\n');
           }
           alert(msg);
-          // Recargar lista
           this.ngOnInit();
         } else {
           alert('Error: ' + res.message);

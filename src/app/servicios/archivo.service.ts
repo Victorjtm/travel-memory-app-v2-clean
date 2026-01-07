@@ -351,4 +351,10 @@ export class ArchivoService extends BaseHttpService {
   eliminarArchivoAsociado(archivoAsociadoId: number): Observable<{ deleted: number }> {
     return this.delete<{ deleted: number }>(`${environment.apiUrl}/archivos-asociados/${archivoAsociadoId}`);
   }
+
+  // Corregir fechas automáticamente desde nombres de archivo
+  corregirFechasNombre(actividadId: number): Observable<any> {
+    return this.post(`${environment.apiUrl}/actividades/${actividadId}/corregir-fechas-nombre`, {});
+  }
+
 }

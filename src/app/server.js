@@ -25,7 +25,8 @@ app.options('*', (req, res) => {
   if (!origin ||
     allowedOrigins.includes(origin) ||
     /^https:\/\/.*\.ngrok(-free)?\.app$/.test(origin) ||
-    /^https:\/\/.*\.ngrok\.io$/.test(origin)) {
+    /^https:\/\/.*\.ngrok\.io$/.test(origin) ||
+    /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+):\d+$/.test(origin)) {
 
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
@@ -474,6 +475,72 @@ app.get('/viajes/:id', (req, res) => {
     };
 
     res.json(viajeConImagenUrl);
+  });
+});
+
+// GET rangos de fechas de itinerarios de un viaje
+app.get('/viajes/:id/rangos-fechas', (req, res) => {
+  const { id } = req.params;
+
+  console.log(`📅 Obteniendo rangos de fechas para viaje ${id}...`);
+
+  const sql = `
+    SELECT fechaInicio, fechaFin 
+    FROM ItinerarioGeneral 
+    WHERE viajePrevistoId = ? 
+    ORDER BY fechaInicio ASC
+  `;
+
+  db.all(sql, [id], (err, itinerarios) => {
+    if (err) {
+      console.error('❌ Error obteniendo itinerarios:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (!itinerarios || itinerarios.length === 0) {
+      return res.json({ rangos: [], total: 0 });
+    }
+
+    // Función para detectar rangos consecutivos
+    const rangos = [];
+    let rangoActual = {
+      inicio: itinerarios[0].fechaInicio,
+      fin: itinerarios[0].fechaInicio,
+      dias: 1
+    };
+
+    for (let i = 1; i < itinerarios.length; i++) {
+      const fechaAnterior = new Date(rangoActual.fin);
+      const fechaActual = new Date(itinerarios[i].fechaInicio);
+
+      // Calcular diferencia en días
+      const diffTime = fechaActual.getTime() - fechaAnterior.getTime();
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+      if (diffDays === 1) {
+        // Consecutivo: extender el rango actual
+        rangoActual.fin = itinerarios[i].fechaInicio;
+        rangoActual.dias++;
+      } else {
+        // No consecutivo: guardar rango actual y empezar uno nuevo
+        rangos.push({ ...rangoActual });
+        rangoActual = {
+          inicio: itinerarios[i].fechaInicio,
+          fin: itinerarios[i].fechaInicio,
+          dias: 1
+        };
+      }
+    }
+
+    // Añadir último rango
+    rangos.push(rangoActual);
+
+    console.log(`✅ Rangos calculados (${rangos.length}):`, rangos);
+
+    res.json({
+      rangos,
+      total: itinerarios.length
+    });
   });
 });
 
@@ -2469,10 +2536,26 @@ app.get('/archivos/:id/descargar', (req, res) => {
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
 
-    // ✅ CORRECCIÓN: Manejar rutas relativas (nueva estructura) o absolutas (legacy)
-    const filePath = path.isAbsolute(row.rutaArchivo) ? row.rutaArchivo : path.join(uploadsPath, row.rutaArchivo);
+    console.log('🔍 rutaArchivo en BD:', row.rutaArchivo);
 
-    console.log('📁 Ruta completa:', filePath);
+    let filePath;
+
+    // 1️⃣ Si es ruta absoluta, úsala directamente
+    if (path.isAbsolute(row.rutaArchivo)) {
+      filePath = row.rutaArchivo;
+    }
+    // 2️⃣ Si ya empieza con "uploads/", quítalo y usa uploadsPath
+    else if (row.rutaArchivo.startsWith('uploads/') || row.rutaArchivo.startsWith('uploads\\')) {
+      // Quitar "uploads/" del inicio
+      const fileName = row.rutaArchivo.replace(/^uploads[\/\\]/, '');
+      filePath = path.join(uploadsPath, fileName);
+    }
+    // 3️⃣ En cualquier otro caso, añade uploadsPath
+    else {
+      filePath = path.join(uploadsPath, row.rutaArchivo);
+    }
+
+    console.log('📁 Ruta completa calculada:', filePath);
 
     if (!fs.existsSync(filePath)) {
       console.error('❌ Archivo físico no existe:', filePath);
@@ -3608,6 +3691,206 @@ app.get('/archivos-asociados/:id/descargar', (req, res) => {
     }
   );
 });
+
+// ----------------------------------------
+// 🆕 POST: Corregir fechas desde nombre de archivo
+// ----------------------------------------
+app.post('/actividades/:id/corregir-fechas-nombre', (req, res) => {
+  const { id } = req.params;
+
+  console.log('🔄 Corrigiendo fechas desde nombres de archivo para actividad:', id);
+
+  // 1️⃣ Obtener todos los archivos de la actividad
+  db.all('SELECT * FROM archivos WHERE actividadId = ? ORDER BY nombreArchivo ASC', [id], (err, archivos) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (!archivos || archivos.length === 0) {
+      return res.status(404).json({ error: 'No hay archivos en esta actividad' });
+    }
+
+    let ultimaFechaExtraida = null;
+    let archivosActualizados = 0;
+    let archivosSinFecha = 0;
+
+    // 2️⃣ Procesar cada archivo
+    const updates = [];
+
+    archivos.forEach((archivo) => {
+      let fechaCaptura = null;
+
+      // 3️⃣ Intentar extraer fecha del nombre
+      // Formatos soportados:
+      // IMG_20220129_134353.jpg
+      // JPEG_20251230_105305_1767088385958.jpg
+      // 1767698649281_DSCN00013.JPG (timestamp en milisegundos)
+
+      const match1 = archivo.nombreArchivo.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+      const match2 = archivo.nombreArchivo.match(/^(\d{13})/); // timestamp de 13 dígitos
+
+      if (match1) {
+        // Formato: IMG_20220129_134353.jpg
+        fechaCaptura = new Date(
+          parseInt(match1[1]), // año
+          parseInt(match1[2]) - 1, // mes (0-indexed)
+          parseInt(match1[3]), // día
+          parseInt(match1[4]), // hora
+          parseInt(match1[5]), // minuto
+          parseInt(match1[6])  // segundo
+        );
+        ultimaFechaExtraida = fechaCaptura;
+        console.log(`✅ Fecha extraída de ${archivo.nombreArchivo}:`, fechaCaptura);
+      } else if (match2) {
+        // Formato: 1767698649281_DSCN00013.JPG (timestamp)
+        fechaCaptura = new Date(parseInt(match2[1]));
+        ultimaFechaExtraida = fechaCaptura;
+        console.log(`✅ Fecha extraída (timestamp) de ${archivo.nombreArchivo}:`, fechaCaptura);
+      }
+
+      // 4️⃣ Si no se pudo extraer, usar la última fecha válida
+      if (!fechaCaptura && ultimaFechaExtraida) {
+        fechaCaptura = new Date(ultimaFechaExtraida);
+        console.log(`⚠️ Usando fecha anterior para ${archivo.nombreArchivo}`);
+      }
+
+      // 5️⃣ Si hay fecha válida, preparar actualización
+      if (fechaCaptura) {
+        const horaCaptura = fechaCaptura.toTimeString().substring(0, 8); // HH:MM:SS
+        const fechaCreacion = fechaCaptura.toISOString().split('T')[0]; // YYYY-MM-DD
+
+        updates.push({
+          id: archivo.id,
+          horaCaptura,
+          fechaCreacion,
+          nombreArchivo: archivo.nombreArchivo
+        });
+      } else {
+        archivosSinFecha++;
+      }
+    });
+
+    // 6️⃣ Si no se pudo extraer ninguna fecha
+    if (updates.length === 0) {
+      return res.status(400).json({
+        error: 'No se pudo extraer fechas de ningún archivo. Por favor, corrígelas manualmente.',
+        archivosSinFecha
+      });
+    }
+
+    // 7️⃣ Actualizar todos los archivos
+    const updatePromises = updates.map(update => {
+      return new Promise((resolve) => {
+        db.run(
+          'UPDATE archivos SET horaCaptura = ?, fechaCreacion = ? WHERE id = ?',
+          [update.horaCaptura, update.fechaCreacion, update.id],
+          (err) => {
+            if (!err) {
+              archivosActualizados++;
+              console.log(`📝 Actualizado ${update.nombreArchivo}: ${update.fechaCreacion} ${update.horaCaptura}`);
+            }
+            resolve();
+          }
+        );
+      });
+    });
+
+    // 8️⃣ Esperar a que terminen todas las actualizaciones
+    Promise.all(updatePromises).then(() => {
+      // 9️⃣ Actualizar itinerario y viaje
+      actualizarItinerarioYViaje(id, (success) => {
+        if (success) {
+          res.json({
+            message: 'Fechas corregidas exitosamente',
+            archivosActualizados,
+            archivosSinFecha
+          });
+        } else {
+          res.status(500).json({ error: 'Error actualizando itinerario/viaje' });
+        }
+      });
+    });
+  });
+});
+
+// ----------------------------------------
+// 🔧 Función auxiliar: Actualizar itinerario y viaje
+// ----------------------------------------
+function actualizarItinerarioYViaje(actividadId, callback) {
+  // Obtener la actividad y su itinerario
+  db.get('SELECT itinerarioId FROM actividades WHERE id = ?', [actividadId], (err, actividad) => {
+    if (err || !actividad) {
+      console.error('❌ Error obteniendo actividad:', err?.message);
+      return callback(false);
+    }
+
+    const itinerarioId = actividad.itinerarioId;
+
+    // Obtener la fecha más temprana y más tardía de los archivos
+    db.get(
+      `SELECT 
+        MIN(fechaCreacion || ' ' || horaCaptura) as fechaMin,
+        MAX(fechaCreacion || ' ' || horaCaptura) as fechaMax
+       FROM archivos WHERE actividadId = ?`,
+      [actividadId],
+      (err, result) => {
+        if (err || !result.fechaMin) {
+          console.error('❌ Error obteniendo fechas de archivos:', err?.message);
+          return callback(false);
+        }
+
+        const fechaInicio = result.fechaMin.split(' ')[0]; // Solo la fecha
+        const fechaFin = result.fechaMax.split(' ')[0];
+
+        console.log(`📅 Actualizando itinerario ${itinerarioId}: ${fechaInicio} - ${fechaFin}`);
+
+        // ✅ Actualizar ItinerarioGeneral (nombre correcto de la tabla)
+        db.run(
+          `UPDATE ItinerarioGeneral 
+           SET fechaInicio = datetime(?, 'start of day'),
+               fechaFin = datetime(?, 'start of day', '+23 hours', '+59 minutes', '+59 seconds')
+           WHERE id = ?`,
+          [fechaInicio, fechaFin, itinerarioId],
+          (err) => {
+            if (err) {
+              console.error('❌ Error actualizando ItinerarioGeneral:', err.message);
+              return callback(false);
+            }
+
+            console.log('✅ ItinerarioGeneral actualizado correctamente');
+
+            // Obtener viaje del itinerario
+            db.get('SELECT viajePrevistoId FROM ItinerarioGeneral WHERE id = ?', [itinerarioId], (err, itinerario) => {
+              if (err || !itinerario) {
+                console.error('❌ Error obteniendo itinerario:', err?.message);
+                return callback(false);
+              }
+
+              console.log(`📅 Actualizando viaje ${itinerario.viajePrevistoId}: ${fechaInicio} - ${fechaFin}`);
+
+              // Actualizar tabla viajes
+              db.run(
+                `UPDATE viajes 
+   SET fecha_inicio = date(?),
+       fecha_fin = date(?)
+   WHERE id = ?`,
+                [fechaInicio, fechaFin, itinerario.viajePrevistoId],
+                (err) => {
+                  if (err) {
+                    console.error('❌ Error actualizando viaje:', err.message);
+                    return callback(false);
+                  }
+                  console.log('✅ Viaje actualizado correctamente');
+                  callback(true);
+                }
+              );
+            });
+          }
+        );
+      }
+    );
+  });
+}
 
 console.log('✅ Rutas de archivos asociados registradas correctamente');
 

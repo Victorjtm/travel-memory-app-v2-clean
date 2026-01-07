@@ -21,7 +21,8 @@ ul {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap; /* Para que los elementos se ajusten en pantallas pequeñas */
+  flex-wrap: wrap;
+  /* Para que los elementos se ajusten en pantallas pequeñas */
 }
 
 /* Ajustes para el contenedor de la información */
@@ -29,7 +30,8 @@ ul {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex-grow: 1; /* Para que ocupe todo el espacio disponible */
+  flex-grow: 1;
+  /* Para que ocupe todo el espacio disponible */
 }
 
 .destino {
@@ -53,8 +55,10 @@ ul {
   display: flex;
   gap: 10px;
   align-items: center;
-  justify-content: space-between; /* Asegura que los botones se distribuyan bien */
-  flex-wrap: wrap; /* Los botones se ajustan en dispositivos más pequeños */
+  justify-content: space-between;
+  /* Asegura que los botones se distribuyan bien */
+  flex-wrap: wrap;
+  /* Los botones se ajustan en dispositivos más pequeños */
 }
 
 /* Estilos para los botones */
@@ -69,17 +73,20 @@ button {
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  margin-bottom: 10px; /* Espacio entre botones */
+  margin-bottom: 10px;
+  /* Espacio entre botones */
 }
 
 /* Efecto de sombra y animación en los botones */
 button:hover {
   background-color: #bdc3c7;
-  transform: translateY(-4px); /* Efecto 3D al pasar el mouse */
+  transform: translateY(-4px);
+  /* Efecto 3D al pasar el mouse */
 }
 
 button:active {
-  transform: translateY(2px); /* Efecto de presión al hacer clic */
+  transform: translateY(2px);
+  /* Efecto de presión al hacer clic */
 }
 
 /* Estilos para los botones de acción */
@@ -131,50 +138,61 @@ button:active {
 
 /* Estilo para los iconos dentro de los botones */
 button i {
-  margin-right: 8px; /* Espacio entre el icono y el texto */
+  margin-right: 8px;
+  /* Espacio entre el icono y el texto */
 }
 
 /* Media queries para pantallas más pequeñas */
 @media (max-width: 768px) {
   h2 {
-    font-size: 20px; /* Ajustar el tamaño del título */
+    font-size: 20px;
+    /* Ajustar el tamaño del título */
   }
 
   .viaje-item {
-    flex-direction: column; /* Apilar los elementos verticalmente */
-    align-items: flex-start; /* Alinear los elementos a la izquierda */
+    flex-direction: column;
+    /* Apilar los elementos verticalmente */
+    align-items: flex-start;
+    /* Alinear los elementos a la izquierda */
   }
 
   .viaje-info {
-    margin-bottom: 10px; /* Espacio adicional entre información y botones */
+    margin-bottom: 10px;
+    /* Espacio adicional entre información y botones */
   }
 
   .acciones {
-    justify-content: center; /* Centrar los botones */
+    justify-content: center;
+    /* Centrar los botones */
   }
 
   button {
-    width: 100%; /* Los botones ocuparán todo el ancho disponible */
+    width: 100%;
+    /* Los botones ocuparán todo el ancho disponible */
     padding: 10px 0;
   }
 
   .btn-agregar {
-    width: 100%; /* El botón de agregar ocupará todo el ancho */
+    width: 100%;
+    /* El botón de agregar ocupará todo el ancho */
   }
 }
 
 .btn-album {
-  background-color: #c49b6e; /* color piel antigua */
+  background-color: #c49b6e;
+  /* color piel antigua */
   color: white;
   border: none;
-  border-radius: 6px 12px 12px 6px; /* forma parecida a un libro abierto */
+  border-radius: 6px 12px 12px 6px;
+  /* forma parecida a un libro abierto */
   padding: 12px 20px;
   font-family: 'Georgia', serif;
   font-size: 14px;
   font-weight: bold;
   cursor: pointer;
   box-shadow: inset -4px 0 6px rgba(0, 0, 0, 0.2), 0 4px 8px rgba(0, 0, 0, 0.2);
-  border-left: 6px solid #8b5e3c; /* lomo del libro */
+  border-left: 6px solid #8b5e3c;
+  /* lomo del libro */
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
@@ -189,7 +207,8 @@ button i {
 }
 
 .btn-album i {
-  margin-right: 8px; /* espacio entre icono y texto */
+  margin-right: 8px;
+  /* espacio entre icono y texto */
 }
 
 /* Acciones Globales (Botones inferiores) */
@@ -203,11 +222,13 @@ button i {
 }
 
 .acciones-globales .btn-agregar {
-  margin: 0; /* Reseteamos márgenes para que funcione bien en flex */
+  margin: 0;
+  /* Reseteamos márgenes para que funcione bien en flex */
 }
 
 .btn-unificar {
-  background-color: #673ab7; /* Deep Purple */
+  background-color: #673ab7;
+  /* Deep Purple */
   color: white;
   padding: 12px 20px;
   border-radius: 5px;
@@ -227,8 +248,119 @@ button i {
     flex-direction: column;
     gap: 10px;
   }
+
   .acciones-globales button {
     width: 100%;
     margin: 0;
+  }
+}
+
+.rangos-fechas {
+  margin: 10px 0;
+  padding: 12px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  border: 1px solid #d1d8e0;
+}
+
+.rango-unico {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #2c3e50;
+  font-weight: 500;
+}
+
+.rangos-multiples {
+  .rango-principal {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+
+    &:hover {
+      background: #f8f9fa;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      transform: translateY(-1px);
+    }
+
+    .rango-texto {
+      flex: 1;
+      color: #2c3e50;
+      font-weight: 500;
+    }
+
+    .icono-desplegable {
+      transition: transform 0.3s;
+      font-size: 0.8rem;
+      color: #7f8c8d;
+
+      &.abierto {
+        transform: rotate(180deg);
+      }
+    }
+  }
+
+  .rangos-adicionales {
+    margin-top: 8px;
+    padding-left: 12px;
+    border-left: 3px solid #3498db;
+    animation: slideDown 0.3s ease;
+
+    .rango-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      margin: 4px 0;
+      background: white;
+      border-radius: 4px;
+      color: #34495e;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      transition: all 0.2s;
+
+      &:hover {
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        transform: translateX(2px);
+      }
+    }
+  }
+}
+
+.badge-dias {
+  padding: 3px 10px;
+  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+  color: white;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);
+}
+
+.badge-dias-secundario {
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+  color: white;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(33, 150, 243, 0.3);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

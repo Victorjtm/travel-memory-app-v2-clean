@@ -21,6 +21,13 @@ export class ViajesPrevistosService extends BaseHttpService {
     return this.get<any[]>(this.apiUrl);
   }
 
+  // Obtener rangos de fechas de itinerarios de un viaje
+  obtenerRangosFechas(viajeId: number): Observable<any> {
+    const url = `${this.apiUrl}/${viajeId}/rangos-fechas`;
+    console.log('[ViajesService] GET rangos-fechas desde:', url);
+    return this.http.get(url);
+  }
+
   // Crear un nuevo viaje previsto CON IMAGEN Y AUDIO
   crearViaje(viaje: any, imagen?: File, audio?: File): Observable<any> {
     const formData = new FormData();

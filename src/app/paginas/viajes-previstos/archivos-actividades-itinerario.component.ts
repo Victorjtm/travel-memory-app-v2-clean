@@ -205,15 +205,15 @@ export class ArchivosComponent implements OnInit, OnDestroy {
 
       if (geolocalizacion.includes('{')) {
         const coords = JSON.parse(geolocalizacion);
+
+        // ✅ CORRECCIÓN: Usar directamente las coordenadas sin modificarlas
         lat = coords.latitud ?? coords.latitude;
         lon = coords.longitud ?? coords.longitude;
 
-        /* ----------  CORRECCIÓN DE SIGNO  ---------- */
-        if (coords.longitudRef === 'W' || coords.longitudRef === 'O' || (!coords.longitudRef && lon > 0)) {
-          lon = -Math.abs(lon);
-        }
-        if (coords.latitudRef === 'S') lat = -Math.abs(lat);
-        /* ------------------------------------------ */
+        // ✅ Las coordenadas ya vienen con el signo correcto desde el selector de ubicación
+        // NO necesitamos aplicar ninguna transformación adicional
+
+        console.log('[GEOCODING] Coordenadas a geocodificar:', { lat, lon, original: coords });
       } else if (geolocalizacion.includes(',')) {
         [lat, lon] = geolocalizacion.split(',').map(parseFloat);
       } else {
@@ -232,7 +232,7 @@ export class ArchivosComponent implements OnInit, OnDestroy {
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // Timeout de 10 segundos
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       let res;
       try {
@@ -248,7 +248,6 @@ export class ArchivosComponent implements OnInit, OnDestroy {
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
 
-        // Si es timeout, devolver coordenadas formateadas
         if (fetchError.name === 'AbortError') {
           console.warn(`⏱️ Timeout obteniendo dirección para ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
           const fallback = `${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
@@ -283,11 +282,11 @@ export class ArchivosComponent implements OnInit, OnDestroy {
       if (!direccion) direccion = `${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
 
       this.direccionesCache[geolocalizacion] = direccion;
+      console.log('[GEOCODING] Dirección obtenida:', direccion);
       return direccion;
     } catch (e: any) {
       console.error('Error obteniendo dirección:', e);
 
-      // Si es timeout o error de red, mostrar coordenadas formateadas
       try {
         const coords = JSON.parse(geolocalizacion);
         const fallback = `${coords.latitud.toFixed(5)}°, ${coords.longitud.toFixed(5)}°`;
@@ -1197,6 +1196,55 @@ export class ArchivosComponent implements OnInit, OnDestroy {
       case 'mapa_ubicacion': return 'fa fa-map';
       default: return 'fa fa-file';
     }
+  }
+
+  // ============================================
+  // CORRECCIÓN DE FECHAS AUTOMÁTICA
+  // ============================================
+
+  corregirFechasDesdeNombre(): void {
+    if (!this.archivos || this.archivos.length === 0) {
+      alert('⚠️ No hay archivos para procesar');
+      return;
+    }
+
+    const mensaje = `¿Deseas corregir las fechas automáticamente desde los nombres de archivo?
+
+Esto actualizará:
+✓ Fechas y horas de ${this.archivos.length} archivo(s)
+✓ Fecha del itinerario
+✓ Fecha del viaje
+
+Los archivos sin fecha en el nombre usarán la fecha del archivo anterior.
+
+Formatos soportados:
+- IMG_20220129_134353.jpg
+- JPEG_20251230_105305_1767088385958.jpg
+- 1767698649281_archivo.jpg`;
+
+    if (!confirm(mensaje)) {
+      return;
+    }
+
+    this.archivoService.corregirFechasNombre(this.actividadId).subscribe({
+      next: (response) => {
+        alert(`✅ Fechas corregidas exitosamente\n\n` +
+          `📝 Archivos actualizados: ${response.archivosActualizados}\n` +
+          `⚠️ Archivos sin fecha: ${response.archivosSinFecha || 0}\n\n` +
+          `Se recargará la lista para ver los cambios.`);
+
+        // Recargar archivos para ver los cambios
+        this.cargarArchivos();
+      },
+      error: (error) => {
+        const errorMsg = error.error?.error || 'No se pudieron corregir las fechas';
+        alert(`❌ Error: ${errorMsg}\n\n` +
+          `Asegúrate de que los nombres de archivo contengan fechas en estos formatos:\n` +
+          `• IMG_20220129_134353.jpg\n` +
+          `• JPEG_20251230_105305_1767088385958.jpg\n` +
+          `• 1767698649281_archivo.jpg`);
+      }
+    });
   }
 
 }

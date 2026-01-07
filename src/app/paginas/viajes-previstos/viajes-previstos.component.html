@@ -4,7 +4,41 @@
   <li *ngFor="let viaje of viajesPrevistos; index as i" class="viaje-item">
     <div class="viaje-info">
       <strong class="destino">{{ viaje.destino }}</strong>
-      <span class="fecha">{{ viaje.fecha }}</span>
+
+      <!-- ✨ NUEVO: Rangos de fechas de itinerarios -->
+      <div class="rangos-fechas" *ngIf="rangosFechasPorViaje[viaje.id]">
+        <ng-container *ngIf="rangosFechasPorViaje[viaje.id].rangos.length === 1">
+          <!-- Un solo rango: mostrar directamente -->
+          <div class="rango-unico">
+            📅 {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
+            <span class="badge-dias">({{ rangosFechasPorViaje[viaje.id].total }} días)</span>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="rangosFechasPorViaje[viaje.id].rangos.length > 1">
+          <!-- Múltiples rangos: mostrar con desplegable -->
+          <div class="rangos-multiples">
+            <div class="rango-principal" (click)="toggleDesplegable(viaje.id)">
+              <span class="rango-texto">
+                📅 {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
+              </span>
+              <span class="badge-dias">({{ rangosFechasPorViaje[viaje.id].total }} días total)</span>
+              <span class="icono-desplegable" [class.abierto]="desplegablesAbiertos[viaje.id]">
+                ▼
+              </span>
+            </div>
+
+            <!-- Rangos adicionales (desplegables) -->
+            <div class="rangos-adicionales" *ngIf="desplegablesAbiertos[viaje.id]">
+              <div class="rango-item" *ngFor="let rango of rangosFechasPorViaje[viaje.id].rangos.slice(1)">
+                📅 {{ formatearRango(rango) }}
+                <span class="badge-dias-secundario">({{ rango.dias }} días)</span>
+              </div>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+
       <p class="descripcion">{{ viaje.descripcion }}</p>
     </div>
     <div class="acciones">
@@ -30,7 +64,7 @@
   <button (click)="irAlFormulario()" class="btn-agregar">
     <i class="fa fa-plus"></i> Añadir viaje
   </button>
-  
+
   <button (click)="ejecutarUnificacion()" class="btn-unificar">
     <i class="fa fa-compress"></i> Unificar Destinos
   </button>

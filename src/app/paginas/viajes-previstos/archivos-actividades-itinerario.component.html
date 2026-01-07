@@ -11,16 +11,23 @@
 
   <!-- Botón para añadir nuevo archivo -->
   <button [routerLink]="[
-      '/viajes-previstos',
-      viajePrevistoId,
-      'itinerarios',
-      itinerarioId,
-      'actividades',
-      actividadId,
-      'archivos',
-      'nuevo'
-    ]" class="btn-agregar" title="Añadir nuevo archivo a esta actividad">
+    '/viajes-previstos',
+    viajePrevistoId,
+    'itinerarios',
+    itinerarioId,
+    'actividades',
+    actividadId,
+    'archivos',
+    'nuevo'
+  ]" class="btn-agregar" title="Añadir nuevo archivo a esta actividad">
     <i class="fa fa-plus-circle"></i> Añadir Archivo
+  </button>
+
+  <!-- ✅ NUEVO BOTÓN: Corregir fechas automáticamente -->
+  <button (click)="corregirFechasDesdeNombre()" class="btn-corregir-fechas"
+    [disabled]="!archivos || archivos.length === 0"
+    title="Extrae fechas de los nombres de archivo y actualiza automáticamente el itinerario y viaje">
+    <i class="fa fa-calendar-check"></i> Corregir Fechas Auto
   </button>
 
   <router-outlet></router-outlet>
