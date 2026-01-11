@@ -1529,6 +1529,130 @@ app.post('/actividades', (req, res) => {
   );
 });
 
+// ============================================
+// ✨ NUEVO: GET actividad individual por ID
+// ============================================
+app.get('/actividades/:id', (req, res) => {
+  const { id } = req.params;
+
+  console.log(`🔍 Obteniendo actividad ID: ${id}`);
+
+  db.get('SELECT * FROM actividades WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      console.error('❌ Error obteniendo actividad:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (!row) {
+      console.warn('⚠️ Actividad no encontrada:', id);
+      return res.status(404).json({ error: 'Actividad no encontrada' });
+    }
+
+    console.log('✅ Actividad encontrada:', row.nombre || row.id);
+    res.json(row);
+  });
+});
+
+// ============================================
+// ✨ NUEVO: PUT actualizar actividad
+// ============================================
+app.put('/actividades/:id', (req, res) => {
+  const { id } = req.params;
+  const {
+    viajePrevistoId,
+    itinerarioId,
+    tipoActividadId,
+    actividadDisponibleId,
+    nombre,
+    descripcion,
+    horaInicio,
+    horaFin
+  } = req.body;
+
+  console.log(`🔄 Actualizando actividad ${id}:`, req.body);
+
+  // Construir query dinámica solo con los campos proporcionados
+  const campos = [];
+  const valores = [];
+
+  if (viajePrevistoId !== undefined) {
+    campos.push('viajePrevistoId = ?');
+    valores.push(viajePrevistoId);
+  }
+  if (itinerarioId !== undefined) {
+    campos.push('itinerarioId = ?');
+    valores.push(itinerarioId);
+  }
+  if (tipoActividadId !== undefined) {
+    campos.push('tipoActividadId = ?');
+    valores.push(tipoActividadId);
+  }
+  if (actividadDisponibleId !== undefined) {
+    campos.push('actividadDisponibleId = ?');
+    valores.push(actividadDisponibleId);
+  }
+  if (nombre !== undefined) {
+    campos.push('nombre = ?');
+    valores.push(nombre);
+  }
+  if (descripcion !== undefined) {
+    campos.push('descripcion = ?');
+    valores.push(descripcion);
+  }
+  if (horaInicio !== undefined) {
+    campos.push('horaInicio = ?');
+    valores.push(horaInicio);
+  }
+  if (horaFin !== undefined) {
+    campos.push('horaFin = ?');
+    valores.push(horaFin);
+  }
+
+  // Actualizar fechaActualizacion
+  campos.push("fechaActualizacion = datetime('now')");
+
+  if (campos.length === 1) { // Solo fechaActualizacion
+    return res.status(400).json({ error: 'No se proporcionaron campos para actualizar' });
+  }
+
+  // Agregar ID al final para el WHERE
+  valores.push(id);
+
+  const sql = `UPDATE actividades SET ${campos.join(', ')} WHERE id = ?`;
+
+  console.log('📝 SQL:', sql);
+  console.log('📝 Valores:', valores);
+
+  db.run(sql, valores, function (err) {
+    if (err) {
+      console.error('❌ Error actualizando actividad:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (this.changes === 0) {
+      console.warn('⚠️ No se encontró la actividad con ID:', id);
+      return res.status(404).json({ error: 'Actividad no encontrada' });
+    }
+
+    console.log(`✅ Actividad ${id} actualizada correctamente (${this.changes} cambio(s))`);
+
+    // Devolver la actividad actualizada
+    db.get('SELECT * FROM actividades WHERE id = ?', [id], (err, row) => {
+      if (err) {
+        console.error('❌ Error obteniendo actividad actualizada:', err.message);
+        return res.status(500).json({ error: err.message });
+      }
+
+      res.json({
+        changes: this.changes,
+        actividad: row
+      });
+    });
+  });
+});
+
+console.log('✅ Endpoints GET /actividades/:id y PUT /actividades/:id registrados correctamente');
+
 // DELETE eliminar actividad
 app.delete('/actividades/:id', async (req, res) => {
   const id = req.params.id;

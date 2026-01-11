@@ -1,84 +1,354 @@
-/* Estilo principal del contenedor del formulario */
+// ============================================
+// 📋 FORMULARIO DE ACTIVIDAD - ESTILOS MEJORADOS
+// ============================================
+
+/* Contenedor principal */
 .contenedor {
-    max-width: 700px;
-    margin: 2rem auto;
-    padding: 2rem;
-    background: #fdfdfd;
-    border-radius: 12px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 2.5rem;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 16px;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 8px 30px rgba(0, 0, 0, 0.12),
+      0 4px 12px rgba(0, 0, 0, 0.06);
   }
-  
-  /* Título */
-  h2 {
-    text-align: center;
-    color: #3f51b5;
-    margin-bottom: 1.5rem;
+}
+
+/* Título del formulario */
+h2 {
+  text-align: center;
+  color: #3f51b5;
+  margin-bottom: 2rem;
+  font-size: 1.8rem;
+  font-weight: 700;
+  position: relative;
+  padding-bottom: 1rem;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 4px;
+    background: linear-gradient(90deg, #3f51b5, #7986cb);
+    border-radius: 2px;
   }
-  
-  /* Formulario de actividad */
-  form {
+}
+
+/* Formulario */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+
+  /* Grupos de campos */
+  .campo-grupo {
     display: flex;
     flex-direction: column;
-    gap: 1.2rem;
-  
-    label {
-      font-weight: bold;
-      margin-bottom: 0.3rem;
-      color: #333;
+    gap: 0.5rem;
+  }
+
+  /* Etiquetas */
+  label {
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 0.95rem;
+    margin-bottom: 0.3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    /* Indicador de campo requerido */
+    &.required::after {
+      content: '*';
+      color: #f44336;
+      font-size: 1.2rem;
+      line-height: 1;
     }
-  
-    input, select, textarea {
-      padding: 0.6rem;
-      border: 1px solid #ccc;
-      border-radius: 8px;
+
+    /* Iconos en labels (opcional) */
+    i {
+      color: #3f51b5;
       font-size: 1rem;
-      width: 100%;
     }
-  
+  }
+
+  /* Inputs, selects y textareas */
+  input,
+  select,
+  textarea {
+    padding: 0.75rem 1rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 1rem;
+    width: 100%;
+    transition: all 0.3s ease;
+    background-color: #ffffff;
+    font-family: inherit;
+
+    &:focus {
+      outline: none;
+      border-color: #3f51b5;
+      box-shadow: 0 0 0 3px rgba(63, 81, 181, 0.1);
+      background-color: #fafbfc;
+    }
+
+    &:disabled {
+      background-color: #f5f5f5;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    &::placeholder {
+      color: #9e9e9e;
+      font-style: italic;
+    }
+  }
+
+  /* Select específico */
+  select {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%233f51b5' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    background-size: 12px;
+    padding-right: 2.5rem;
+    appearance: none;
+
+    &:focus {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%233f51b5' d='M6 3l5 5H1z'/%3E%3C/svg%3E");
+    }
+  }
+
+  /* Textarea específico */
+  textarea {
+    min-height: 100px;
+    resize: vertical;
+    font-family: inherit;
+    line-height: 1.5;
+  }
+
+  /* Campos de hora lado a lado */
+  .hora-grupo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+
+    @media (max-width: 576px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Contenedor de acciones */
+  .acciones {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid #e0e0e0;
+
+    @media (max-width: 576px) {
+      flex-direction: column-reverse;
+    }
+
+    button {
+      padding: 0.85rem 2rem;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      position: relative;
+      overflow: hidden;
+
+      &::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.3);
+        transform: translate(-50%, -50%);
+        transition: width 0.6s, height 0.6s;
+      }
+
+      &:active::before {
+        width: 300px;
+        height: 300px;
+      }
+
+      @media (max-width: 576px) {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+
+    .btn-guardar {
+      background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+      color: white;
+
+      &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #45a049 0%, #3d8b40 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+      }
+
+      &:active:not(:disabled) {
+        transform: translateY(0);
+      }
+
+      &:disabled {
+        background: #cccccc;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+
+      i {
+        font-size: 1.1rem;
+      }
+    }
+
+    .btn-cancelar {
+      background: linear-gradient(135deg, #f44336 0%, #e53935 100%);
+      color: white;
+
+      &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #e53935 0%, #d32f2f 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
+      }
+
+      &:active:not(:disabled) {
+        transform: translateY(0);
+      }
+
+      i {
+        font-size: 1.1rem;
+      }
+    }
+  }
+}
+
+/* Mensajes de error/validación */
+.error {
+  color: #f44336;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  animation: shake 0.3s ease-in-out;
+
+  &::before {
+    content: '⚠';
+    font-size: 1rem;
+  }
+}
+
+/* Mensajes de éxito */
+.success {
+  color: #4caf50;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  &::before {
+    content: '✓';
+    font-size: 1rem;
+  }
+}
+
+/* Animación de shake para errores */
+@keyframes shake {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-5px);
+  }
+
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+/* Spinner de carga (opcional) */
+.loading-spinner {
+  display: inline-block;
+  width: 1.2rem;
+  height: 1.2rem;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #ffffff;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive - Tabletas */
+@media (max-width: 768px) {
+  .contenedor {
+    margin: 1rem;
+    padding: 2rem 1.5rem;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+  }
+
+  form {
+    gap: 1.25rem;
+  }
+}
+
+/* Responsive - Móviles */
+@media (max-width: 576px) {
+  .contenedor {
+    margin: 0.5rem;
+    padding: 1.5rem 1rem;
+    border-radius: 12px;
+  }
+
+  h2 {
+    font-size: 1.3rem;
+    margin-bottom: 1.5rem;
+  }
+
+  form {
+    gap: 1rem;
+
+    input,
+    select,
     textarea {
-      min-height: 80px;
-      resize: vertical;
-    }
-  
-    .acciones {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 1.5rem;
-  
-      button {
-        padding: 0.7rem 1.5rem;
-        border: none;
-        border-radius: 8px;
-        font-size: 0.95rem;
-        cursor: pointer;
-        transition: background-color 0.3s ease;
-      }
-  
-      .btn-guardar {
-        background-color: #4caf50;
-        color: white;
-  
-        &:hover {
-          background-color: #45a049;
-        }
-      }
-  
-      .btn-cancelar {
-        background-color: #f44336;
-        color: white;
-  
-        &:hover {
-          background-color: #e53935;
-        }
-      }
+      padding: 0.65rem 0.85rem;
+      font-size: 0.95rem;
     }
   }
-  
-  /* Mensaje de validación */
-  .error {
-    color: #f44336;
-    font-size: 0.85rem;
-    margin-top: -0.8rem;
-    margin-bottom: 0.8rem;
-  }
-  
+}

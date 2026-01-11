@@ -24,15 +24,15 @@ export const routes: Routes = [
   { path: 'viajes', component: ViajesComponent },
   { path: 'recuerdos', component: RecuerdosComponent },
   { path: 'viajes-previstos', component: ViajesPrevistosComponent },
-{ path: 'formulario-viaje-previsto/:id', component: FormularioViajePrevistoComponent }, // id = número (edición) o 'nuevo' (creación)
+  { path: 'formulario-viaje-previsto/:id', component: FormularioViajePrevistoComponent }, // id = número (edición) o 'nuevo' (creación)
 
   { path: 'itinerarios/:viajePrevistoId', component: ItinerariosComponent },
   { path: 'formulario-itinerario/:viajePrevistoId', component: FormularioItinerarioComponent },
 
   // Sección de configuración
   { path: 'configuracion', component: ConfiguracionComponent },
-  { 
-    path: 'configuracion/tipos-actividad', 
+  {
+    path: 'configuracion/tipos-actividad',
     children: [
       { path: '', component: CrudTiposActividadComponent },
       { path: 'nuevo', component: TipoActividadFormComponent },
@@ -59,16 +59,25 @@ export const routes: Routes = [
     ]
   },
 
+  // Ruta para CREAR nueva actividad
   {
-    path: 'formulario-actividad/:viajePrevistoId/:itinerarioId/:actividadId',
+    path: 'formulario-actividad/:viajePrevistoId/:itinerarioId/nuevo',
     loadComponent: () =>
       import('./paginas/viajes-previstos/actividades-itinerarios/formulario-actividad-itinerario/formulario-actividad-itinerario.component')
         .then(m => m.FormularioActividadItinerarioComponent)
   },
-  
+
+  // Ruta para EDITAR actividad existente
+  {
+    path: 'formulario-actividad/:viajePrevistoId/:itinerarioId/editar/:actividadId',
+    loadComponent: () =>
+      import('./paginas/viajes-previstos/actividades-itinerarios/formulario-actividad-itinerario/formulario-actividad-itinerario.component')
+        .then(m => m.FormularioActividadItinerarioComponent)
+  },
+
   {
     path: 'viajes-previstos/:viajePrevistoId/itinerarios/:itinerarioId/actividades',
-    loadComponent: () => 
+    loadComponent: () =>
       import('./paginas/viajes-previstos/actividades-itinerarios/actividades-itinerarios.component')
         .then(m => m.ActividadesItinerariosComponent)
   },
@@ -90,27 +99,27 @@ export const routes: Routes = [
     loadComponent: () => import('./paginas/viajes-previstos/formulario-archivos-actividades-itinerario.component').then(m => m.FormularioArchivosComponent)
   },
 
-    // 🆕 Nueva ruta para gestión de archivos asociados
+  // 🆕 Nueva ruta para gestión de archivos asociados
   {
     path: 'viajes-previstos/:viajePrevistoId/itinerarios/:itinerarioId/actividades/:actividadId/archivos/:archivoId/asociados',
     loadComponent: () => import('./paginas/viajes-previstos/gestion-archivos-asociados.component').then(m => m.GestionArchivosAsociadosComponent)
   },
 
   // Nueva ruta para el botón "Seleccionar Archivos" desde Inicio
-{ path: 'formulario-archivos-actividades-itinerario', component: FormularioArchivosComponent },
+  { path: 'formulario-archivos-actividades-itinerario', component: FormularioArchivosComponent },
 
 
   // Rutas para el álbum en formato libro desde viajes previstos
   {
-  path: 'viajes-previstos/:viajeId/itinerarios/album/libro',
-  component: AlbumLibroComponent
-},
+    path: 'viajes-previstos/:viajeId/itinerarios/album/libro',
+    component: AlbumLibroComponent
+  },
 
   // Ruta para ver formato de libro
   {
-  path: 'viajes-previstos/:viajeId/itinerarios/:itinerarioId/actividades/:actividadId/libro',
-  component: AlbumLibroComponent
-},
+    path: 'viajes-previstos/:viajeId/itinerarios/:itinerarioId/actividades/:actividadId/libro',
+    component: AlbumLibroComponent
+  },
 
   { path: '**', redirectTo: '' }
 ];

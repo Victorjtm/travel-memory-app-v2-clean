@@ -1,74 +1,50 @@
 <div class="contenedor">
-    <h2>Actividades para el itinerario {{ itinerarioId }}</h2>
-  
-    <!-- Botón para añadir una nueva actividad -->
-    <button [routerLink]="['/formulario-actividad', viajePrevistoId, itinerarioId, 'nuevo']" class="btn-agregar">
-      <i class="fa fa-plus-circle"></i> Añadir Actividad
-    </button>
-  
+  <h2>Actividades para el itinerario {{ itinerarioId }}</h2>
+
+  <!-- Botón para añadir una nueva actividad -->
+  <button [routerLink]="['/formulario-actividad', viajePrevistoId, itinerarioId, 'nuevo']" class="btn-agregar">
+    <i class="fa fa-plus-circle"></i> Añadir Actividad
+  </button>
+
+  <hr>
+
+  <!-- Lista de actividades -->
+  <div *ngFor="let actividad of actividades">
+    <h3>Actividad {{ actividad.id }}</h3>
+    <p><strong>Nombre:</strong> {{ actividad.nombre }}</p>
+    <p><strong>Descripción:</strong> {{ actividad.descripcion }}</p>
+    <p><strong>Horario:</strong> {{ actividad.horaInicio }} a {{ actividad.horaFin }}</p>
+
+    <!-- ✨ CONTENEDOR DE BOTONES DE ACCIÓN -->
+    <div class="acciones-actividad">
+      <button class="btn-eliminar" (click)="eliminarActividad(actividad.id)">
+        <i class="fa fa-trash"></i> Eliminar
+      </button>
+      <button class="btn-actualizar" (click)="actualizarActividad(actividad)">
+        <i class="fa fa-edit"></i> Actualizar
+      </button>
+      <button class="btn-ver-archivos" (click)="verArchivos(actividad.id, $event)">
+        <i class="fa fa-folder-open"></i> Ver Archivos
+      </button>
+
+      <!-- ✨ NUEVOS BOTONES -->
+      <button class="btn-gpx" (click)="verGPX(actividad.id)">
+        <i class="fa fa-map-marker"></i> Ver GPX
+      </button>
+      <button class="btn-mapa" (click)="verMapa(actividad.id)">
+        <i class="fa fa-image"></i> Ver Mapa
+      </button>
+      <button class="btn-estadisticas" (click)="verEstadisticas(actividad.id)">
+        <i class="fa fa-bar-chart"></i> Estadísticas
+      </button>
+    </div>
+
     <hr>
-  
-    <!-- Mostrar formulario de actualización solo cuando se seleccione una actividad -->
-    <div *ngIf="actividadActualizada?.id">
-      <h3>Actualizar Actividad</h3>
-      <form (ngSubmit)="guardarActualizacion()">
-        <label for="nombre">Nombre</label>
-        <input type="text" id="nombre" [(ngModel)]="actividadActualizada.nombre" name="nombre" required />
-  
-        <label for="descripcion">Descripción</label>
-        <textarea id="descripcion" [(ngModel)]="actividadActualizada.descripcion" name="descripcion"></textarea>
-  
-        <label for="horaInicio">Hora de inicio</label>
-        <input type="time" id="horaInicio" [(ngModel)]="actividadActualizada.horaInicio" name="horaInicio" required />
-  
-        <label for="horaFin">Hora de fin</label>
-        <input type="time" id="horaFin" [(ngModel)]="actividadActualizada.horaFin" name="horaFin" required />
-  
-        <button type="submit" class="btn-guardar">Guardar cambios</button>
-        <button type="button" class="btn-cancelar" (click)="cancelarActualizacion()">Cancelar</button>
-      </form>
-      <hr>
-    </div>
-  
-    <!-- Lista de actividades -->
-    <div *ngIf="!actividadActualizada?.id">
-      <div *ngFor="let actividad of actividades">
-        <h3>Actividad {{ actividad.id }}</h3>
-        <p><strong>Nombre:</strong> {{ actividad.nombre }}</p>
-        <p><strong>Descripción:</strong> {{ actividad.descripcion }}</p>
-        <p><strong>Horario:</strong> {{ actividad.horaInicio }} a {{ actividad.horaFin }}</p>
-  
-        <!-- ✨ CONTENEDOR DE BOTONES DE ACCIÓN -->
-        <div class="acciones-actividad">
-          <button class="btn-eliminar" (click)="eliminarActividad(actividad.id)">
-            <i class="fa fa-trash"></i> Eliminar
-          </button>
-          <button class="btn-actualizar" (click)="actualizarActividad(actividad)">
-            <i class="fa fa-edit"></i> Actualizar
-          </button>
-          <button class="btn-ver-archivos" (click)="verArchivos(actividad.id, $event)">
-            <i class="fa fa-folder-open"></i> Ver Archivos
-          </button>
-          
-          <!-- ✨ NUEVOS BOTONES -->
-          <button class="btn-gpx" (click)="verGPX(actividad.id)">
-            <i class="fa fa-map-marker"></i> Ver GPX
-          </button>
-          <button class="btn-mapa" (click)="verMapa(actividad.id)">
-            <i class="fa fa-image"></i> Ver Mapa
-          </button>
-          <button class="btn-estadisticas" (click)="verEstadisticas(actividad.id)">
-            <i class="fa fa-bar-chart"></i> Estadísticas
-          </button>
-        </div>
-        
-        <hr>
-      </div>
-    </div>
-  
-    <button (click)="volverAItinerarios()">
-      <i class="fa fa-arrow-left"></i> Volver a Itinerarios
-    </button>
+  </div>
+
+  <button (click)="volverAItinerarios()">
+    <i class="fa fa-arrow-left"></i> Volver a Itinerarios
+  </button>
 </div>
 
 <!-- ✨ MODAL MAPA PNG -->

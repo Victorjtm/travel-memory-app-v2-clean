@@ -27,18 +27,6 @@ export class ActividadesItinerariosComponent implements OnInit {
   viajePrevistoId!: number;
   itinerarioId!: number;
 
-  actividadActualizada: Actividad = {
-    id: 0,
-    viajePrevistoId: 0,
-    itinerarioId: 0,
-    tipoActividadId: 0,
-    actividadDisponibleId: undefined,
-    nombre: '',
-    descripcion: '',
-    horaInicio: '',
-    horaFin: ''
-  };
-
   // ✨ PROPIEDADES PARA MODALES
   mostrarModalGPX = false;
   mostrarModalMapa = false;
@@ -70,7 +58,6 @@ export class ActividadesItinerariosComponent implements OnInit {
         this.viajePrevistoId = +viajeId;
         this.itinerarioId = +itinId;
         this.cargarActividades();
-        this.resetearFormulario();
       }
     });
   }
@@ -89,25 +76,6 @@ export class ActividadesItinerariosComponent implements OnInit {
       });
   }
 
-  agregarActividad(): void {
-    if (!this.viajePrevistoId || !this.itinerarioId) return;
-
-    const actividadEnviar: Actividad = {
-      ...this.actividadActualizada,
-      viajePrevistoId: this.viajePrevistoId,
-      itinerarioId: this.itinerarioId
-    };
-
-    this.actividadService.create(actividadEnviar)
-      .subscribe({
-        next: nueva => {
-          this.actividades.push(nueva);
-          this.resetearFormulario();
-        },
-        error: err => console.error('Error creando actividad:', err)
-      });
-  }
-
   eliminarActividad(id: number): void {
     this.actividadService.eliminar(id)
       .subscribe({
@@ -119,24 +87,24 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   actualizarActividad(actividad: Actividad): void {
-    this.actividadActualizada = { ...actividad };
-    console.log('Actividad lista para actualizar:', this.actividadActualizada);
-  }
+    console.log('🔄 Navegando al formulario de edición para actividad:', actividad.id);
 
-  guardarActualizacion(): void {
-    this.actividadService.update(this.actividadActualizada.id, this.actividadActualizada)
-      .subscribe({
-        next: () => {
-          console.log('Actividad actualizada correctamente');
-          this.cargarActividades();
-          this.resetearFormulario();
-        },
-        error: err => console.error('Error actualizando actividad:', err)
-      });
-  }
-
-  cancelarActualizacion(): void {
-    this.resetearFormulario();
+    // Navegar al formulario de edición con todos los parámetros necesarios
+    this.router.navigate([
+      '/formulario-actividad',
+      this.viajePrevistoId,
+      this.itinerarioId,
+      'editar',
+      actividad.id
+    ]).then(success => {
+      if (success) {
+        console.log('✅ Navegación exitosa');
+      } else {
+        console.error('❌ Error en la navegación');
+      }
+    }).catch(err => {
+      console.error('❌ Error navegando:', err);
+    });
   }
 
   volverAItinerarios(): void {
@@ -300,71 +268,67 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   // ✨ NUEVO: Cargar fotos desde backend y añadirlas al mapa
-private cargarYAnadirFotos(): void {
-  if (!this.mapaGPX || !this.actividadSeleccionada) {
-    console.warn('⚠️ Mapa o ID de actividad no disponible');
-    return;
-  }
-
-  // ✨ USAR LA URL DEL BACKEND CORRECTAMENTE
-  const backendUrl = 'http://192.168.1.22:3000';
-  const url = `${backendUrl}/archivos?actividadId=${this.actividadSeleccionada}`;
-
-  console.log('🔗 URL de solicitud:', url);
-
-  this.http.get<any[]>(url).subscribe({
-    next: (archivos: any[]) => {
-      console.log('📷 Archivos obtenidos del backend:', archivos);
-      
-      // Filtrar fotos con geolocalización
-      const fotos = archivos.filter((f: any) => 
-        f.tipo === 'foto' && f.geolocalizacion
-      );
-
-      console.log(`📷 Fotos con coordenadas GPS: ${fotos.length}`);
-
-      fotos.forEach((foto: any) => {
-        // ✨ DEPURACIÓN COMPLETA
-        console.log('📸 FOTO COMPLETA:', foto);
-        console.log('📁 rutaArchivo:', foto.rutaArchivo);
-        console.log('🏷️ nombreArchivo:', foto.nombreArchivo);
-        console.log('📍 geolocalizacion:', foto.geolocalizacion);
-        
-        try {
-          const geoData = typeof foto.geolocalizacion === 'string' 
-            ? JSON.parse(foto.geolocalizacion) 
-            : foto.geolocalizacion;
-
-          if (geoData.latitud && geoData.longitud) {
-            console.log(`✅ Foto válida: ${foto.nombreArchivo} en [${geoData.latitud}, ${geoData.longitud}]`);
-            
-            this.anadirMarcadorFoto(
-              geoData.latitud,
-              geoData.longitud,
-              foto.nombreArchivo,
-              foto.rutaArchivo
-            );
-          } else {
-            console.warn(`⚠️ Foto sin coordenadas válidas:`, geoData);
-          }
-        } catch (err) {
-          console.warn(`⚠️ Error parseando geolocalización de ${foto.nombreArchivo}:`, err);
-        }
-      });
-
-      console.log(`✅ Procesadas ${fotos.length} fotos con GPS`);
-    },
-    error: err => {
-      console.error('❌ Error cargando archivos:', err);
-      console.error('Status:', err.status);
-      console.error('URL intentada:', url);
+  private cargarYAnadirFotos(): void {
+    if (!this.mapaGPX || !this.actividadSeleccionada) {
+      console.warn('⚠️ Mapa o ID de actividad no disponible');
+      return;
     }
-  });
-}
 
+    // ✨ USAR LA URL DEL BACKEND CORRECTAMENTE
+    const backendUrl = 'http://192.168.1.22:3000';
+    const url = `${backendUrl}/archivos?actividadId=${this.actividadSeleccionada}`;
 
+    console.log('🔗 URL de solicitud:', url);
 
+    this.http.get<any[]>(url).subscribe({
+      next: (archivos: any[]) => {
+        console.log('📷 Archivos obtenidos del backend:', archivos);
 
+        // Filtrar fotos con geolocalización
+        const fotos = archivos.filter((f: any) =>
+          f.tipo === 'foto' && f.geolocalizacion
+        );
+
+        console.log(`📷 Fotos con coordenadas GPS: ${fotos.length}`);
+
+        fotos.forEach((foto: any) => {
+          // ✨ DEPURACIÓN COMPLETA
+          console.log('📸 FOTO COMPLETA:', foto);
+          console.log('📁 rutaArchivo:', foto.rutaArchivo);
+          console.log('🏷️ nombreArchivo:', foto.nombreArchivo);
+          console.log('📍 geolocalizacion:', foto.geolocalizacion);
+
+          try {
+            const geoData = typeof foto.geolocalizacion === 'string'
+              ? JSON.parse(foto.geolocalizacion)
+              : foto.geolocalizacion;
+
+            if (geoData.latitud && geoData.longitud) {
+              console.log(`✅ Foto válida: ${foto.nombreArchivo} en [${geoData.latitud}, ${geoData.longitud}]`);
+
+              this.anadirMarcadorFoto(
+                geoData.latitud,
+                geoData.longitud,
+                foto.nombreArchivo,
+                foto.rutaArchivo
+              );
+            } else {
+              console.warn(`⚠️ Foto sin coordenadas válidas:`, geoData);
+            }
+          } catch (err) {
+            console.warn(`⚠️ Error parseando geolocalización de ${foto.nombreArchivo}:`, err);
+          }
+        });
+
+        console.log(`✅ Procesadas ${fotos.length} fotos con GPS`);
+      },
+      error: err => {
+        console.error('❌ Error cargando archivos:', err);
+        console.error('Status:', err.status);
+        console.error('URL intentada:', url);
+      }
+    });
+  }
 
   // ✨ NUEVO: Añadir marcador de foto individual
   private anadirMarcadorFoto(lat: number, lng: number, nombre: string, rutaArchivo: string): void {
@@ -404,18 +368,18 @@ private cargarYAnadirFotos(): void {
   }
 
   // ✨ NUEVO: Abrir modal con la foto
-private abrirModalFoto(rutaArchivo: string, nombre: string): void {
-  console.log('🔍 Abriendo foto:', nombre);
-  console.log('📁 rutaArchivo:', rutaArchivo);
+  private abrirModalFoto(rutaArchivo: string, nombre: string): void {
+    console.log('🔍 Abriendo foto:', nombre);
+    console.log('📁 rutaArchivo:', rutaArchivo);
 
-  const backendUrl = 'http://192.168.1.22:3000';
-  const urlFoto = `${backendUrl}/uploads/${rutaArchivo}`;
+    const backendUrl = 'http://192.168.1.22:3000';
+    const urlFoto = `${backendUrl}/uploads/${rutaArchivo}`;
 
-  console.log('🖼️ URL final de la imagen:', urlFoto);
+    console.log('🖼️ URL final de la imagen:', urlFoto);
 
-  const modal = document.createElement('div');
-  modal.className = 'modal-foto-individual';
-  modal.style.cssText = `
+    const modal = document.createElement('div');
+    modal.className = 'modal-foto-individual';
+    modal.style.cssText = `
     position: fixed;
     top: 0;
     left: 0;
@@ -428,8 +392,8 @@ private abrirModalFoto(rutaArchivo: string, nombre: string): void {
     z-index: 10000;
   `;
 
-  const contenido = document.createElement('div');
-  contenido.style.cssText = `
+    const contenido = document.createElement('div');
+    contenido.style.cssText = `
     background: white;
     border-radius: 12px;
     padding: 20px;
@@ -439,13 +403,13 @@ private abrirModalFoto(rutaArchivo: string, nombre: string): void {
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   `;
 
-  const titulo = document.createElement('h3');
-  titulo.textContent = '📷 Foto';
-  titulo.style.cssText = 'margin: 0 0 10px 0; color: #333;';
+    const titulo = document.createElement('h3');
+    titulo.textContent = '📷 Foto';
+    titulo.style.cssText = 'margin: 0 0 10px 0; color: #333;';
 
-  const imagen = document.createElement('img');
-  imagen.src = urlFoto;
-  imagen.style.cssText = `
+    const imagen = document.createElement('img');
+    imagen.src = urlFoto;
+    imagen.style.cssText = `
     width: 100%;
     height: auto;
     border-radius: 8px;
@@ -453,28 +417,28 @@ private abrirModalFoto(rutaArchivo: string, nombre: string): void {
     background: #f0f0f0;
     cursor: pointer;
   `;
-  
-  imagen.onerror = () => {
-    console.error('❌ Error cargando imagen desde:', urlFoto);
-    imagen.alt = 'Error al cargar la imagen';
-    imagen.style.background = '#ff6b6b';
-  };
 
-  const nombreEl = document.createElement('p');
-  nombreEl.textContent = nombre;
-  nombreEl.style.cssText = 'font-size: 12px; color: #999; margin: 10px 0;';
+    imagen.onerror = () => {
+      console.error('❌ Error cargando imagen desde:', urlFoto);
+      imagen.alt = 'Error al cargar la imagen';
+      imagen.style.background = '#ff6b6b';
+    };
 
-  // ✨ CONTENEDOR DE BOTONES
-  const btnContainer = document.createElement('div');
-  btnContainer.style.cssText = `
+    const nombreEl = document.createElement('p');
+    nombreEl.textContent = nombre;
+    nombreEl.style.cssText = 'font-size: 12px; color: #999; margin: 10px 0;';
+
+    // ✨ CONTENEDOR DE BOTONES
+    const btnContainer = document.createElement('div');
+    btnContainer.style.cssText = `
     display: flex;
     gap: 10px;
     margin-top: 15px;
   `;
 
-  const btnCerrar = document.createElement('button');
-  btnCerrar.textContent = 'Cerrar';
-  btnCerrar.style.cssText = `
+    const btnCerrar = document.createElement('button');
+    btnCerrar.textContent = 'Cerrar';
+    btnCerrar.style.cssText = `
     background: #f44336;
     color: white;
     border: none;
@@ -485,14 +449,14 @@ private abrirModalFoto(rutaArchivo: string, nombre: string): void {
     font-size: 14px;
   `;
 
-  btnCerrar.addEventListener('click', () => {
-    modal.remove();
-  });
+    btnCerrar.addEventListener('click', () => {
+      modal.remove();
+    });
 
-  // ✨ NUEVO BOTÓN: VER EN LISTA DE ARCHIVOS
-  const btnVerArchivo = document.createElement('button');
-  btnVerArchivo.textContent = '📁 Ver en Archivos';
-  btnVerArchivo.style.cssText = `
+    // ✨ NUEVO BOTÓN: VER EN LISTA DE ARCHIVOS
+    const btnVerArchivo = document.createElement('button');
+    btnVerArchivo.textContent = '📁 Ver en Archivos';
+    btnVerArchivo.style.cssText = `
     background: #2196F3;
     color: white;
     border: none;
@@ -503,42 +467,40 @@ private abrirModalFoto(rutaArchivo: string, nombre: string): void {
     font-size: 14px;
   `;
 
-  btnVerArchivo.addEventListener('click', () => {
-    console.log('🔗 Navegando a archivos...');
-    modal.remove();
-    
-    // Navegar a la página de archivos
-    this.router.navigate([
-      '/viajes-previstos',
-      this.viajePrevistoId,
-      'itinerarios',
-      this.itinerarioId,
-      'actividades',
-      this.actividadSeleccionada,
-      'archivos'
-    ]);
-  });
+    btnVerArchivo.addEventListener('click', () => {
+      console.log('🔗 Navegando a archivos...');
+      modal.remove();
 
-  btnContainer.appendChild(btnVerArchivo);
-  btnContainer.appendChild(btnCerrar);
+      // Navegar a la página de archivos
+      this.router.navigate([
+        '/viajes-previstos',
+        this.viajePrevistoId,
+        'itinerarios',
+        this.itinerarioId,
+        'actividades',
+        this.actividadSeleccionada,
+        'archivos'
+      ]);
+    });
 
-  contenido.appendChild(titulo);
-  contenido.appendChild(imagen);
-  contenido.appendChild(nombreEl);
-  contenido.appendChild(btnContainer);
+    btnContainer.appendChild(btnVerArchivo);
+    btnContainer.appendChild(btnCerrar);
 
-  modal.appendChild(contenido);
+    contenido.appendChild(titulo);
+    contenido.appendChild(imagen);
+    contenido.appendChild(nombreEl);
+    contenido.appendChild(btnContainer);
 
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.remove();
-  });
+    modal.appendChild(contenido);
 
-  document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
 
-  console.log('✅ Modal de foto abierto');
-}
+    document.body.appendChild(modal);
 
-
+    console.log('✅ Modal de foto abierto');
+  }
 
   // Ver Mapa PNG - Muestra en modal
   verMapa(actividadId: number): void {
@@ -589,19 +551,5 @@ private abrirModalFoto(rutaArchivo: string, nombre: string): void {
       this.mapaGPX.remove();
       this.mapaGPX = null;
     }
-  }
-
-  private resetearFormulario(): void {
-    this.actividadActualizada = {
-      id: 0,
-      viajePrevistoId: this.viajePrevistoId,
-      itinerarioId: this.itinerarioId,
-      tipoActividadId: 0,
-      actividadDisponibleId: undefined,
-      nombre: '',
-      descripcion: '',
-      horaInicio: '',
-      horaFin: ''
-    };
   }
 }

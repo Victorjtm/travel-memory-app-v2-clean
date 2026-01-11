@@ -1,48 +1,46 @@
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { Archivo } from '../modelos/archivo';
+import { Actividad } from '../modelos/actividad.model';
 import { environment } from '../../environments/environment';
 import { BaseHttpService } from './base-http.service';
 
 @Injectable({
   providedIn: 'root'
 })
-export class ArchivoService extends BaseHttpService {
+export class ActividadService extends BaseHttpService {
 
-  private apiUrl = `${environment.apiUrl}/archivos`;
+  private apiUrl = `${environment.apiUrl}/actividades`;
 
-  // Obtener archivo individual
-  getArchivo(id: number): Observable<Archivo> {
-    return this.get<Archivo>(`${this.apiUrl}/${id}`);
+  // Obtener todas las actividades (opcionalmente filtradas por viaje o itinerario)
+  getActividades(params?: { viajePrevistoId?: number; itinerarioId?: number }): Observable<Actividad[]> {
+    let url = this.apiUrl;
+
+    if (params?.itinerarioId) {
+      url += `?itinerarioId=${params.itinerarioId}`;
+    } else if (params?.viajePrevistoId) {
+      url += `?viajePrevistoId=${params.viajePrevistoId}`;
+    }
+
+    return this.get<Actividad[]>(url);
   }
 
-  // Obtener archivos por actividad
-  getArchivosPorActividad(actividadId: number): Observable<Archivo[]> {
-    return this.get<Archivo[]>(`${this.apiUrl}?actividadId=${actividadId}`);
+  // Obtener actividad por ID
+  getActividadPorId(id: number): Observable<Actividad> {
+    return this.get<Actividad>(`${this.apiUrl}/${id}`);
   }
 
-  // Subir múltiples archivos (usando postFormData del servicio base)
-  subirArchivos(formData: FormData): Observable<Archivo[]> {
-    return this.postFormData<Archivo[]>(`${this.apiUrl}/subir`, formData);
+  // Crear nueva actividad
+  crearActividad(actividad: Omit<Actividad, 'id'>): Observable<{ id: number }> {
+    return this.post<{ id: number }>(this.apiUrl, actividad);
   }
 
-  // Actualizar metadatos y archivo físico (usando putFormData del servicio base)
-  actualizarArchivoConArchivo(id: number, formData: FormData): Observable<any> {
-    return this.putFormData(`${this.apiUrl}/${id}/archivo`, formData);
+  // Actualizar actividad
+  actualizarActividad(id: number, actividad: Partial<Actividad>): Observable<any> {
+    return this.put(`${this.apiUrl}/${id}`, actividad);
   }
 
-  // Actualizar solo metadatos (usando put del servicio base para JSON)
-  actualizarArchivo(id: number, datos: Partial<Archivo>): Observable<any> {
-    return this.put(`${this.apiUrl}/${id}`, datos);
-  }
-
-  // Descargar archivo (usando downloadBlob del servicio base)
-  descargarArchivo(id: number): Observable<Blob> {
-    return this.downloadBlob(`${this.apiUrl}/${id}`);
-  }
-
-  // Eliminar archivo
-  eliminarArchivo(id: number): Observable<any> {
+  // Eliminar actividad
+  eliminarActividad(id: number): Observable<any> {
     return this.delete(`${this.apiUrl}/${id}`);
   }
 }
