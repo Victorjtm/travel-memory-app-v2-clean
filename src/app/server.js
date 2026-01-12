@@ -3937,6 +3937,61 @@ app.post('/actividades/:id/corregir-fechas-nombre', (req, res) => {
   });
 });
 
+// ============================================
+// ✨ NUEVO ENDPOINT: Actualizar actividadId masivamente
+// ============================================
+
+/**
+ * POST /archivos/actualizar-actividad-masiva
+ * Actualiza la actividadId de múltiples archivos de una sola vez
+ * Body: { archivosIds: number[], nuevaActividadId: number }
+ */
+app.post('/archivos/actualizar-actividad-masiva', (req, res) => {
+  const { archivosIds, nuevaActividadId } = req.body;
+
+  console.log(`\n🔄 =============== ACTUALIZACIÓN MASIVA DE ACTIVIDAD ===============`);
+  console.log(`📦 Archivos a actualizar: ${archivosIds?.length || 0}`);
+  console.log(`🎯 Nueva actividadId: ${nuevaActividadId}`);
+
+  // Validaciones
+  if (!archivosIds || !Array.isArray(archivosIds) || archivosIds.length === 0) {
+    return res.status(400).json({
+      error: 'Se requiere un array de archivosIds no vacío'
+    });
+  }
+
+  if (!nuevaActividadId || isNaN(Number(nuevaActividadId))) {
+    return res.status(400).json({
+      error: 'Se requiere una nuevaActividadId válida'
+    });
+  }
+
+  // Construir consulta SQL con placeholders
+  const placeholders = archivosIds.map(() => '?').join(',');
+  const sql = `UPDATE archivos SET actividadId = ?, fechaActualizacion = datetime('now') WHERE id IN (${placeholders})`;
+
+  // Parámetros: [nuevaActividadId, ...archivosIds]
+  const params = [nuevaActividadId, ...archivosIds];
+
+  console.log('📝 Ejecutando actualización masiva...');
+
+  db.run(sql, params, function (err) {
+    if (err) {
+      console.error('❌ Error en actualización masiva:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+
+    console.log(`✅ Actualización completada: ${this.changes} archivo(s) actualizado(s)`);
+
+    res.json({
+      actualizados: this.changes,
+      mensaje: `${this.changes} archivo(s) reasignado(s) a la actividad ${nuevaActividadId}`
+    });
+  });
+});
+
+console.log('✅ Endpoint de actualización masiva de actividad registrado correctamente');
+
 // ----------------------------------------
 // 🔧 Función auxiliar: Actualizar itinerario y viaje
 // ----------------------------------------
@@ -4335,11 +4390,31 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
     // ========================================================================
     console.log('\n🏃 Creando actividad...');
 
-    const descripcionActividad = `Distancia: ${manifestData.estadisticas.distancia_km} km
-Duración: ${manifestData.estadisticas.duracion_formateada}
-Velocidad media: ${manifestData.estadisticas.velocidad_media_kmh} km/h
-Calorías: ${manifestData.estadisticas.calorias} kcal
-Pasos: ${manifestData.estadisticas.pasos_estimados}`;
+    // ✨ MEJORADO: Extracción robusta de estadísticas (soporta snake_case y camelCase)
+    const stats = manifestData.estadisticas || {};
+
+    const distKm = parseFloat(stats.distancia_km || stats.distanciaKm) || 0;
+    const duracionFmt = stats.duracion_formateada || stats.duracionFormateada || '00:00:00';
+
+    // Velocidades: intentar snake_case, luego camelCase, luego 0
+    const velMedia = parseFloat(stats.velocidad_media_kmh !== undefined ? stats.velocidad_media_kmh : (stats.velocidadMediaKmh || 0)) || 0;
+    const velMax = parseFloat(stats.velocidad_maxima_kmh !== undefined ? stats.velocidad_maxima_kmh : (stats.velocidadMaximaKmh || 0)) || 0;
+    const velMin = parseFloat(stats.velocidad_minima_kmh !== undefined ? stats.velocidad_minima_kmh : (stats.velocidadMinimaKmh || 0)) || 0;
+
+    // Energía/Actividad
+    const cals = parseInt(stats.calorias) || 0;
+    const pasos = parseInt(stats.pasos_estimados || stats.pasosEstimados) || 0;
+
+    // Tiempos adicionales
+    const distMetros = parseInt(stats.distancia_metros || stats.distanciaMetros) || 0;
+    const duracionSegs = parseInt(stats.duracion_segundos || stats.duracionSegundos) || 0;
+    const ptsGPS = parseInt(stats.puntos_gps || stats.puntosGPS) || 0;
+
+    const descripcionActividad = `Distancia: ${distKm} km
+Duración: ${duracionFmt}
+Velocidad media: ${velMedia} km/h
+Calorías: ${cals} kcal
+Pasos: ${pasos}`;
 
     let rutaGpxCompleto = null;
     let rutaMapaCompleto = null;
@@ -4420,16 +4495,16 @@ Pasos: ${manifestData.estadisticas.pasos_estimados}`;
           descripcionActividad,
           horaInicioActividad,
           horaFinActividad,
-          parseFloat(manifestData.estadisticas.distancia_km) || 0,
-          parseInt(manifestData.estadisticas.distancia_metros) || 0,
-          parseInt(manifestData.estadisticas.duracion_segundos) || 0,
-          manifestData.estadisticas.duracion_formateada || '00:00:00',
-          parseFloat(manifestData.estadisticas.velocidad_media_kmh) || 0,
-          parseFloat(manifestData.estadisticas.velocidad_maxima_kmh) || 0,
-          parseFloat(manifestData.estadisticas.velocidad_minima_kmh) || 0,
-          parseInt(manifestData.estadisticas.calorias) || 0,
-          parseInt(manifestData.estadisticas.pasos_estimados) || 0,
-          parseInt(manifestData.estadisticas.puntos_gps) || 0,
+          distKm,
+          distMetros,
+          duracionSegs,
+          duracionFmt,
+          velMedia,
+          velMax,
+          velMin,
+          cals,
+          pasos,
+          ptsGPS,
           manifestData.perfil_transporte?.id || 'unknown',
           rutaGpxCompleto,
           rutaMapaCompleto,
@@ -4442,10 +4517,10 @@ Pasos: ${manifestData.estadisticas.pasos_estimados}`;
           if (err) return reject(err);
           console.log('✅ Actividad creada con ID:', this.lastID);
           console.log(`📊 Estadísticas guardadas:
-    ✓ Distancia: ${manifestData.estadisticas.distancia_km} km
-    ✓ Velocidad media: ${manifestData.estadisticas.velocidad_media_kmh} km/h
-    ✓ Calorías: ${manifestData.estadisticas.calorias} kcal
-    ✓ Pasos: ${manifestData.estadisticas.pasos_estimados}`);
+    ✓ Distancia: ${distKm} km
+    ✓ Velocidad media: ${velMedia} km/h
+    ✓ Calorías: ${cals} kcal
+    ✓ Pasos: ${pasos}`);
           resolve(this.lastID);
         }
       );

@@ -30,6 +30,12 @@
     <i class="fa fa-calendar-check"></i> Corregir Fechas Auto
   </button>
 
+  <!-- ✨ NUEVO BOTÓN: Separar por días -->
+  <button (click)="separarPorDias()" class="btn-separar-dias" [disabled]="!archivos || archivos.length === 0"
+    title="Crea un itinerario y actividad por cada día detectado en los archivos">
+    <i class="fa fa-calendar-day"></i> Separar por Días
+  </button>
+
   <router-outlet></router-outlet>
   <hr>
 

@@ -10,7 +10,74 @@ import { environment } from '../../../environments/environment';
   standalone: true,
   imports: [RouterModule, CommonModule, FormsModule],
   templateUrl: './inicio.component.html',
-  styleUrls: ['./inicio.component.scss']
+  styleUrls: ['./inicio.component.scss'],
+  styles: [`
+    .video-alert {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 1rem;
+      margin: 1rem 0;
+    }
+    
+    .alert-content {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      
+      &.success {
+        .icon { background: #d4edda; }
+        h4 { color: #155724; }
+      }
+      
+      &.ignored {
+        .icon { background: #fff3cd; }
+        h4 { color: #856404; }
+      }
+    }
+    
+    .icon {
+      font-size: 1.5rem;
+      background: #e2e3e5;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+    }
+    
+    h4 { margin: 0 0 0.25rem 0; font-size: 1rem; }
+    p { margin: 0; font-size: 0.9rem; color: #6c757d; }
+    code { background: #e9ecef; padding: 2px 4px; border-radius: 4px; font-size: 0.85rem; }
+    
+    .video-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    
+    .btn-video {
+      background: #6c757d;
+      color: white;
+      flex: 2;
+      padding: 0.5rem;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      &:hover { background: #5a6268; }
+    }
+    
+    .btn-ignore {
+      background: transparent;
+      border: 1px solid #ced4da;
+      color: #6c757d;
+      flex: 1;
+      padding: 0.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      &:hover { background: #e9ecef; color: #495057; }
+    }
+  `]
 })
 export class InicioComponent implements OnInit {
   mensajeBienvenida = "¡Bienvenido a la aplicación de recuerdos de viajes!";
@@ -33,6 +100,12 @@ export class InicioComponent implements OnInit {
   // Archivos seleccionados
   archivosSeleccionados: File[] = [];
   manifestData: any = null;
+
+  // Manejo de videos (Carpeta adicional)
+  videosRequeridos = false;
+  videosSeleccionados = false;
+  ignorarVideos = false;
+  archivosVideo: File[] = [];
 
   constructor(
     private http: HttpClient,
@@ -129,6 +202,16 @@ export class InicioComponent implements OnInit {
 
       console.log('✅ Manifest cargado:', this.manifestData.nombre);
 
+      // Verificar si el viaje tiene videos
+      const hayVideos = this.manifestData.multimedia?.some((m: any) => m.tipo === 'video');
+      if (hayVideos) {
+        this.videosRequeridos = true;
+        this.videosSeleccionados = false;
+        console.log('📹 El viaje contiene videos. Se requiere seleccionar la carpeta de videos.');
+      } else {
+        this.videosRequeridos = false;
+      }
+
       // Autocompletar destino
       const primeraFoto = this.manifestData.multimedia?.find((m: any) => m.tipo === 'foto');
       if (primeraFoto?.gps) {
@@ -141,6 +224,46 @@ export class InicioComponent implements OnInit {
     } catch (error: any) {
       console.error('❌ Error seleccionando carpeta:', error);
       alert(`Error al acceder a la carpeta: ${error.message}`);
+    }
+  }
+
+  /**
+   * Permite seleccionar la carpeta de videos (DCIM/AudioPhotoApp/videos)
+   */
+  async seleccionarCarpetaVideos() {
+    console.log('📂 Seleccionando carpeta de videos...');
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      (input as any).webkitdirectory = true;
+      input.multiple = true;
+
+      const filesPromise = new Promise<FileList | null>((resolve) => {
+        input.onchange = () => resolve(input.files);
+        input.oncancel = () => resolve(null);
+      });
+
+      input.click();
+      const files = await filesPromise;
+
+      if (!files || files.length === 0) {
+        return;
+      }
+
+      // Filtrar solo videos MP4
+      const videoFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.mp4'));
+
+      if (videoFiles.length === 0) {
+        alert('⚠️ No se encontraron archivos MP4 en la carpeta seleccionada.');
+        return;
+      }
+
+      this.archivosVideo = videoFiles;
+      this.videosSeleccionados = true;
+      console.log(`✅ ${videoFiles.length} videos cargados desde carpeta adicional.`);
+
+    } catch (error: any) {
+      console.error('❌ Error seleccionando carpeta de videos:', error);
     }
   }
 
@@ -157,6 +280,10 @@ export class InicioComponent implements OnInit {
     this.manifestData = null;
     this.destinoViaje = '';
     this.tipoActividadId = null;
+    this.videosRequeridos = false;
+    this.videosSeleccionados = false;
+    this.ignorarVideos = false;
+    this.archivosVideo = [];
   }
 
   /**
@@ -221,20 +348,25 @@ export class InicioComponent implements OnInit {
       formData.append('tipoActividadId', this.tipoActividadId.toString());
 
       // Añadir todos los archivos CON su ruta relativa preservada
-      this.archivosSeleccionados.forEach((file, index) => {
+      // COMBINAR ARCHIVOS: Exportación + Videos (si los hay)
+      const todosLosArchivos = [...this.archivosSeleccionados, ...this.archivosVideo];
+
+      todosLosArchivos.forEach((file, index) => {
         // Preservar la ruta completa del archivo (ej: "fotos/JPEG_123.jpg")
+        // Para los videos de la carpeta extra, webkitRelativePath puede ser diferente, 
+        // pero el backend busca por nombre de archivo (basename) para los videos, así que servirá.
         const relativePath = (file as any).webkitRelativePath || file.name;
         formData.append('archivos', file, relativePath);
 
         // ✅ NUEVO: Log específico para archivos importantes
-        if (file.name.endsWith('.gpx') || file.name.endsWith('.png') || file.name === 'manifest.json') {
+        if (file.name.endsWith('.gpx') || file.name.endsWith('.png') || file.name === 'manifest.json' || file.name.endsWith('.mp4')) {
           console.log(`📤 Agregando a FormData: ${relativePath}`);
         }
 
         // Actualizar progreso de preparación
-        const progreso = Math.round((index / this.archivosSeleccionados.length) * 30);
+        const progreso = Math.round((index / todosLosArchivos.length) * 30);
         this.progresoSubida = progreso;
-        this.mensajeProgreso = `Preparando archivos... ${index + 1}/${this.archivosSeleccionados.length}`;
+        this.mensajeProgreso = `Preparando archivos... ${index + 1}/${todosLosArchivos.length}`;
       });
 
       const uploadUrl = `${this.API_URL}/import-tracking`;

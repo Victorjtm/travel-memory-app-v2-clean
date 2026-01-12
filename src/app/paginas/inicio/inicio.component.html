@@ -1,10 +1,10 @@
 <div class="inicio-container">
   <h1>{{ mensajeBienvenida }}</h1>
   <p>Comienza a guardar tus recuerdos de viaje aquí.</p>
-  
+
   <a routerLink="/viajes" class="btn">Ir a Viajes</a>
   <a routerLink="/viajes-previstos" class="btn">Ir a Viajes Previstos</a>
-  
+
   <!-- Nuevo botón para seleccionar archivos -->
   <a routerLink="/formulario-archivos-actividades-itinerario" class="btn">
     Seleccionar Archivos
@@ -13,10 +13,7 @@
   <!-- ====================================================================== -->
   <!-- NUEVO: Botón Importar desde Móvil                                     -->
   <!-- ====================================================================== -->
-  <button 
-    class="btn btn-import" 
-    (click)="importarDesdeMovil()"
-    title="Importar tracking desde AudioPhotoApp">
+  <button class="btn btn-import" (click)="importarDesdeMovil()" title="Importar tracking desde AudioPhotoApp">
     📤 Importar desde Móvil
   </button>
 </div>
@@ -26,7 +23,7 @@
 <!-- ====================================================================== -->
 <div class="modal-overlay" *ngIf="mostrarModalImport" (click)="cancelarImportacion()">
   <div class="modal-import" (click)="$event.stopPropagation()">
-    
+
     <!-- Header del Modal -->
     <div class="modal-header">
       <h2>📦 Importar Tracking GPS</h2>
@@ -42,7 +39,7 @@
       <!-- Vista de Configuración (antes de importar)  -->
       <!-- ============================================ -->
       <div *ngIf="!importando">
-        
+
         <!-- Información del Tracking Detectado -->
         <div class="tracking-info" *ngIf="manifestData">
           <h3>🗺️ Tracking Detectado</h3>
@@ -82,6 +79,41 @@
           </div>
         </div>
 
+        <!-- AVISO DE VIDEOS DETECTADOS -->
+        <div class="video-alert" *ngIf="videosRequeridos">
+          <div class="alert-content" [class.success]="videosSeleccionados" [class.ignored]="ignorarVideos">
+            <div class="icon">
+              {{ videosSeleccionados ? '✅' : (ignorarVideos ? '⚠️' : '📹') }}
+            </div>
+            <div class="text">
+              <h4>
+                {{ videosSeleccionados ? 'Videos listos para importar' : (ignorarVideos ? 'Importación de videos
+                omitida' : 'Videos detectados') }}
+              </h4>
+              <p *ngIf="!videosSeleccionados && !ignorarVideos">
+                Este viaje contiene videos. Por favor selecciona la carpeta: <br>
+                <code>.../DCIM/AudioPhotoApp/videos</code>
+              </p>
+              <p *ngIf="ignorarVideos">
+                Se importará el viaje sin los archivos de video.
+              </p>
+              <p *ngIf="videosSeleccionados">
+                Se han cargado {{ archivosVideo.length }} videos correctamente.
+              </p>
+            </div>
+          </div>
+
+          <div class="video-actions" *ngIf="!videosSeleccionados">
+            <button *ngIf="!ignorarVideos" class="btn btn-video" (click)="seleccionarCarpetaVideos()">
+              📂 Seleccionar Carpeta de Videos
+            </button>
+
+            <button class="btn btn-ignore" (click)="ignorarVideos = !ignorarVideos">
+              {{ ignorarVideos ? '🔄 Volver a intentar' : '⏭️ Omitir videos' }}
+            </button>
+          </div>
+        </div>
+
         <!-- Separador -->
         <hr class="divider">
 
@@ -94,13 +126,8 @@
             <label for="destino">
               🗺️ Destino del viaje:
             </label>
-            <input 
-              type="text" 
-              id="destino"
-              [(ngModel)]="destinoViaje"
-              placeholder="Ej: Málaga, España"
-              class="form-input"
-              required>
+            <input type="text" id="destino" [(ngModel)]="destinoViaje" placeholder="Ej: Málaga, España"
+              class="form-input" required>
           </div>
 
           <!-- Campo: Tipo de Actividad -->
@@ -108,11 +135,7 @@
             <label for="tipoActividad">
               🏃 Tipo de actividad:
             </label>
-            <select 
-              id="tipoActividad"
-              [(ngModel)]="tipoActividadId"
-              class="form-select"
-              required>
+            <select id="tipoActividad" [(ngModel)]="tipoActividadId" class="form-select" required>
               <option [value]="null" disabled selected>Selecciona una actividad</option>
               <option *ngFor="let tipo of tiposActividad" [value]="tipo.id">
                 {{ tipo.nombre }}
@@ -127,7 +150,7 @@
       <!-- ============================================ -->
       <div *ngIf="importando" class="progress-container">
         <h3>⏳ Importando...</h3>
-        
+
         <!-- Barra de Progreso -->
         <div class="progress-bar-container">
           <div class="progress-bar" [style.width.%]="progresoSubida">
@@ -146,16 +169,11 @@
 
     <!-- Footer del Modal -->
     <div class="modal-footer">
-      <button 
-        class="btn btn-cancel" 
-        (click)="cancelarImportacion()"
-        [disabled]="importando">
+      <button class="btn btn-cancel" (click)="cancelarImportacion()" [disabled]="importando">
         Cancelar
       </button>
-      <button 
-        class="btn btn-confirm" 
-        (click)="confirmarImportacion()"
-        [disabled]="importando || !destinoViaje || !tipoActividadId">
+      <button class="btn btn-confirm" (click)="confirmarImportacion()"
+        [disabled]="importando || !destinoViaje || !tipoActividadId || (videosRequeridos && !videosSeleccionados && !ignorarVideos)">
         Importar
       </button>
     </div>

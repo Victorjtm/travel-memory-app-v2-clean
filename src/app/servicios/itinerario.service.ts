@@ -17,11 +17,11 @@ export class ItinerarioService extends BaseHttpService {
   getItinerarios(viajePrevistoId?: number): Observable<Itinerario[]> {
     const url = viajePrevistoId ? `${this.apiUrl}?viajePrevistoId=${viajePrevistoId}` : this.apiUrl;
     return this.get<Itinerario[]>(url);
-    
+
   }
 
   // Crear un nuevo itinerario
-  crearItinerario(itinerario: Itinerario): Observable<Itinerario> {
+  crearItinerario(itinerario: Omit<Itinerario, 'id'>): Observable<Itinerario> {
     return this.post<Itinerario>(this.apiUrl, itinerario);
   }
 
@@ -40,8 +40,8 @@ export class ItinerarioService extends BaseHttpService {
     return this.get<Itinerario>(`${this.apiUrl}/${id}`);
   }
 
-// Obtener datos del ItinerarioGeneral (descripcionGeneral, etc.)
-obtenerItinerarioGeneral(itinerarioId: number): Observable<any> {
-  return this.getById(itinerarioId); // Usa el método que ya tienes
-}
+  // Obtener datos del ItinerarioGeneral (descripcionGeneral, etc.)
+  obtenerItinerarioGeneral(itinerarioId: number): Observable<any> {
+    return this.getById(itinerarioId); // Usa el método que ya tienes
+  }
 }

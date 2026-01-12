@@ -357,4 +357,23 @@ export class ArchivoService extends BaseHttpService {
     return this.post(`${environment.apiUrl}/actividades/${actividadId}/corregir-fechas-nombre`, {});
   }
 
+  // ============================================
+  // ✨ NUEVO MÉTODO: Actualizar actividadId masivamente
+  // ============================================
+
+  /**
+   * Actualiza la actividadId de múltiples archivos de una sola vez
+   * @param archivosIds - Array de IDs de archivos a actualizar
+   * @param nuevaActividadId - Nueva actividadId a asignar
+   */
+  actualizarActividadMasiva(archivosIds: number[], nuevaActividadId: number): Observable<{ actualizados: number }> {
+    return this.post<{ actualizados: number }>(
+      `${this.apiUrl}/actualizar-actividad-masiva`,
+      {
+        archivosIds,
+        nuevaActividadId
+      }
+    );
+  }
+
 }

@@ -3,6 +3,11 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { ArchivoService } from '../../servicios/archivo.service';
+import { ActividadService } from '../../servicios/actividades.service';
+import { ItinerarioService } from '../../servicios/itinerario.service';
+import { Actividad } from '../../modelos/actividad.model';
+import { Itinerario } from '../../modelos/itinerario.model';
+import { forkJoin } from 'rxjs';
 import { Archivo } from '../../modelos/archivo';
 import { ArchivoAsociado, ArchivoEncontrado } from '../../modelos/archivo-asociado.model';
 import { HttpClientModule } from '@angular/common/http';
@@ -52,10 +57,12 @@ export class ArchivosComponent implements OnInit, OnDestroy {
 
   constructor(
     private archivoService: ArchivoService,
+    private actividadService: ActividadService,  // ✨ NUEVO
+    private itinerarioService: ItinerarioService,  // ✨ NUEVO
     private route: ActivatedRoute,
     private router: Router,
     private cdr: ChangeDetectorRef,
-    private ngZone: NgZone  // ← AGREGAR ESTA LÍNEA
+    private ngZone: NgZone
   ) { }
 
 
@@ -1245,6 +1252,237 @@ Formatos soportados:
           `• 1767698649281_archivo.jpg`);
       }
     });
+  }
+
+  // ============================================
+  // ✨ NUEVO MÉTODO: SEPARAR POR DÍAS
+  // ============================================
+
+  /**
+   * Separa los archivos de la actividad actual en múltiples itinerarios/actividades
+   * según las fechas de captura de cada archivo
+   */
+  separarPorDias(): void {
+    if (!this.archivos || this.archivos.length === 0) {
+      alert('⚠️ No hay archivos para separar');
+      return;
+    }
+
+    console.log('\n🔄 =============== SEPARAR POR DÍAS - INICIO ===============');
+
+    // 1️⃣ AGRUPAR ARCHIVOS POR FECHA
+    const archivosPorFecha = this.agruparArchivosPorFecha();
+
+    if (archivosPorFecha.size === 0) {
+      alert('⚠️ No se encontraron archivos con fechas válidas');
+      return;
+    }
+
+    if (archivosPorFecha.size === 1) {
+      alert('ℹ️ Todos los archivos son del mismo día. No es necesario separarlos.');
+      return;
+    }
+
+    // 2️⃣ MOSTRAR MODAL DE CONFIRMACIÓN
+    const fechasEncontradas = Array.from(archivosPorFecha.keys()).sort();
+    const resumen = this.generarResumenSeparacion(archivosPorFecha, fechasEncontradas);
+
+    if (!confirm(resumen)) {
+      console.log('❌ Usuario canceló la operación');
+      return;
+    }
+
+    // 3️⃣ EJECUTAR SEPARACIÓN
+    this.ejecutarSeparacion(archivosPorFecha, fechasEncontradas);
+  }
+
+  /**
+   * Agrupa los archivos por fecha (YYYY-MM-DD)
+   */
+  private agruparArchivosPorFecha(): Map<string, Archivo[]> {
+    const grupos = new Map<string, Archivo[]>();
+
+    this.archivos.forEach(archivo => {
+      if (!archivo.fechaCreacion) {
+        console.warn(`⚠️ Archivo sin fecha: ${archivo.nombreArchivo}`);
+        return;
+      }
+
+      // Extraer solo la fecha (YYYY-MM-DD)
+      const fecha = archivo.fechaCreacion.split('T')[0];
+
+      if (!grupos.has(fecha)) {
+        grupos.set(fecha, []);
+      }
+
+      grupos.get(fecha)!.push(archivo);
+    });
+
+    console.log(`📊 Archivos agrupados en ${grupos.size} día(s):`);
+    grupos.forEach((archivos, fecha) => {
+      console.log(`  📅 ${fecha}: ${archivos.length} archivo(s)`);
+    });
+
+    return grupos;
+  }
+
+  /**
+   * Genera el mensaje de confirmación con el resumen de la operación
+   */
+  private generarResumenSeparacion(
+    archivosPorFecha: Map<string, Archivo[]>,
+    fechasEncontradas: string[]
+  ): string {
+    let mensaje = `📅 Se detectaron ${fechasEncontradas.length} días diferentes:\n\n`;
+
+    fechasEncontradas.forEach(fecha => {
+      const archivos = archivosPorFecha.get(fecha)!;
+      const [año, mes, dia] = fecha.split('-');
+      mensaje += `• ${dia}/${mes}/${año}: ${archivos.length} archivo(s)\n`;
+    });
+
+    const archivosSinFecha = this.archivos.filter(a => !a.fechaCreacion).length;
+    if (archivosSinFecha > 0) {
+      mensaje += `\n⚠️ ${archivosSinFecha} archivo(s) sin fecha (se mantendrán en itinerario original)\n`;
+    }
+
+    mensaje += `\nEsto creará:\n`;
+    mensaje += `✓ ${fechasEncontradas.length} nuevo(s) itinerario(s)\n`;
+    mensaje += `✓ ${fechasEncontradas.length} nueva(s) actividad(es)\n`;
+    mensaje += `✓ Redistribuirá ${this.archivos.length - archivosSinFecha} archivo(s)\n`;
+    mensaje += `\n⚠️ El itinerario y actividad actual se eliminarán\n`;
+    mensaje += `\n¿Continuar?`;
+
+    return mensaje;
+  }
+
+  /**
+   * Ejecuta la separación creando itinerarios, actividades y reasignando archivos
+   */
+  private async ejecutarSeparacion(
+    archivosPorFecha: Map<string, Archivo[]>,
+    fechasEncontradas: string[]
+  ): Promise<void> {
+    try {
+      console.log('\n🚀 Iniciando separación...');
+
+      // 1️⃣ OBTENER DATOS DEL ITINERARIO Y ACTIVIDAD ACTUAL
+      const itinerarioActual = await this.itinerarioService.getById(this.itinerarioId).toPromise();
+
+      if (!itinerarioActual) {
+        throw new Error('No se pudo obtener el itinerario actual');
+      }
+
+      console.log('📋 Itinerario actual:', itinerarioActual);
+
+      // 2️⃣ CREAR NUEVOS ITINERARIOS Y ACTIVIDADES
+      const nuevasAsignaciones: { fecha: string; itinerarioId: number; actividadId: number; archivos: Archivo[] }[] = [];
+
+      for (const fecha of fechasEncontradas) {
+        const archivosDelDia = archivosPorFecha.get(fecha)!;
+
+        // Calcular hora de inicio y fin del día
+        const horas = archivosDelDia
+          .map(a => a.horaCaptura || '00:00')
+          .sort();
+
+        const horaInicio = horas[0] || '00:00';
+        const horaFin = horas[horas.length - 1] || '23:59';
+
+        console.log(`\n📅 Procesando día: ${fecha}`);
+        console.log(`  ⏰ Rango horario: ${horaInicio} - ${horaFin}`);
+
+        // 2.1 - CREAR ITINERARIO
+        const nuevoItinerario: Omit<Itinerario, 'id'> = {
+          viajePrevistoId: this.viajePrevistoId,
+          fechaInicio: fecha,
+          fechaFin: fecha,
+          duracionDias: 1,
+          destinosPorDia: itinerarioActual.destinosPorDia || '',
+          descripcionGeneral: itinerarioActual.descripcionGeneral || '',
+          horaInicio: '00:00',
+          horaFin: '23:59',
+          climaGeneral: itinerarioActual.climaGeneral,
+          tipoDeViaje: itinerarioActual.tipoDeViaje
+        };
+
+        const resultadoItinerario = await this.itinerarioService.crearItinerario(nuevoItinerario).toPromise();
+        const nuevoItinerarioId = resultadoItinerario!.id;
+
+        console.log(`  ✅ Itinerario creado con ID: ${nuevoItinerarioId}`);
+
+        // 2.2 - CREAR ACTIVIDAD
+        const [año, mes, dia] = fecha.split('-');
+        const fechaFormateada = `${dia}/${mes}/${año}`;
+
+        const nuevaActividad: Omit<Actividad, 'id'> = {
+          viajePrevistoId: this.viajePrevistoId,
+          itinerarioId: nuevoItinerarioId,
+          tipoActividadId: 1, // Puedes ajustar esto según tu lógica
+          nombre: `Día en ${itinerarioActual.destinosPorDia} - ${fechaFormateada}`,
+          descripcion: `Actividad generada automáticamente al separar por días`,
+          horaInicio: horaInicio,
+          horaFin: horaFin
+        };
+
+        const resultadoActividad = await this.actividadService.crearActividad(nuevaActividad).toPromise();
+        const nuevaActividadId = resultadoActividad!.id;
+
+        console.log(`  ✅ Actividad creada con ID: ${nuevaActividadId}`);
+
+        nuevasAsignaciones.push({
+          fecha,
+          itinerarioId: nuevoItinerarioId,
+          actividadId: nuevaActividadId,
+          archivos: archivosDelDia
+        });
+      }
+
+      // 3️⃣ REASIGNAR ARCHIVOS A NUEVAS ACTIVIDADES
+      console.log('\n📦 Reasignando archivos...');
+
+      for (const asignacion of nuevasAsignaciones) {
+        console.log(`\n📅 ${asignacion.fecha}: Reasignando ${asignacion.archivos.length} archivo(s) a actividad ${asignacion.actividadId}`);
+
+        for (const archivo of asignacion.archivos) {
+          await this.archivoService.actualizarArchivo(archivo.id, {
+            actividadId: asignacion.actividadId
+          }).toPromise();
+
+          console.log(`  ✅ Archivo ${archivo.id} reasignado`);
+        }
+      }
+
+      // 4️⃣ ELIMINAR ACTIVIDAD ORIGINAL (los archivos ya están reasignados)
+      console.log('\n🗑️ Eliminando actividad original...');
+      await this.actividadService.eliminarActividad(this.actividadId).toPromise();
+      console.log('✅ Actividad original eliminada');
+
+      // 5️⃣ ELIMINAR ITINERARIO ORIGINAL (ya está vacío)
+      console.log('🗑️ Eliminando itinerario original...');
+      await this.itinerarioService.eliminarItinerario(this.itinerarioId).toPromise();
+      console.log('✅ Itinerario original eliminado');
+
+      // 6️⃣ MOSTRAR RESULTADO Y REDIRIGIR
+      alert(`✅ Separación completada exitosamente\n\n` +
+        `📊 Resumen:\n` +
+        `• ${nuevasAsignaciones.length} itinerario(s) creado(s)\n` +
+        `• ${nuevasAsignaciones.length} actividad(es) creada(s)\n` +
+        `• ${this.archivos.length} archivo(s) redistribuido(s)\n\n` +
+        `Redirigiendo a la lista de itinerarios...`);
+
+      console.log('\n✅ =============== SEPARACIÓN COMPLETADA ===============\n');
+
+      // Redirigir a la lista de itinerarios del viaje
+      this.router.navigate(['/itinerarios', this.viajePrevistoId]);
+
+    } catch (error: any) {
+      console.error('\n❌ =============== ERROR EN SEPARACIÓN ===============');
+      console.error('Error:', error);
+
+      alert(`❌ Error durante la separación:\n\n${error.message || error}\n\n` +
+        `La operación se ha detenido. Revisa la consola para más detalles.`);
+    }
   }
 
 }
