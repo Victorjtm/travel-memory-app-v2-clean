@@ -78,7 +78,7 @@ $transicion: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
   @media (max-width: 768px) {
     padding: 0.8rem 1.5rem;
     font-size: 1rem;
-    
+
     i {
       font-size: 1.1rem;
     }
@@ -88,7 +88,7 @@ $transicion: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 // =========================================
 // FORMULARIO DE ACTUALIZACIÓN
 // =========================================
-.contenedor > div:has(h3:contains("Actualizar Actividad")) {
+.contenedor>div:has(h3:contains("Actualizar Actividad")) {
   background: $color-blanco;
   border-radius: $radio;
   padding: 2rem;
@@ -131,7 +131,8 @@ $transicion: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
       display: block;
     }
 
-    input, textarea {
+    input,
+    textarea {
       width: 100%;
       padding: 0.8rem;
       border: 2px solid #e1e5e9;
@@ -153,9 +154,17 @@ $transicion: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
       resize: vertical;
     }
 
-    #nombre { grid-area: nombre; }
-    #horaInicio { grid-area: horaInicio; }
-    #horaFin { grid-area: horaFin; }
+    #nombre {
+      grid-area: nombre;
+    }
+
+    #horaInicio {
+      grid-area: horaInicio;
+    }
+
+    #horaFin {
+      grid-area: horaFin;
+    }
 
     .btn-guardar,
     .btn-cancelar {
@@ -168,7 +177,7 @@ $transicion: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 // =========================================
 // LISTA DE ACTIVIDADES
 // =========================================
-.contenedor > div:not(:has(h3:contains("Actualizar Actividad"))) > div {
+.contenedor>div:not(:has(h3:contains("Actualizar Actividad")))>div {
   background: $color-blanco;
   border-radius: $radio;
   padding: 2rem;
@@ -277,7 +286,7 @@ $transicion: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
   @media (max-width: 768px) {
     padding: 0.7rem 1.2rem;
     font-size: 0.85rem;
-    
+
     i {
       font-size: 0.9rem;
     }
@@ -332,7 +341,7 @@ $transicion: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 // =========================================
 // BOTÓN VOLVER
 // =========================================
-.contenedor > button:last-child {
+.contenedor>button:last-child {
   background: linear-gradient(135deg, $color-texto-suave, color.adjust($color-texto-suave, $lightness: -10%));
   color: $color-blanco;
   border: none;
@@ -404,13 +413,14 @@ hr {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
-.contenedor > div {
+.contenedor>div {
   animation: fadeIn 0.4s ease-out;
 }
 
@@ -438,7 +448,7 @@ hr {
     }
   }
 
-  .contenedor > div:has(h3:contains("Actualizar Actividad")) form {
+  .contenedor>div:has(h3:contains("Actualizar Actividad")) form {
     grid-template-columns: 1fr;
     grid-template-areas:
       "nombre"
@@ -472,6 +482,7 @@ input:focus,
 textarea:focus {
   box-shadow: 0 0 0 3px rgba($color-primario, 0.1);
 }
+
 // =========================================
 // ✨ NUEVOS BOTONES PARA VER ARCHIVOS
 // =========================================
@@ -655,6 +666,20 @@ textarea:focus {
       }
     }
   }
+
+  .segmento-transporte {
+    border-bottom: 1px dashed rgba($color-gris, 0.5);
+    padding: 0.5rem 0;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    p {
+      margin: 0;
+      font-size: 0.95rem;
+    }
+  }
 }
 
 // =========================================
@@ -666,6 +691,7 @@ textarea:focus {
     transform: translateY(30px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
@@ -676,6 +702,7 @@ textarea:focus {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -725,6 +752,7 @@ textarea:focus {
     }
   }
 }
+
 // =========================================
 // ✨ MAPA GPX INTERACTIVO
 // =========================================
@@ -773,4 +801,3 @@ textarea:focus {
     background-color: $color-blanco;
   }
 }
-

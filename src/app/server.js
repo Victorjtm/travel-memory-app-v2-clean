@@ -1787,16 +1787,16 @@ app.get('/actividades/:id/estadisticas', (req, res) => {
       distanciaKm, distanciaMetros, duracionSegundos, duracionFormateada,
       velocidadMediaKmh, velocidadMaximaKmh, velocidadMinimaKmh,
       calorias, pasosEstimados, puntosGPS, perfilTransporte,
-      horaInicio, horaFin, nombre, descripcion
+      horaInicio, horaFin, nombre, descripcion, rutaEstadisticas
     FROM actividades WHERE id = ?`,
     [id],
-    (err, row) => {
+    async (err, row) => {
       if (err) return res.status(500).json({ error: err.message });
       if (!row) {
         return res.status(404).json({ error: 'Actividad no encontrada' });
       }
 
-      // Formato de estadísticas
+      // Formato de estadísticas base
       const estadisticas = {
         nombre: row.nombre,
         descripcion: row.descripcion,
@@ -1824,8 +1824,55 @@ app.get('/actividades/:id/estadisticas', (req, res) => {
         tracking: {
           puntosGPS: row.puntosGPS,
           perfilTransporte: row.perfilTransporte
-        }
+        },
+        desgloseTransporte: [] // Por defecto vacío
       };
+
+      // ✨ Intentar enriquecer con el JSON original si existe
+      if (row.rutaEstadisticas) {
+        try {
+          const statsPath = path.join(uploadsPath, row.rutaEstadisticas);
+          if (fs.existsSync(statsPath)) {
+            const extraStats = JSON.parse(fs.readFileSync(statsPath, 'utf8'));
+
+            // Función para limpiar y parsear números
+            const parseNum = (val) => {
+              if (val === undefined || val === null) return null;
+              if (typeof val === 'string') return parseFloat(val.replace(/[^\d.]/g, '')) || 0;
+              return parseFloat(val);
+            };
+
+            // Función para buscar en varios campos (aliasing)
+            const getField = (keys) => {
+              for (const key of keys) {
+                if (extraStats[key] !== undefined && extraStats[key] !== null && extraStats[key] !== '') return extraStats[key];
+              }
+              return null;
+            };
+
+            // Rellenar si en la BD están a 0 o vacíos
+            if (!estadisticas.velocidad.media) estadisticas.velocidad.media = parseNum(getField(['velocidadMedia', 'velocidad_media_kmh', 'velocidadMediaKmh']));
+            if (!estadisticas.velocidad.maxima) estadisticas.velocidad.maxima = parseNum(getField(['velocidadMaxima', 'velocidad_maxima_kmh', 'velocidadMaximaKmh']));
+            if (!estadisticas.velocidad.minima) estadisticas.velocidad.minima = parseNum(getField(['velocidadMinima', 'velocidad_minima_kmh', 'velocidadMinimaKmh']));
+            if (!estadisticas.energia.calorias) estadisticas.energia.calorias = parseInt(parseNum(getField(['calorias', 'calories']))) || 0;
+            if (!estadisticas.energia.pasos) estadisticas.energia.pasos = parseInt(getField(['pasos', 'pasos_estimados', 'pasosEstimados'])) || 0;
+            if (!estadisticas.tracking.puntosGPS) estadisticas.tracking.puntosGPS = parseInt(getField(['numeroPuntos', 'puntosGPS', 'puntos_gps'])) || 0;
+
+            // Perfil de transporte (si es unknown en BD)
+            if (estadisticas.tracking.perfilTransporte === 'unknown') {
+              const rawT = getField(['perfilTransporte', 'perfil_transporte']);
+              estadisticas.tracking.perfilTransporte = (typeof rawT === 'object' && rawT !== null) ? rawT.id : (rawT || 'unknown');
+            }
+
+            if (extraStats.desgloseTransporte) {
+              estadisticas.desgloseTransporte = extraStats.desgloseTransporte;
+            }
+            console.log('✅ Estadísticas enriquecidas desde archivo JSON');
+          }
+        } catch (e) {
+          console.warn('⚠️ Error enriqueciendo desde JSON:', e.message);
+        }
+      }
 
       res.json(estadisticas);
     }
@@ -4129,7 +4176,7 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
     console.log(`✅ Validación inicial completada`);
     console.log(`📍 Destino recibido: "${destino}"`);
 
-    // 2. BUSCAR Y PARSEAR manifest.json
+    // 2. BUSCAR Y PARSEAR manifest.json Y estadisticas.json
     const manifestFile = req.files.find(f => f.originalname === 'manifest.json');
     if (!manifestFile) {
       throw new Error('No se encontró manifest.json en los archivos');
@@ -4137,6 +4184,18 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
 
     manifestData = JSON.parse(fs.readFileSync(manifestFile.path, 'utf8'));
     console.log('✅ Manifest parseado:', manifestData.nombre);
+
+    // ✨ NUEVO: Intentar leer estadísticas adicionales de estadisticas.json si viene en el upload
+    let extraStatsData = {};
+    const statsUploadedFile = req.files.find(f => f.originalname === 'estadisticas.json');
+    if (statsUploadedFile) {
+      try {
+        extraStatsData = JSON.parse(fs.readFileSync(statsUploadedFile.path, 'utf8'));
+        console.log('✅ estadisticas.json parseado del upload');
+      } catch (e) {
+        console.warn('⚠️ Error parseando estadisticas.json (ignorado):', e.message);
+      }
+    }
 
     // ========================================================================
     // 3. CALCULAR FECHA REAL DEL RECORRIDO Y EXTRAER UBICACIÓN DESDE GPS
@@ -4390,31 +4449,69 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
     // ========================================================================
     console.log('\n🏃 Creando actividad...');
 
-    // ✨ MEJORADO: Extracción robusta de estadísticas (soporta snake_case y camelCase)
-    const stats = manifestData.estadisticas || {};
+    // ✨ MEJORADO: Fusión profunda y selectores inteligentes para estadísticas
+    // Buscamos en: 1. estadisticas.json (si existe), 2. manifest.estadisticas, 3. manifest (raíz)
+    const getDeepStat = (keys) => {
+      const sources = [
+        extraStatsData,
+        manifestData.estadisticas || {},
+        manifestData
+      ];
+      for (const source of sources) {
+        for (const key of keys) {
+          if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
+            return source[key];
+          }
+        }
+      }
+      return null;
+    };
 
-    const distKm = parseFloat(stats.distancia_km || stats.distanciaKm) || 0;
-    const duracionFmt = stats.duracion_formateada || stats.duracionFormateada || '00:00:00';
+    // Limpiador numérico (quita " km/h", " kcal", etc.)
+    const parseNum = (val) => {
+      if (val === undefined || val === null) return 0;
+      if (typeof val === 'string') {
+        const cleaned = val.replace(/[^\d.]/g, '');
+        return parseFloat(cleaned) || 0;
+      }
+      return parseFloat(val) || 0;
+    };
 
-    // Velocidades: intentar snake_case, luego camelCase, luego 0
-    const velMedia = parseFloat(stats.velocidad_media_kmh !== undefined ? stats.velocidad_media_kmh : (stats.velocidadMediaKmh || 0)) || 0;
-    const velMax = parseFloat(stats.velocidad_maxima_kmh !== undefined ? stats.velocidad_maxima_kmh : (stats.velocidadMaximaKmh || 0)) || 0;
-    const velMin = parseFloat(stats.velocidad_minima_kmh !== undefined ? stats.velocidad_minima_kmh : (stats.velocidadMinimaKmh || 0)) || 0;
+    // Extraer datos con prioridades y alias
+    const distKm = parseNum(getDeepStat(['km', 'distancia_km', 'distanciaKm']));
+    const duracionFmt = getDeepStat(['tiempoEmpleado', 'duracion_formateada', 'duracionFormateada']) || '00:00:00';
+    const velMedia = parseNum(getDeepStat(['velocidadMedia', 'velocidad_media_kmh', 'velocidadMediaKmh', 'velocidad_media']));
+    const velMax = parseNum(getDeepStat(['velocidadMaxima', 'velocidad_maxima_kmh', 'velocidadMaximaKmh', 'velocidad_maxima']));
+    const velMin = parseNum(getDeepStat(['velocidadMinima', 'velocidad_minima_kmh', 'velocidadMinimaKmh', 'velocidad_minima']));
+    const cals = parseInt(parseNum(getDeepStat(['calorias', 'calories']))) || 0;
+    const pasos = parseInt(getDeepStat(['pasos', 'pasos_estimados', 'pasosEstimados'])) || 0;
+    const distMetros = parseInt(getDeepStat(['distanciaMetros', 'distancia_metros'])) || 0;
+    const duracionSegs = parseInt(getDeepStat(['duracionSegundos', 'duracion_segundos', 'duracionEfectivaSegundos'])) || 0;
+    const ptsGPS = parseInt(getDeepStat(['numeroPuntos', 'puntosGPS', 'puntos_gps'])) || 0;
 
-    // Energía/Actividad
-    const cals = parseInt(stats.calorias) || 0;
-    const pasos = parseInt(stats.pasos_estimados || stats.pasosEstimados) || 0;
+    // ✨ Perfil de transporte (puede ser objeto o ID)
+    const rawTransporte = getDeepStat(['perfilTransporte', 'perfil_transporte']);
+    const perfilTransporteId = (typeof rawTransporte === 'object' && rawTransporte !== null)
+      ? rawTransporte.id
+      : (rawTransporte || 'unknown');
 
-    // Tiempos adicionales
-    const distMetros = parseInt(stats.distancia_metros || stats.distanciaMetros) || 0;
-    const duracionSegs = parseInt(stats.duracion_segundos || stats.duracionSegundos) || 0;
-    const ptsGPS = parseInt(stats.puntos_gps || stats.puntosGPS) || 0;
+    // ✨ Desglose por transporte (lo sacamos preferiblemente de estadisticas.json)
+    const desglose = getDeepStat(['desgloseTransporte']) || [];
+    let desgloseTxt = '';
+    if (desglose.length > 0) {
+      desgloseTxt = '\n🚲 Desglose transporte:';
+      desglose.forEach(d => {
+        const dKm = d.km || d.distanciaKm || (d.distanciaMetros / 1000).toFixed(2);
+        const dDur = d.tiempoEmpleado || d.duracionFormateada;
+        desgloseTxt += `\n  - ${d.nombre}: ${dKm} km (${dDur})`;
+      });
+    }
 
     const descripcionActividad = `Distancia: ${distKm} km
 Duración: ${duracionFmt}
 Velocidad media: ${velMedia} km/h
 Calorías: ${cals} kcal
-Pasos: ${pasos}`;
+Pasos: ${pasos}${desgloseTxt}`;
 
     let rutaGpxCompleto = null;
     let rutaMapaCompleto = null;
@@ -4505,7 +4602,7 @@ Pasos: ${pasos}`;
           cals,
           pasos,
           ptsGPS,
-          manifestData.perfil_transporte?.id || 'unknown',
+          perfilTransporteId,
           rutaGpxCompleto,
           rutaMapaCompleto,
           rutaManifest,

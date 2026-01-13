@@ -110,6 +110,19 @@
         <p><strong>Puntos GPS:</strong> {{ estadisticasActuales.tracking.puntosGPS }}</p>
         <p><strong>Perfil de Transporte:</strong> {{ estadisticasActuales.tracking.perfilTransporte }}</p>
       </div>
+
+      <!-- ✨ NUEVO: Desglose por transporte -->
+      <div class="estadistica-grupo"
+        *ngIf="estadisticasActuales.desgloseTransporte && estadisticasActuales.desgloseTransporte.length > 0">
+        <h4>🚲 Desglose por Transporte</h4>
+        <div *ngFor="let seg of estadisticasActuales.desgloseTransporte" class="segmento-transporte">
+          <p>
+            <strong>{{ seg.nombre }}:</strong>
+            {{ seg.distanciaKm || (seg.distanciaMetros / 1000).toFixed(2) }} km
+            ({{ seg.duracionFormateada || seg.tiempoEmpleado }})
+          </p>
+        </div>
+      </div>
     </div>
   </div>
 </div>
