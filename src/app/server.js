@@ -4658,8 +4658,8 @@ Pasos: ${pasos}${desgloseTxt}`;
 
       console.log(`\n📸 Procesando media: ${media.nombre}`);
 
-      const tipoFolder = media.tipo === 'foto' ? 'fotos' : 'videos';
-      const extensionMedia = media.tipo === 'foto' ? 'jpg' : 'mp4';
+      const tipoFolder = media.tipo === 'foto' ? 'fotos' : (media.tipo === 'audio' ? 'audios' : 'videos');
+      const extensionMedia = media.tipo === 'foto' ? 'jpg' : (media.tipo === 'audio' ? 'wav' : 'mp4');
       let nombreCompletoMedia = media.nombre;
       if (!nombreCompletoMedia.toLowerCase().endsWith('.' + extensionMedia)) {
         nombreCompletoMedia += '.' + extensionMedia;
