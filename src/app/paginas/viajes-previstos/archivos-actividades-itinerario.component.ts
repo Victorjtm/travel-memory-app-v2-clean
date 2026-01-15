@@ -630,6 +630,67 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   }
 
 
+  /**
+   * REPRODUCIR AUDIO PRINCIPAL (Standalone)
+   */
+  public reproducirAudioPrincipal(archivo: Archivo): void {
+    console.log('Reproducir audio principal:', archivo);
+
+    const url = this.getFileUrl(archivo);
+    console.log('URL archivo principal:', url);
+
+    if (!url) {
+      alert('No se pudo obtener la URL del audio.');
+      return;
+    }
+
+    // Crear contenedor para audio y botón cerrar
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.bottom = '20px';
+    container.style.left = '50%';
+    container.style.transform = 'translateX(-50%)';
+    container.style.backgroundColor = 'rgba(0,0,0,0.8)';
+    container.style.padding = '10px 20px';
+    container.style.borderRadius = '5px';
+    container.style.zIndex = '10000';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.gap = '10px';
+
+    // Crear elemento audio
+    const audioElement = document.createElement('audio');
+    audioElement.controls = true;
+    audioElement.src = url;
+    audioElement.volume = 1.0;
+
+    // Crear botón cerrar
+    const btnCerrar = document.createElement('button');
+    btnCerrar.textContent = 'Cerrar';
+    btnCerrar.style.cursor = 'pointer';
+    btnCerrar.style.background = '#f44336';
+    btnCerrar.style.color = 'white';
+    btnCerrar.style.border = 'none';
+    btnCerrar.style.borderRadius = '3px';
+    btnCerrar.style.padding = '5px 10px';
+    btnCerrar.onclick = () => {
+      audioElement.pause();
+      container.remove();
+    };
+
+    // Construir UI
+    container.appendChild(audioElement);
+    container.appendChild(btnCerrar);
+    document.body.appendChild(container);
+
+    // Intentar reproducir
+    audioElement.play().catch(err => {
+      console.error('Error reproduciendo audio principal:', err);
+      alert('No se pudo reproducir el audio, usa el botón para cerrar y prueba manualmente');
+    });
+  }
+
+
   private mostrarTexto(asociado: ArchivoAsociado): void {
     // ✅ Validar que el ID existe antes de usarlo
     if (!asociado.id) {

@@ -109,6 +109,12 @@
       <!-- ╚════════════════════════════════════════════════════════════════╝ -->
       <div class="acciones">
 
+        <!-- 🎯 BOTÓN: Reproducir audio (si es un archivo de audio independiente) -->
+        <button class="btn-asociado btn-audio" *ngIf="archivo.tipo === 'audio'"
+          (click)="reproducirAudioPrincipal(archivo)" title="Reproducir audio">
+          <i class="fa fa-volume-up"></i>
+        </button>
+
         <!-- 🎯 BOTONES DE ARCHIVOS ASOCIADOS (Generados dinámicamente) -->
 
         <!-- Audio asociado -->
