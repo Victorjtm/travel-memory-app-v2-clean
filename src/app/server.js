@@ -4658,8 +4658,23 @@ Pasos: ${pasos}${desgloseTxt}`;
 
       console.log(`\n📸 Procesando media: ${media.nombre}`);
 
-      const tipoFolder = media.tipo === 'foto' ? 'fotos' : (media.tipo === 'audio' ? 'audios' : 'videos');
-      const extensionMedia = media.tipo === 'foto' ? 'jpg' : (media.tipo === 'audio' ? 'wav' : 'mp4');
+      const mediaTipoNorm = (media.tipo || '').toLowerCase().trim();
+
+      // Mapeo robusto de carpetas y extensiones
+      let tipoFolder = 'videos';
+      let extensionMedia = 'mp4';
+      let dbTipo = 'video'; // Para la base de datos (según constraint CHECK)
+
+      if (mediaTipoNorm.includes('foto') || mediaTipoNorm.includes('imagen') || mediaTipoNorm.includes('image') || mediaTipoNorm.includes('photo')) {
+        tipoFolder = 'fotos';
+        extensionMedia = 'jpg';
+        dbTipo = 'foto';
+      } else if (mediaTipoNorm.includes('audio') || mediaTipoNorm.includes('sonido') || mediaTipoNorm.includes('recording') || mediaTipoNorm.includes('voice')) {
+        tipoFolder = 'audios';
+        extensionMedia = 'wav';
+        dbTipo = 'audio';
+      }
+
       let nombreCompletoMedia = media.nombre;
       if (!nombreCompletoMedia.toLowerCase().endsWith('.' + extensionMedia)) {
         nombreCompletoMedia += '.' + extensionMedia;
@@ -4670,11 +4685,11 @@ Pasos: ${pasos}${desgloseTxt}`;
         if (usedFileIndices.has(index)) return false; // Saltarse archivos ya usados
 
         const baseName = path.basename(f.originalname);
-        return baseName === nombreCompletoMedia;
+        return baseName.toLowerCase() === nombreCompletoMedia.toLowerCase();
       });
 
       if (mediaFileIndex === -1) {
-        console.warn(`⚠️ Archivo no encontrado: ${media.nombre}`);
+        console.warn(`⚠️ Archivo no encontrado para media item: ${media.nombre} (.${extensionMedia})`);
         continue;
       }
 
@@ -4754,7 +4769,7 @@ Pasos: ${pasos}${desgloseTxt}`;
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             actividadId,
-            media.tipo,
+            dbTipo,
             mediaFile.originalname,
             rutaRelativa,
             (fechaCreacionMedia ? fechaCreacionMedia.split('T')[1].substring(0, 8) : media.timestamp_display),
@@ -4781,26 +4796,39 @@ Pasos: ${pasos}${desgloseTxt}`;
       let audioFile = null;
       let audioFileName = null;
 
-      // 1. Intentar desde el manifest
-      if (media.audio) {
-        audioFileName = path.basename(media.audio);
-        audioFile = req.files.find(f => f.originalname === audioFileName);
-      }
-
-      // 2. Fallback: Buscar por nombre coincidente
-      if (!audioFile) {
+      // Solo buscar audio asociado si el item principal NO es un audio
+      if (dbTipo !== 'audio') {
         const baseName = media.nombre;
         const nameWithoutExt = baseName.includes('.') ? baseName.split('.').slice(0, -1).join('.') : baseName;
 
-        audioFile = req.files.find(f => {
-          const fName = f.originalname;
-          return (fName === `${nameWithoutExt}.wav` || fName === `${nameWithoutExt}.mp3` ||
-            fName === `${baseName}.wav` || fName === `${baseName}.mp3`);
-        });
+        // 1. Intentar desde el manifest (media.audio)
+        if (media.audio) {
+          const expectedAudioName = path.basename(media.audio);
+          const idx = req.files.findIndex((f, i) => !usedFileIndices.has(i) && f.originalname === expectedAudioName);
+          if (idx !== -1) {
+            audioFile = req.files[idx];
+            usedFileIndices.add(idx);
+          }
+        }
+
+        // 2. Fallback: Buscar por nombre coincidente
+        if (!audioFile) {
+          const idx = req.files.findIndex((f, i) => {
+            if (usedFileIndices.has(i)) return false;
+            const fName = f.originalname;
+            return (fName === `${nameWithoutExt}.wav` || fName === `${nameWithoutExt}.mp3` ||
+              fName === `${baseName}.wav` || fName === `${baseName}.mp3`);
+          });
+
+          if (idx !== -1) {
+            audioFile = req.files[idx];
+            usedFileIndices.add(idx);
+            console.log(`   ✓ Audio asociado encontrado por coincidencia de nombre: ${audioFile.originalname}`);
+          }
+        }
 
         if (audioFile) {
           audioFileName = audioFile.originalname;
-          console.log(`   ✓ Audio asociado encontrado por coincidencia de nombre: ${audioFileName}`);
         }
       }
 
@@ -4823,40 +4851,33 @@ Pasos: ${pasos}${desgloseTxt}`;
         });
         console.log(`  🎤 Audio asociado: ${audioFileName}`);
       }
-      // GPX INDIVIDUAL - MEJORADO CON DEBUG Y FALLBACK
-      console.log(`\n📍 Buscando GPX individual para media: ${media.nombre}`);
-      console.log(`   Buscando archivo: ${media.nombre}.gpx`);
+      // GPX INDIVIDUAL
+      let gpxFile = null;
+      let gpxFileName = `${media.nombre}.gpx`;
 
       // PRIORIDAD 1: Buscar por nombre exacto
-      let gpxFileName = `${media.nombre}.gpx`;
-      let gpxFile = req.files.find(f => {
-        const baseName = path.basename(f.originalname);
-        const match = baseName === gpxFileName;
-        if (match) {
-          console.log(`   ✓ [EXACTO] Encontrado: "${baseName}"`);
-        }
-        return match;
-      });
+      const gpxIdxExact = req.files.findIndex((f, i) => !usedFileIndices.has(i) && path.basename(f.originalname) === gpxFileName);
+      if (gpxIdxExact !== -1) {
+        gpxFile = req.files[gpxIdxExact];
+        usedFileIndices.add(gpxIdxExact);
+        console.log(`   ✓ [EXACTO] GPX encontrado: "${gpxFile.originalname}"`);
+      }
 
       // PRIORIDAD 2: Si no encuentra exacto, buscar por patrón
       if (!gpxFile) {
-        console.log(`   ⚠️ No encontrado con nombre exacto, buscando por patrón...`);
-
-        // Extraer prefijo (ej: "JPEG_20241226_150505" -> "JPEG_20241226_150505")
-        const baseName = media.nombre.includes('.')
-          ? media.nombre.split('.')[0]
-          : media.nombre;
-
-        console.log(`   Patrón de búsqueda: archivos .gpx que empiecen con "${baseName}"`);
-
-        gpxFile = req.files.find(f => {
-          const fBaseName = path.basename(f.originalname, '.gpx');
-          const esMatch = f.originalname.endsWith('.gpx') && fBaseName.startsWith(baseName);
-          if (esMatch) {
-            console.log(`   ✓ [PATRÓN] Encontrado: ${f.originalname}`);
-          }
-          return esMatch;
+        const baseName = media.nombre.includes('.') ? media.nombre.split('.')[0] : media.nombre;
+        const gpxIdxPattern = req.files.findIndex((f, i) => {
+          if (usedFileIndices.has(i)) return false;
+          const fName = f.originalname;
+          const fBaseName = path.basename(fName, '.gpx');
+          return fName.endsWith('.gpx') && fBaseName.startsWith(baseName);
         });
+
+        if (gpxIdxPattern !== -1) {
+          gpxFile = req.files[gpxIdxPattern];
+          usedFileIndices.add(gpxIdxPattern);
+          console.log(`   ✓ [PATRÓN] GPX encontrado: ${gpxFile.originalname}`);
+        }
       }
 
       if (gpxFile) {
@@ -4888,32 +4909,31 @@ Pasos: ${pasos}${desgloseTxt}`;
         });
       }
 
-      // MAPA PNG INDIVIDUAL - MEJORADO CON DEBUG
-      console.log(`\n🗺️ Buscando PNG individual para: ${media.nombre}`);
+      // MAPA PNG INDIVIDUAL
+      let mapaFile = null;
 
       // PRIORIDAD 1: Nombre exacto esperado
-      let mapaFile = req.files.find(f => {
-        const baseName = path.basename(f.originalname);
-        const expectedName = `${media.nombre}.png`;
-        const match = baseName === expectedName;
-        if (match) {
-          console.log(`   ✓ Coincidencia encontrada: "${baseName}"`);
-        }
-        return match;
-      });
+      const pngIdxExact = req.files.findIndex((f, i) => !usedFileIndices.has(i) && path.basename(f.originalname) === `${media.nombre}.png`);
+      if (pngIdxExact !== -1) {
+        mapaFile = req.files[pngIdxExact];
+        usedFileIndices.add(pngIdxExact);
+        console.log(`   ✓ [EXACTO] PNG encontrado: "${mapaFile.originalname}"`);
+      }
 
-      // PRIORIDAD 2: Si no encuentra con nombre exacto, buscar por extensión .png
+      // PRIORIDAD 2: Si no encuentra con nombre exacto, buscar por patrón
       if (!mapaFile) {
-        console.log(`   ⚠️ No encontrado con nombre exacto, buscando PNG por patrón...`);
-        mapaFile = req.files.find(f => {
+        const pngIdxPattern = req.files.findIndex((f, i) => {
+          if (usedFileIndices.has(i)) return false;
           const baseName = path.basename(f.originalname);
           const prefijo = media.nombre.split('_').slice(0, 3).join('_');
-          const esMatch = baseName.endsWith('.png') && baseName.startsWith(prefijo);
-          if (esMatch) {
-            console.log(`   ✓ Encontrado PNG con patrón: ${baseName}`);
-          }
-          return esMatch;
+          return baseName.endsWith('.png') && baseName.startsWith(prefijo);
         });
+
+        if (pngIdxPattern !== -1) {
+          mapaFile = req.files[pngIdxPattern];
+          usedFileIndices.add(pngIdxPattern);
+          console.log(`   ✓ [PATRÓN] PNG encontrado: ${mapaFile.originalname}`);
+        }
       }
 
       if (mapaFile) {
