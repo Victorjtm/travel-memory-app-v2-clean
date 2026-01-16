@@ -186,7 +186,7 @@
           </div>
 
           <!-- 3. DESCRIPCIÓN (si existe) -->
-          <div class="info-item descripcion" *ngIf="paginaActualData?.descripcion">
+          <div class="info-item descripcion" *ngIf="paginaActualData.descripcion">
             <div class="info-icon">
               <i class="fas fa-comment-alt"></i>
             </div>
@@ -325,14 +325,28 @@
           </div>
 
           <!-- --- Audio --->
-          <div class="media-content media-audio" *ngIf="paginaActual.tipoMedia === 'audio'">
+          <div class="media-content media-audio" *ngIf="paginaActual.tipoMedia === 'audio'"
+            (click)="abrirFullscreen(paginaActual.url, 'audio')">
             <div class="audio-player">
-              <i class="fas fa-music audio-icon" aria-hidden="true"></i>
+              <!-- Imagen del mapa asociado (si existe) -->
+              <div class="audio-map-preview" *ngIf="getUrlMapaAsociado(paginaActual) as mapaUrl">
+                <img [src]="mapaUrl" alt="Mapa de ubicación del audio" class="mapa-audio-img">
+              </div>
+
+              <!-- Icono genérico si no hay mapa -->
+              <i class="fas fa-music audio-icon" *ngIf="!getUrlMapaAsociado(paginaActual)" aria-hidden="true"></i>
+
               <audio [src]="paginaActual.url" controls preload="metadata"
                 [attr.aria-label]="'Audio: ' + paginaActual.titulo" (loadeddata)="onMediaLoad(this.paginaActual)"
-                (error)="onMediaError($event)">
+                (error)="onMediaError($event)" (click)="$event.stopPropagation()">
                 Tu navegador no soporta el elemento audio.
               </audio>
+            </div>
+
+            <!-- Overlay para fullscreen -->
+            <div class="overlay-fullscreen">
+              <i class="fas fa-expand" aria-hidden="true"></i>
+              <span class="sr-only">Ampliar audio</span>
             </div>
           </div>
 
@@ -473,6 +487,28 @@
       class="media-fullscreen pdf-fullscreen" frameborder="0"
       [attr.title]="'PDF: ' + (paginaActualData?.titulo || 'Documento')" (click)="$event.stopPropagation()">
     </iframe>
+
+    <!-- AUDIO EN PANTALLA COMPLETA -->
+    <div *ngIf="tipoFullscreen === 'audio'" class="media-fullscreen audio-fullscreen"
+      (click)="$event.stopPropagation()">
+      <div class="audio-fullscreen-container">
+        <!-- Mapa del audio en fullscreen -->
+        <div class="mapa-fullscreen-wrapper" *ngIf="getUrlMapaAsociado(paginaActualData) as mapaUrl">
+          <img [src]="mapaUrl" [alt]="paginaActualData?.titulo || 'Mapa de ubicación'" class="mapa-audio-full">
+        </div>
+
+        <!-- Icono fallback si no hay mapa -->
+        <i class="fas fa-music audio-full-icon" *ngIf="!getUrlMapaAsociado(paginaActualData)"></i>
+
+        <!-- Reproductor de audio -->
+        <div class="audio-controls-full">
+          <h3>{{ paginaActualData?.titulo }}</h3>
+          <audio [src]="mediaFullscreen" controls autoplay class="audio-full-player" (error)="onMediaError($event)">
+            Tu navegador no soporta el elemento audio.
+          </audio>
+        </div>
+      </div>
+    </div>
 
     <!-- CARTA MANUSCRITA -->
     <div *ngIf="tipoFullscreen === 'carta-manuscrita'" class="media-fullscreen carta-manuscrita-fullscreen"

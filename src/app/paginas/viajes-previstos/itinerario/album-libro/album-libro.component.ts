@@ -303,6 +303,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Obtiene la URL del mapa asociado (PNG) para un archivo multimedia
+   */
+  getUrlMapaAsociado(pagina: any): string | null {
+    const asociado = pagina?.archivosAsociados?.find((a: any) => a.tipo === 'mapa_ubicacion');
+    if (!asociado) return null;
+    return this.archivoService.getUrlArchivoAsociado(asociado);
+  }
+
 
   private reproducirAudio(asociado: any): void {
     console.log('🔊 Reproducir audio asociado:', asociado);
@@ -1226,7 +1235,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         mimeType: archivo.tipoMime || this.inferirMimeType(archivo.nombreArchivo || ''),
         tamano: archivo.tamano,
         cargado: false,
-        coordenadas
+        coordenadas,
+        archivosAsociados: archivo.archivosAsociados // ✅ Asegurar que se pasan los archivos asociados
       };
     });
 
