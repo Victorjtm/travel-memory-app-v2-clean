@@ -1053,6 +1053,192 @@ app.post('/viajes/unificar', async (req, res) => {
 
 
 // ----------------------------------------
+// UNIFICAR ITINERARIOS DEL MISMO DÍA
+// ----------------------------------------
+app.post('/viajes/:id/unificar-itinerarios', async (req, res) => {
+  const viajeId = req.params.id;
+  const { opcion } = req.body; // 'A' (clustering) o 'B' (genérica)
+
+  console.log(`🧹 Iniciando unificación de itinerarios para viaje ${viajeId}. Opción: ${opcion}`);
+
+  try {
+    await dbQuery.run('BEGIN TRANSACTION');
+
+    // 1. Obtener todos los itinerarios del viaje
+    const itinerarios = await dbQuery.all(
+      'SELECT id, fechaInicio FROM ItinerarioGeneral WHERE viajePrevistoId = ? ORDER BY id ASC',
+      [viajeId]
+    );
+
+    // 2. Agrupar por fecha
+    const porFecha = {};
+    itinerarios.forEach(it => {
+      // Normalizar a YYYY-MM-DD para agrupar
+      const fechaNorm = it.fechaInicio ? it.fechaInicio.split('T')[0].split(' ')[0].trim() : 'sin-fecha';
+      if (!porFecha[fechaNorm]) porFecha[fechaNorm] = [];
+      porFecha[fechaNorm].push(it);
+    });
+
+    console.log('📊 Grupos de fechas detectados en backend:', Object.keys(porFecha).map(k => `${k}: ${porFecha[k].length}`));
+
+    let itinerariosProcesados = 0;
+    let actividadesCreadas = 0;
+
+    for (const fecha in porFecha) {
+      const its = porFecha[fecha];
+      if (its.length < 2) continue; // No hay duplicados en esta fecha
+
+      const ids = its.map(it => it.id);
+      const maestroId = ids[0];
+      const secundariosIds = ids.slice(1);
+
+      console.log(`  📅 Procesando fecha ${fecha}. Maestro: ${maestroId}, Secundarios: ${secundariosIds.join(', ')}`);
+
+      // 3. Obtener todas las actividades de estos itinerarios
+      const placeholders = ids.map(() => '?').join(',');
+      const actividadesRes = await dbQuery.all(
+        `SELECT id, horaInicio FROM actividades WHERE itinerarioId IN (${placeholders})`,
+        ids
+      );
+
+      if (actividadesRes.length === 0) {
+        // Si no hay actividades, simplemente borramos los itinerarios secundarios
+        const deletePlaceholders = secundariosIds.map(() => '?').join(',');
+        await dbQuery.run(
+          `DELETE FROM ItinerarioGeneral WHERE id IN (${deletePlaceholders})`,
+          secundariosIds
+        );
+        itinerariosProcesados += secundariosIds.length;
+        continue;
+      }
+
+      const actIds = actividadesRes.map(a => a.id);
+      const actPlaceholders = actIds.map(() => '?').join(',');
+
+      // 4. Obtener todos los archivos de esas actividades
+      const archivos = await dbQuery.all(
+        `SELECT * FROM archivos WHERE actividadId IN (${actPlaceholders})`,
+        actIds
+      );
+
+      if (opcion === 'B') {
+        // --- OPCIÓN B: Actividad Genérica (00:00 - 23:59) ---
+        // Crear una nueva actividad genérica
+        const insertAct = await dbQuery.run(
+          `INSERT INTO actividades (viajePrevistoId, itinerarioId, tipoActividadId, nombre, descripcion, horaInicio, horaFin, fechaCreacion)
+           VALUES (?, ?, (SELECT id FROM TiposActividad LIMIT 1), 'Unificación del Día', 'Actividad generada automáticamente', '00:00', '23:59', datetime('now'))`,
+          [viajeId, maestroId]
+        );
+        const nuevaActId = insertAct.lastID;
+        actividadesCreadas++;
+
+        // Mover todos los archivos a la nueva actividad
+        await dbQuery.run(
+          `UPDATE archivos SET actividadId = ? WHERE actividadId IN (${actPlaceholders})`,
+          [nuevaActId, ...actIds]
+        );
+
+        // Migrar también archivos vinculados a las actividades originales si hubiera una tabla de vinculación directa
+        // En este esquema, archivos_asociados cuelgan de archivos, así que al mover el archivo, se mueve el conjunto.
+
+      } else {
+        // --- OPCIÓN A: Clustering por hora real ---
+        // Clasificar archivos por timestamp
+        const archivosConHora = archivos.map(f => {
+          let mins = 0;
+          if (f.horaCaptura && f.horaCaptura.includes(':')) {
+            const [h, m] = f.horaCaptura.split(':').map(Number);
+            mins = h * 60 + m;
+          } else {
+            // Fallback: usar horaInicio de la actividad original
+            const origAct = actividadesRes.find(a => a.id === f.actividadId);
+            if (origAct && origAct.horaInicio && origAct.horaInicio.includes(':')) {
+              const [h, m] = origAct.horaInicio.split(':').map(Number);
+              mins = h * 60 + m;
+            } else {
+              mins = 0; // Medianoche si no hay nada
+            }
+          }
+          return { ...f, mins };
+        }).sort((a, b) => a.mins - b.mins);
+
+        // Agrupar en clusters (gap > 30 min)
+        const clusters = [];
+        if (archivosConHora.length > 0) {
+          let currentCluster = [archivosConHora[0]];
+          for (let i = 1; i < archivosConHora.length; i++) {
+            const current = archivosConHora[i];
+            const prev = archivosConHora[i - 1];
+            if (current.mins - prev.mins > 30) {
+              clusters.push(currentCluster);
+              currentCluster = [current];
+            } else {
+              currentCluster.push(current);
+            }
+          }
+          clusters.push(currentCluster);
+        }
+
+        // Crear actividades para cada cluster
+        for (let i = 0; i < clusters.length; i++) {
+          const cluster = clusters[i];
+          const first = cluster[0];
+          const last = cluster[cluster.length - 1];
+
+          const formatTime = (m) => {
+            const hh = Math.floor(m / 60).toString().padStart(2, '0');
+            const mm = (m % 60).toString().padStart(2, '0');
+            return `${hh}:${mm}`;
+          };
+
+          const insertAct = await dbQuery.run(
+            `INSERT INTO actividades (viajePrevistoId, itinerarioId, tipoActividadId, nombre, descripcion, horaInicio, horaFin, fechaCreacion)
+             VALUES (?, ?, (SELECT id FROM TiposActividad LIMIT 1), ?, 'Cluster detectado por hora', ?, ?, datetime('now'))`,
+            [viajeId, maestroId, `Bloque Actividad ${i + 1}`, formatTime(first.mins), formatTime(last.mins)]
+          );
+          const nuevaActId = insertAct.lastID;
+          actividadesCreadas++;
+
+          const clusterFileIds = cluster.map(f => f.id);
+          const filePlaceholders = clusterFileIds.map(() => '?').join(',');
+          await dbQuery.run(
+            `UPDATE archivos SET actividadId = ? WHERE id IN (${filePlaceholders})`,
+            [nuevaActId, ...clusterFileIds]
+          );
+        }
+      }
+
+      // 5. Limpieza final para esta fecha
+      // Borrar las actividades originales
+      await dbQuery.run(`DELETE FROM actividades WHERE id IN (${actPlaceholders})`, actIds);
+
+      // Borrar itinerarios secundarios
+      const deletePlaceholders = secundariosIds.map(() => '?').join(',');
+      await dbQuery.run(
+        `DELETE FROM ItinerarioGeneral WHERE id IN (${deletePlaceholders})`,
+        secundariosIds
+      );
+
+      itinerariosProcesados += secundariosIds.length;
+    }
+
+    await dbQuery.run('COMMIT');
+    console.log(`✅ Unificación finalizada. Itinerarios eliminados: ${itinerariosProcesados}, Actividades nuevas: ${actividadesCreadas}`);
+    res.json({
+      success: true,
+      itinerariosEliminados: itinerariosProcesados,
+      actividadesCreadas: actividadesCreadas
+    });
+
+  } catch (error) {
+    console.error('❌ Error en unificar-itinerarios:', error);
+    await dbQuery.run('ROLLBACK');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// ----------------------------------------
 // RUTAS PARA ItinerarioGeneral
 // ----------------------------------------
 
@@ -1063,8 +1249,8 @@ console.log('Registrando rutas de itinerarios...');
 app.get('/itinerarios', (req, res) => {
   const { viajePrevistoId } = req.query;
   const sql = viajePrevistoId
-    ? 'SELECT * FROM ItinerarioGeneral WHERE viajePrevistoId = ?'
-    : 'SELECT * FROM ItinerarioGeneral';
+    ? 'SELECT * FROM ItinerarioGeneral WHERE viajePrevistoId = ? ORDER BY fechaInicio DESC'
+    : 'SELECT * FROM ItinerarioGeneral ORDER BY fechaInicio DESC';
   const params = viajePrevistoId ? [viajePrevistoId] : [];
 
   db.all(sql, params, (err, rows) => {

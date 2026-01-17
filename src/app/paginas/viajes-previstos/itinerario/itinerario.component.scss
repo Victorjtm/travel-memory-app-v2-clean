@@ -26,7 +26,9 @@ form {
         margin-bottom: 0.3rem;
     }
 
-    input, textarea, select {
+    input,
+    textarea,
+    select {
         padding: 0.6rem;
         border: 1px solid #ccc;
         border-radius: 8px;
@@ -122,6 +124,20 @@ button.btn-agregar:hover {
 }
 
 /* Botón de "volver" al final */
+
+button.btn-unificar {
+    background-color: #ff9800;
+    color: white;
+    position: relative;
+    z-index: 10;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+button.btn-unificar:hover {
+    background-color: #f57c00;
+}
+
 button:last-of-type {
     display: block;
     margin: 2rem auto 0;

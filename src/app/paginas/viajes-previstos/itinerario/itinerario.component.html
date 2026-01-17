@@ -6,6 +6,12 @@
     <i class="fa fa-plus-circle"></i> Añadir Itinerario
   </button>
 
+  <button *ngIf="hayDuplicados" (click)="unificarMismoDia()" class="btn-unificar">
+    <i class="fa fa-broom"></i> 🧹 Unificar Itinerarios del Mismo Día
+  </button>
+  <p *ngIf="hayDuplicados" style="color: #ff9800; font-size: 0.8rem; margin-top: 5px;">(Modo Unificación Activo: Se han
+    detectado fechas duplicadas)</p>
+
   <hr>
 
   <!-- Mostrar formulario de actualización solo cuando se seleccione un itinerario -->
@@ -19,13 +25,16 @@
       <input type="date" id="fechaFin" [(ngModel)]="itinerarioActualizado.fechaFin" name="fechaFin" required />
 
       <label for="duracionDias">Duración (días)</label>
-      <input type="number" id="duracionDias" [(ngModel)]="itinerarioActualizado.duracionDias" name="duracionDias" required />
+      <input type="number" id="duracionDias" [(ngModel)]="itinerarioActualizado.duracionDias" name="duracionDias"
+        required />
 
       <label for="destinosPorDia">Destinos por día</label>
-      <input type="text" id="destinosPorDia" [(ngModel)]="itinerarioActualizado.destinosPorDia" name="destinosPorDia" required />
+      <input type="text" id="destinosPorDia" [(ngModel)]="itinerarioActualizado.destinosPorDia" name="destinosPorDia"
+        required />
 
       <label for="descripcionGeneral">Descripción general</label>
-      <textarea id="descripcionGeneral" [(ngModel)]="itinerarioActualizado.descripcionGeneral" name="descripcionGeneral" required></textarea>
+      <textarea id="descripcionGeneral" [(ngModel)]="itinerarioActualizado.descripcionGeneral" name="descripcionGeneral"
+        required></textarea>
 
       <label for="horaInicio">Hora de inicio</label>
       <input type="time" id="horaInicio" [(ngModel)]="itinerarioActualizado.horaInicio" name="horaInicio" required />
@@ -34,7 +43,8 @@
       <input type="time" id="horaFin" [(ngModel)]="itinerarioActualizado.horaFin" name="horaFin" required />
 
       <label for="climaGeneral">Clima general</label>
-      <input type="text" id="climaGeneral" [(ngModel)]="itinerarioActualizado.climaGeneral" name="climaGeneral" required />
+      <input type="text" id="climaGeneral" [(ngModel)]="itinerarioActualizado.climaGeneral" name="climaGeneral"
+        required />
 
       <label for="tipoDeViaje">Tipo de viaje</label>
       <select id="tipoDeViaje" [(ngModel)]="itinerarioActualizado.tipoDeViaje" name="tipoDeViaje" required>
@@ -64,8 +74,8 @@
 
       <button class="btn-eliminar" (click)="eliminarItinerario(itinerario.id)">
         <i class="fa fa-trash"></i> Eliminar
-     </button>
-     <button class="btn-actualizar" (click)="actualizarItinerario(itinerario)">
+      </button>
+      <button class="btn-actualizar" (click)="actualizarItinerario(itinerario)">
         <i class="fa fa-edit"></i> Actualizar
       </button>
       <button class="btn-verActividades" (click)="verActividades(itinerario)">

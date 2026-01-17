@@ -44,4 +44,9 @@ export class ItinerarioService extends BaseHttpService {
   obtenerItinerarioGeneral(itinerarioId: number): Observable<any> {
     return this.getById(itinerarioId); // Usa el método que ya tienes
   }
+
+  // Unificar itinerarios del mismo día
+  unificarItinerarios(viajeId: number, opcion: 'A' | 'B'): Observable<any> {
+    return this.post(`${environment.apiUrl}/viajes/${viajeId}/unificar-itinerarios`, { opcion });
+  }
 }
