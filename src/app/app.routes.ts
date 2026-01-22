@@ -108,6 +108,12 @@ export const routes: Routes = [
   // Nueva ruta para el botón "Seleccionar Archivos" desde Inicio
   { path: 'formulario-archivos-actividades-itinerario', component: FormularioArchivosComponent },
 
+  // ✨ Nueva ruta para el Visualizador de Fotos Avanzado
+  {
+    path: 'visualizador-foto',
+    loadComponent: () => import('./paginas/viajes-previstos/visualizador-foto/visualizador-foto.component').then(m => m.VisualizadorFotoComponent)
+  },
+
 
   // Rutas para el álbum en formato libro desde viajes previstos
   {

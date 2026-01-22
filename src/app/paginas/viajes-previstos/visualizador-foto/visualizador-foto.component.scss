@@ -1,0 +1,120 @@
+@import 'viewerjs/dist/viewer.css';
+
+:host {
+    display: block;
+    position: fixed; // ✨ Overlay absoluto sobre toda la app
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: black; // Fondo negro para tapar todo
+    z-index: 99999; // ✨ Por encima del header (z-index typ. 1000)
+}
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: black;
+    z-index: 10000; // Debajo del Viewer pero encima de todo lo demás
+}
+
+.visualizador-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    background-color: black;
+}
+
+.image-wrapper {
+    width: 100%;
+    height: 100%;
+}
+
+// Estilos para el contenedor de Viewer JS para asegurar que ocupe todo y esté ENCIMA del loading-overlay
+::ng-deep .viewer-container {
+    background-color: black !important;
+    z-index: 20000 !important; // Mayor que loading-overlay (10000)
+}
+
+::ng-deep .viewer-backdrop {
+    background-color: black !important;
+}
+
+// Botón cerrar flotante
+.btn-cerrar {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: 2px solid white;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+    cursor: pointer;
+    z-index: 2015; // ViewerJS usa z-index altos (2015 es el del navbar)
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.3s;
+
+    &:hover {
+        background-color: rgba(255, 0, 0, 0.8);
+        border-color: red;
+    }
+}
+
+// Información flotante
+.info-overlay {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+    color: white;
+    padding: 20px;
+    padding-bottom: 80px; // Espacio mayor para la toolbar aumentada
+    text-align: center;
+    z-index: 2014;
+    pointer-events: none; // Para que no bloquee clics en la imagen
+
+    p {
+        margin: 0;
+        font-size: 1.2rem;
+        text-shadow: 1px 1px 3px black;
+    }
+}
+
+// ✨ OVERRIDES PARA VIEWER.JS - HACER CONTROLES MÁS GRANDES PARA MÓVIL
+::ng-deep .viewer-toolbar {
+    width: 320px !important; // Más ancha
+    margin: 0 auto !important;
+    bottom: 20px !important; // Un poco más arriba
+
+    ul {
+        height: 60px !important; // Altura aumentada
+
+        li {
+            width: 50px !important;
+            height: 50px !important;
+            border-radius: 50%;
+            background-color: rgba(0, 0, 0, 0.5) !important;
+            margin: 0 5px !important;
+
+            &::before {
+                background-size: 24px 24px !important; // Iconos más grandes
+            }
+
+            &:hover {
+                background-color: rgba(255, 255, 255, 0.2) !important;
+            }
+        }
+    }
+}

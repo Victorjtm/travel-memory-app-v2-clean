@@ -332,6 +332,21 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   }
 
   abrirModal(archivo: Archivo): void {
+    // ✨ LÓGICA NUEVA: Si es foto o imagen, abrir en nueva ventana con visualizador avanzado
+    if (archivo.tipo === 'foto' || archivo.tipo === 'imagen') {
+      const url = this.getFileUrl(archivo);
+      const descripcion = archivo.descripcion || '';
+
+      // Construir la URL completa para la nueva ventana
+      // Usamos window.location.origin para asegurar que sea relativo al host actual
+      const fullUrl = `${window.location.origin}/visualizador-foto?url=${encodeURIComponent(url)}&descripcion=${encodeURIComponent(descripcion)}`;
+
+      // Abrir en nueva ventana/pestaña
+      window.open(fullUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // Comportamiento antiguo para Video y Audio
     this.archivoSeleccionado = archivo;
     document.body.style.overflow = 'hidden';
     this.cdr.detectChanges();

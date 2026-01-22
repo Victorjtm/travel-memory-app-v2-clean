@@ -1,0 +1,13 @@
+<div class="visualizador-container">
+    <!-- Imagen base oculta para Viewer.js -->
+    <!-- Importante: (load) y (error) para controlar el ciclo de vida -->
+    <div class="image-wrapper">
+        <img #imageElement [src]="imageUrl" [alt]="descripcion" (load)="onImageLoad()" (error)="onImageError()"
+            style="display: none;">
+    </div>
+
+    <!-- Overlay negro de fondo SOLO mientras carga -->
+    <div class="loading-overlay" *ngIf="isLoading">
+        <div style="color: white; font-size: 1.5rem;">Cargando foto...</div>
+    </div>
+</div>
