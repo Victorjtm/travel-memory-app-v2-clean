@@ -1973,7 +1973,7 @@ app.get('/actividades/:id/estadisticas', (req, res) => {
       distanciaKm, distanciaMetros, duracionSegundos, duracionFormateada,
       velocidadMediaKmh, velocidadMaximaKmh, velocidadMinimaKmh,
       calorias, pasosEstimados, puntosGPS, perfilTransporte,
-      horaInicio, horaFin, nombre, descripcion, rutaEstadisticas
+      horaInicio, horaFin, nombre, descripcion, rutaEstadisticas, rutaManifest
     FROM actividades WHERE id = ?`,
     [id],
     async (err, row) => {
@@ -2014,51 +2014,155 @@ app.get('/actividades/:id/estadisticas', (req, res) => {
         desgloseTransporte: [] // Por defecto vacío
       };
 
-      // ✨ Intentar enriquecer con el JSON original si existe
+      // ✨ MEJORADO: Enriquecer con ambos JSONs (manifest y estadísticas)
+      const dataExtra = {
+        manifest: {},
+        stats: {},
+        altitud: { min: null, max: null, ganancia: null, perdida: null },
+        ritmo: { medio: null, maximo: null },
+        detallesApp: { nombre: 'AudioPhotoApp', version: null, dispositivo: null }
+      };
+
+      const parseNum = (val) => {
+        if (val === undefined || val === null || val === '') return null;
+        if (typeof val === 'string') return parseFloat(val.replace(/[^\d.-]/g, '')) || 0;
+        return parseFloat(val);
+      };
+
+      // 1. Cargar Manifest
+      if (row.rutaManifest) {
+        try {
+          const manifestPath = path.join(uploadsPath, row.rutaManifest);
+          if (fs.existsSync(manifestPath)) {
+            dataExtra.manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            dataExtra.detallesApp.version = dataExtra.manifest.version || null;
+            dataExtra.detallesApp.dispositivo = dataExtra.manifest.dispositivo || null;
+          }
+        } catch (e) { console.warn('⚠️ Error manifest:', e.message); }
+      }
+
+      // 2. Cargar Estadísticas Detalladas
       if (row.rutaEstadisticas) {
         try {
           const statsPath = path.join(uploadsPath, row.rutaEstadisticas);
           if (fs.existsSync(statsPath)) {
-            const extraStats = JSON.parse(fs.readFileSync(statsPath, 'utf8'));
+            dataExtra.stats = JSON.parse(fs.readFileSync(statsPath, 'utf8'));
 
-            // Función para limpiar y parsear números
-            const parseNum = (val) => {
-              if (val === undefined || val === null) return null;
-              if (typeof val === 'string') return parseFloat(val.replace(/[^\d.]/g, '')) || 0;
-              return parseFloat(val);
+            // 🔍 DEBUG (Temporal): Ver claves de estadisticas.json
+            console.log('📋 CLAVES estadisticas.json:', Object.keys(dataExtra.stats));
+
+            // Extraer Altitud
+            dataExtra.altitud.min = parseNum(dataExtra.stats.altitudMinima || dataExtra.stats.altitud_min || dataExtra.stats.min_alt || dataExtra.stats.altitud_minima);
+            dataExtra.altitud.max = parseNum(dataExtra.stats.altitudMaxima || dataExtra.stats.altitud_max || dataExtra.stats.max_alt || dataExtra.stats.altitud_maxima);
+            dataExtra.altitud.ganancia = parseNum(dataExtra.stats.desnivelPositivo || dataExtra.stats.ganancia_altitud || dataExtra.stats.ascenso || dataExtra.stats.altitude_gain);
+            dataExtra.altitud.perdida = parseNum(dataExtra.stats.desnivelNegativo || dataExtra.stats.perdida_altitud || dataExtra.stats.descenso || dataExtra.stats.altitude_loss);
+
+            // Extraer Ritmo (Pace)
+            dataExtra.ritmo.medio = dataExtra.stats.ritmoMedio || dataExtra.stats.ritmo_medio || dataExtra.stats.v_pace;
+            dataExtra.ritmo.maximo = dataExtra.stats.ritmoMaximo || dataExtra.stats.ritmo_maximo;
+
+            // Extraer Tiempos (NUEVO)
+            estadisticas.tiempos = {
+              enMarcha: dataExtra.stats.tiempoMarcha || dataExtra.stats.tiempoEnMarcha || dataExtra.stats.en_marcha || dataExtra.stats['En marcha'],
+              parado: dataExtra.stats.tiempoParada || dataExtra.stats.tiempoParada || dataExtra.stats.parado || dataExtra.stats['Parado'],
+              pausado: dataExtra.stats.tiempoPausa || dataExtra.stats.tiempoPausa || dataExtra.stats.pausado || dataExtra.stats['Pausado']
             };
 
-            // Función para buscar en varios campos (aliasing)
-            const getField = (keys) => {
-              for (const key of keys) {
-                if (extraStats[key] !== undefined && extraStats[key] !== null && extraStats[key] !== '') return extraStats[key];
-              }
-              return null;
-            };
-
-            // Rellenar si en la BD están a 0 o vacíos
-            if (!estadisticas.velocidad.media) estadisticas.velocidad.media = parseNum(getField(['velocidadMedia', 'velocidad_media_kmh', 'velocidadMediaKmh']));
-            if (!estadisticas.velocidad.maxima) estadisticas.velocidad.maxima = parseNum(getField(['velocidadMaxima', 'velocidad_maxima_kmh', 'velocidadMaximaKmh']));
-            if (!estadisticas.velocidad.minima) estadisticas.velocidad.minima = parseNum(getField(['velocidadMinima', 'velocidad_minima_kmh', 'velocidadMinimaKmh']));
-            if (!estadisticas.energia.calorias) estadisticas.energia.calorias = parseInt(parseNum(getField(['calorias', 'calories']))) || 0;
-            if (!estadisticas.energia.pasos) estadisticas.energia.pasos = parseInt(getField(['pasos', 'pasos_estimados', 'pasosEstimados'])) || 0;
-            if (!estadisticas.tracking.puntosGPS) estadisticas.tracking.puntosGPS = parseInt(getField(['numeroPuntos', 'puntosGPS', 'puntos_gps'])) || 0;
-
-            // Perfil de transporte (si es unknown en BD)
-            if (estadisticas.tracking.perfilTransporte === 'unknown') {
-              const rawT = getField(['perfilTransporte', 'perfil_transporte']);
-              estadisticas.tracking.perfilTransporte = (typeof rawT === 'object' && rawT !== null) ? rawT.id : (rawT || 'unknown');
+            // Extraer Ida y Vuelta (NUEVO)
+            if (dataExtra.stats.ida || dataExtra.stats.round_trip?.ida || dataExtra.stats['Ida']) {
+              const ida = dataExtra.stats.ida || dataExtra.stats.round_trip?.ida || dataExtra.stats['Ida'];
+              const vuelta = dataExtra.stats.vuelta || dataExtra.stats.round_trip?.vuelta || dataExtra.stats['Vuelta'];
+              estadisticas.idaVuelta = {
+                ida: { km: parseNum(ida.km || ida.distancia_km), tiempo: ida.tiempo || ida.duracion_formateada },
+                vuelta: { km: parseNum(vuelta.km || vuelta.distancia_km), tiempo: vuelta.tiempo || vuelta.duracion_formateada }
+              };
             }
 
-            if (extraStats.desgloseTransporte) {
-              estadisticas.desgloseTransporte = extraStats.desgloseTransporte;
+            if (dataExtra.stats.desgloseTransporte) {
+              estadisticas.desgloseTransporte = dataExtra.stats.desgloseTransporte;
+              console.log(`📊 [DEBUG] Desglose detectado: ${estadisticas.desgloseTransporte.length} segmentos. Claves primer seg: ${Object.keys(estadisticas.desgloseTransporte[0] || {}).join(', ')}`);
             }
-            console.log('✅ Estadísticas enriquecidas desde archivo JSON');
+
+            console.log(`📊 [STATS] vMedia: ${dataExtra.stats.velocidadMedia}, vMax: ${dataExtra.stats.velocidadMaxima}`);
           }
-        } catch (e) {
-          console.warn('⚠️ Error enriqueciendo desde JSON:', e.message);
-        }
+        } catch (e) { console.warn('⚠️ Error stats:', e.message); }
       }
+
+      // 3. Fusionar campos faltantes en objeto base
+      const sources = [dataExtra.stats, dataExtra.manifest.estadisticas || {}, dataExtra.manifest];
+      const getField = (keys) => {
+        for (const src of sources) {
+          for (const key of keys) {
+            if (src && src[key] !== undefined && src[key] !== null && src[key] !== '') return src[key];
+          }
+        }
+        return null;
+      };
+
+      if (estadisticas.velocidad.media === 0 || !estadisticas.velocidad.media)
+        estadisticas.velocidad.media = parseNum(getField(['velocidadMedia', 'velocidad_media_kmh', 'velocidadMediaKmh', 'v_media', 'velocidad_media', 'avg_speed', 'V. Media', 'avgSpeed']));
+
+      if (estadisticas.velocidad.maxima === 0 || !estadisticas.velocidad.maxima)
+        estadisticas.velocidad.maxima = parseNum(getField(['velocidadMaxima', 'velocidad_maxima_kmh', 'velocidadMaximaKmh', 'v_maxima', 'velocidad_maxima', 'max_speed', 'V. Máxima', 'maxSpeed']));
+
+      // ✨ SEGURO: Si vMax es 0 pero vMedia > 0, usar vMedia como suelo
+      if ((!estadisticas.velocidad.maxima || estadisticas.velocidad.maxima === 0) && estadisticas.velocidad.media > 0) {
+        estadisticas.velocidad.maxima = estadisticas.velocidad.media;
+        console.log(`⚖️ [FLOOR] Aplicando suelo de velocidad media a máxima: ${estadisticas.velocidad.maxima}`);
+      }
+
+      if (estadisticas.energia.calorias === 0 || !estadisticas.energia.calorias)
+        estadisticas.energia.calorias = parseInt(parseNum(getField(['calorias', 'calories', 'cals', 'kcal', 'Calorías']))) || 0;
+
+      if (estadisticas.energia.pasos === 0 || !estadisticas.energia.pasos)
+        estadisticas.energia.pasos = parseInt(getField(['pasos', 'pasos_estimados', 'pasosEstimados', 'num_pasos', 'steps', 'Pasos'])) || 0;
+
+      if (estadisticas.tracking.puntosGPS === 0 || !estadisticas.tracking.puntosGPS) {
+        estadisticas.tracking.puntosGPS = parseInt(getField(['puntosGPS', 'numeroPuntos', 'puntos_gps', 'numero_puntos', 'num_puntos', 'log_count', 'points', 'Puntos GPS', 'numLog', 'gps_count', 'logCount'])) || 0;
+      }
+
+      // ✨ FALLBACK: Si sigue siendo 0, intentar contar puntos en el GPX real
+      if (estadisticas.tracking.puntosGPS === 0 && row.rutaManifest) {
+        try {
+          // rutaManifest: '101/170/metadata/manifest.json'
+          const manifestDir = path.dirname(row.rutaManifest); // '101/170/metadata'
+          const actividadDir = path.dirname(manifestDir);   // '101/170'
+          const gpxPath = path.join(uploadsPath, actividadDir, 'gpx', 'recorrido.gpx');
+
+          console.log(`🔍 [FALLBACK] Buscando GPX para contar puntos en: ${gpxPath}`);
+
+          if (fs.existsSync(gpxPath)) {
+            const gpxContent = fs.readFileSync(gpxPath, 'utf8');
+            const pointCount = (gpxContent.match(/<trkpt/g) || []).length;
+            if (pointCount > 0) {
+              estadisticas.tracking.puntosGPS = pointCount;
+              console.log(`📊 [FALLBACK] Puntos GPS calculados: ${pointCount}`);
+            }
+          }
+        } catch (e) { console.warn('⚠️ [FALLBACK] Error contando puntos GPX:', e.message); }
+      }
+
+      // 4. Normalizar Desglose (Evitar NaN en frontend)
+      if (estadisticas.desgloseTransporte && Array.isArray(estadisticas.desgloseTransporte)) {
+        estadisticas.desgloseTransporte = estadisticas.desgloseTransporte.map(seg => ({
+          nombre: seg.nombre || 'Desconocido',
+          distanciaKm: parseNum(seg.km || seg.distanciaKm || seg.distancia_km || seg.distancia || 0),
+          duracionFormateada: seg.tiempoEmpleado || seg.duracionFormateada || seg.duracion_formateada || seg.tiempo || seg.duracion || '00:00:00'
+        }));
+      }
+
+      // Añadir data extra y info de depuración
+      estadisticas.altitud = dataExtra.altitud;
+      estadisticas.ritmo = dataExtra.ritmo;
+      estadisticas.app = dataExtra.detallesApp;
+      estadisticas.debug = {
+        calculoPuntosGPS: estadisticas.tracking.puntosGPS > 0 ? 'Exitoso' : 'Fallo',
+        puntosContados: estadisticas.tracking.puntosGPS
+      };
+      estadisticas.raw = {
+        manifest: dataExtra.manifest,
+        stats: dataExtra.stats
+      };
 
       res.json(estadisticas);
     }
@@ -4672,16 +4776,16 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
     };
 
     // Extraer datos con prioridades y alias
-    const distKm = parseNum(getDeepStat(['km', 'distancia_km', 'distanciaKm']));
-    const duracionFmt = getDeepStat(['tiempoEmpleado', 'duracion_formateada', 'duracionFormateada']) || '00:00:00';
-    const velMedia = parseNum(getDeepStat(['velocidadMedia', 'velocidad_media_kmh', 'velocidadMediaKmh', 'velocidad_media']));
-    const velMax = parseNum(getDeepStat(['velocidadMaxima', 'velocidad_maxima_kmh', 'velocidadMaximaKmh', 'velocidad_maxima']));
-    const velMin = parseNum(getDeepStat(['velocidadMinima', 'velocidad_minima_kmh', 'velocidadMinimaKmh', 'velocidad_minima']));
-    const cals = parseInt(parseNum(getDeepStat(['calorias', 'calories']))) || 0;
-    const pasos = parseInt(getDeepStat(['pasos', 'pasos_estimados', 'pasosEstimados'])) || 0;
-    const distMetros = parseInt(getDeepStat(['distanciaMetros', 'distancia_metros'])) || 0;
-    const duracionSegs = parseInt(getDeepStat(['duracionSegundos', 'duracion_segundos', 'duracionEfectivaSegundos'])) || 0;
-    const ptsGPS = parseInt(getDeepStat(['numeroPuntos', 'puntosGPS', 'puntos_gps'])) || 0;
+    const distKm = parseNum(getDeepStat(['km', 'distancia_km', 'distanciaKm', 'distancia_recorrida']));
+    const duracionFmt = getDeepStat(['tiempoEmpleado', 'duracion_formateada', 'duracionFormateada', 'duracion_total', 'tiempo_total']) || '00:00:00';
+    const velMedia = parseNum(getDeepStat(['velocidadMedia', 'velocidad_media_kmh', 'velocidadMediaKmh', 'velocidad_media', 'v_media']));
+    const velMax = parseNum(getDeepStat(['velocidadMaxima', 'velocidad_maxima_kmh', 'velocidadMaximaKmh', 'velocidad_maxima', 'v_maxima']));
+    const velMin = parseNum(getDeepStat(['velocidadMinima', 'velocidad_minima_kmh', 'velocidadMinimaKmh', 'velocidad_minima', 'v_minima']));
+    const cals = parseInt(parseNum(getDeepStat(['calorias', 'calories', 'cals']))) || 0;
+    const pasos = parseInt(getDeepStat(['pasos', 'pasos_estimados', 'pasosEstimados', 'num_pasos'])) || 0;
+    const distMetros = parseInt(getDeepStat(['distanciaMetros', 'distancia_metros'])) || (distKm * 1000);
+    const duracionSegs = parseInt(getDeepStat(['duracionSegundos', 'duracion_segundos', 'duracionEfectivaSegundos', 'segundos_totales'])) || 0;
+    const ptsGPS = parseInt(getDeepStat(['numeroPuntos', 'puntosGPS', 'puntos_gps', 'numero_puntos', 'num_puntos'])) || 0;
 
     // ✨ Perfil de transporte (puede ser objeto o ID)
     const rawTransporte = getDeepStat(['perfilTransporte', 'perfil_transporte']);
@@ -4695,8 +4799,8 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
     if (desglose.length > 0) {
       desgloseTxt = '\n🚲 Desglose transporte:';
       desglose.forEach(d => {
-        const dKm = d.km || d.distanciaKm || (d.distanciaMetros / 1000).toFixed(2);
-        const dDur = d.tiempoEmpleado || d.duracionFormateada;
+        const dKm = d.km || d.distancia_km || d.distanciaKm || (d.distancia_metros ? (d.distancia_metros / 1000).toFixed(2) : (d.distanciaMetros / 1000).toFixed(2));
+        const dDur = d.duracion_formateada || d.duracionFormateada || d.tiempoEmpleado || d.tiempo || d.duracion;
         desgloseTxt += `\n  - ${d.nombre}: ${dKm} km (${dDur})`;
       });
     }

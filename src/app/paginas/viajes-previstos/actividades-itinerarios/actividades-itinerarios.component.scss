@@ -624,60 +624,116 @@ textarea:focus {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
-// Modal para estadísticas
+// Modal para estadísticas mejorado
 .modal-estadisticas {
-  max-width: 700px;
-}
+  max-width: 900px !important;
+  width: 95%;
 
-.estadistica-grupo {
-  margin-bottom: 1.5rem;
-  padding: 1.2rem;
-  background: #f8f9fa;
-  border-left: 4px solid $color-primario;
-  border-radius: $radio;
-
-  h4 {
-    color: $color-primario;
-    margin-top: 0;
-    margin-bottom: 0.8rem;
-    font-size: 1.1rem;
-    font-weight: 600;
-
-    @media (max-width: 768px) {
-      font-size: 1rem;
-    }
+  .modal-body {
+    padding: 25px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    background-color: #f8f9fa;
+    max-height: 85vh;
+    overflow-y: auto;
   }
 
-  p {
-    margin: 0.5rem 0;
-    line-height: 1.6;
-    color: $color-texto-suave;
+  .estadistica-grupo {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    border: 1px solid #edf2f7;
+    transition: transform 0.2s;
+    margin-bottom: 0;
+    border-left: 1px solid #edf2f7;
 
-    strong {
-      color: $color-texto;
-      min-width: 120px;
-      display: inline-block;
-      font-weight: 600;
+    &:hover {
+      transform: translateY(-3px);
     }
 
-    @media (max-width: 768px) {
-      strong {
-        min-width: 100px;
+    h4 {
+      margin: 0 0 15px 0;
+      color: #2d3748;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 2px solid #edf2f7;
+      padding-bottom: 10px;
+
+      i {
+        color: #4a5568;
+        width: 24px;
+        text-align: center;
+      }
+    }
+
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+
+      .label {
+        color: #718096;
+        font-weight: 500;
+      }
+
+      .value {
+        color: #1a202c;
+        font-weight: 700;
+      }
+
+      &.highligth {
+        .value {
+          color: #3182ce;
+        }
       }
     }
   }
 
-  .segmento-transporte {
-    border-bottom: 1px dashed rgba($color-gris, 0.5);
-    padding: 0.5rem 0;
+  // Grupos especiales
+  .grupo-full {
+    grid-column: 1 / -1;
+  }
 
-    &:last-child {
-      border-bottom: none;
-    }
+  .desglose-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    width: 100%;
+  }
+
+  .segmento-transporte {
+    background: #f1f5f9;
+    padding: 12px;
+    border-radius: 8px;
+    border-left: 4px solid #3182ce;
 
     p {
       margin: 0;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
+    }
+
+    &.color-ida {
+      border-left-color: #2b6cb0;
+      background: #ebf8ff;
+    }
+
+    &.color-vuelta {
+      border-left-color: #38a169;
+      background: #f0fff4;
+    }
+  }
+}
+
+@media (max-width: 600px) {
+  .modal-estadisticas {
+    .modal-body {
+      grid-template-columns: 1fr;
+      padding: 15px;
     }
   }
 }

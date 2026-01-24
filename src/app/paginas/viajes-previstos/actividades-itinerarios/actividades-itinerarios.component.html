@@ -68,61 +68,135 @@
       <button class="btn-cerrar" (click)="cerrarModalEstadisticas()">✕</button>
     </div>
     <div class="modal-body" *ngIf="estadisticasActuales">
-      <div class="estadistica-grupo">
-        <h4>📌 Información General</h4>
-        <p><strong>Nombre:</strong> {{ estadisticasActuales.nombre }}</p>
-        <p><strong>Descripción:</strong> {{ estadisticasActuales.descripcion }}</p>
-      </div>
 
+      <!-- 1. RESUMEN PRINCIPAL -->
       <div class="estadistica-grupo">
-        <h4>⏰ Horario</h4>
-        <p><strong>Inicio:</strong> {{ estadisticasActuales.horario.inicio }}</p>
-        <p><strong>Fin:</strong> {{ estadisticasActuales.horario.fin }}</p>
-      </div>
-
-      <div class="estadistica-grupo">
-        <h4>📏 Distancia</h4>
-        <p><strong>Kilómetros:</strong> {{ estadisticasActuales.distancia.km }} km</p>
-        <p><strong>Metros:</strong> {{ estadisticasActuales.distancia.metros }} m</p>
-      </div>
-
-      <div class="estadistica-grupo">
-        <h4>⏱️ Duración</h4>
-        <p><strong>Formateada:</strong> {{ estadisticasActuales.duracion.formateada }}</p>
-        <p><strong>Segundos:</strong> {{ estadisticasActuales.duracion.segundos }} s</p>
-      </div>
-
-      <div class="estadistica-grupo">
-        <h4>🏃 Velocidad</h4>
-        <p><strong>Media:</strong> {{ estadisticasActuales.velocidad.media }} km/h</p>
-        <p><strong>Máxima:</strong> {{ estadisticasActuales.velocidad.maxima }} km/h</p>
-        <p><strong>Mínima:</strong> {{ estadisticasActuales.velocidad.minima }} km/h</p>
-      </div>
-
-      <div class="estadistica-grupo">
-        <h4>⚡ Energía</h4>
-        <p><strong>Calorías:</strong> {{ estadisticasActuales.energia.calorias }} kcal</p>
-        <p><strong>Pasos:</strong> {{ estadisticasActuales.energia.pasos }}</p>
-      </div>
-
-      <div class="estadistica-grupo">
-        <h4>🛰️ Tracking</h4>
-        <p><strong>Puntos GPS:</strong> {{ estadisticasActuales.tracking.puntosGPS }}</p>
-        <p><strong>Perfil de Transporte:</strong> {{ estadisticasActuales.tracking.perfilTransporte }}</p>
-      </div>
-
-      <!-- ✨ NUEVO: Desglose por transporte -->
-      <div class="estadistica-grupo"
-        *ngIf="estadisticasActuales.desgloseTransporte && estadisticasActuales.desgloseTransporte.length > 0">
-        <h4>🚲 Desglose por Transporte</h4>
-        <div *ngFor="let seg of estadisticasActuales.desgloseTransporte" class="segmento-transporte">
-          <p>
-            <strong>{{ seg.nombre }}:</strong>
-            {{ seg.distanciaKm || (seg.distanciaMetros / 1000).toFixed(2) }} km
-            ({{ seg.duracionFormateada || seg.tiempoEmpleado }})
-          </p>
+        <h4><i class="fa fa-info-circle"></i> Resumen</h4>
+        <div class="stat-item highligth">
+          <span class="label">Distancia:</span>
+          <span class="value">{{ estadisticasActuales.distancia.km }} km</span>
+        </div>
+        <div class="stat-item highligth">
+          <span class="label">Duración:</span>
+          <span class="value">{{ estadisticasActuales.duracion.formateada }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">Velocidad Media:</span>
+          <span class="value">{{ estadisticasActuales.velocidad.media }} km/h</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">Pasos Totales:</span>
+          <span class="value">{{ estadisticasActuales.energia.pasos }}</span>
         </div>
       </div>
+
+      <!-- 2. RENDIMIENTO -->
+      <div class="estadistica-grupo">
+        <h4><i class="fa fa-bolt"></i> Rendimiento</h4>
+        <div class="stat-item">
+          <span class="label">Velocidad Máxima:</span>
+          <span class="value">{{ estadisticasActuales.velocidad.maxima }} km/h</span>
+        </div>
+        <div class="stat-item" *ngIf="estadisticasActuales.ritmo.medio">
+          <span class="label">Ritmo Medio:</span>
+          <span class="value">{{ estadisticasActuales.ritmo.medio }} min/km</span>
+        </div>
+        <div class="stat-item" *ngIf="estadisticasActuales.ritmo.maximo">
+          <span class="label">Ritmo Máximo:</span>
+          <span class="value">{{ estadisticasActuales.ritmo.maximo }} min/km</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">Calorías:</span>
+          <span class="value">{{ estadisticasActuales.energia.calorias }} kcal</span>
+        </div>
+      </div>
+
+      <!-- 3. TIEMPOS DETALLADOS -->
+      <div class="estadistica-grupo" *ngIf="estadisticasActuales.tiempos">
+        <h4><i class="fa fa-clock-o"></i> Tiempos</h4>
+        <div class="stat-item" *ngIf="estadisticasActuales.tiempos.enMarcha">
+          <span class="label">En Marcha:</span>
+          <span class="value">{{ estadisticasActuales.tiempos.enMarcha }}</span>
+        </div>
+        <div class="stat-item" *ngIf="estadisticasActuales.tiempos.parado">
+          <span class="label">Parado:</span>
+          <span class="value">{{ estadisticasActuales.tiempos.parado }}</span>
+        </div>
+        <div class="stat-item" *ngIf="estadisticasActuales.tiempos.pausado">
+          <span class="label">Pausado:</span>
+          <span class="value">{{ estadisticasActuales.tiempos.pausado }}</span>
+        </div>
+      </div>
+
+      <!-- 4. ALTITUD -->
+      <div class="estadistica-grupo"
+        *ngIf="estadisticasActuales.altitud && estadisticasActuales.altitud.ganancia !== null">
+        <h4><i class="fa fa-area-chart"></i> Altitud</h4>
+        <div class="stat-item">
+          <span class="label">Ganancia (Ascenso):</span>
+          <span class="value">{{ estadisticasActuales.altitud.ganancia }} m</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">Pérdida (Descenso):</span>
+          <span class="value">{{ estadisticasActuales.altitud.perdida }} m</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">Altitud Mínima:</span>
+          <span class="value">{{ estadisticasActuales.altitud.min }} m</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">Altitud Máxima:</span>
+          <span class="value">{{ estadisticasActuales.altitud.max }} m</span>
+        </div>
+      </div>
+
+      <!-- 5. TÉCNICA & APP -->
+      <div class="estadistica-grupo">
+        <h4><i class="fa fa-microchip"></i> Técnica & App</h4>
+        <div class="stat-item">
+          <span class="label">Puntos GPS:</span>
+          <span class="value">{{ estadisticasActuales.tracking.puntosGPS }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">Perfil:</span>
+          <span class="value">{{ estadisticasActuales.tracking.perfilTransporte }}</span>
+        </div>
+        <div class="stat-item" *ngIf="estadisticasActuales.app.dispositivo">
+          <span class="label">Dispositivo:</span>
+          <span class="value">{{ estadisticasActuales.app.dispositivo }}</span>
+        </div>
+      </div>
+
+      <!-- 6. DESGLOSE IDA Y VUELTA (NUEVO - Full Width) -->
+      <div class="estadistica-grupo grupo-full" *ngIf="estadisticasActuales.idaVuelta">
+        <h4><i class="fa fa-exchange"></i> Desglose Ida y Vuelta</h4>
+        <div class="desglose-grid">
+          <div class="segmento-transporte color-ida">
+            <p><strong>IDA:</strong> {{ estadisticasActuales.idaVuelta.ida.km }} km ({{
+              estadisticasActuales.idaVuelta.ida.tiempo }})</p>
+          </div>
+          <div class="segmento-transporte color-vuelta">
+            <p><strong>VUELTA:</strong> {{ estadisticasActuales.idaVuelta.vuelta.km }} km ({{
+              estadisticasActuales.idaVuelta.vuelta.tiempo }})</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. DESGLOSE TRANSPORTE (Full Width) -->
+      <div class="estadistica-grupo grupo-full"
+        *ngIf="estadisticasActuales.desgloseTransporte && estadisticasActuales.desgloseTransporte.length > 0">
+        <h4><i class="fa fa-bicycle"></i> Desglose por Transporte</h4>
+        <div class="desglose-grid">
+          <div *ngFor="let seg of estadisticasActuales.desgloseTransporte" class="segmento-transporte">
+            <p>
+              <strong>{{ seg.nombre }}:</strong>
+              {{ seg.distanciaKm || (seg.distanciaMetros / 1000).toFixed(2) }} km
+              ({{ seg.duracionFormateada || seg.tiempoEmpleado }})
+            </p>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
