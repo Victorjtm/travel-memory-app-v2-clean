@@ -144,6 +144,11 @@ const db = new sqlite3.Database('./viajes.db', (err) => {
     console.error('❌ Error al conectar con la base de datos SQLite:', err.message);
   } else {
     console.log('✅ Conectado a la base de datos SQLite');
+    // Activar soporte para claves foráneas (activación por conexión)
+    db.run('PRAGMA foreign_keys = ON', (pragmaErr) => {
+      if (pragmaErr) console.error('❌ Error habilitando foreign keys:', pragmaErr.message);
+      else console.log('🛡️ Soporte para claves foráneas ACTIVADO (Cascading habilitado)');
+    });
   }
 });
 
@@ -643,84 +648,52 @@ app.delete('/viajes/:id', async (req, res) => {
   const id = req.params.id;
 
   try {
-    console.log(`🗑️ Iniciando eliminación en cascada del viaje ${id}...`);
+    console.log(`🗑️ Iniciando eliminación integral del viaje ${id}...`);
 
-    // 0. Obtener datos del viaje para eliminar imagen/audio de portada
+    // 0. Obtener datos del viaje para limpiar recursos de portada
     const viaje = await dbQuery.get('SELECT imagen, audio FROM viajes WHERE id = ?', [id]);
     if (!viaje) {
       return res.status(404).json({ error: 'Viaje no encontrado' });
     }
 
-    // 1. Obtener todos los itinerarios del viaje
-    const itinerarios = await dbQuery.all('SELECT id FROM ItinerarioGeneral WHERE viajePrevistoId = ?', [id]);
-    console.log(`📋 Encontrados ${itinerarios.length} itinerarios`);
-
-    let totalArchivosEliminados = 0;
-
-    // 2. Procesar itinerarios y actividades
-    for (const itin of itinerarios) {
-      const actividades = await dbQuery.all('SELECT id FROM actividades WHERE itinerarioId = ?', [itin.id]);
-
-      for (const act of actividades) {
-        // Obtener archivos de la actividad
-        const archivos = await dbQuery.all('SELECT id, rutaArchivo FROM archivos WHERE actividadId = ?', [act.id]);
-
-        for (const arch of archivos) {
-          // Eliminar archivos asociados físicos
-          const asociados = await dbQuery.all('SELECT rutaArchivo FROM archivos_asociados WHERE archivoPrincipalId = ?', [arch.id]);
-          for (const asoc of asociados) {
-            try {
-              const fullPathAsoc = path.isAbsolute(asoc.rutaArchivo) ? asoc.rutaArchivo : path.join(uploadsPath, asoc.rutaArchivo);
-              if (fs.existsSync(fullPathAsoc)) fs.unlinkSync(fullPathAsoc);
-            } catch (e) { console.warn(`  ⚠️ Error eliminando asociado: ${asoc.rutaArchivo}`); }
-          }
-
-          // Eliminar archivo principal físico
-          try {
-            const fullPathArch = path.isAbsolute(arch.rutaArchivo) ? arch.rutaArchivo : path.join(uploadsPath, arch.rutaArchivo);
-            if (fs.existsSync(fullPathArch)) {
-              fs.unlinkSync(fullPathArch);
-              totalArchivosEliminados++;
-            }
-          } catch (e) { console.warn(`  ⚠️ Error eliminando archivo: ${arch.rutaArchivo}`); }
-        }
-      }
-    }
-
-    // 3. Eliminar archivos de portada (viaje.imagen y viaje.audio)
+    // 1. Eliminar archivos de portada (vía unlinked individual ya que suelen estar en raíz de uploads)
     [viaje.imagen, viaje.audio].forEach(fileName => {
       if (fileName) {
         try {
           const fullPath = path.isAbsolute(fileName) ? fileName : path.join(uploadsPath, fileName);
-          if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+          if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+            console.log(`  📄 Recurso de portada eliminado: ${fileName}`);
+          }
         } catch (e) { console.warn(`  ⚠️ Error eliminando recurso viaje: ${fileName}`); }
       }
     });
 
-    // 4. Ejecutar borrado en BD (suponiendo ON DELETE CASCADE, pero lo hacemos explícito para seguridad si falla el trigger)
-    // El orden importa si no hay FK cascade: asociados -> archivos -> actividades -> itinerarios -> viaje
-    // Pero asumiendo que viajes.db tiene FK habilitadas...
-    await dbQuery.run('DELETE FROM viajes WHERE id = ?', [id]);
-
-    // 5. Eliminar carpeta de viaje si existe (opcional, si se usa folders por ID)
+    // 2. Eliminar carpeta física del viaje (Limpia GPX, Mapas y Fotos de actividades de un golpe)
     const viajeFolder = path.join(uploadsPath, id.toString());
     if (fs.existsSync(viajeFolder)) {
       try {
         fs.rmSync(viajeFolder, { recursive: true, force: true });
-        console.log(`  ✅ Carpeta de viaje eliminada: ${viajeFolder}`);
-      } catch (e) { console.warn(`  ⚠️ No se pudo eliminar la carpeta del viaje: ${viajeFolder}`); }
+        console.log(`  📂 Carpeta de viaje eliminada (limpieza total de multimedia): ${viajeFolder}`);
+      } catch (e) { console.warn(`  ⚠️ Error eliminando la carpeta del viaje: ${viajeFolder}`); }
     }
+
+    // 3. Borrar de la Base de Datos
+    // Gracias al PRAGMA foreign_keys = ON, esto borrará automáticamente en cascada:
+    // ItinerarioGeneral -> actividades -> archivos -> archivos_asociados
+    const result = await dbQuery.run('DELETE FROM viajes WHERE id = ?', [id]);
+
+    console.log(`✅ Viaje ${id} eliminado correctamente de la BD.`);
 
     res.json({
       success: true,
-      mensaje: `Viaje ${id} eliminado en cascada`,
-      archivosEliminados: totalArchivosEliminados,
-      itinerariosEliminados: itinerarios.length
+      mensaje: `Viaje ${id} y todos sus recursos eliminados correctamente`,
+      cambios: result.changes
     });
 
   } catch (error) {
-    console.error(`❌ Error eliminando viaje: ${error.message}`);
-    res.status(500).json({ error: error.message });
+    console.error(`❌ Error fatal eliminando viaje ${id}:`, error.message);
+    res.status(500).json({ error: `Error interno al eliminar viaje: ${error.message}` });
   }
 });
 
@@ -1355,87 +1328,36 @@ app.put('/itinerarios/:id', (req, res) => {
 // 5️⃣ DELETE eliminar un itinerario
 app.delete('/itinerarios/:id', async (req, res) => {
   const id = req.params.id;
-
   try {
-    console.log(`🗑️ Eliminando itinerario ${id} en cascada...`);
+    console.log(`🗑️ Eliminando itinerario ${id} integralmente...`);
 
-    // 1. Obtener actividades
-    const actividades = await new Promise((resolve, reject) => {
-      db.all(
-        'SELECT id FROM actividades WHERE itinerarioId = ?',
-        [id],
-        (err, rows) => err ? reject(err) : resolve(rows || [])
-      );
-    });
+    // 1. Obtener actividades de este itinerario para poder limpiar sus carpetas físicas
+    const actividades = await dbQuery.all('SELECT id, viajePrevistoId FROM actividades WHERE itinerarioId = ?', [id]);
 
-    // 2. Eliminar archivos y asociados
-    let totalArch = 0;
+    // 2. Limpieza de Sistema de Archivos
+    // Borramos las carpetas específicas de cada actividad dentro de este itinerario
     for (const act of actividades) {
-      const archivos = await new Promise((resolve, reject) => {
-        db.all(
-          'SELECT id, rutaArchivo FROM archivos WHERE actividadId = ?',
-          [act.id],
-          (err, rows) => err ? reject(err) : resolve(rows || [])
-        );
-      });
-
-      for (const arch of archivos) {
-        // Eliminar asociados
-        await new Promise((resolve) => {
-          db.all(
-            'SELECT rutaArchivo FROM archivos_asociados WHERE archivoPrincipalId = ?',
-            [arch.id],
-            (err, rows) => {
-              rows?.forEach(row => {
-                try {
-                  if (fs.existsSync(row.rutaArchivo)) fs.unlinkSync(row.rutaArchivo);
-                } catch (e) { console.warn(`  ⚠️ No se pudo eliminar: ${row.rutaArchivo}`); }
-              });
-              resolve();
-            }
-          );
-        });
-
-        await new Promise((resolve) => {
-          db.run(
-            'DELETE FROM archivos_asociados WHERE archivoPrincipalId = ?',
-            [arch.id],
-            () => resolve()
-          );
-        });
-
-        // Eliminar archivo físico
+      const actividadFolder = path.join(uploadsPath, act.viajePrevistoId.toString(), act.id.toString());
+      if (fs.existsSync(actividadFolder)) {
         try {
-          if (fs.existsSync(arch.rutaArchivo)) {
-            fs.unlinkSync(arch.rutaArchivo);
-            totalArch++;
-          }
-        } catch (e) { console.warn(`  ⚠️ Error: ${arch.rutaArchivo}`); }
+          fs.rmSync(actividadFolder, { recursive: true, force: true });
+          console.log(`  📂 Carpeta de actividad eliminada: ${actividadFolder}`);
+        } catch (e) { console.warn(`  ⚠️ No se pudo eliminar carpeta actividad ${act.id}:`, e.message); }
       }
-
-      await new Promise((resolve) => {
-        db.run('DELETE FROM archivos WHERE actividadId = ?', [act.id], () => resolve());
-      });
     }
 
-    // 3. Eliminar actividades
-    await new Promise((resolve) => {
-      db.run('DELETE FROM actividades WHERE itinerarioId = ?', [id], () => resolve());
-    });
-
-    // 4. Eliminar itinerario
-    await new Promise((resolve) => {
-      db.run('DELETE FROM ItinerarioGeneral WHERE id = ?', [id], () => resolve());
-    });
+    // 3. Borrado en BD
+    // Gracias al PRAGMA foreign_keys = ON, esto borrará:
+    // actividades -> archivos -> archivos_asociados
+    const result = await dbQuery.run('DELETE FROM ItinerarioGeneral WHERE id = ?', [id]);
 
     res.json({
       success: true,
-      mensaje: `Itinerario ${id} eliminado en cascada`,
-      archivosEliminados: totalArch
+      mensaje: `Itinerario ${id} y todas sus actividades/archivos eliminados correctamente`,
+      cambios: result.changes
     });
-
   } catch (error) {
-    console.error(`❌ Error: ${error.message}`);
+    console.error(`❌ Error eliminando itinerario ${id}:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1844,67 +1766,37 @@ app.delete('/actividades/:id', async (req, res) => {
   const id = req.params.id;
 
   try {
-    console.log(`🗑️ Eliminando actividad ${id}...`);
+    console.log(`🗑️ Eliminando actividad ${id} integralmente...`);
 
-    // 1. Obtener archivos
-    const archivos = await new Promise((resolve, reject) => {
-      db.all(
-        'SELECT id, rutaArchivo FROM archivos WHERE actividadId = ?',
-        [id],
-        (err, rows) => err ? reject(err) : resolve(rows || [])
-      );
-    });
+    // 1. Obtener datos de la actividad para localizar su carpeta física
+    const actividad = await dbQuery.get('SELECT viajePrevistoId FROM actividades WHERE id = ?', [id]);
 
-    // 2. Eliminar archivos asociados y físicos
-    for (const arch of archivos) {
-      // Asociados
-      await new Promise((resolve) => {
-        db.all(
-          'SELECT rutaArchivo FROM archivos_asociados WHERE archivoPrincipalId = ?',
-          [arch.id],
-          (err, rows) => {
-            rows?.forEach(row => {
-              try {
-                if (fs.existsSync(row.rutaArchivo)) fs.unlinkSync(row.rutaArchivo);
-              } catch (e) { }
-            });
-            resolve();
-          }
-        );
-      });
+    if (actividad) {
+      // 2. Limpieza de Sistema de Archivos
+      // Usamos la estructura: uploads/<viajeId>/<actividadId>
+      const actividadFolder = path.join(uploadsPath, actividad.viajePrevistoId.toString(), id.toString());
 
-      await new Promise((resolve) => {
-        db.run(
-          'DELETE FROM archivos_asociados WHERE archivoPrincipalId = ?',
-          [arch.id],
-          () => resolve()
-        );
-      });
-
-      // Principal
-      try {
-        if (fs.existsSync(arch.rutaArchivo)) fs.unlinkSync(arch.rutaArchivo);
-      } catch (e) { }
+      if (fs.existsSync(actividadFolder)) {
+        try {
+          fs.rmSync(actividadFolder, { recursive: true, force: true });
+          console.log(`  📂 Carpeta de actividad eliminada (limpieza total): ${actividadFolder}`);
+        } catch (e) { console.warn(`  ⚠️ No se pudo eliminar la carpeta física de la actividad ${id}:`, e.message); }
+      }
     }
 
-    // 3. Eliminar archivos
-    await new Promise((resolve) => {
-      db.run('DELETE FROM archivos WHERE actividadId = ?', [id], () => resolve());
-    });
-
-    // 4. Eliminar actividad
-    await new Promise((resolve) => {
-      db.run('DELETE FROM actividades WHERE id = ?', [id], () => resolve());
-    });
+    // 3. Borrado en BD
+    // Gracias al PRAGMA foreign_keys = ON, esto borrará:
+    // archivos -> archivos_asociados
+    const result = await dbQuery.run('DELETE FROM actividades WHERE id = ?', [id]);
 
     res.json({
       success: true,
-      mensaje: `Actividad ${id} eliminada en cascada`,
-      archivosEliminados: archivos.length
+      mensaje: `Actividad ${id} y sus archivos eliminados correctamente`,
+      cambios: result.changes
     });
 
   } catch (error) {
-    console.error(`❌ Error: ${error.message}`);
+    console.error(`❌ Error fatal eliminando actividad ${id}:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
