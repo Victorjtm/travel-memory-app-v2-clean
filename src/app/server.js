@@ -4341,6 +4341,13 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
   console.log('\n🚀 =============== IMPORTACIÓN DE TRACKING ===============');
   console.log('📦 Archivos recibidos:', req.files?.length || 0);
 
+  // 🔍 DEBUG: Ver exactamente qué nombres de archivo llegan
+  if (req.files) {
+    req.files.forEach((f, idx) => {
+      console.log(`  [FILE ${idx}] originalname: "${f.originalname}" (decoded: "${decodeURIComponent(f.originalname)}")`);
+    });
+  }
+
   let viajeId = null;
   let itinerarioId = null;
   let actividadId = null;
@@ -4363,7 +4370,8 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
     console.log(`📍 Destino recibido: "${destino}"`);
 
     // 2. BUSCAR Y PARSEAR manifest.json Y estadisticas.json
-    const manifestFile = req.files.find(f => f.originalname === 'manifest.json');
+    // ✨ MEJORADO: Decodificar y usar path.basename para ignorar rutas si vienen del móvil
+    const manifestFile = req.files.find(f => path.basename(decodeURIComponent(f.originalname)) === 'manifest.json');
     if (!manifestFile) {
       throw new Error('No se encontró manifest.json en los archivos');
     }
@@ -4373,7 +4381,7 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
 
     // ✨ NUEVO: Intentar leer estadísticas adicionales de estadisticas.json si viene en el upload
     let extraStatsData = {};
-    const statsUploadedFile = req.files.find(f => f.originalname === 'estadisticas.json');
+    const statsUploadedFile = req.files.find(f => path.basename(decodeURIComponent(f.originalname)) === 'estadisticas.json');
     if (statsUploadedFile) {
       try {
         extraStatsData = JSON.parse(fs.readFileSync(statsUploadedFile.path, 'utf8'));
@@ -4399,7 +4407,7 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
 
       if (primeraFoto) {
         const nombreCompletoMedia = `${primeraFoto.nombre}.jpg`;
-        const fotoFile = req.files.find(f => path.basename(f.originalname) === nombreCompletoMedia);
+        const fotoFile = req.files.find(f => path.basename(decodeURIComponent(f.originalname)) === nombreCompletoMedia);
 
         if (fotoFile && fotoFile.path) {
           try {
@@ -4870,7 +4878,7 @@ Pasos: ${pasos}${desgloseTxt}`;
       const mediaFileIndex = req.files.findIndex((f, index) => {
         if (usedFileIndices.has(index)) return false; // Saltarse archivos ya usados
 
-        const baseName = path.basename(f.originalname);
+        const baseName = path.basename(decodeURIComponent(f.originalname));
         return baseName.toLowerCase() === nombreCompletoMedia.toLowerCase();
       });
 
@@ -4934,7 +4942,7 @@ Pasos: ${pasos}${desgloseTxt}`;
         }
       }
 
-      const nombreBaseMedia = path.basename(mediaFile.originalname);
+      const nombreBaseMedia = path.basename(decodeURIComponent(mediaFile.originalname));
       const destPath = path.join(actividadPath, tipoFolder, nombreBaseMedia);
       fs.renameSync(mediaFile.path, destPath);
 
@@ -4956,7 +4964,7 @@ Pasos: ${pasos}${desgloseTxt}`;
           [
             actividadId,
             dbTipo,
-            mediaFile.originalname,
+            path.basename(decodeURIComponent(mediaFile.originalname)),
             rutaRelativa,
             (fechaCreacionMedia ? fechaCreacionMedia.split('T')[1].substring(0, 8) : media.timestamp_display),
             JSON.stringify({
@@ -4974,7 +4982,7 @@ Pasos: ${pasos}${desgloseTxt}`;
         );
       });
 
-      archivosCreados.push({ id: archivoId, nombre: mediaFile.originalname });
+      archivosCreados.push({ id: archivoId, nombre: path.basename(decodeURIComponent(mediaFile.originalname)) });
       console.log(`✅ ${media.tipo} procesado: ${media.nombre}`);
       console.log(`   Fecha guardada: ${fechaCreacionMedia}`);
 
@@ -5001,7 +5009,7 @@ Pasos: ${pasos}${desgloseTxt}`;
         if (!audioFile) {
           const idx = req.files.findIndex((f, i) => {
             if (usedFileIndices.has(i)) return false;
-            const fName = f.originalname;
+            const fName = path.basename(decodeURIComponent(f.originalname));
             return (fName === `${nameWithoutExt}.wav` || fName === `${nameWithoutExt}.mp3` ||
               fName === `${baseName}.wav` || fName === `${baseName}.mp3`);
           });
@@ -5014,7 +5022,7 @@ Pasos: ${pasos}${desgloseTxt}`;
         }
 
         if (audioFile) {
-          audioFileName = audioFile.originalname;
+          audioFileName = path.basename(decodeURIComponent(audioFile.originalname));
         }
       }
 
@@ -5054,7 +5062,7 @@ Pasos: ${pasos}${desgloseTxt}`;
         const baseName = media.nombre.includes('.') ? media.nombre.split('.')[0] : media.nombre;
         const gpxIdxPattern = req.files.findIndex((f, i) => {
           if (usedFileIndices.has(i)) return false;
-          const fName = f.originalname;
+          const fName = path.basename(decodeURIComponent(f.originalname));
           const fBaseName = path.basename(fName, '.gpx');
           return fName.endsWith('.gpx') && fBaseName.startsWith(baseName);
         });
@@ -5067,7 +5075,7 @@ Pasos: ${pasos}${desgloseTxt}`;
       }
 
       if (gpxFile) {
-        gpxFileName = path.basename(gpxFile.originalname);
+        gpxFileName = path.basename(decodeURIComponent(gpxFile.originalname));
         console.log(`  ✅ GPX encontrado: ${gpxFileName}`);
 
         const gpxDestPath = path.join(actividadPath, 'gpx', gpxFileName);
@@ -5133,7 +5141,7 @@ Pasos: ${pasos}${desgloseTxt}`;
             `INSERT INTO archivos_asociados 
             (archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, fechaCreacion) 
             VALUES (?, ?, ?, ?, ?)`,
-            [archivoId, 'mapa_ubicacion', path.basename(mapaFile.originalname), mapaRutaRelativa, new Date().toISOString()],
+            [archivoId, 'mapa_ubicacion', path.basename(decodeURIComponent(mapaFile.originalname)), mapaRutaRelativa, new Date().toISOString()],
             function (err) {
               if (err) return reject(err);
               resolve();
@@ -5156,7 +5164,7 @@ Pasos: ${pasos}${desgloseTxt}`;
     console.log('\n📋 Procesando archivos generales...');
 
     // GPX COMPLETO - SOLO en actividades
-    const gpxFile = req.files.find(f => path.basename(f.originalname) === 'recorrido.gpx');
+    const gpxFile = req.files.find(f => path.basename(decodeURIComponent(f.originalname)) === 'recorrido.gpx');
     if (gpxFile) {
       const gpxDest = path.join(actividadPath, 'gpx', 'recorrido.gpx');
       fs.renameSync(gpxFile.path, gpxDest);
@@ -5165,7 +5173,7 @@ Pasos: ${pasos}${desgloseTxt}`;
     }
 
     // PNG COMPLETO - SOLO en actividades
-    const pngFile = req.files.find(f => path.basename(f.originalname) === 'mapa.png');
+    const pngFile = req.files.find(f => path.basename(decodeURIComponent(f.originalname)) === 'mapa.png');
     if (pngFile) {
       const pngDest = path.join(actividadPath, 'mapas', 'mapa.png');
       fs.renameSync(pngFile.path, pngDest);
@@ -5180,7 +5188,7 @@ Pasos: ${pasos}${desgloseTxt}`;
     console.log('✅ Manifest procesado (guardado en actividades)');
 
     // ESTADÍSTICAS - SOLO en actividades
-    const statsFile = req.files.find(f => f.originalname === 'estadisticas.json');
+    const statsFile = req.files.find(f => path.basename(decodeURIComponent(f.originalname)) === 'estadisticas.json');
     if (statsFile) {
       const statsDest = path.join(actividadPath, 'metadata', 'estadisticas.json');
       fs.renameSync(statsFile.path, statsDest);
