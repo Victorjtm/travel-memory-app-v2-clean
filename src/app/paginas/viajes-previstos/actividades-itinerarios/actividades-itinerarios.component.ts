@@ -41,6 +41,61 @@ export class ActividadesItinerariosComponent implements OnInit {
   mapaGPX: any = null;
   coordenadasGPX: any[] = [];
 
+  // ✅ NUEVAS PROPIEDADES: Panel de estadísticas
+  showStatsPanel = true;
+  panelExpanded = false;
+  trackSegments: any[] = [];
+  turningPoint: any = null;
+
+  // ✅ NUEVAS PROPIEDADES: Estadísticas completas para el panel
+  estadisticasGPX: {
+    distanciaKm?: string;
+    distanciaMetros?: number;
+    duracion?: { formateada?: string; segundos?: number };
+    velocidad?: { media?: string; maxima?: string; minima?: string };
+    energia?: { calorias?: number; pasos?: number };
+    tracking?: { puntosGPS?: number; perfilTransporte?: string };
+    transportePrincipal?: { icono?: string; nombre?: string };
+    desgloseTransporte?: Array<{
+      nombre?: string;
+      distanciaKm?: string;
+      duracionFormateada?: string;
+    }>;
+    fecha?: string;
+    horario?: { inicio?: string; fin?: string };
+    tiempoPausaSegundos?: number;
+    tieneIdaVuelta?: boolean;
+    distanciaIdaMetros?: number;
+    distanciaVueltaMetros?: number;
+    tiempoIdaFormateado?: string;
+    tiempoVueltaFormateado?: string;
+  } = {
+      distanciaKm: '0.00',
+      distanciaMetros: 0,
+      duracion: { formateada: '00:00:00', segundos: 0 },
+      velocidad: { media: '0.0', maxima: '0.0', minima: '0.0' },
+      energia: { calorias: 0, pasos: 0 },
+      tracking: { puntosGPS: 0, perfilTransporte: '' },
+      desgloseTransporte: [],
+      horario: { inicio: '', fin: '' },
+      tiempoPausaSegundos: 0,
+      tieneIdaVuelta: false,
+      distanciaIdaMetros: 0,
+      distanciaVueltaMetros: 0,
+      tiempoIdaFormateado: '00:00:00',
+      tiempoVueltaFormateado: '00:00:00'
+    };
+
+
+  // ✅ COLORES POR MODO DE TRANSPORTE
+  private readonly MODE_COLORS = {
+    walking: { outbound: '#059669', return: '#6EE7B7' },
+    running: { outbound: '#2563EB', return: '#93C5FD' },
+    cycling: { outbound: '#D97706', return: '#FCD34D' },
+    driving: { outbound: '#DC2626', return: '#FCA5A5' }
+  };
+
+
   constructor(
     private actividadService: ActividadesItinerariosService,
     private route: ActivatedRoute,
@@ -138,9 +193,41 @@ export class ActividadesItinerariosComponent implements OnInit {
     });
   }
 
-  // ✨ VER GPX EN MAPA INTERACTIVO CON SATÉLITE Y FOTOS
+  // ✅ MEJORADO: Ver GPX con carga de estadísticas
   verGPX(actividadId: number): void {
     console.log('📍 Obteniendo GPX para actividad:', actividadId);
+
+    // ✅ PASO 1: Cargar estadísticas primero
+    this.actividadService.obtenerEstadisticas(actividadId).subscribe({
+      next: (stats) => {
+        console.log('✅ Estadísticas recibidas:', stats);
+
+        // Mapear estadísticas al formato del panel
+        this.estadisticasGPX = {
+          distanciaKm: stats.distancia?.km || '0.00',
+          distanciaMetros: stats.distancia?.metros || 0,
+          duracion: stats.duracion || { formateada: '00:00:00', segundos: 0 },
+          velocidad: stats.velocidad || { media: '0.0', maxima: '0.0', minima: '0.0' },
+          energia: stats.energia || { calorias: 0, pasos: 0 },
+          tracking: stats.tracking || { puntosGPS: 0, perfilTransporte: '' },
+          transportePrincipal: stats.transportePrincipal || null,
+          desgloseTransporte: stats.desgloseTransporte || [],
+          fecha: stats.fecha || '',
+          horario: stats.horario || { inicio: '', fin: '' },
+          tiempoPausaSegundos: stats.tiempos?.pausadoSegundos || 0,
+          tieneIdaVuelta: !!stats.idaVuelta,
+          distanciaIdaMetros: stats.idaVuelta?.ida?.metros || 0,
+          distanciaVueltaMetros: stats.idaVuelta?.vuelta?.metros || 0,
+          tiempoIdaFormateado: stats.idaVuelta?.ida?.tiempo || '00:00:00',
+          tiempoVueltaFormateado: stats.idaVuelta?.vuelta?.tiempo || '00:00:00'
+        };
+
+        console.log('✅ Estadísticas mapeadas:', this.estadisticasGPX);
+      },
+      error: err => console.warn('⚠️ Error cargando estadísticas:', err)
+    });
+
+    // ✅ PASO 2: Cargar GPX
     this.actividadService.obtenerGPX(actividadId).subscribe({
       next: (blob) => {
         const reader = new FileReader();
@@ -150,12 +237,8 @@ export class ActividadesItinerariosComponent implements OnInit {
           this.actividadSeleccionada = actividadId;
           this.mostrarModalGPXMapa = true;
 
-          // ✨ CORRECCIÓN FINAL: Forzar cambios + esperar en Angular Zone
           this.cdr.detectChanges();
-
-          this.ngZone.onStable.pipe(
-            take(1)
-          ).subscribe(() => {
+          this.ngZone.onStable.pipe(take(1)).subscribe(() => {
             this.inicializarMapaGPX();
           });
         };
@@ -164,6 +247,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       error: err => console.error('❌ Error obteniendo GPX:', err)
     });
   }
+
 
   // Parsear GPX y extraer coordenadas
   parseGPX(gpxText: string): void {
@@ -225,13 +309,17 @@ export class ActividadesItinerariosComponent implements OnInit {
           }
         ).addTo(this.mapaGPX);
 
-        // Dibujar ruta con polyline roja
-        L.polyline(this.coordenadasGPX, {
+        // ✅ MEJORADO: Dibujar ruta con polyline roja
+        const routeLine = L.polyline(this.coordenadasGPX, {
           color: '#FF0000',
-          weight: 3,
-          opacity: 0.8,
-          dashArray: '5, 10'
+          weight: 4,
+          opacity: 0.85,
+          smoothFactor: 1
         }).addTo(this.mapaGPX);
+
+        // ✅ NUEVO: Añadir flechas direccionales cada N puntos
+        this.addDirectionArrows(L, this.coordenadasGPX);
+
 
         // Marcador de INICIO (verde)
         L.circleMarker(this.coordenadasGPX[0], {
@@ -552,4 +640,134 @@ export class ActividadesItinerariosComponent implements OnInit {
       this.mapaGPX = null;
     }
   }
+
+  // ✅ NUEVO: Toggle panel de estadísticas
+  toggleMapView(): void {
+    this.showStatsPanel = !this.showStatsPanel;
+    console.log(`🗺️ Panel: ${this.showStatsPanel ? 'VISIBLE' : 'OCULTO'}`);
+  }
+
+  // ✅ NUEVO: Expandir/contraer panel
+  togglePanelExpanded(): void {
+    this.panelExpanded = !this.panelExpanded;
+    console.log(`📊 Panel: ${this.panelExpanded ? 'EXPANDIDO' : 'CONTRAÍDO'}`);
+  }
+
+  // ✅ NUEVO: Ajustar vista del mapa al track completo
+  fitMapToTrack(): void {
+    if (!this.mapaGPX || this.coordenadasGPX.length === 0) {
+      console.warn('⚠️ No hay mapa o coordenadas disponibles');
+      return;
+    }
+
+    import('leaflet').then(L => {
+      const bounds = L.latLngBounds(this.coordenadasGPX);
+      this.mapaGPX.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: true });
+      console.log('✅ Vista ajustada al track completo');
+    });
+  }
+
+  // ✅ NUEVO: Obtener emoji de transporte
+  getTransportEmoji(iconName: string): string {
+    const emojiMap: { [key: string]: string } = {
+      'walk': '🚶',
+      'fitness': '🏃',
+      'bicycle': '🚴',
+      'car': '🚗'
+    };
+    return emojiMap[iconName] || '📍';
+  }
+
+  // ✅ NUEVO: Formatear distancia
+  formatDistance(meters: number): string {
+    if (meters < 1000) {
+      return `${Math.round(meters)} m`;
+    }
+    return `${(meters / 1000).toFixed(2)} km`;
+  }
+
+  // ✅ NUEVO: Formatear duración
+  formatDuration(ms: number): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+
+    if (hours > 0) {
+      return `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+
+  // ✅ MEJOR OPCIÓN: Flechas SVG (escalables sin pixelar)
+  private addDirectionArrows(L: any, coordinates: any[], color: string = '#FF0000'): void {
+    if (!this.mapaGPX || coordinates.length < 2) return;
+
+    const totalPoints = coordinates.length;
+    const interval = Math.max(Math.floor(totalPoints / 12), 5);
+
+    console.log(`📍 Añadiendo flechas SVG cada ${interval} puntos (total: ${totalPoints})`);
+
+    for (let i = interval; i < coordinates.length; i += interval) {
+      const prevPoint = coordinates[i - 1];
+      const currentPoint = coordinates[i];
+
+      const angle = this.calculateAngle(prevPoint, currentPoint);
+
+      const arrowIcon = L.divIcon({
+        className: 'direction-arrow-svg',
+        html: `
+        <svg width="32" height="32" viewBox="0 0 32 32" 
+             style="transform: rotate(${angle}deg); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">
+          <!-- Borde blanco -->
+          <path d="M16 4 L26 26 L16 20 L6 26 Z" 
+                fill="white" 
+                stroke="white" 
+                stroke-width="2"/>
+          <!-- Flecha principal -->
+          <path d="M16 6 L24 24 L16 19 L8 24 Z" 
+                fill="${color}" 
+                stroke="none"/>
+        </svg>
+      `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+
+      L.marker(currentPoint, {
+        icon: arrowIcon,
+        interactive: false,
+        keyboard: false,
+        zIndexOffset: 1000
+      }).addTo(this.mapaGPX);
+    }
+
+    console.log(`✅ ${Math.floor(totalPoints / interval)} flechas SVG añadidas`);
+  }
+
+
+  // ✅ NUEVO: Calcular ángulo entre dos puntos
+  private calculateAngle(pointA: number[], pointB: number[]): number {
+    const lat1 = pointA[0];
+    const lng1 = pointA[1];
+    const lat2 = pointB[0];
+    const lng2 = pointB[1];
+
+    // Convertir a radianes
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const lat1Rad = lat1 * Math.PI / 180;
+    const lat2Rad = lat2 * Math.PI / 180;
+
+    // Calcular ángulo
+    const y = Math.sin(dLng) * Math.cos(lat2Rad);
+    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+      Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
+
+    const bearing = Math.atan2(y, x) * 180 / Math.PI;
+
+    // Normalizar a 0-360
+    return (bearing + 360) % 360;
+  }
+
+
 }
