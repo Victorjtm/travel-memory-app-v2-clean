@@ -1445,6 +1445,133 @@ textarea:focus {
   }
 }
 
+// =========================================
+// ✅ MARCADORES DE FOTOS PERSONALIZADOS
+// =========================================
+:deep(.photo-marker-custom) {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+
+  .photo-marker-wrapper {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    animation: photoMarkerPulse 2s ease-in-out infinite;
+  }
+
+  .photo-marker-circle {
+    width: 44px;
+    height: 44px;
+    transition: transform 0.2s ease;
+
+    svg {
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+    }
+  }
+
+  .photo-marker-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 22px;
+    height: 22px;
+    background: white;
+    border: 2px solid #FF4444;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    z-index: 1;
+  }
+
+  &:hover {
+    .photo-marker-circle {
+      transform: scale(1.15);
+    }
+  }
+}
+
+// Animación de pulso sutil
+@keyframes photoMarkerPulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+// Popup personalizado para fotos
+:deep(.photo-popup-leaflet) {
+  .leaflet-popup-content-wrapper {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .leaflet-popup-content {
+    margin: 0;
+    width: auto !important;
+  }
+
+  .leaflet-popup-tip {
+    background: white;
+  }
+}
+
+.photo-popup-custom {
+  padding: 14px;
+
+  .photo-popup-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+
+    .photo-icon {
+      font-size: 20px;
+    }
+
+    strong {
+      color: #FF4444;
+      font-size: 14px;
+      font-weight: 600;
+    }
+  }
+
+  .photo-name {
+    font-size: 12px;
+    color: #666;
+    margin: 8px 0;
+    word-break: break-word;
+    max-width: 200px;
+  }
+
+  .photo-popup-action {
+    text-align: center;
+    padding-top: 8px;
+    border-top: 1px solid #eee;
+
+    .click-hint {
+      font-size: 11px;
+      color: #2196F3;
+      font-weight: 600;
+    }
+  }
+}
+
+// =========================================
+// ✅ FLECHAS DIRECCIONALES SVG
+// =========================================
 :deep(.direction-arrow-svg) {
   background: transparent !important;
   border: none !important;

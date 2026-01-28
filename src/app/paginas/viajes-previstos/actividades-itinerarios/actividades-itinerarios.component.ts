@@ -8,6 +8,7 @@ import { take } from 'rxjs/operators';
 
 import { Actividad } from '../../../modelos/actividad.model';
 import { ActividadesItinerariosService } from '../../../servicios/actividades-itinerarios.service';
+import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-actividades-itinerarios',
@@ -363,7 +364,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     }
 
     // ✨ USAR LA URL DEL BACKEND CORRECTAMENTE
-    const backendUrl = 'http://192.168.1.22:3000';
+    const backendUrl = environment.apiUrl;
     const url = `${backendUrl}/archivos?actividadId=${this.actividadSeleccionada}`;
 
     console.log('🔗 URL de solicitud:', url);
@@ -418,37 +419,72 @@ export class ActividadesItinerariosComponent implements OnInit {
     });
   }
 
-  // ✨ NUEVO: Añadir marcador de foto individual
+  // ✅ MEJORADO: Añadir marcador de foto más visible
   private anadirMarcadorFoto(lat: number, lng: number, nombre: string, rutaArchivo: string): void {
     if (!this.mapaGPX) return;
 
     import('leaflet').then(L => {
-      // Icono rojo para fotos (como en la APK)
-      const fotoIcon = L.icon({
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-        iconSize: [30, 49],
-        iconAnchor: [15, 49],
-        popupAnchor: [1, -40],
-        shadowSize: [50, 50]
+      // ✅ NUEVO: Icono personalizado más grande con badge
+      const fotoIcon = L.divIcon({
+        className: 'photo-marker-custom',
+        html: `
+        <div class="photo-marker-wrapper">
+          <!-- Círculo de fondo con sombra -->
+          <div class="photo-marker-circle">
+            <svg width="44" height="44" viewBox="0 0 44 44">
+              <!-- Sombra -->
+              <circle cx="22" cy="24" r="18" fill="rgba(0,0,0,0.3)" />
+              <!-- Fondo blanco -->
+              <circle cx="22" cy="22" r="18" fill="white" stroke="#FF4444" stroke-width="3"/>
+              <!-- Icono de cámara -->
+              <g transform="translate(10, 10)">
+                <path d="M12 3L14 6H18C19.1 6 20 6.9 20 8V18C20 19.1 19.1 20 18 20H6C4.9 20 4 19.1 4 18V8C4 6.9 4.9 6 6 6H10L12 3Z" 
+                      fill="#FF4444"/>
+                <circle cx="12" cy="13" r="3.5" fill="white"/>
+              </g>
+            </svg>
+          </div>
+          <!-- Badge con emoji -->
+          <div class="photo-marker-badge">📷</div>
+        </div>
+      `,
+        iconSize: [44, 44],
+        iconAnchor: [22, 44],
+        popupAnchor: [0, -44]
       });
 
-      const popupContent = `<div style="text-align: center; min-width: 140px; padding: 8px;">
-        <p style="margin: 5px 0; font-size: 12px;"><strong>📷 Foto</strong></p>
-        <p style="margin: 3px 0; font-size: 10px; word-break: break-all; color: #666;">${nombre}</p>
-        <p style="margin: 8px 0; font-size: 11px; color: #2196F3; font-weight: bold;">Haz clic para ver</p>
-      </div>`;
+      // Popup mejorado con preview
+      const popupContent = `
+      <div class="photo-popup-custom">
+        <div class="photo-popup-header">
+          <span class="photo-icon">📷</span>
+          <strong>Foto</strong>
+        </div>
+        <p class="photo-name">${nombre}</p>
+        <div class="photo-popup-action">
+          <span class="click-hint">👆 Haz clic en el marcador</span>
+        </div>
+      </div>
+    `;
 
-      const marker = L.marker([lat, lng], { icon: fotoIcon })
+      const marker = L.marker([lat, lng], {
+        icon: fotoIcon,
+        zIndexOffset: 2000 // ✅ Por encima de flechas y línea
+      })
         .addTo(this.mapaGPX!)
-        .bindPopup(popupContent);
+        .bindPopup(popupContent, {
+          className: 'photo-popup-leaflet',
+          maxWidth: 250
+        });
 
+      // Guardar referencia de la foto
       (marker as any).fotoRuta = rutaArchivo;
 
+      // Click para abrir modal (ajustado el timeout)
       marker.on('click', () => {
         setTimeout(() => {
           this.abrirModalFoto(rutaArchivo, nombre);
-        }, 300);
+        }, 100); // Reducido de 300ms a 100ms para respuesta más rápida
       });
 
       console.log(`✅ Marcador de foto añadido: ${nombre} en [${lat}, ${lng}]`);
@@ -460,7 +496,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     console.log('🔍 Abriendo foto:', nombre);
     console.log('📁 rutaArchivo:', rutaArchivo);
 
-    const backendUrl = 'http://192.168.1.22:3000';
+    const backendUrl = environment.apiUrl;
     const urlFoto = `${backendUrl}/uploads/${rutaArchivo}`;
 
     console.log('🖼️ URL final de la imagen:', urlFoto);
@@ -769,5 +805,17 @@ export class ActividadesItinerariosComponent implements OnInit {
     return (bearing + 360) % 360;
   }
 
+  // ✅ NUEVO: Funciones trackBy para rendimiento
+  trackByActividad(index: number, item: Actividad): number {
+    return item.id;
+  }
+
+  trackByTransporte(index: number, item: any): string {
+    return item.nombre || index.toString();
+  }
+
+  trackBySegmento(index: number, item: any): number {
+    return index;
+  }
 
 }

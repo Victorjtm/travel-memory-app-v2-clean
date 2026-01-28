@@ -2,6 +2,7 @@ import { Component, Input, Output, EventEmitter } from '@angular/core';
 import { Archivo } from '../../modelos/archivo';
 import { CommonModule } from '@angular/common';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-visor-archivo',
@@ -16,7 +17,7 @@ export class VisorArchivoComponent {
 
   getFileUrl(archivo: Archivo): string {
     const nombre = archivo.rutaArchivo.split(/[\\/]/).pop();
-    return `http://192.168.1.22:3000/uploads/${nombre}`;
+    return `${environment.apiUrl}/uploads/${nombre}`;
   }
 
   getFileExtension(filename: string): string {

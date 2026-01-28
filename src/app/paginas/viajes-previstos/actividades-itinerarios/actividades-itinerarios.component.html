@@ -9,7 +9,7 @@
   <hr>
 
   <!-- Lista de actividades -->
-  <div *ngFor="let actividad of actividades">
+  <div *ngFor="let actividad of actividades; trackBy: trackByActividad">
     <h3>Actividad {{ actividad.id }}</h3>
     <p><strong>Nombre:</strong> {{ actividad.nombre }}</p>
     <p><strong>Descripción:</strong> {{ actividad.descripcion }}</p>
@@ -54,7 +54,7 @@
       <h3>📍 Mapa del Recorrido</h3>
       <button class="btn-cerrar" (click)="cerrarModalMapa()">✕</button>
     </div>
-    <div class="modal-body">
+    <div class="modal-body" *ngIf="urlMapaDataURL">
       <img [src]="urlMapaDataURL" alt="Mapa del recorrido" class="mapa-imagen">
     </div>
   </div>
@@ -70,9 +70,9 @@
     <div class="modal-body" *ngIf="estadisticasActuales">
 
       <!-- 1. RESUMEN PRINCIPAL -->
-      <div class="estadistica-grupo">
+      <div class="estadistica-grupo" *ngIf="estadisticasActuales">
         <h4><i class="fa fa-info-circle"></i> Resumen</h4>
-        <div class="stat-item highligth">
+        <div class="stat-item highlight">
           <span class="label">Distancia:</span>
           <span class="value">{{ estadisticasActuales.distancia.km }} km</span>
         </div>
@@ -187,10 +187,11 @@
         *ngIf="estadisticasActuales.desgloseTransporte && estadisticasActuales.desgloseTransporte.length > 0">
         <h4><i class="fa fa-bicycle"></i> Desglose por Transporte</h4>
         <div class="desglose-grid">
-          <div *ngFor="let seg of estadisticasActuales.desgloseTransporte" class="segmento-transporte">
+          <div *ngFor="let seg of estadisticasActuales.desgloseTransporte; trackBy: trackByTransporte"
+            class="segmento-transporte">
             <p>
               <strong>{{ seg.nombre }}:</strong>
-              {{ seg.distanciaKm || (seg.distanciaMetros / 1000).toFixed(2) }} km
+              {{ seg.distanciaKm || (seg.distanciaMetros ? (seg.distanciaMetros / 1000).toFixed(2) : '0.00') }} km
               ({{ seg.duracionFormateada || seg.tiempoEmpleado }})
             </p>
           </div>
@@ -226,9 +227,9 @@
 
             <!-- Indicador de transporte -->
             <div class="transport-indicator" *ngIf="estadisticasGPX.transportePrincipal">
-              <span class="transport-emoji">{{ getTransportEmoji(estadisticasGPX.transportePrincipal?.icono || '')
+              <span class="transport-emoji">{{ getTransportEmoji(estadisticasGPX.transportePrincipal.icono || '')
                 }}</span>
-              <span class="transport-name">{{ estadisticasGPX.transportePrincipal?.nombre || 'Desconocido' }}</span>
+              <span class="transport-name">{{ estadisticasGPX.transportePrincipal.nombre || 'Desconocido' }}</span>
             </div>
 
             <!-- Grid 2x2 para los 4 datos principales -->
@@ -320,7 +321,8 @@
               *ngIf="estadisticasGPX.desgloseTransporte && estadisticasGPX.desgloseTransporte.length > 0">
               <div class="divider"></div>
               <h3 class="subsection-title">🚶 Desglose por Transporte</h3>
-              <div class="transport-item" *ngFor="let item of estadisticasGPX.desgloseTransporte">
+              <div class="transport-item"
+                *ngFor="let item of estadisticasGPX.desgloseTransporte; trackBy: trackByTransporte">
                 <span>{{ item?.nombre || 'Desconocido' }}: {{ item?.distanciaKm || '0.00' }} km ({{
                   item?.duracionFormateada || '00:00:00' }})</span>
               </div>

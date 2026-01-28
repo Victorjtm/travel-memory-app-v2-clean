@@ -306,7 +306,7 @@ db.run(
 db.run(
   `CREATE TABLE IF NOT EXISTS archivos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    actividadId INTEGER NOT NULL,
+    actividadId INTEGER,                               -- ⬅️ Quitamos NOT NULL para permitir "sin asignar"
     tipo TEXT CHECK(tipo IN ('foto', 'video', 'audio', 'texto', 'imagen')) NOT NULL,
     nombreArchivo TEXT NOT NULL,
     rutaArchivo TEXT NOT NULL,
@@ -323,7 +323,61 @@ db.run(
     if (err) {
       console.error("❌ Error al crear la tabla archivos:", err.message);
     } else {
-      console.log("✅ Tabla archivos creada o ya existe.");
+      console.log("✅ Tabla archivos verificada/creada.");
+
+      // ✅ MIGRACIÓN: Eliminar NOT NULL de actividadId si existe
+      db.all("PRAGMA table_info(archivos)", (err, columns) => {
+        if (err) return;
+        const col = columns.find(c => c.name === 'actividadId');
+        if (col && col.notnull === 1) {
+          console.log("🔄 Migrando tabla archivos para permitir actividadId NULL...");
+          // SQLite no permite quitar NOT NULL con ALTER TABLE simplemente. 
+          // Hay que recrear la tabla o confiar en que no de problemas si solo insertamos NULLs.
+          // En SQLite, NOT NULL se puede relajar a veces, pero lo más seguro es recrear si es crítico.
+          // Intentaremos un truco: si insertamos NULL y falla, informaremos. 
+          // Pero la definición CREATE TABLE arriba ya lo arreglará para nuevas BDs.
+          // Para existentes, haremos la migración formal:
+          const migrationSql = [
+            'PRAGMA foreign_keys=OFF;',
+            'BEGIN TRANSACTION;',
+            'CREATE TABLE archivos_new AS SELECT * FROM archivos;',
+            'DROP TABLE archivos;',
+            `CREATE TABLE archivos (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              actividadId INTEGER,
+              tipo TEXT CHECK(tipo IN ('foto', 'video', 'audio', 'texto', 'imagen')) NOT NULL,
+              nombreArchivo TEXT NOT NULL,
+              rutaArchivo TEXT NOT NULL,
+              descripcion TEXT,
+              fechaCreacion TEXT DEFAULT (datetime('now')),
+              fechaActualizacion TEXT DEFAULT (datetime('now')),
+              horaCaptura TEXT,
+              version INTEGER DEFAULT 1,
+              geolocalizacion TEXT,
+              metadatos TEXT,
+              FOREIGN KEY (actividadId) REFERENCES actividades(id) ON DELETE CASCADE
+            );`,
+            'INSERT INTO archivos SELECT * FROM archivos_new;',
+            'DROP TABLE archivos_new;',
+            'COMMIT;',
+            'PRAGMA foreign_keys=ON;'
+          ];
+
+          // Ejecutamos la migración secuencialmente
+          const runMigration = async () => {
+            try {
+              for (const sql of migrationSql) {
+                await dbQuery.run(sql);
+              }
+              console.log("✅ Migración de tabla archivos completada con éxito.");
+            } catch (migErr) {
+              console.error("❌ Error en migración de archivos:", migErr.message);
+              await dbQuery.run('ROLLBACK;').catch(() => { });
+            }
+          };
+          runMigration();
+        }
+      });
     }
   }
 );
@@ -2073,21 +2127,36 @@ console.log('📂 Registrando rutas de archivos...');
 
 // 1️⃣ GET archivos (con filtro opcional por actividadId)
 app.get('/archivos', (req, res) => {
-  const { actividadId } = req.query;
-
-  let sql = 'SELECT * FROM archivos';
-  let params = [];
+  const { actividadId } = req.query
+  let sql = 'SELECT * FROM archivos'
+  let params = []
 
   if (actividadId) {
-    sql += ' WHERE actividadId = ?';
-    params.push(actividadId);
+    // Si actividadId es "0", buscar donde es NULL
+    if (actividadId === "0") {
+      sql += ' WHERE actividadId IS NULL'
+    } else {
+      sql += ' WHERE actividadId = ?'
+      params.push(actividadId)
+    }
   }
 
+  sql += ' ORDER BY fechaCreacion DESC'
+
   db.all(sql, params, (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
-});
+    if (err) return res.status(500).json({ error: err.message })
+
+    // ✅ NORMALIZACIÓN: Devolver 0 si actividadId es null
+    const rowsNormalizadas = rows.map(r => ({
+      ...r,
+      actividadId: r.actividadId === null ? 0 : r.actividadId
+    }));
+
+    console.log(`[GET /archivos] Devolviendo ${rowsNormalizadas.length} archivos`)
+    res.json(rowsNormalizadas)
+  })
+})
+
 
 // ----------------------------------------
 // NUEVO: GET archivos por viaje
@@ -2114,8 +2183,14 @@ app.get('/archivos/itinerario/:itinerarioId', (req, res) => {
       return res.status(500).json({ error: err.message });
     }
 
-    console.log(`✅ Encontrados ${rows.length} archivos para itinerario ${itinerarioId}`);
-    res.json(rows);
+    // ✅ NORMALIZACIÓN
+    const rowsNormalizadas = rows.map(r => ({
+      ...r,
+      actividadId: r.actividadId === null ? 0 : r.actividadId
+    }));
+
+    console.log(`✅ Encontrados ${rowsNormalizadas.length} archivos para itinerario ${itinerarioId}`);
+    res.json(rowsNormalizadas);
   });
 });
 
@@ -2138,8 +2213,14 @@ app.get('/archivos/viaje/:viajeId', (req, res) => {
       return res.status(500).json({ error: err.message });
     }
 
-    console.log(`✅ Encontrados ${rows.length} archivos para viaje ${viajeId}`);
-    res.json(rows);
+    // ✅ NORMALIZACIÓN
+    const rowsNormalizadas = rows.map(r => ({
+      ...r,
+      actividadId: r.actividadId === null ? 0 : r.actividadId
+    }));
+
+    console.log(`✅ Encontrados ${rowsNormalizadas.length} archivos para viaje ${viajeId}`);
+    res.json(rowsNormalizadas);
   });
 });
 
@@ -2459,7 +2540,7 @@ app.get('/archivos/:id', (req, res) => {
   });
 });
 
-app.post('/archivos', (req, res) => {
+app.post('/archivos', async (req, res) => {
   // ✅ AÑADIR fechaCreacion aquí también
   const {
     actividadId, tipo, nombreArchivo, rutaArchivo, descripcion,
@@ -2468,6 +2549,9 @@ app.post('/archivos', (req, res) => {
 
   console.log('📝 Creando archivo individual con fechaCreacion:', fechaCreacion);
 
+  // ✅ NORMALIZACIÓN: Tratar "0" o 0 como NULL
+  const actId = (actividadId !== undefined && actividadId !== null && actividadId !== "0" && actividadId !== 0) ? actividadId : null;
+
   // Log de geolocalizacion y metadatos recibidos
   console.log('🐾 Geolocalización recibida para guardar:', geolocalizacion);
   console.log('🐾 Metadatos recibidos para guardar:', metadatos ? (typeof metadatos === 'string' ? metadatos.substring(0, 500) : JSON.stringify(metadatos).substring(0, 500)) : null);
@@ -2475,29 +2559,28 @@ app.post('/archivos', (req, res) => {
   // ✅ DETERMINAR FECHA DE CREACIÓN
   const fechaFinal = fechaCreacion ? new Date(fechaCreacion).toISOString() : new Date().toISOString();
 
-  db.run(
-    `INSERT INTO archivos 
-    (actividadId, tipo, nombreArchivo, rutaArchivo, descripcion, horaCaptura, version, geolocalizacion, metadatos, fechaCreacion)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      actividadId, tipo, nombreArchivo, rutaArchivo,
-      descripcion || null, horaCaptura || null, version || 1,
-      geolocalizacion || null, metadatos || null, fechaFinal
-    ],
-    function (err) {
-      if (err) {
-        console.error('❌ Error creando archivo:', err);
-        return res.status(500).json({ error: err.message });
-      }
+  try {
+    const result = await dbQuery.run(
+      `INSERT INTO archivos 
+      (actividadId, tipo, nombreArchivo, rutaArchivo, descripcion, horaCaptura, version, geolocalizacion, metadatos, fechaCreacion)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        actId, tipo, nombreArchivo, rutaArchivo,
+        descripcion || null, horaCaptura || null, version || 1,
+        geolocalizacion || null, metadatos || null, fechaFinal
+      ]
+    );
 
-      console.log('✅ Archivo creado con ID:', this.lastID, 'y fechaCreacion:', fechaFinal);
-      res.status(201).json({ id: this.lastID, fechaCreacion: fechaFinal });
-    }
-  );
+    console.log('✅ Archivo creado con ID:', result.lastID, 'y fechaCreacion:', fechaFinal);
+    res.status(201).json({ id: result.lastID, fechaCreacion: fechaFinal });
+  } catch (err) {
+    console.error('❌ Error creando archivo:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 
-app.put('/archivos/:id/archivo', upload.single('archivo'), (req, res) => {
+app.put('/archivos/:id/archivo', upload.single('archivo'), async (req, res) => {
   const id = req.params.id;
   const archivo = req.file;
   const { actividadId, tipo, descripcion, horaCaptura, version, geolocalizacion, metadatos } = req.body;
@@ -2512,25 +2595,31 @@ app.put('/archivos/:id/archivo', upload.single('archivo'), (req, res) => {
   const campos = ['rutaArchivo = ?', 'nombreArchivo = ?'];
   const valores = [archivo.path, archivo.originalname];
 
-  if (actividadId !== undefined) campos.push('actividadId = ?');
-  if (tipo !== undefined) campos.push('tipo = ?');
-  if (descripcion !== undefined) campos.push('descripcion = ?');
-  if (horaCaptura !== undefined) campos.push('horaCaptura = ?');
-  if (version !== undefined) campos.push('version = ?');
-  if (geolocalizacion !== undefined) campos.push('geolocalizacion = ?');
-  if (metadatos !== undefined) campos.push('metadatos = ?');
+  if (actividadId !== undefined) {
+    campos.push('actividadId = ?');
+    const actId = (actividadId !== null && actividadId !== "0" && actividadId !== 0) ? actividadId : null;
+    valores.push(actId);
+  }
+  if (tipo !== undefined) { campos.push('tipo = ?'); valores.push(tipo); }
+  if (descripcion !== undefined) { campos.push('descripcion = ?'); valores.push(descripcion); }
+  if (horaCaptura !== undefined) { campos.push('horaCaptura = ?'); valores.push(horaCaptura); }
+  if (version !== undefined) { campos.push('version = ?'); valores.push(version); }
+  if (geolocalizacion !== undefined) { campos.push('geolocalizacion = ?'); valores.push(geolocalizacion); }
+  if (metadatos !== undefined) { campos.push('metadatos = ?'); valores.push(metadatos); }
 
   campos.push("fechaActualizacion = datetime('now')");
   valores.push(id);
 
-  const sql = `UPDATE archivos SET ${campos.join(', ')} WHERE id = ?`;
-  db.run(sql, valores, function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ updated: this.changes });
-  });
+  try {
+    const sql = `UPDATE archivos SET ${campos.join(', ')} WHERE id = ?`;
+    const result = await dbQuery.run(sql, valores);
+    res.json({ updated: result.changes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.put('/archivos/:id', (req, res) => {
+app.put('/archivos/:id', async (req, res) => {
   const id = req.params.id;
   const { actividadId, tipo, nombreArchivo, descripcion, horaCaptura, version, geolocalizacion, metadatos, fechaCreacion } = req.body;
 
@@ -2541,7 +2630,11 @@ app.put('/archivos/:id', (req, res) => {
   const campos = [];
   const valores = [];
 
-  if (actividadId !== undefined) { campos.push('actividadId = ?'); valores.push(actividadId); }
+  if (actividadId !== undefined) {
+    campos.push('actividadId = ?');
+    const actId = (actividadId !== null && actividadId !== "0" && actividadId !== 0) ? actividadId : null;
+    valores.push(actId);
+  }
   if (tipo !== undefined) { campos.push('tipo = ?'); valores.push(tipo); }
   if (nombreArchivo !== undefined) { campos.push('nombreArchivo = ?'); valores.push(nombreArchivo); }
   if (descripcion !== undefined) { campos.push('descripcion = ?'); valores.push(descripcion); }
@@ -2558,26 +2651,23 @@ app.put('/archivos/:id', (req, res) => {
 
   console.log('📝 Ejecutando UPDATE con:', { sql, valores }); // Debug
 
-  db.run(sql, valores, function (err) {
-    if (err) {
-      console.error('❌ Error en UPDATE:', err);
-      return res.status(500).json({ error: err.message });
-    }
+  try {
+    const result = await dbQuery.run(sql, valores);
+    console.log('✅ Resultado UPDATE:', { changes: result.changes });
 
-    console.log('✅ Resultado UPDATE:', { changes: this.changes, lastID: this.lastID }); // Debug
-
-    if (this.changes === 0) {
-      console.warn('⚠️ No se actualizó ningún registro. Posibles causas:');
-      console.warn('- El ID no existe');
-      console.warn('- Los datos enviados son idénticos a los existentes');
+    if (result.changes === 0) {
+      console.warn('⚠️ No se actualizó ningún registro. Posibles causas: ID no existe o datos idénticos.');
     }
 
     res.json({
-      updated: this.changes,
+      updated: result.changes,
       id: id,
       cambiosRealizados: campos.filter(c => !c.includes('fechaActualizacion'))
     });
-  });
+  } catch (err) {
+    console.error('❌ Error en UPDATE:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 
@@ -2729,23 +2819,22 @@ app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
 
       let actividadFinal = null;
 
-      if (actividadId) {
-        actividadFinal = actividadId;
+      // ✅ NORMALIZACIÓN: Tratar "0" o 0 del frontend como NULL (sin asignación)
+      const inputActividadId = (actividadId !== undefined && actividadId !== null && actividadId !== "0" && actividadId !== 0) ? actividadId : null;
+      const inputActividadSeleccionada = (actividadSeleccionada !== undefined && actividadSeleccionada !== null && actividadSeleccionada !== "0" && actividadSeleccionada !== 0) ? actividadSeleccionada : null;
+
+      if (inputActividadId) {
+        actividadFinal = inputActividadId;
         console.log(`📌 Asignando archivo a actividadId del frontend: ${actividadFinal}`);
         console.log('📝 Usuario NO seleccionó actividad manualmente, se usa actividadId por defecto');
-      } else if (actividadSeleccionada) {
-        actividadFinal = actividadSeleccionada;
+      } else if (inputActividadSeleccionada) {
+        actividadFinal = inputActividadSeleccionada;
         console.log(`📌 Asignando archivo a actividadSeleccionada enviada por frontend: ${actividadFinal}`);
         console.log('📝 Usuario SÍ seleccionó actividad manualmente');
       } else {
         if (!actividadesCoincidentes?.length) {
-          console.log(`❌ No hay coincidencias para asignar automáticamente`);
-          resultados.push({
-            nombre: archivo.originalname,
-            estado: 'no-actividad',
-            mensaje: 'No hay actividades coincidentes'
-          });
-          continue;
+          console.log(`❌ No hay coincidencias para asignar automáticamente, se guardará sin asignar.`);
+          actividadFinal = null;
         } else if (actividadesCoincidentes.length === 1) {
           actividadFinal = actividadesCoincidentes[0].actividadId;
           console.log(`📌 Asignando archivo automáticamente a la única actividad encontrada: ${actividadFinal}`);
@@ -2761,33 +2850,33 @@ app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
         }
       }
 
-      const stmt = await db.prepare(
-        `INSERT INTO archivos 
-          (actividadId, tipo, nombreArchivo, rutaArchivo, descripcion, horaCaptura, geolocalizacion, metadatos, fechaCreacion) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      );
-
       console.log('🐾 Geolocalización que se va a guardar (string JSON con coordenadas):', geolocalizacionFinal);
       console.log('🐾 Metadatos completos que se va a guardar:', JSON.stringify(metadatos).substring(0, 500));
 
-      await stmt.run(
-        actividadFinal,
-        tipo || archivo.mimetype.split('/')[0],
-        archivo.originalname,
-        archivo.filename, // ✅ USAR filename (relativo) en lugar de path (absoluto)
-        descripcion || '',
-        horaCaptura || horaExif || new Date().toISOString(),
-        geolocalizacionFinal,
-        JSON.stringify(metadatos),
-        fechaCreacionFinal  // ✨ AHORA USA LA FECHA EXTRAÍDA O EXIF, NO SIEMPRE HOY
+      // ✅ REFACTORIZADO: Usar dbQuery.run (Promesa) para asegurar el await correcto
+      const result = await dbQuery.run(
+        `INSERT INTO archivos 
+          (actividadId, tipo, nombreArchivo, rutaArchivo, descripcion, horaCaptura, geolocalizacion, metadatos, fechaCreacion) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          actividadFinal,
+          tipo || archivo.mimetype.split('/')[0],
+          archivo.originalname,
+          archivo.filename,
+          descripcion || '',
+          horaCaptura || horaExif || new Date().toISOString(),
+          geolocalizacionFinal,
+          JSON.stringify(metadatos),
+          fechaCreacionFinal
+        ]
       );
 
-      console.log(`✅ Archivo guardado con actividadId: ${actividadFinal}`);
+      console.log(`✅ Archivo guardado con ID: ${result.lastID} y actividadId: ${actividadFinal}`);
       resultados.push({
-        id: stmt.lastID,
+        id: result.lastID,
         nombre: archivo.originalname,
         estado: 'subido',
-        actividadId: actividadFinal,
+        actividadId: actividadFinal || 0, // Enviar 0 al frontend para consistencia si es null
         fechaCreacion: fechaCreacionFinal,
         geolocalizacion: geolocalizacionFinal,
         metadatos: Object.keys(metadatos).length > 0 ? metadatos : null
