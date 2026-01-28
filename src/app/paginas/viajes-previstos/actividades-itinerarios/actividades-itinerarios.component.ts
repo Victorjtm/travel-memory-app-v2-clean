@@ -356,14 +356,13 @@ export class ActividadesItinerariosComponent implements OnInit {
     });
   }
 
-  // ✨ NUEVO: Cargar fotos desde backend y añadirlas al mapa
+  // ✨ NUEVO: Cargar fotos y videos desde backend y añadirlas al mapa con agrupación
   private cargarYAnadirFotos(): void {
     if (!this.mapaGPX || !this.actividadSeleccionada) {
       console.warn('⚠️ Mapa o ID de actividad no disponible');
       return;
     }
 
-    // ✨ USAR LA URL DEL BACKEND CORRECTAMENTE
     const backendUrl = environment.apiUrl;
     const url = `${backendUrl}/archivos?actividadId=${this.actividadSeleccionada}`;
 
@@ -373,43 +372,58 @@ export class ActividadesItinerariosComponent implements OnInit {
       next: (archivos: any[]) => {
         console.log('📷 Archivos obtenidos del backend:', archivos);
 
-        // Filtrar fotos con geolocalización
-        const fotos = archivos.filter((f: any) =>
-          f.tipo === 'foto' && f.geolocalizacion
+        // Filtrar fotos y videos con geolocalización
+        const multimedia = archivos.filter((f: any) =>
+          (f.tipo === 'foto' || f.tipo === 'video') && f.geolocalizacion
         );
 
-        console.log(`📷 Fotos con coordenadas GPS: ${fotos.length}`);
+        console.log(`📷 Archivos multimedia con coordenadas GPS: ${multimedia.length}`);
 
-        fotos.forEach((foto: any) => {
-          // ✨ DEPURACIÓN COMPLETA
-          console.log('📸 FOTO COMPLETA:', foto);
-          console.log('📁 rutaArchivo:', foto.rutaArchivo);
-          console.log('🏷️ nombreArchivo:', foto.nombreArchivo);
-          console.log('📍 geolocalizacion:', foto.geolocalizacion);
-
+        // ✅ PASO 1: Parsear coordenadas y ordenar cronológicamente
+        const archivosConCoordenadas = multimedia.map((archivo: any) => {
           try {
-            const geoData = typeof foto.geolocalizacion === 'string'
-              ? JSON.parse(foto.geolocalizacion)
-              : foto.geolocalizacion;
+            const geoData = typeof archivo.geolocalizacion === 'string'
+              ? JSON.parse(archivo.geolocalizacion)
+              : archivo.geolocalizacion;
 
-            if (geoData.latitud && geoData.longitud) {
-              console.log(`✅ Foto válida: ${foto.nombreArchivo} en [${geoData.latitud}, ${geoData.longitud}]`);
+            const lat = geoData.latitud ?? geoData.latitude;
+            const lng = geoData.longitud ?? geoData.longitude;
+            const timestamp = geoData.timestamp || archivo.fechaCreacion;
 
-              this.anadirMarcadorFoto(
-                geoData.latitud,
-                geoData.longitud,
-                foto.nombreArchivo,
-                foto.rutaArchivo
-              );
-            } else {
-              console.warn(`⚠️ Foto sin coordenadas válidas:`, geoData);
+            if (lat && lng) {
+              return { archivo, lat, lng, timestamp };
             }
           } catch (err) {
-            console.warn(`⚠️ Error parseando geolocalización de ${foto.nombreArchivo}:`, err);
+            console.warn(`⚠️ Error parseando ${archivo.nombreArchivo}:`, err);
           }
+          return null;
+        }).filter(Boolean);
+
+        // Ordenar por timestamp (cronológicamente)
+        archivosConCoordenadas.sort((a, b) => {
+          const timeA = new Date(a!.timestamp).getTime();
+          const timeB = new Date(b!.timestamp).getTime();
+          return timeA - timeB;
         });
 
-        console.log(`✅ Procesadas ${fotos.length} fotos con GPS`);
+        console.log(`✅ ${archivosConCoordenadas.length} archivos ordenados cronológicamente`);
+
+        // ✅ PASO 2: Agrupar por ubicación cercana
+        const grupos = this.agruparArchivosPorUbicacion(archivosConCoordenadas);
+
+        console.log(`📍 Creados ${grupos.length} grupos de ubicación`);
+
+        // ✅ PASO 3: Crear marcadores para cada grupo
+        grupos.forEach((grupo, index) => {
+          this.anadirMarcadorGrupo(
+            grupo.lat,
+            grupo.lng,
+            grupo.archivos,
+            index + 1 // Número secuencial (1-indexed)
+          );
+        });
+
+        console.log(`✅ Procesados ${multimedia.length} archivos multimedia con GPS`);
       },
       error: err => {
         console.error('❌ Error cargando archivos:', err);
@@ -419,13 +433,48 @@ export class ActividadesItinerariosComponent implements OnInit {
     });
   }
 
-  // ✅ MEJORADO: Añadir marcador de foto más visible
-  private anadirMarcadorFoto(lat: number, lng: number, nombre: string, rutaArchivo: string): void {
+  // ✅ NUEVO: Agrupar archivos por coordenadas cercanas
+  private agruparArchivosPorUbicacion(archivosConCoordenadas: any[]): any[] {
+    const TOLERANCIA_GPS = 0.0001; // ~10 metros
+    const grupos: any[] = [];
+
+    archivosConCoordenadas.forEach(item => {
+      // Buscar si ya existe un grupo cercano
+      const grupoExistente = grupos.find(g =>
+        Math.abs(g.lat - item.lat) < TOLERANCIA_GPS &&
+        Math.abs(g.lng - item.lng) < TOLERANCIA_GPS
+      );
+
+      if (grupoExistente) {
+        // Añadir al grupo existente
+        grupoExistente.archivos.push(item);
+      } else {
+        // Crear nuevo grupo
+        grupos.push({
+          lat: item.lat,
+          lng: item.lng,
+          archivos: [item]
+        });
+      }
+    });
+
+    return grupos;
+  }
+
+  // ✅ NUEVO: Añadir marcador de grupo con contador y número secuencial
+  private anadirMarcadorGrupo(lat: number, lng: number, archivos: any[], numeroSecuencial: number): void {
     if (!this.mapaGPX) return;
 
     import('leaflet').then(L => {
-      // ✅ NUEVO: Icono personalizado más grande con badge
-      const fotoIcon = L.divIcon({
+      const cantidadArchivos = archivos.length;
+      const tieneMultiples = cantidadArchivos > 1;
+
+      // Determinar icono principal (si hay mezcla, usar el del primer archivo)
+      const primerArchivo = archivos[0].archivo;
+      const esFoto = primerArchivo.tipo === 'foto';
+      const colorPrincipal = esFoto ? '#FF4444' : '#2196F3';
+
+      const grupoIcon = L.divIcon({
         className: 'photo-marker-custom',
         html: `
         <div class="photo-marker-wrapper">
@@ -435,17 +484,59 @@ export class ActividadesItinerariosComponent implements OnInit {
               <!-- Sombra -->
               <circle cx="22" cy="24" r="18" fill="rgba(0,0,0,0.3)" />
               <!-- Fondo blanco -->
-              <circle cx="22" cy="22" r="18" fill="white" stroke="#FF4444" stroke-width="3"/>
-              <!-- Icono de cámara -->
+              <circle cx="22" cy="22" r="18" fill="white" stroke="${colorPrincipal}" stroke-width="3"/>
+              <!-- Icono de cámara o video -->
               <g transform="translate(10, 10)">
-                <path d="M12 3L14 6H18C19.1 6 20 6.9 20 8V18C20 19.1 19.1 20 18 20H6C4.9 20 4 19.1 4 18V8C4 6.9 4.9 6 6 6H10L12 3Z" 
-                      fill="#FF4444"/>
-                <circle cx="12" cy="13" r="3.5" fill="white"/>
+                ${esFoto
+            ? `<path d="M12 3L14 6H18C19.1 6 20 6.9 20 8V18C20 19.1 19.1 20 4 18V8C4 6.9 4.9 6 6 6H10L12 3Z" fill="${colorPrincipal}"/>
+                     <circle cx="12" cy="13" r="3.5" fill="white"/>`
+            : `<rect x="4" y="8" width="12" height="9" rx="1" fill="${colorPrincipal}"/>
+                     <path d="M16 10 L20 8 L20 16 L16 14 Z" fill="${colorPrincipal}"/>
+                     <circle cx="10" cy="12.5" r="2" fill="white"/>`
+          }
               </g>
             </svg>
           </div>
-          <!-- Badge con emoji -->
-          <div class="photo-marker-badge">📷</div>
+          
+          <!-- Badge con número secuencial (esquina superior izquierda) -->
+          <div class="photo-marker-sequence" style="
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            background: #4CAF50;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          ">${numeroSecuencial}</div>
+          
+          ${tieneMultiples ? `
+          <!-- Badge con contador (esquina inferior derecha) -->
+          <div class="photo-marker-count" style="
+            position: absolute;
+            bottom: -4px;
+            right: -4px;
+            background: #FF9800;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          ">${cantidadArchivos}</div>
+          ` : ''}
         </div>
       `,
         iconSize: [44, 44],
@@ -453,53 +544,78 @@ export class ActividadesItinerariosComponent implements OnInit {
         popupAnchor: [0, -44]
       });
 
-      // Popup mejorado con preview
-      const popupContent = `
-      <div class="photo-popup-custom">
-        <div class="photo-popup-header">
-          <span class="photo-icon">📷</span>
-          <strong>Foto</strong>
+      // Crear contenido del popup
+      let popupContent = `
+        <div class="photo-popup-custom" style="max-width: 300px;">
+          <div class="photo-popup-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <span style="font-size: 20px;">#${numeroSecuencial}</span>
+            <strong>${tieneMultiples ? `${cantidadArchivos} archivos` : primerArchivo.tipo === 'foto' ? 'Foto' : 'Video'}</strong>
+          </div>
+      `;
+
+      // Añadir miniaturas de cada archivo
+      archivos.forEach((item, idx) => {
+        const archivo = item.archivo;
+        const emoji = archivo.tipo === 'foto' ? '📷' : '🎬';
+        popupContent += `
+          <div class="archivo-miniatura" style="
+            padding: 6px;
+            margin: 4px 0;
+            background: #f5f5f5;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s;
+          " onmouseover="this.style.background='#e0e0e0'" onmouseout="this.style.background='#f5f5f5'">
+            <span style="font-size: 16px;">${emoji}</span>
+            <span style="font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${archivo.nombreArchivo}</span>
+          </div>
+        `;
+      });
+
+      popupContent += `
+          <div class="photo-popup-action" style="margin-top: 10px; text-align: center; color: #666; font-size: 11px;">
+            <span>👆 Haz clic en el marcador para ver</span>
+          </div>
         </div>
-        <p class="photo-name">${nombre}</p>
-        <div class="photo-popup-action">
-          <span class="click-hint">👆 Haz clic en el marcador</span>
-        </div>
-      </div>
-    `;
+      `;
 
       const marker = L.marker([lat, lng], {
-        icon: fotoIcon,
-        zIndexOffset: 2000 // ✅ Por encima de flechas y línea
+        icon: grupoIcon,
+        zIndexOffset: 2000
       })
         .addTo(this.mapaGPX!)
         .bindPopup(popupContent, {
           className: 'photo-popup-leaflet',
-          maxWidth: 250
+          maxWidth: 320
         });
 
-      // Guardar referencia de la foto
-      (marker as any).fotoRuta = rutaArchivo;
+      // Guardar referencia de los archivos
+      (marker as any).archivosGrupo = archivos;
+      (marker as any).numeroSecuencial = numeroSecuencial;
 
-      // Click para abrir modal (ajustado el timeout)
+      // Click para abrir modal
       marker.on('click', () => {
         setTimeout(() => {
-          this.abrirModalFoto(rutaArchivo, nombre);
-        }, 100); // Reducido de 300ms a 100ms para respuesta más rápida
+          this.abrirModalGrupo(archivos, numeroSecuencial);
+        }, 100);
       });
 
-      console.log(`✅ Marcador de foto añadido: ${nombre} en [${lat}, ${lng}]`);
+      console.log(`✅ Marcador #${numeroSecuencial} añadido: ${cantidadArchivos} archivo(s) en [${lat}, ${lng}]`);
     });
   }
 
-  // ✨ NUEVO: Abrir modal con la foto
-  private abrirModalFoto(rutaArchivo: string, nombre: string): void {
-    console.log('🔍 Abriendo foto:', nombre);
+  // ✨ NUEVO: Abrir modal con foto o video
+  private abrirModalMultimedia(rutaArchivo: string, nombre: string, tipo: string): void {
+    console.log('🔍 Abriendo archivo:', nombre, 'Tipo:', tipo);
     console.log('📁 rutaArchivo:', rutaArchivo);
 
     const backendUrl = environment.apiUrl;
-    const urlFoto = `${backendUrl}/uploads/${rutaArchivo}`;
+    const urlArchivo = `${backendUrl}/uploads/${rutaArchivo}`;
 
-    console.log('🖼️ URL final de la imagen:', urlFoto);
+    console.log('🖼️ URL final del archivo:', urlArchivo);
 
     const modal = document.createElement('div');
     modal.className = 'modal-foto-individual';
@@ -527,26 +643,58 @@ export class ActividadesItinerariosComponent implements OnInit {
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   `;
 
+    const esFoto = tipo === 'foto';
+    const emoji = esFoto ? '📷' : '🎬';
+    const etiqueta = esFoto ? 'Foto' : 'Video';
+
     const titulo = document.createElement('h3');
-    titulo.textContent = '📷 Foto';
+    titulo.textContent = `${emoji} ${etiqueta}`;
     titulo.style.cssText = 'margin: 0 0 10px 0; color: #333;';
 
-    const imagen = document.createElement('img');
-    imagen.src = urlFoto;
-    imagen.style.cssText = `
-    width: 100%;
-    height: auto;
-    border-radius: 8px;
-    margin: 10px 0;
-    background: #f0f0f0;
-    cursor: pointer;
-  `;
+    // ✅ CREAR ELEMENTO SEGÚN EL TIPO
+    let mediaElement: HTMLImageElement | HTMLVideoElement;
 
-    imagen.onerror = () => {
-      console.error('❌ Error cargando imagen desde:', urlFoto);
-      imagen.alt = 'Error al cargar la imagen';
-      imagen.style.background = '#ff6b6b';
-    };
+    if (esFoto) {
+      // Crear elemento de imagen
+      const imagen = document.createElement('img');
+      imagen.src = urlArchivo;
+      imagen.style.cssText = `
+        width: 100%;
+        height: auto;
+        border-radius: 8px;
+        margin: 10px 0;
+        background: #f0f0f0;
+        cursor: pointer;
+      `;
+
+      imagen.onerror = () => {
+        console.error('❌ Error cargando imagen desde:', urlArchivo);
+        imagen.alt = 'Error al cargar la imagen';
+        imagen.style.background = '#ff6b6b';
+      };
+
+      mediaElement = imagen;
+    } else {
+      // Crear elemento de video
+      const video = document.createElement('video');
+      video.src = urlArchivo;
+      video.controls = true;
+      video.style.cssText = `
+        width: 100%;
+        height: auto;
+        border-radius: 8px;
+        margin: 10px 0;
+        background: #000;
+        max-height: 400px;
+      `;
+
+      video.onerror = () => {
+        console.error('❌ Error cargando video desde:', urlArchivo);
+        video.style.background = '#ff6b6b';
+      };
+
+      mediaElement = video;
+    }
 
     const nombreEl = document.createElement('p');
     nombreEl.textContent = nombre;
@@ -611,7 +759,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     btnContainer.appendChild(btnCerrar);
 
     contenido.appendChild(titulo);
-    contenido.appendChild(imagen);
+    contenido.appendChild(mediaElement);
     contenido.appendChild(nombreEl);
     contenido.appendChild(btnContainer);
 
@@ -623,7 +771,165 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     document.body.appendChild(modal);
 
-    console.log('✅ Modal de foto abierto');
+    console.log(`✅ Modal de ${etiqueta} abierto`);
+  }
+
+  // ✅ NUEVO: Abrir modal con grupo de archivos (carrusel)
+  private abrirModalGrupo(archivos: any[], numeroSecuencial: number): void {
+    console.log(`🔍 Abriendo grupo #${numeroSecuencial} con ${archivos.length} archivo(s)`);
+
+    const backendUrl = environment.apiUrl;
+    let indiceActual = 0;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-grupo-archivos';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    `;
+
+    const contenido = document.createElement('div');
+    contenido.style.cssText = `
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 700px;
+      max-height: 85vh;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      position: relative;
+    `;
+
+    // Función para actualizar el contenido del modal
+    const actualizarContenido = () => {
+      const item = archivos[indiceActual];
+      const archivo = item.archivo;
+      const esFoto = archivo.tipo === 'foto';
+      const emoji = esFoto ? '📷' : '🎬';
+      const urlArchivo = `${backendUrl}/uploads/${archivo.rutaArchivo}`;
+
+      contenido.innerHTML = `
+        <div style="margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between;">
+          <h3 style="margin: 0; color: #333;">
+            ${emoji} Grupo #${numeroSecuencial} 
+            <span style="font-size: 14px; color: #666;">(${indiceActual + 1}/${archivos.length})</span>
+          </h3>
+          <button id="btn-cerrar-grupo" style="
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+          ">✕ Cerrar</button>
+        </div>
+
+        <div style="position: relative; margin: 15px 0;">
+          ${esFoto
+          ? `<img src="${urlArchivo}" style="
+                width: 100%;
+                height: auto;
+                max-height: 450px;
+                object-fit: contain;
+                border-radius: 8px;
+                background: #f0f0f0;
+              " />`
+          : `<video src="${urlArchivo}" controls style="
+                width: 100%;
+                height: auto;
+                max-height: 450px;
+                border-radius: 8px;
+                background: #000;
+              "></video>`
+        }
+        </div>
+
+        <p style="font-size: 12px; color: #999; margin: 10px 0; text-align: center;">
+          ${archivo.nombreArchivo}
+        </p>
+
+        ${archivos.length > 1 ? `
+        <div style="display: flex; gap: 10px; margin-top: 15px; align-items: center;">
+          <button id="btn-anterior" style="
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            flex: 1;
+            font-size: 14px;
+            ${indiceActual === 0 ? 'opacity: 0.5; cursor: not-allowed;' : ''}
+          " ${indiceActual === 0 ? 'disabled' : ''}>
+            ← Anterior
+          </button>
+          
+          <span style="color: #666; font-size: 14px; white-space: nowrap;">
+            ${indiceActual + 1} / ${archivos.length}
+          </span>
+          
+          <button id="btn-siguiente" style="
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            flex: 1;
+            font-size: 14px;
+            ${indiceActual === archivos.length - 1 ? 'opacity: 0.5; cursor: not-allowed;' : ''}
+          " ${indiceActual === archivos.length - 1 ? 'disabled' : ''}>
+            Siguiente →
+          </button>
+        </div>
+        ` : ''}
+      `;
+
+      // Añadir event listeners
+      const btnCerrar = contenido.querySelector('#btn-cerrar-grupo');
+      btnCerrar?.addEventListener('click', () => modal.remove());
+
+      if (archivos.length > 1) {
+        const btnAnterior = contenido.querySelector('#btn-anterior');
+        const btnSiguiente = contenido.querySelector('#btn-siguiente');
+
+        btnAnterior?.addEventListener('click', () => {
+          if (indiceActual > 0) {
+            indiceActual--;
+            actualizarContenido();
+          }
+        });
+
+        btnSiguiente?.addEventListener('click', () => {
+          if (indiceActual < archivos.length - 1) {
+            indiceActual++;
+            actualizarContenido();
+          }
+        });
+      }
+    };
+
+    // Inicializar contenido
+    actualizarContenido();
+
+    modal.appendChild(contenido);
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+
+    document.body.appendChild(modal);
+
+    console.log(`✅ Modal de grupo abierto`);
   }
 
   // Ver Mapa PNG - Muestra en modal
