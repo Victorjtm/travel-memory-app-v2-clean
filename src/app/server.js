@@ -172,6 +172,33 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// TABLA CONVERSACIONES_IA (NUEVA)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+db.run(`
+    CREATE TABLE IF NOT EXISTS conversaciones_ia (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sessionId TEXT NOT NULL,
+      rol TEXT NOT NULL CHECK(rol IN ('user', 'assistant', 'system')),
+      mensaje TEXT NOT NULL,
+      tokens_usados INTEGER DEFAULT 0,
+      modelo TEXT,
+      tiempo_respuesta INTEGER,
+      datos_estructurados TEXT,
+      tipo_interaccion TEXT DEFAULT 'planificacion',
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+console.log('✅ Tabla conversaciones_ia creada o ya existe.');
+
+// Crear índice para búsquedas rápidas por sesión
+db.run(`
+    CREATE INDEX IF NOT EXISTS idx_conversaciones_sessionId 
+    ON conversaciones_ia(sessionId)
+  `);
+console.log('✅ Índice de conversaciones_ia creado.');
+
+
 // Crear la tabla de "viajes" (si no existe)
 // Crear tabla de viajes con campo de imagen y audio
 db.run(`
@@ -5427,6 +5454,309 @@ if (isProduction) {
     res.sendFile(indexPath);
   });
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ENDPOINTS DE IA - PERPLEXITY (AISLADOS DEL RESTO DEL SISTEMA)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const PerplexityClient = require('./backend-services/perplexity-client');
+const perplexityClient = new PerplexityClient();
+
+/**
+ * POST /api/ia/chat
+ * Envía un mensaje a Perplexity y guarda en historial
+ * Body: { sessionId, mensaje, apiKey (opcional) }
+ */
+app.post('/api/ia/chat', (req, res) => {
+  const { sessionId, mensaje, apiKey } = req.body;
+
+  if (!sessionId || !mensaje) {
+    return res.status(400).json({ error: 'sessionId y mensaje son requeridos' });
+  }
+
+  console.log(`\n💬 Nueva conversación en sesión: ${sessionId}`);
+  console.log(`👤 Usuario: ${mensaje.substring(0, 100)}...`);
+
+  // 1. Guardar mensaje del usuario
+  db.run(
+    `INSERT INTO conversaciones_ia (sessionId, rol, mensaje, tipo_interaccion)
+     VALUES (?, 'user', ?, 'planificacion')`,
+    [sessionId, mensaje],
+    function (err) {
+      if (err) {
+        console.error('❌ Error guardando mensaje del usuario:', err.message);
+        return res.status(500).json({ error: 'Error guardando mensaje' });
+      }
+
+      // 2. Obtener historial completo de la sesión
+      db.all(
+        `SELECT rol, mensaje FROM conversaciones_ia 
+         WHERE sessionId = ? 
+         ORDER BY timestamp ASC`,
+        [sessionId],
+        (err, historial) => {
+          if (err) {
+            console.error('❌ Error obteniendo historial:', err.message);
+            return res.status(500).json({ error: 'Error obteniendo historial' });
+          }
+
+          // 3. Construir mensajes para Perplexity
+          const messages = [
+            {
+              role: 'system',
+              content: `Eres un asistente experto en planificación de viajes. 
+
+INSTRUCCIONES:
+- Ayuda al usuario a planificar su viaje de forma conversacional
+- Haz preguntas clarificadoras si falta información (destino, fechas, preferencias, presupuesto)
+- Cuando tengas suficiente información, genera un plan detallado día por día
+- El plan debe incluir: destino, fechas exactas, actividades por día con horarios
+
+FORMATO DE RESPUESTA FINAL (solo cuando el plan esté completo):
+Responde de forma natural AL USUARIO explicando el plan, pero AL FINAL añade un bloque JSON con esta estructura:
+
+\`\`\`json
+{
+  "plan_completo": true,
+  "viaje": {
+    "nombre": "Escapada a Barcelona",
+    "destino": "Barcelona, España",
+    "fecha_inicio": "2026-03-15",
+    "fecha_fin": "2026-03-18",
+    "descripcion": "Viaje cultural de 3 días"
+  },
+  "itinerarios": [
+    {
+      "fecha": "2026-03-15",
+      "descripcion": "Día 1: Llegada y centro histórico",
+      "tipo_viaje": "urbana",
+      "actividades": [
+        {
+          "nombre": "Check-in hotel",
+          "descripcion": "Llegada al hotel en el Barrio Gótico",
+          "hora_inicio": "14:00",
+          "hora_fin": "15:00",
+          "tipo_actividad": "alojamiento"
+        },
+        {
+          "nombre": "Visita a La Rambla",
+          "descripcion": "Paseo por La Rambla y Mercado de La Boquería",
+          "hora_inicio": "16:00",
+          "hora_fin": "18:30",
+          "tipo_actividad": "turismo"
+        }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+IMPORTANTE:
+- tipo_viaje debe ser uno de: costa, naturaleza, rural, urbana, cultural, trabajo
+- tipo_actividad puede ser: turismo, gastronomia, deporte, cultura, relax, transporte, alojamiento
+- Las fechas deben estar en formato YYYY-MM-DD
+- Las horas en formato HH:MM (24 horas)
+
+Si aún falta información, responde normalmente SIN el JSON.`
+            },
+            ...historial.map(h => ({
+              role: h.rol,
+              content: h.mensaje
+            }))
+          ];
+
+          // 4. Llamar a Perplexity
+          perplexityClient.chat(messages, apiKey)
+            .then(respuestaIA => {
+              // 5. Extraer JSON si existe
+              let datosEstructurados = null;
+              const jsonMatch = respuestaIA.contenido.match(/```json\n([\s\S]*?)\n```/);
+              if (jsonMatch) {
+                try {
+                  datosEstructurados = JSON.parse(jsonMatch[1]);
+                  console.log('✨ Plan estructurado detectado:', datosEstructurados.plan_completo);
+                } catch (e) {
+                  console.warn('⚠️  JSON encontrado pero no válido:', e.message);
+                }
+              }
+
+              // 6. Guardar respuesta de IA
+              db.run(
+                `INSERT INTO conversaciones_ia 
+                 (sessionId, rol, mensaje, tokens_usados, modelo, tiempo_respuesta, datos_estructurados, tipo_interaccion)
+                 VALUES (?, 'assistant', ?, ?, ?, ?, ?, 'planificacion')`,
+                [
+                  sessionId,
+                  respuestaIA.contenido,
+                  respuestaIA.tokens,
+                  respuestaIA.modelo,
+                  respuestaIA.tiempo_ms,
+                  datosEstructurados ? JSON.stringify(datosEstructurados) : null
+                ],
+                function (err) {
+                  if (err) {
+                    console.error('❌ Error guardando respuesta de IA:', err.message);
+                    return res.status(500).json({ error: 'Error guardando respuesta' });
+                  }
+
+                  console.log(`🤖 IA respondió (${respuestaIA.tokens} tokens, ${respuestaIA.tiempo_ms}ms)`);
+
+                  // 7. Responder al frontend
+                  res.json({
+                    id: this.lastID,
+                    mensaje: respuestaIA.contenido,
+                    tokens: respuestaIA.tokens,
+                    tiempo_ms: respuestaIA.tiempo_ms,
+                    plan_detectado: !!datosEstructurados,
+                    datos_estructurados: datosEstructurados,
+                    citations: respuestaIA.citations
+                  });
+                }
+              );
+            })
+            .catch(error => {
+              console.error('❌ Error en /api/ia/chat:', error);
+              res.status(error.status || 500).json({
+                error: error.message || 'Error al comunicarse con la IA',
+                tiempo_ms: error.tiempo_ms
+              });
+            });
+        }
+      );
+    }
+  );
+});
+
+/**
+ * GET /api/ia/historial/:sessionId
+ * Obtiene el historial de una sesión
+ */
+app.get('/api/ia/historial/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+
+  db.all(
+    `SELECT * FROM conversaciones_ia 
+     WHERE sessionId = ? 
+     ORDER BY timestamp ASC`,
+    [sessionId],
+    (err, historial) => {
+      if (err) {
+        console.error('❌ Error obteniendo historial:', err.message);
+        return res.status(500).json({ error: err.message });
+      }
+
+      // Parsear datos_estructurados si existen (con manejo de errores)
+      const mensajesConDatos = historial.map(m => {
+        let datosParseados = null;
+        if (m.datos_estructurados) {
+          try {
+            datosParseados = JSON.parse(m.datos_estructurados);
+          } catch (e) {
+            console.warn(`⚠️  Error parseando datos_estructurados del mensaje ${m.id}:`, e.message);
+          }
+        }
+        return {
+          ...m,
+          datos_estructurados: datosParseados
+        };
+      });
+
+      res.json({
+        sessionId,
+        total: historial.length,
+        mensajes: mensajesConDatos
+      });
+    }
+  );
+});
+
+/**
+ * DELETE /api/ia/historial/:sessionId
+ * Limpia el historial de una sesión
+ */
+app.delete('/api/ia/historial/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+
+  db.run(
+    'DELETE FROM conversaciones_ia WHERE sessionId = ?',
+    [sessionId],
+    function (err) {
+      if (err) {
+        console.error('❌ Error limpiando historial:', err.message);
+        return res.status(500).json({ error: err.message });
+      }
+
+      console.log(`🗑️  Historial de sesión ${sessionId} eliminado (${this.changes} mensajes)`);
+
+      res.json({
+        success: true,
+        deleted: this.changes
+      });
+    }
+  );
+});
+
+/**
+ * POST /api/ia/validar-apikey
+ * Valida que una API Key funciona
+ */
+app.post('/api/ia/validar-apikey', (req, res) => {
+  const { apiKey } = req.body;
+
+  if (!apiKey) {
+    return res.status(400).json({
+      valida: false,
+      error: 'apiKey requerida'
+    });
+  }
+
+  perplexityClient.validarApiKey(apiKey)
+    .then(resultado => {
+      res.json(resultado);
+    })
+    .catch(error => {
+      res.status(500).json({
+        valida: false,
+        error: error.message
+      });
+    });
+});
+
+/**
+ * GET /api/ia/sesiones-activas
+ * Lista las sesiones con actividad reciente
+ */
+app.get('/api/ia/sesiones-activas', (req, res) => {
+  db.all(`
+    SELECT 
+      sessionId,
+      COUNT(*) as num_mensajes,
+      MIN(timestamp) as inicio,
+      MAX(timestamp) as ultimo_mensaje,
+      SUM(CASE WHEN rol = 'user' THEN 1 ELSE 0 END) as mensajes_usuario,
+      SUM(CASE WHEN rol = 'assistant' THEN 1 ELSE 0 END) as respuestas_ia,
+      SUM(COALESCE(tokens_usados, 0)) as tokens_totales,
+      MAX(CASE WHEN datos_estructurados IS NOT NULL THEN 1 ELSE 0 END) as tiene_plan
+    FROM conversaciones_ia
+    GROUP BY sessionId
+    ORDER BY ultimo_mensaje DESC
+    LIMIT 50
+  `, (err, sesiones) => {
+    if (err) {
+      console.error('❌ Error obteniendo sesiones activas:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+
+    res.json(sesiones);
+  });
+});
+
+console.log('🤖 Endpoints de IA configurados');
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FIN ENDPOINTS DE IA
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // Configurar el puerto y poner a escuchar el servidor
 const PORT = process.env.PORT || 3000;

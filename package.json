@@ -33,6 +33,7 @@
         "@fortawesome/fontawesome-svg-core": "^6.7.2",
         "@fortawesome/free-solid-svg-icons": "^6.7.2",
         "@types/leaflet": "^1.9.20",
+        "axios": "^1.13.4",
         "browser-image-compression": "^2.0.2",
         "cors": "^2.8.5",
         "exif-js": "^2.3.0",

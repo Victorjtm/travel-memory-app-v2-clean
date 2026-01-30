@@ -428,11 +428,36 @@ export class InicioComponent implements OnInit {
   // ====================================================================
 
   /**
-   * Formatea el tamaño total de archivos
-   */
+ * Formatea el tamaño total de archivos
+ */
   getTamanoTotal(): string {
     const totalBytes = this.archivosSeleccionados.reduce((sum, f) => sum + f.size, 0);
     const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
     return `${totalMB} MB`;
+  }
+
+  // ====================================================================
+  // ✨ NUEVOS MÉTODOS PARA NAVEGACIÓN
+  // ====================================================================
+
+  /**
+   * Navega a la página de planificación de viajes (con IA)
+   */
+  irAPlanificarViaje() {
+    this.router.navigate(['/planificar-viaje']);
+  }
+
+  /**
+   * Navega a la lista de viajes futuros
+   */
+  irAViajesFuturos() {
+    this.router.navigate(['/viajes-futuros']);
+  }
+
+  /**
+   * Navega a la lista de recuerdos (viajes realizados)
+   */
+  irARecuerdos() {
+    this.router.navigate(['/viajes-previstos']);
   }
 }

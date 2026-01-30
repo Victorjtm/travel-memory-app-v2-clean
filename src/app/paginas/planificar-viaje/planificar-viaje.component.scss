@@ -1,0 +1,50 @@
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ESTILOS: PÁGINA PLANIFICAR VIAJE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+.planificar-container {
+    width: 100%;
+    min-height: calc(100vh - 60px); // deja espacio para tu barra superior
+    display: flex;
+    flex-direction: column;
+    background: #F5F5F5;
+    padding-top: 10px;
+}
+
+.page-header {
+    margin-bottom: 10px;
+    padding-left: 16px;
+    z-index: 1;
+
+    .btn-volver {
+        background: rgba(255, 255, 255, 0.95);
+        border: 1px solid #E0E0E0;
+        padding: 6px 14px;
+        border-radius: 24px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #333;
+        transition: all 0.2s;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+
+        &:hover {
+            background: #FFF;
+            transform: translateX(-2px);
+        }
+    }
+}
+
+
+// Responsive
+@media (max-width: 768px) {
+    .page-header {
+        top: 8px;
+        left: 8px;
+
+        .btn-volver {
+            padding: 8px 16px;
+            font-size: 0.9rem;
+        }
+    }
+}

@@ -3,6 +3,7 @@ import { InicioComponent } from './paginas/inicio/inicio.component';
 import { ViajesComponent } from './paginas/viajes/viajes.component';
 import { RecuerdosComponent } from './paginas/recuerdos/recuerdos.component';
 import { ViajesPrevistosComponent } from './paginas/viajes-previstos/viajes-previstos.component';
+import { PlanificarViajeComponent } from './paginas/planificar-viaje/planificar-viaje.component';
 import { FormularioViajePrevistoComponent } from './paginas/viajes-previstos/formulario-viaje-previsto/formulario-viaje-previsto.component';
 import { ItinerariosComponent } from './paginas/viajes-previstos/itinerario/itinerario.component';
 import { FormularioItinerarioComponent } from './paginas/viajes-previstos/itinerario/formulario-itinerario/formulario-itinerario.component';
@@ -21,9 +22,21 @@ import { CrudArchivosSinAsignacionComponent } from './paginas/configuracion/crud
 
 export const routes: Routes = [
   { path: '', component: InicioComponent },
-  { path: 'viajes', component: ViajesComponent },
+
+  // ✨ NUEVO: Planificador de viajes con IA (Chatbot)
+  { path: 'planificar-viaje', component: PlanificarViajeComponent },
+
+
+
+  // ✨ NUEVO: Lista de viajes futuros (lo que antes era /viajes)
+  { path: 'viajes-futuros', component: ViajesComponent },
+
+  // Recuerdos (viajes realizados)
   { path: 'recuerdos', component: RecuerdosComponent },
+
+  // ⚠️ MANTENER POR COMPATIBILIDAD: Viajes previstos (ruta antigua)
   { path: 'viajes-previstos', component: ViajesPrevistosComponent },
+
   { path: 'formulario-viaje-previsto/:id', component: FormularioViajePrevistoComponent }, // id = número (edición) o 'nuevo' (creación)
 
   { path: 'itinerarios/:viajePrevistoId', component: ItinerariosComponent },

@@ -1,0 +1,633 @@
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ESTILOS DEL COMPONENTE CHAT IA
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ══════════════════════════════════════════════════════════════════════
+// VARIABLES
+// ══════════════════════════════════════════════════════════════════════
+
+$color-primario: #2196F3;
+$color-secundario: #4CAF50;
+$color-usuario: #2196F3;
+$color-asistente: #E0E0E0;
+$color-fondo: #F5F5F5;
+$color-blanco: #FFFFFF;
+$color-texto: #333333;
+$color-texto-claro: #666666;
+$color-borde: #E0E0E0;
+$color-error: #F44336;
+$color-success: #4CAF50;
+
+$border-radius: 12px;
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+
+// ══════════════════════════════════════════════════════════════════════
+// CONTENEDOR PRINCIPAL
+// ══════════════════════════════════════════════════════════════════════
+
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 80vh; // ← antes 100vh
+    max-width: 900px;
+    margin: 20px auto; // ← deja espacio respecto al header
+    background: $color-blanco;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// HEADER
+// ══════════════════════════════════════════════════════════════════════
+
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: $spacing-md $spacing-lg;
+    background: linear-gradient(135deg, $color-primario 0%, #1976D2 100%);
+    color: $color-blanco;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+
+    .header-left {
+        h2 {
+            margin: 0;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .session-id {
+            font-size: 0.75rem;
+            opacity: 0.8;
+            display: block;
+            margin-top: 4px;
+        }
+    }
+
+    .header-right {
+        display: flex;
+        gap: $spacing-sm;
+    }
+
+    .btn-header {
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: $color-blanco;
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1.2rem;
+        transition: all 0.2s;
+
+        &:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        &.btn-api-key {
+            &.configurada {
+                background: rgba(76, 175, 80, 0.3);
+                border-color: rgba(76, 175, 80, 0.5);
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// PANEL DE PLAN DETECTADO
+// ══════════════════════════════════════════════════════════════════════
+
+.plan-panel {
+    background: linear-gradient(135deg, #E3F2FD 0%, #E8F5E9 100%);
+    border-bottom: 2px solid $color-secundario;
+    animation: slideDown 0.3s ease-out;
+
+    .plan-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: $spacing-md $spacing-lg;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+
+        .plan-title {
+            display: flex;
+            align-items: center;
+            gap: $spacing-sm;
+
+            .plan-icon {
+                font-size: 1.5rem;
+            }
+
+            h3 {
+                margin: 0;
+                color: $color-texto;
+                font-size: 1.1rem;
+            }
+        }
+
+        .btn-close-plan {
+            background: transparent;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: $color-texto-claro;
+            padding: 4px 8px;
+
+            &:hover {
+                color: $color-texto;
+            }
+        }
+    }
+
+    .plan-body {
+        padding: $spacing-md $spacing-lg;
+
+        .plan-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: $spacing-md;
+            margin-bottom: $spacing-md;
+
+            .info-item {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+
+                strong {
+                    font-size: 0.85rem;
+                    color: $color-texto-claro;
+                }
+
+                span {
+                    font-size: 1rem;
+                    color: $color-texto;
+                    font-weight: 500;
+                }
+            }
+        }
+
+        .plan-actions {
+            display: flex;
+            gap: $spacing-sm;
+            flex-wrap: wrap;
+
+            .btn-plan {
+                padding: 10px 16px;
+                background: $color-blanco;
+                border: 2px solid $color-primario;
+                color: $color-primario;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 500;
+                transition: all 0.2s;
+
+                &:hover {
+                    background: $color-primario;
+                    color: $color-blanco;
+                    transform: translateY(-2px);
+                }
+
+                &.btn-copiar {
+                    border-color: $color-secundario;
+                    color: $color-secundario;
+
+                    &:hover {
+                        background: $color-secundario;
+                        color: $color-blanco;
+                    }
+                }
+            }
+        }
+
+        .json-container {
+            margin-top: $spacing-md;
+            background: $color-blanco;
+            border: 1px solid $color-borde;
+            border-radius: 8px;
+            padding: $spacing-md;
+            max-height: 400px;
+            overflow-y: auto;
+
+            pre {
+                margin: 0;
+                font-size: 0.85rem;
+                color: $color-texto;
+                white-space: pre-wrap;
+                word-wrap: break-word;
+            }
+        }
+    }
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ÁREA DE MENSAJES
+// ══════════════════════════════════════════════════════════════════════
+
+.mensajes-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: $spacing-lg;
+    background: $color-fondo;
+    min-height: 0; // ← AÑADIDO: Importante para flex
+
+    // Scroll suave
+    scroll-behavior: smooth;
+
+
+    // Personalizar scrollbar
+    &::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 4px;
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.3);
+        }
+    }
+}
+
+// Mensaje de bienvenida
+.bienvenida {
+    text-align: center;
+    max-width: 500px;
+    margin: 60px auto;
+    padding: $spacing-lg;
+    background: $color-blanco;
+    border-radius: $border-radius;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+
+    .bienvenida-icon {
+        font-size: 4rem;
+        margin-bottom: $spacing-md;
+    }
+
+    h3 {
+        color: #333333; // ← TEXTO NEGRO
+        margin-bottom: $spacing-sm;
+        font-size: 1.4rem;
+    }
+
+    p {
+        color: #666666; // ← TEXTO GRIS
+        margin-bottom: $spacing-md;
+        font-size: 1rem;
+    }
+
+    ul {
+        text-align: left;
+        color: #666666; // ← TEXTO GRIS
+        margin-bottom: $spacing-md;
+        padding-left: 24px;
+
+        li {
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+    }
+
+    .ejemplo {
+        background: #E3F2FD;
+        padding: $spacing-md;
+        border-radius: 8px;
+        text-align: left;
+        font-size: 0.9rem;
+        color: #333333; // ← TEXTO NEGRO
+
+        strong {
+            color: $color-primario;
+            display: block;
+            margin-bottom: 8px;
+            font-size: 1rem;
+        }
+    }
+}
+
+
+// Mensaje individual
+.mensaje {
+    display: flex;
+    gap: $spacing-sm;
+    margin-bottom: $spacing-md;
+    animation: fadeIn 0.3s ease-out;
+
+    .mensaje-avatar {
+        font-size: 1.8rem;
+        flex-shrink: 0;
+    }
+
+    .mensaje-contenido {
+        max-width: 70%;
+
+        .mensaje-texto {
+            padding: 12px 16px;
+            border-radius: $border-radius;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.5;
+            font-size: 1rem;
+        }
+
+        .mensaje-meta {
+            display: flex;
+            gap: $spacing-sm;
+            margin-top: 4px;
+            font-size: 0.75rem;
+            color: $color-texto-claro;
+
+            .timestamp,
+            .tokens,
+            .tiempo {
+                display: inline-block;
+            }
+        }
+    }
+
+    // Usuario (derecha, azul)
+    &.usuario {
+        flex-direction: row-reverse;
+
+        .mensaje-contenido {
+            .mensaje-texto {
+                background: $color-usuario;
+                color: #FFFFFF; // ← TEXTO BLANCO PARA MENSAJES DE USUARIO
+                border-bottom-right-radius: 4px;
+            }
+
+            .mensaje-meta {
+                justify-content: flex-end;
+                color: rgba(255, 255, 255, 0.8); // ← META EN BLANCO SEMI-TRANSPARENTE
+            }
+        }
+    }
+
+    // Asistente (izquierda, gris)
+    &.asistente {
+        .mensaje-contenido {
+            .mensaje-texto {
+                background: $color-blanco;
+                color: #333333; // ← TEXTO NEGRO PARA MENSAJES DE IA
+                border: 1px solid $color-borde;
+                border-bottom-left-radius: 4px;
+            }
+
+            .mensaje-meta {
+                color: $color-texto-claro;
+            }
+        }
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+
+// Indicador de escritura
+.typing-indicator {
+    display: flex;
+    gap: 4px;
+    padding: 12px 16px;
+    background: $color-blanco;
+    border: 1px solid $color-borde;
+    border-radius: $border-radius;
+    width: fit-content;
+
+    span {
+        width: 8px;
+        height: 8px;
+        background: $color-texto-claro;
+        border-radius: 50%;
+        animation: typing 1.4s infinite;
+
+        &:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        &:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+    }
+}
+
+@keyframes typing {
+
+    0%,
+    60%,
+    100% {
+        opacity: 0.3;
+        transform: translateY(0);
+    }
+
+    30% {
+        opacity: 1;
+        transform: translateY(-10px);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// INPUT DE MENSAJE
+// ══════════════════════════════════════════════════════════════════════
+
+.input-container {
+    display: flex;
+    gap: $spacing-sm;
+    padding: $spacing-md $spacing-lg;
+    background: $color-blanco;
+    border-top: 1px solid $color-borde;
+
+    .mensaje-input {
+        flex: 1;
+        padding: 12px 16px;
+        border: 2px solid $color-borde;
+        border-radius: 24px;
+        font-size: 1rem;
+        font-family: inherit;
+        resize: none;
+        max-height: 120px;
+        transition: border-color 0.2s;
+        color: #333333; // ← AÑADIR
+        background: #FFFFFF; // ← AÑADIR
+
+        &:focus {
+            outline: none;
+            border-color: $color-primario;
+        }
+
+        &:disabled {
+            background: #F0F0F0;
+            cursor: not-allowed;
+        }
+    }
+
+
+    .btn-enviar {
+        width: 48px;
+        height: 48px;
+        border: none;
+        background: $color-primario;
+        color: $color-blanco;
+        border-radius: 50%;
+        font-size: 1.3rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        flex-shrink: 0;
+
+        &:hover:not(:disabled) {
+            background: #1976D2;
+            transform: scale(1.1);
+        }
+
+        &:disabled {
+            background: #CCCCCC;
+            cursor: not-allowed;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top-color: $color-blanco;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// FOOTER
+// ══════════════════════════════════════════════════════════════════════
+
+.chat-footer {
+    padding: $spacing-sm $spacing-lg;
+    background: $color-fondo;
+    border-top: 1px solid $color-borde;
+    text-align: center;
+
+    small {
+        color: $color-texto-claro;
+        font-size: 0.8rem;
+
+        .advertencia {
+            color: $color-error;
+            font-weight: 500;
+        }
+
+        .ok {
+            color: $color-success;
+            font-weight: 500;
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// RESPONSIVE
+// ══════════════════════════════════════════════════════════════════════
+
+@media (max-width: 768px) {
+    .chat-container {
+        height: 100vh;
+        max-width: 100%;
+        border-radius: 0;
+    }
+
+    .chat-header {
+        padding: $spacing-sm $spacing-md;
+
+        .header-left h2 {
+            font-size: 1.1rem;
+        }
+
+        .btn-header {
+            padding: 6px 10px;
+            font-size: 1rem;
+        }
+    }
+
+    .mensajes-container {
+        padding: $spacing-md;
+    }
+
+    .mensaje {
+        .mensaje-contenido {
+            max-width: 85%;
+        }
+    }
+
+    .plan-panel {
+        .plan-body {
+            padding: $spacing-md;
+
+            .plan-info {
+                grid-template-columns: 1fr;
+                gap: $spacing-sm;
+            }
+        }
+    }
+
+    .input-container {
+        padding: $spacing-sm $spacing-md;
+    }
+}
+
+@media (max-width: 480px) {
+    .chat-header {
+        .header-left {
+            .session-id {
+                display: none;
+            }
+        }
+    }
+
+    .mensaje {
+        .mensaje-contenido {
+            max-width: 90%;
+        }
+    }
+}

@@ -1,0 +1,178 @@
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- COMPONENTE DE CHAT CON IA                                           -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+<div class="chat-container">
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- HEADER                                                             -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="chat-header">
+        <div class="header-left">
+            <h2>🤖 Planificador de Viajes con IA</h2>
+            <span class="session-id">Sesión: {{ sessionId.substring(0, 8) }}...</span>
+        </div>
+
+        <div class="header-right">
+            <!-- Indicador API Key -->
+            <button class="btn-header btn-api-key" [class.configurada]="apiKeyConfigurada"
+                (click)="apiKeyConfigurada ? eliminarApiKey() : configurarApiKey()"
+                [title]="apiKeyConfigurada ? 'API Key configurada (click para eliminar)' : 'Configurar API Key'">
+                <span *ngIf="apiKeyConfigurada">🔑 ✓</span>
+                <span *ngIf="!apiKeyConfigurada">🔑 ✗</span>
+            </button>
+
+            <!-- Nueva conversación -->
+            <button class="btn-header btn-nueva" (click)="nuevaConversacion()" title="Nueva conversación">
+                🔄
+            </button>
+
+            <!-- Limpiar historial -->
+            <button class="btn-header btn-limpiar" (click)="limpiarHistorial()" [disabled]="mensajes.length === 0"
+                title="Limpiar historial">
+                🗑️
+            </button>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- PANEL DE PLAN DETECTADO                                           -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="plan-panel" *ngIf="planDetectado">
+        <div class="plan-header">
+            <div class="plan-title">
+                <span class="plan-icon">✨</span>
+                <h3>Plan de Viaje Generado</h3>
+            </div>
+            <button class="btn-close-plan" (click)="planDetectado = null" title="Cerrar">✕</button>
+        </div>
+
+        <div class="plan-body">
+            <div class="plan-info">
+                <div class="info-item">
+                    <strong>📍 Destino:</strong>
+                    <span>{{ planDetectado.viaje.destino }}</span>
+                </div>
+                <div class="info-item">
+                    <strong>📅 Fechas:</strong>
+                    <span>{{ planDetectado.viaje.fecha_inicio }} → {{ planDetectado.viaje.fecha_fin }}</span>
+                </div>
+                <div class="info-item">
+                    <strong>🗓️ Itinerarios:</strong>
+                    <span>{{ planDetectado.itinerarios.length }} días</span>
+                </div>
+                <div class="info-item">
+                    <strong>🎯 Actividades:</strong>
+                    <span>{{ contarActividades(planDetectado) }} actividades</span>
+                </div>
+            </div>
+
+            <div class="plan-actions">
+                <button class="btn-plan" (click)="toggleMostrarJson()">
+                    {{ mostrarJson ? '📋 Ocultar JSON' : '📋 Ver JSON' }}
+                </button>
+                <button class="btn-plan btn-copiar" (click)="copiarJson()">
+                    📋 Copiar JSON
+                </button>
+            </div>
+
+            <!-- JSON expandible -->
+            <div class="json-container" *ngIf="mostrarJson">
+                <pre>{{ planDetectado | json }}</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- ÁREA DE MENSAJES                                                  -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="mensajes-container" #mensajesContainer>
+
+        <!-- Mensaje de bienvenida si no hay mensajes -->
+        <div class="bienvenida" *ngIf="mensajes.length === 0">
+            <div class="bienvenida-icon">🗺️</div>
+            <h3>¡Hola! Soy tu asistente de viajes</h3>
+            <p>Puedo ayudarte a planificar tu próximo viaje. Cuéntame:</p>
+            <ul>
+                <li>¿A dónde quieres ir?</li>
+                <li>¿Cuántos días?</li>
+                <li>¿Qué tipo de actividades te gustan?</li>
+            </ul>
+            <div class="ejemplo">
+                <strong>Ejemplo:</strong> "Quiero ir a Barcelona 3 días, me gusta la cultura y la gastronomía"
+            </div>
+        </div>
+
+        <!-- Lista de mensajes -->
+        <div class="mensaje" *ngFor="let mensaje of mensajes" [class.usuario]="mensaje.rol === 'user'"
+            [class.asistente]="mensaje.rol === 'assistant'">
+
+            <div class="mensaje-avatar">
+                <span *ngIf="mensaje.rol === 'user'">👤</span>
+                <span *ngIf="mensaje.rol === 'assistant'">🤖</span>
+            </div>
+
+            <div class="mensaje-contenido">
+                <div class="mensaje-texto">{{ mensaje.mensaje }}</div>
+
+                <div class="mensaje-meta">
+                    <span class="timestamp" *ngIf="mensaje.timestamp">
+                        {{ formatearFecha(mensaje.timestamp) }}
+                    </span>
+                    <span class="tokens" *ngIf="mensaje.tokens_usados">
+                        🪙 {{ mensaje.tokens_usados }} tokens
+                    </span>
+                    <span class="tiempo" *ngIf="mensaje.tiempo_respuesta">
+                        ⏱️ {{ mensaje.tiempo_respuesta }}ms
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Indicador de carga -->
+        <div class="mensaje asistente cargando-mensaje" *ngIf="cargando">
+            <div class="mensaje-avatar">
+                <span>🤖</span>
+            </div>
+            <div class="mensaje-contenido">
+                <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div class="mensaje-meta">
+                    <span>La IA está escribiendo...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- INPUT DE MENSAJE                                                  -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="input-container">
+        <textarea [(ngModel)]="mensajeActual" (keydown)="onKeydown($event)" [disabled]="cargando"
+            placeholder="Escribe tu mensaje... (Enter para enviar, Shift+Enter para nueva línea)" rows="1"
+            class="mensaje-input">
+    </textarea>
+
+        <button class="btn-enviar" (click)="enviarMensaje()" [disabled]="!mensajeActual.trim() || cargando"
+            [class.cargando]="cargando">
+            <span *ngIf="!cargando">📤</span>
+            <span *ngIf="cargando" class="spinner"></span>
+        </button>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- FOOTER CON INFO                                                   -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="chat-footer">
+        <small>
+            Powered by Perplexity AI •
+            {{ mensajes.length }} mensajes •
+            <span *ngIf="!apiKeyConfigurada" class="advertencia">⚠️ API Key no configurada</span>
+            <span *ngIf="apiKeyConfigurada" class="ok">✓ API Key configurada</span>
+        </small>
+    </div>
+
+</div>
