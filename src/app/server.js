@@ -433,6 +433,621 @@ db.run(
   }
 );
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MÓDULO 1: TABLAS VIAJES FUTUROS (PLANIFICACIÓN CON IA)
+// Fecha: 2026-01-31
+// Insertar DESPUÉS de la creación de archivos_asociados
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 1. TABLA: viajes_futuros
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS viajes_futuros (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL,
+    destino TEXT,
+    fecha_inicio TEXT NOT NULL,
+    fecha_fin TEXT NOT NULL,
+    imagen TEXT,
+    audio TEXT,
+    descripcion TEXT,
+    estado TEXT DEFAULT 'planificado' CHECK(estado IN ('planificado', 'migrado')),
+    sessionId TEXT,
+    fecha_creacion TEXT DEFAULT (datetime('now')),
+    fecha_migracion TEXT,
+    viaje_real_id INTEGER,
+    FOREIGN KEY (viaje_real_id) REFERENCES viajes(id) ON DELETE SET NULL
+  )
+`, (err) => {
+  if (err) {
+    console.error('❌ Error al crear tabla viajes_futuros:', err.message);
+  } else {
+    console.log('✅ Tabla viajes_futuros creada o ya existe');
+  }
+});
+
+// Índices para viajes_futuros
+db.run('CREATE INDEX IF NOT EXISTS idx_viajes_futuros_estado ON viajes_futuros(estado)', (err) => {
+  if (err) console.error('❌ Error creando índice idx_viajes_futuros_estado:', err.message);
+  else console.log('✅ Índice idx_viajes_futuros_estado creado');
+});
+
+db.run('CREATE INDEX IF NOT EXISTS idx_viajes_futuros_sessionId ON viajes_futuros(sessionId)', (err) => {
+  if (err) console.error('❌ Error creando índice idx_viajes_futuros_sessionId:', err.message);
+  else console.log('✅ Índice idx_viajes_futuros_sessionId creado');
+});
+
+db.run('CREATE INDEX IF NOT EXISTS idx_viajes_futuros_fechas ON viajes_futuros(fecha_inicio, fecha_fin)', (err) => {
+  if (err) console.error('❌ Error creando índice idx_viajes_futuros_fechas:', err.message);
+  else console.log('✅ Índice idx_viajes_futuros_fechas creado');
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 2. TABLA: itinerarios_futuros
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS itinerarios_futuros (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    viajeFuturoId INTEGER NOT NULL,
+    fechaInicio TEXT NOT NULL,
+    fechaFin TEXT NOT NULL,
+    duracionDias INTEGER NOT NULL,
+    destinosPorDia TEXT NOT NULL,
+    descripcionGeneral TEXT,
+    horaInicio TEXT,
+    horaFin TEXT,
+    climaGeneral TEXT,
+    tipoDeViaje TEXT CHECK(tipoDeViaje IN ('costa', 'naturaleza', 'rural', 'urbana', 'cultural', 'trabajo')),
+    itinerario_real_id INTEGER,
+    FOREIGN KEY (viajeFuturoId) REFERENCES viajes_futuros(id) ON DELETE CASCADE,
+    FOREIGN KEY (itinerario_real_id) REFERENCES ItinerarioGeneral(id) ON DELETE SET NULL
+  )
+`, (err) => {
+  if (err) {
+    console.error('❌ Error al crear tabla itinerarios_futuros:', err.message);
+  } else {
+    console.log('✅ Tabla itinerarios_futuros creada o ya existe');
+  }
+});
+
+// Índices para itinerarios_futuros
+db.run('CREATE INDEX IF NOT EXISTS idx_itinerarios_futuros_viaje ON itinerarios_futuros(viajeFuturoId)', (err) => {
+  if (err) console.error('❌ Error creando índice idx_itinerarios_futuros_viaje:', err.message);
+  else console.log('✅ Índice idx_itinerarios_futuros_viaje creado');
+});
+
+db.run('CREATE INDEX IF NOT EXISTS idx_itinerarios_futuros_fechas ON itinerarios_futuros(fechaInicio, fechaFin)', (err) => {
+  if (err) console.error('❌ Error creando índice idx_itinerarios_futuros_fechas:', err.message);
+  else console.log('✅ Índice idx_itinerarios_futuros_fechas creado');
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 3. TABLA: actividades_futuras
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS actividades_futuras (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    viajeFuturoId INTEGER NOT NULL,
+    itinerarioFuturoId INTEGER NOT NULL,
+    tipoActividadId INTEGER NOT NULL,
+    actividadDisponibleId INTEGER,
+    nombre TEXT,
+    descripcion TEXT,
+    horaInicio TEXT NOT NULL,
+    horaFin TEXT NOT NULL,
+    ubicacion_planeada TEXT,
+    
+    -- Campos de estadísticas (vacíos en planificación)
+    distanciaKm DECIMAL DEFAULT 0,
+    distanciaMetros INTEGER DEFAULT 0,
+    duracionSegundos INTEGER DEFAULT 0,
+    duracionFormateada TEXT,
+    velocidadMediaKmh DECIMAL DEFAULT 0,
+    velocidadMaximaKmh DECIMAL DEFAULT 0,
+    velocidadMinimaKmh DECIMAL DEFAULT 0,
+    calorias INTEGER DEFAULT 0,
+    pasosEstimados INTEGER DEFAULT 0,
+    puntosGPS INTEGER DEFAULT 0,
+    perfilTransporte TEXT,
+    rutaGpxCompleto TEXT,
+    rutaMapaCompleto TEXT,
+    rutaManifest TEXT,
+    rutaEstadisticas TEXT,
+    
+    fechaCreacion TEXT DEFAULT (datetime('now')),
+    fechaActualizacion TEXT DEFAULT (datetime('now')),
+    actividad_real_id INTEGER,
+    
+    FOREIGN KEY (viajeFuturoId) REFERENCES viajes_futuros(id) ON DELETE CASCADE,
+    FOREIGN KEY (itinerarioFuturoId) REFERENCES itinerarios_futuros(id) ON DELETE CASCADE,
+    FOREIGN KEY (tipoActividadId) REFERENCES TiposActividad(id),
+    FOREIGN KEY (actividadDisponibleId) REFERENCES ActividadesDisponibles(id),
+    FOREIGN KEY (actividad_real_id) REFERENCES actividades(id) ON DELETE SET NULL
+  )
+`, (err) => {
+  if (err) {
+    console.error('❌ Error al crear tabla actividades_futuras:', err.message);
+  } else {
+    console.log('✅ Tabla actividades_futuras creada o ya existe');
+  }
+});
+
+// Índices para actividades_futuras
+db.run('CREATE INDEX IF NOT EXISTS idx_actividades_futuras_viaje ON actividades_futuras(viajeFuturoId)', (err) => {
+  if (err) console.error('❌ Error creando índice idx_actividades_futuras_viaje:', err.message);
+  else console.log('✅ Índice idx_actividades_futuras_viaje creado');
+});
+
+db.run('CREATE INDEX IF NOT EXISTS idx_actividades_futuras_itinerario ON actividades_futuras(itinerarioFuturoId)', (err) => {
+  if (err) console.error('❌ Error creando índice idx_actividades_futuras_itinerario:', err.message);
+  else console.log('✅ Índice idx_actividades_futuras_itinerario creado');
+});
+
+db.run('CREATE INDEX IF NOT EXISTS idx_actividades_futuras_tipo ON actividades_futuras(tipoActividadId)', (err) => {
+  if (err) console.error('❌ Error creando índice idx_actividades_futuras_tipo:', err.message);
+  else console.log('✅ Índice idx_actividades_futuras_tipo creado');
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 4. TABLA: log_migraciones (para auditoría)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS log_migraciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    viaje_futuro_id INTEGER NOT NULL,
+    viaje_real_id INTEGER NOT NULL,
+    fecha_migracion TEXT DEFAULT (datetime('now')),
+    itinerarios_migrados INTEGER DEFAULT 0,
+    actividades_migradas INTEGER DEFAULT 0,
+    errores TEXT,
+    FOREIGN KEY (viaje_futuro_id) REFERENCES viajes_futuros(id),
+    FOREIGN KEY (viaje_real_id) REFERENCES viajes(id)
+  )
+`, (err) => {
+  if (err) {
+    console.error('❌ Error al crear tabla log_migraciones:', err.message);
+  } else {
+    console.log('✅ Tabla log_migraciones creada o ya existe');
+  }
+});
+
+// Índices para log_migraciones
+db.run('CREATE INDEX IF NOT EXISTS idx_log_migraciones_viaje_futuro ON log_migraciones(viaje_futuro_id)', (err) => {
+  if (err) console.error('❌ Error creando índice idx_log_migraciones_viaje_futuro:', err.message);
+  else console.log('✅ Índice idx_log_migraciones_viaje_futuro creado');
+});
+
+db.run('CREATE INDEX IF NOT EXISTS idx_log_migraciones_fecha ON log_migraciones(fecha_migracion)', (err) => {
+  if (err) console.error('❌ Error creando índice idx_log_migraciones_fecha:', err.message);
+  else console.log('✅ Índice idx_log_migraciones_fecha creado');
+});
+
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log('✅ MÓDULO 1: Tablas de Viajes Futuros inicializadas');
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FIN MÓDULO 1: TABLAS VIAJES FUTUROS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MÓDULO 2: ENDPOINTS VIAJES FUTUROS (PLANIFICACIÓN CON IA)
+// Fecha: 2026-01-31
+// Insertar DESPUÉS de todos los endpoints existentes
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 1. LISTAR VIAJES FUTUROS
+// GET /api/viajes-futuros?estado=planificado
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.get('/api/viajes-futuros', (req, res) => {
+  const { estado } = req.query;
+
+  let sql = 'SELECT * FROM viajes_futuros';
+  let params = [];
+
+  if (estado) {
+    sql += ' WHERE estado = ?';
+    params.push(estado);
+  }
+
+  sql += ' ORDER BY fecha_inicio DESC';
+
+  db.all(sql, params, (err, rows) => {
+    if (err) {
+      console.error('❌ Error al listar viajes futuros:', err.message);
+      return res.status(500).json({ error: 'Error al obtener viajes futuros' });
+    }
+
+    console.log(`✅ Listados ${rows.length} viajes futuros`);
+    res.json(rows);
+  });
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 2. OBTENER VIAJE FUTURO POR ID (con itinerarios y actividades anidados)
+// GET /api/viajes-futuros/:id
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.get('/api/viajes-futuros/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.get('SELECT * FROM viajes_futuros WHERE id = ?', [id], (err, viaje) => {
+    if (err) {
+      console.error('❌ Error al obtener viaje futuro:', err.message);
+      return res.status(500).json({ error: 'Error al obtener viaje futuro' });
+    }
+
+    if (!viaje) {
+      return res.status(404).json({ error: 'Viaje futuro no encontrado' });
+    }
+
+    // Obtener itinerarios
+    db.all('SELECT * FROM itinerarios_futuros WHERE viajeFuturoId = ? ORDER BY fechaInicio', [id], (err, itinerarios) => {
+      if (err) {
+        console.error('❌ Error al obtener itinerarios:', err.message);
+        return res.status(500).json({ error: 'Error al obtener itinerarios' });
+      }
+
+      if (itinerarios.length === 0) {
+        viaje.itinerarios = [];
+        return res.json(viaje);
+      }
+
+      // Para cada itinerario, obtener sus actividades
+      let itinerariosCompletos = [];
+      let pendientes = itinerarios.length;
+
+      itinerarios.forEach(itinerario => {
+        db.all(
+          'SELECT * FROM actividades_futuras WHERE itinerarioFuturoId = ? ORDER BY horaInicio',
+          [itinerario.id],
+          (err, actividades) => {
+            if (err) {
+              console.error('❌ Error al obtener actividades:', err.message);
+            } else {
+              itinerario.actividades = actividades || [];
+            }
+
+            itinerariosCompletos.push(itinerario);
+            pendientes--;
+
+            if (pendientes === 0) {
+              viaje.itinerarios = itinerariosCompletos.sort((a, b) =>
+                new Date(a.fechaInicio) - new Date(b.fechaInicio)
+              );
+              console.log(`✅ Viaje futuro obtenido: ${viaje.nombre}`);
+              res.json(viaje);
+            }
+          }
+        );
+      });
+    });
+  });
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 3. CREAR VIAJE FUTURO
+// POST /api/viajes-futuros
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.post('/api/viajes-futuros', (req, res) => {
+  const { nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion, sessionId } = req.body;
+
+  if (!nombre || !fecha_inicio || !fecha_fin) {
+    return res.status(400).json({ error: 'Faltan campos obligatorios: nombre, fecha_inicio, fecha_fin' });
+  }
+
+  const sql = `
+    INSERT INTO viajes_futuros 
+    (nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion, sessionId, estado) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planificado')
+  `;
+
+  db.run(
+    sql,
+    [nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion, sessionId],
+    function (err) {
+      if (err) {
+        console.error('❌ Error al crear viaje futuro:', err.message);
+        return res.status(500).json({ error: 'Error al crear viaje futuro' });
+      }
+
+      const nuevoId = this.lastID;
+      console.log(`✅ Viaje futuro creado: ${nombre} (ID: ${nuevoId})`);
+
+      res.status(201).json({
+        id: nuevoId,
+        nombre,
+        destino,
+        fecha_inicio,
+        fecha_fin,
+        estado: 'planificado',
+        sessionId
+      });
+    }
+  );
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 4. ACTUALIZAR VIAJE FUTURO
+// PUT /api/viajes-futuros/:id
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.put('/api/viajes-futuros/:id', (req, res) => {
+  const { id } = req.params;
+  const { nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion } = req.body;
+
+  // Verificar que el viaje existe y no está migrado
+  db.get('SELECT estado FROM viajes_futuros WHERE id = ?', [id], (err, viaje) => {
+    if (err) {
+      console.error('❌ Error al verificar viaje:', err.message);
+      return res.status(500).json({ error: 'Error al verificar viaje' });
+    }
+
+    if (!viaje) {
+      return res.status(404).json({ error: 'Viaje futuro no encontrado' });
+    }
+
+    if (viaje.estado === 'migrado') {
+      return res.status(400).json({ error: 'No se puede editar un viaje ya migrado' });
+    }
+
+    const sql = `
+      UPDATE viajes_futuros 
+      SET nombre = ?, destino = ?, fecha_inicio = ?, fecha_fin = ?, imagen = ?, audio = ?, descripcion = ?
+      WHERE id = ?
+    `;
+
+    db.run(
+      sql,
+      [nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion, id],
+      function (err) {
+        if (err) {
+          console.error('❌ Error al actualizar viaje futuro:', err.message);
+          return res.status(500).json({ error: 'Error al actualizar viaje futuro' });
+        }
+
+        console.log(`✅ Viaje futuro actualizado: ${nombre} (ID: ${id})`);
+        res.json({ message: 'Viaje futuro actualizado correctamente', id });
+      }
+    );
+  });
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 5. ELIMINAR VIAJE FUTURO
+// DELETE /api/viajes-futuros/:id
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.delete('/api/viajes-futuros/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM viajes_futuros WHERE id = ?', [id], function (err) {
+    if (err) {
+      console.error('❌ Error al eliminar viaje futuro:', err.message);
+      return res.status(500).json({ error: 'Error al eliminar viaje futuro' });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Viaje futuro no encontrado' });
+    }
+
+    console.log(`✅ Viaje futuro eliminado (ID: ${id})`);
+    res.json({ message: 'Viaje futuro eliminado correctamente', id });
+  });
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 6. CREAR ITINERARIO PARA UN VIAJE FUTURO
+// POST /api/viajes-futuros/:id/itinerarios
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.post('/api/viajes-futuros/:id/itinerarios', (req, res) => {
+  const { id } = req.params;
+  const { fechaInicio, fechaFin, duracionDias, destinosPorDia, descripcionGeneral, horaInicio, horaFin, climaGeneral, tipoDeViaje } = req.body;
+
+  if (!fechaInicio || !fechaFin || !duracionDias || !destinosPorDia) {
+    return res.status(400).json({ error: 'Faltan campos obligatorios' });
+  }
+
+  const sql = `
+    INSERT INTO itinerarios_futuros 
+    (viajeFuturoId, fechaInicio, fechaFin, duracionDias, destinosPorDia, descripcionGeneral, horaInicio, horaFin, climaGeneral, tipoDeViaje)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  db.run(
+    sql,
+    [id, fechaInicio, fechaFin, duracionDias, destinosPorDia, descripcionGeneral, horaInicio, horaFin, climaGeneral, tipoDeViaje],
+    function (err) {
+      if (err) {
+        console.error('❌ Error al crear itinerario:', err.message);
+        return res.status(500).json({ error: 'Error al crear itinerario' });
+      }
+
+      console.log(`✅ Itinerario creado (ID: ${this.lastID}) para viaje ${id}`);
+      res.status(201).json({ id: this.lastID, viajeFuturoId: id });
+    }
+  );
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 7. CREAR ACTIVIDAD PARA UN ITINERARIO FUTURO
+// POST /api/itinerarios-futuros/:id/actividades
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.post('/api/itinerarios-futuros/:id/actividades', (req, res) => {
+  const { id } = req.params;
+  const { viajeFuturoId, tipoActividadId, actividadDisponibleId, nombre, descripcion, horaInicio, horaFin, ubicacion_planeada } = req.body;
+
+  if (!viajeFuturoId || !tipoActividadId || !horaInicio || !horaFin) {
+    return res.status(400).json({ error: 'Faltan campos obligatorios: viajeFuturoId, tipoActividadId, horaInicio, horaFin' });
+  }
+
+  const sql = `
+    INSERT INTO actividades_futuras 
+    (viajeFuturoId, itinerarioFuturoId, tipoActividadId, actividadDisponibleId, nombre, descripcion, horaInicio, horaFin, ubicacion_planeada)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  db.run(
+    sql,
+    [viajeFuturoId, id, tipoActividadId, actividadDisponibleId, nombre, descripcion, horaInicio, horaFin, ubicacion_planeada],
+    function (err) {
+      if (err) {
+        console.error('❌ Error al crear actividad:', err.message);
+        return res.status(500).json({ error: 'Error al crear actividad' });
+      }
+
+      console.log(`✅ Actividad creada (ID: ${this.lastID}) para itinerario ${id}`);
+      res.status(201).json({ id: this.lastID, itinerarioFuturoId: id });
+    }
+  );
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 8. ACTUALIZAR ITINERARIO FUTURO
+// PUT /api/itinerarios-futuros/:id
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.put('/api/itinerarios-futuros/:id', (req, res) => {
+  const { id } = req.params;
+  const { fechaInicio, fechaFin, duracionDias, destinosPorDia, descripcionGeneral, horaInicio, horaFin, climaGeneral, tipoDeViaje } = req.body;
+
+  const sql = `
+    UPDATE itinerarios_futuros 
+    SET fechaInicio = ?, fechaFin = ?, duracionDias = ?, destinosPorDia = ?, descripcionGeneral = ?, horaInicio = ?, horaFin = ?, climaGeneral = ?, tipoDeViaje = ?
+    WHERE id = ?
+  `;
+
+  db.run(
+    sql,
+    [fechaInicio, fechaFin, duracionDias, destinosPorDia, descripcionGeneral, horaInicio, horaFin, climaGeneral, tipoDeViaje, id],
+    function (err) {
+      if (err) {
+        console.error('❌ Error al actualizar itinerario:', err.message);
+        return res.status(500).json({ error: 'Error al actualizar itinerario' });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Itinerario no encontrado' });
+      }
+
+      console.log(`✅ Itinerario actualizado (ID: ${id})`);
+      res.json({ message: 'Itinerario actualizado correctamente', id });
+    }
+  );
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 9. ACTUALIZAR ACTIVIDAD FUTURA
+// PUT /api/actividades-futuras/:id
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.put('/api/actividades-futuras/:id', (req, res) => {
+  const { id } = req.params;
+  const { tipoActividadId, actividadDisponibleId, nombre, descripcion, horaInicio, horaFin, ubicacion_planeada } = req.body;
+
+  const sql = `
+    UPDATE actividades_futuras 
+    SET tipoActividadId = ?, actividadDisponibleId = ?, nombre = ?, descripcion = ?, horaInicio = ?, horaFin = ?, ubicacion_planeada = ?, fechaActualizacion = datetime('now')
+    WHERE id = ?
+  `;
+
+  db.run(
+    sql,
+    [tipoActividadId, actividadDisponibleId, nombre, descripcion, horaInicio, horaFin, ubicacion_planeada, id],
+    function (err) {
+      if (err) {
+        console.error('❌ Error al actualizar actividad:', err.message);
+        return res.status(500).json({ error: 'Error al actualizar actividad' });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Actividad no encontrada' });
+      }
+
+      console.log(`✅ Actividad actualizada (ID: ${id})`);
+      res.json({ message: 'Actividad actualizada correctamente', id });
+    }
+  );
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 10. ELIMINAR ITINERARIO FUTURO
+// DELETE /api/itinerarios-futuros/:id
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.delete('/api/itinerarios-futuros/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM itinerarios_futuros WHERE id = ?', [id], function (err) {
+    if (err) {
+      console.error('❌ Error al eliminar itinerario:', err.message);
+      return res.status(500).json({ error: 'Error al eliminar itinerario' });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Itinerario no encontrado' });
+    }
+
+    console.log(`✅ Itinerario eliminado (ID: ${id})`);
+    res.json({ message: 'Itinerario eliminado correctamente', id });
+  });
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 11. ELIMINAR ACTIVIDAD FUTURA
+// DELETE /api/actividades-futuras/:id
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.delete('/api/actividades-futuras/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM actividades_futuras WHERE id = ?', [id], function (err) {
+    if (err) {
+      console.error('❌ Error al eliminar actividad:', err.message);
+      return res.status(500).json({ error: 'Error al eliminar actividad' });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Actividad no encontrada' });
+    }
+
+    console.log(`✅ Actividad eliminada (ID: ${id})`);
+    res.json({ message: 'Actividad eliminada correctamente', id });
+  });
+});
+
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log('✅ MÓDULO 2: Endpoints de Viajes Futuros inicializados');
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FIN MÓDULO 2: ENDPOINTS VIAJES FUTUROS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 // Extraer fecha y hora de un archivo (EXIF o metadatos del sistema)
 async function getFileMetadata(filePath, fileType) {
