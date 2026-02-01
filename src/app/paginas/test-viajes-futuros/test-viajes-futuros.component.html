@@ -1,0 +1,121 @@
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- MÓDULO 5: VISTA DE PRUEBA - VIAJES FUTUROS -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+<div class="test-container">
+
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <!-- HEADER -->
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+    <div class="header">
+        <h1>🧪 Test: Viajes Futuros</h1>
+        <p>Componente de prueba para servicios de planificación con IA</p>
+    </div>
+
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <!-- PANEL DE ACCIONES PRINCIPALES -->
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+    <div class="actions-panel">
+        <h2>📋 Acciones Principales</h2>
+        <div class="button-group">
+            <button (click)="listarViajes()" class="btn btn-primary">
+                📋 Listar Viajes
+            </button>
+            <button (click)="crearViajeEjemplo()" class="btn btn-success">
+                ➕ Crear Viaje Ejemplo
+            </button>
+            <button (click)="limpiarLogs()" class="btn btn-secondary">
+                🗑️ Limpiar Logs
+            </button>
+        </div>
+    </div>
+
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <!-- LISTA DE VIAJES -->
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+    <div class="viajes-list">
+        <h2>🗺️ Viajes Futuros ({{ viajes.length }})</h2>
+
+        <div *ngIf="viajes.length === 0" class="empty-state">
+            <p>No hay viajes futuros. Crea uno con el botón "Crear Viaje Ejemplo".</p>
+        </div>
+
+        <div *ngFor="let viaje of viajes" class="viaje-card">
+            <div class="viaje-header">
+                <h3>{{ viaje.nombre }}</h3>
+                <span class="badge">{{ viaje.estado }}</span>
+            </div>
+
+            <div class="viaje-info">
+                <p><strong>Destino:</strong> {{ viaje.destino }}</p>
+                <p><strong>Fechas:</strong> {{ viaje.fecha_inicio }} → {{ viaje.fecha_fin }}</p>
+                <p><strong>Descripción:</strong> {{ viaje.descripcion }}</p>
+            </div>
+
+            <div class="viaje-actions">
+                <button (click)="obtenerViajeCompleto(viaje.id!)" class="btn btn-info btn-sm">
+                    🔍 Ver Completo
+                </button>
+                <button (click)="crearItinerarioEjemplo(viaje.id!)" class="btn btn-success btn-sm">
+                    ➕ Añadir Itinerario
+                </button>
+                <button (click)="actualizarViaje(viaje.id!)" class="btn btn-warning btn-sm">
+                    ✏️ Actualizar
+                </button>
+                <button (click)="eliminarViaje(viaje.id!)" class="btn btn-danger btn-sm">
+                    🗑️ Eliminar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <!-- VIAJE SELECCIONADO (COMPLETO) -->
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+    <div *ngIf="viajeSeleccionado" class="viaje-detalle">
+        <h2>📖 Viaje Completo: {{ viajeSeleccionado.nombre }}</h2>
+
+        <div class="itinerarios">
+            <h3>📅 Itinerarios ({{ viajeSeleccionado.itinerarios?.length || 0 }})</h3>
+
+            <div *ngFor="let itinerario of viajeSeleccionado.itinerarios" class="itinerario-card">
+                <h4>{{ itinerario.descripcionGeneral }}</h4>
+                <p><strong>Fecha:</strong> {{ itinerario.fechaInicio }}</p>
+                <p><strong>Destinos:</strong> {{ itinerario.destinosPorDia }}</p>
+
+                <button (click)="crearActividadEjemplo(itinerario.id!, viajeSeleccionado.id!)"
+                    class="btn btn-success btn-sm">
+                    ➕ Añadir Actividad
+                </button>
+
+                <div class="actividades">
+                    <h5>🎯 Actividades ({{ itinerario.actividades?.length || 0 }})</h5>
+
+                    <div *ngFor="let actividad of itinerario.actividades" class="actividad-item">
+                        <strong>{{ actividad.nombre }}</strong>
+                        <span class="horario">{{ actividad.horaInicio }} - {{ actividad.horaFin }}</span>
+                        <p>{{ actividad.descripcion }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <!-- CONSOLA DE LOGS -->
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+    <div class="logs-panel">
+        <h2>📜 Logs de Actividad</h2>
+        <div class="logs-container">
+            <div *ngFor="let log of logs" class="log-entry">
+                {{ log }}
+            </div>
+        </div>
+    </div>
+
+</div>

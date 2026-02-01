@@ -20,13 +20,23 @@ import { FormularioArchivosComponent } from './paginas/viajes-previstos/formular
 // Importar componentes para archivos sin asignación
 import { CrudArchivosSinAsignacionComponent } from './paginas/configuracion/crud-archivos-sin-asignacion/crud-archivos-sin-asignacion/crud-archivos-sin-asignacion.component';
 
+import { TestViajesFuturosComponent } from './paginas/test-viajes-futuros/test-viajes-futuros.component';
+
+
 export const routes: Routes = [
   { path: '', component: InicioComponent },
 
   // ✨ NUEVO: Planificador de viajes con IA (Chatbot)
   { path: 'planificar-viaje', component: PlanificarViajeComponent },
 
+  // 🧪 NUEVO: Componente de prueba - Viajes Futuros (MÓDULO 5)
+  { path: 'test-viajes-futuros', component: TestViajesFuturosComponent },
 
+  // ✨ NUEVO: Lista de viajes futuros (lo que antes era /viajes)
+  { path: 'viajes-futuros', component: ViajesComponent },
+
+  // ✨ NUEVO: Planificador de viajes con IA (Chatbot)
+  { path: 'planificar-viaje', component: PlanificarViajeComponent },
 
   // ✨ NUEVO: Lista de viajes futuros (lo que antes era /viajes)
   { path: 'viajes-futuros', component: ViajesComponent },

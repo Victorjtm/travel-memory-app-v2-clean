@@ -888,6 +888,7 @@ app.post('/api/viajes-futuros/:id/itinerarios', (req, res) => {
 });
 
 
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 7. CREAR ACTIVIDAD PARA UN ITINERARIO FUTURO
 // POST /api/itinerarios-futuros/:id/actividades
@@ -1039,6 +1040,46 @@ app.delete('/api/actividades-futuras/:id', (req, res) => {
     res.json({ message: 'Actividad eliminada correctamente', id });
   });
 });
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 12. LISTAR ITINERARIOS DE UN VIAJE FUTURO
+// GET /api/viajes-futuros/:id/itinerarios
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.get('/api/viajes-futuros/:id/itinerarios', (req, res) => {
+  const { id } = req.params;
+
+  db.all('SELECT * FROM itinerarios_futuros WHERE viajeFuturoId = ? ORDER BY fechaInicio', [id], (err, rows) => {
+    if (err) {
+      console.error('❌ Error al listar itinerarios:', err.message);
+      return res.status(500).json({ error: 'Error al obtener itinerarios' });
+    }
+
+    console.log(`✅ Listados ${rows.length} itinerarios del viaje ${id}`);
+    res.json(rows);
+  });
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 13. LISTAR ACTIVIDADES DE UN ITINERARIO FUTURO
+// GET /api/itinerarios-futuros/:id/actividades
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.get('/api/itinerarios-futuros/:id/actividades', (req, res) => {
+  const { id } = req.params;
+
+  db.all('SELECT * FROM actividades_futuras WHERE itinerarioFuturoId = ? ORDER BY horaInicio', [id], (err, rows) => {
+    if (err) {
+      console.error('❌ Error al listar actividades:', err.message);
+      return res.status(500).json({ error: 'Error al obtener actividades' });
+    }
+
+    console.log(`✅ Listadas ${rows.length} actividades del itinerario ${id}`);
+    res.json(rows);
+  });
+});
+
 
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 console.log('✅ MÓDULO 2: Endpoints de Viajes Futuros inicializados');
