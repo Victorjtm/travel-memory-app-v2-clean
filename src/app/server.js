@@ -1,4 +1,11 @@
-// Importar las dependencias
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CARGAR VARIABLES DE ENTORNO
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+require('dotenv').config();
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// IMPORTAR DEPENDENCIAS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const fs = require('fs');
 const ExifParser = require('exif-parser');
 const { promisify } = require('util');
@@ -11,8 +18,103 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const multer = require('multer');
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MÓDULO 6: CLIENTE PERPLEXITY
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const PerplexityClient = require('./backend-services/perplexity-client');
+
+// Inicializar cliente con API Key del .env
+const perplexityClient = new PerplexityClient();
+
+console.log('🤖 Cliente Perplexity inicializado');
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+console.log('🤖 Cliente Perplexity inicializado');
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MÓDULO 6: SEGURIDAD - RATE LIMITING Y LÍMITES DE TOKENS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const rateLimit = require('express-rate-limit');
+
+// 1. RATE LIMITING: Limitar peticiones a endpoints de IA (10 cada 15 min)
+const iaRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: {
+    error: 'Demasiadas peticiones a la IA',
+    detalles: 'Por favor, espera 15 minutos antes de volver a intentar',
+    reintentar_en: '15 minutos'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Arreglado para IPv6
+  handler: (req, res) => {
+    console.log(`⚠️ [RATE LIMIT] IP bloqueada temporalmente: ${req.ip}`);
+    res.status(429).json({
+      error: 'Demasiadas peticiones a la IA',
+      mensaje: 'Has alcanzado el límite de 10 peticiones cada 15 minutos',
+      reintentar_en_segundos: 900,
+      ip: req.ip
+    });
+  }
+});
+
+
+console.log('🛡️ Rate limiting configurado: 10 peticiones cada 15 minutos');
+
+
+// 2. LÍMITE DE TOKENS POR SESIÓN (10,000 tokens máximo)
+const MAX_TOKENS_POR_SESION = 10000;
+
+/**
+ * Middleware para verificar el consumo de tokens de una sesión
+ */
+async function verificarLimiteTokens(req, res, next) {
+  const { sessionId } = req.body;
+
+  if (!sessionId) {
+    return next();
+  }
+
+  try {
+    const resultado = await dbQuery.get(
+      'SELECT SUM(tokens_usados) as total FROM conversaciones_ia WHERE sessionId = ?',
+      [sessionId]
+    );
+
+    const tokensConsumidos = resultado?.total || 0;
+
+    if (tokensConsumidos >= MAX_TOKENS_POR_SESION) {
+      console.log(`⚠️ [TOKENS] Sesión ${sessionId.substring(0, 8)} excedió límite: ${tokensConsumidos}/${MAX_TOKENS_POR_SESION}`);
+
+      return res.status(429).json({
+        error: 'Límite de tokens excedido',
+        mensaje: `Esta sesión ha consumido ${tokensConsumidos} tokens de un máximo de ${MAX_TOKENS_POR_SESION}`,
+        tokens_consumidos: tokensConsumidos,
+        tokens_maximos: MAX_TOKENS_POR_SESION,
+        accion: 'Inicia una nueva sesión para continuar conversando'
+      });
+    }
+
+    req.tokensConsumidos = tokensConsumidos;
+    req.tokensRestantes = MAX_TOKENS_POR_SESION - tokensConsumidos;
+
+    console.log(`📊 [TOKENS] Sesión ${sessionId.substring(0, 8)}: ${tokensConsumidos}/${MAX_TOKENS_POR_SESION} (${req.tokensRestantes} restantes)`);
+
+    next();
+  } catch (error) {
+    console.error('❌ Error verificando límite de tokens:', error.message);
+    next();
+  }
+}
+
+console.log(`🎯 Límite de tokens por sesión: ${MAX_TOKENS_POR_SESION}`);
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
 // Crear una instancia de la aplicación Express
 const app = express();
+
 
 // AGREGA ESTO ANTES de la configuración CORS existente en server.js
 
@@ -1088,6 +1190,298 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FIN MÓDULO 2: ENDPOINTS VIAJES FUTUROS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MÓDULO 6: ENDPOINTS IA - INTEGRACIÓN CON PERPLEXITY
+// Fecha: 2026-02-04
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+app.post('/api/ia/chat', iaRateLimiter, verificarLimiteTokens, async (req, res) => {
+  const { sessionId, mensaje, apiKey } = req.body;
+
+  if (!sessionId || !mensaje) {
+    return res.status(400).json({ error: 'Faltan campos obligatorios: sessionId, mensaje' });
+  }
+
+  const inicio = Date.now();
+
+  try {
+    // 1. Guardar mensaje del usuario en BD
+    await dbQuery.run(
+      `INSERT INTO conversaciones_ia (sessionId, rol, mensaje, timestamp) 
+       VALUES (?, 'user', ?, datetime('now'))`,
+      [sessionId, mensaje]
+    );
+
+    console.log(`📤 [IA] Usuario (${sessionId.substring(0, 8)}): ${mensaje.substring(0, 50)}...`);
+
+    // 2. Obtener historial de la conversación (últimos 20 mensajes)
+    const historial = await dbQuery.all(
+      `SELECT rol, mensaje FROM conversaciones_ia 
+       WHERE sessionId = ? 
+       ORDER BY timestamp ASC 
+       LIMIT 20`,
+      [sessionId]
+    );
+
+    // 3. Preparar mensajes para Perplexity
+    const mensajesPerplexity = [
+      {
+        role: 'system',
+        content: `Eres un asistente experto en planificación de viajes. 
+
+Tu objetivo es ayudar al usuario a crear un plan de viaje estructurado con:
+- Nombre del viaje
+- Destino principal
+- Fechas de inicio y fin (formato YYYY-MM-DD)
+- Itinerarios por día con actividades detalladas (nombre, horario, descripción)
+
+Cuando el plan esté completo, incluye al final de tu respuesta un bloque JSON con este formato exacto:
+
+\`\`\`json
+{
+  "plan_completo": true,
+  "viaje": {
+    "nombre": "Viaje a Barcelona",
+    "destino": "Barcelona",
+    "fecha_inicio": "2026-03-15",
+    "fecha_fin": "2026-03-18",
+    "descripcion": "Escapada cultural y gastronómica"
+  },
+  "itinerarios": [
+    {
+      "fecha": "2026-03-15",
+      "descripcion": "Llegada y zona gótica",
+      "tipo_viaje": "urbana",
+      "actividades": [
+        {
+          "nombre": "Check-in hotel",
+          "descripcion": "Hotel en Las Ramblas",
+          "hora_inicio": "14:00",
+          "hora_fin": "15:00",
+          "tipo_actividad": "alojamiento",
+          "ubicacion": "Las Ramblas, Barcelona"
+        }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+IMPORTANTE: 
+- Los tipos de viaje válidos son: costa, naturaleza, rural, urbana, cultural, trabajo
+- Los horarios deben estar en formato HH:MM (24 horas)
+- Las fechas en formato YYYY-MM-DD
+- Sé conversacional y amigable
+- Haz preguntas si falta información importante`
+      },
+      ...historial.map(m => ({
+        role: m.rol === 'user' ? 'user' : 'assistant',
+        content: m.mensaje
+      }))
+    ];
+
+    // 4. Llamar a Perplexity usando el cliente
+    const respuestaPerplexity = await perplexityClient.chat(mensajesPerplexity, apiKey);
+
+    const respuestaIA = respuestaPerplexity.contenido;
+    const tokensUsados = respuestaPerplexity.tokens;
+    const tiempoRespuesta = respuestaPerplexity.tiempo_ms;
+
+    console.log(`📥 [IA] Respuesta recibida (${tokensUsados} tokens, ${tiempoRespuesta}ms)`);
+
+    // 5. Detectar si hay un plan estructurado en la respuesta
+    let planDetectado = false;
+    let datosEstructurados = null;
+
+    const jsonMatch = respuestaIA.match(/```json\n([\s\S]*?)\n```/);
+    if (jsonMatch) {
+      try {
+        datosEstructurados = JSON.parse(jsonMatch[1]);
+        planDetectado = datosEstructurados.plan_completo === true;
+        console.log('✨ [IA] Plan estructurado detectado');
+      } catch (error) {
+        console.warn('⚠️ [IA] Error parseando JSON del plan:', error.message);
+      }
+    }
+
+    // 6. Guardar respuesta de la IA en BD
+    const resultadoInsert = await dbQuery.run(
+      `INSERT INTO conversaciones_ia 
+       (sessionId, rol, mensaje, timestamp, tokens_usados, tiempo_respuesta, datos_estructurados, modelo) 
+       VALUES (?, 'assistant', ?, datetime('now'), ?, ?, ?, ?)`,
+      [
+        sessionId,
+        respuestaIA,
+        tokensUsados,
+        tiempoRespuesta,
+        datosEstructurados ? JSON.stringify(datosEstructurados) : null,
+        respuestaPerplexity.modelo
+      ]
+    );
+
+    // 7. Responder al frontend
+    res.json({
+      id: resultadoInsert.lastID,
+      mensaje: respuestaIA,
+      tokens: tokensUsados,
+      tiempo_ms: tiempoRespuesta,
+      plan_detectado: planDetectado,
+      datos_estructurados: datosEstructurados,
+      citations: respuestaPerplexity.citations || [],
+      // ✨ Información de límites de seguridad
+      limite_tokens: {
+        consumidos: (req.tokensConsumidos || 0) + tokensUsados,
+        maximo: MAX_TOKENS_POR_SESION,
+        restantes: Math.max(0, (req.tokensRestantes || MAX_TOKENS_POR_SESION) - tokensUsados),
+        porcentaje_usado: Math.round(((req.tokensConsumidos || 0) + tokensUsados) / MAX_TOKENS_POR_SESION * 100)
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ [IA] Error en chat:', error.message);
+
+    res.status(error.status || 500).json({
+      error: error.message || 'Error al procesar mensaje con IA',
+      tiempo_ms: error.tiempo_ms || Date.now() - inicio
+    });
+  }
+});
+
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 2. VALIDAR API KEY
+// POST /api/ia/validar-apikey
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.post('/api/ia/validar-apikey', async (req, res) => {
+  const { apiKey } = req.body;
+
+  if (!apiKey) {
+    return res.status(400).json({ valida: false, error: 'API Key no proporcionada' });
+  }
+
+  try {
+    console.log('🔑 Validando API Key de Perplexity...');
+    const resultado = await perplexityClient.validarApiKey(apiKey);
+    res.json(resultado);
+  } catch (error) {
+    console.error('❌ [IA] Error validando API Key:', error.message);
+    res.json({
+      valida: false,
+      error: error.message || 'No se pudo validar la API Key'
+    });
+  }
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 3. OBTENER HISTORIAL DE UNA SESIÓN
+// GET /api/ia/historial/:sessionId
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.get('/api/ia/historial/:sessionId', async (req, res) => {
+  const { sessionId } = req.params;
+
+  try {
+    const mensajes = await dbQuery.all(
+      `SELECT 
+        id, sessionId, rol, mensaje, timestamp, 
+        tokens_usados, modelo, tiempo_respuesta, 
+        datos_estructurados, tipo_interaccion 
+       FROM conversaciones_ia 
+       WHERE sessionId = ? 
+       ORDER BY timestamp ASC`,
+      [sessionId]
+    );
+
+    // Parsear datos_estructurados si existen
+    const mensajesProcesados = mensajes.map(m => ({
+      ...m,
+      datos_estructurados: m.datos_estructurados ? JSON.parse(m.datos_estructurados) : null
+    }));
+
+    console.log(`📖 [IA] Historial cargado: ${mensajes.length} mensajes (${sessionId.substring(0, 8)})`);
+
+    res.json({
+      sessionId,
+      total: mensajes.length,
+      mensajes: mensajesProcesados
+    });
+  } catch (error) {
+    console.error('❌ Error obteniendo historial:', error.message);
+    res.status(500).json({ error: 'Error al obtener historial' });
+  }
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 4. LIMPIAR HISTORIAL DE UNA SESIÓN
+// DELETE /api/ia/historial/:sessionId
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.delete('/api/ia/historial/:sessionId', async (req, res) => {
+  const { sessionId } = req.params;
+
+  try {
+    const resultado = await dbQuery.run(
+      'DELETE FROM conversaciones_ia WHERE sessionId = ?',
+      [sessionId]
+    );
+
+    console.log(`🗑️ [IA] Historial eliminado: ${resultado.changes} mensajes (${sessionId.substring(0, 8)})`);
+
+    res.json({
+      success: true,
+      deleted: resultado.changes
+    });
+  } catch (error) {
+    console.error('❌ Error eliminando historial:', error.message);
+    res.status(500).json({ error: 'Error al eliminar historial' });
+  }
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 5. LISTAR SESIONES ACTIVAS
+// GET /api/ia/sesiones-activas
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.get('/api/ia/sesiones-activas', async (req, res) => {
+  try {
+    const sesiones = await dbQuery.all(
+      `SELECT 
+        sessionId,
+        COUNT(*) as num_mensajes,
+        MIN(timestamp) as inicio,
+        MAX(timestamp) as ultimo_mensaje,
+        SUM(CASE WHEN rol = 'user' THEN 1 ELSE 0 END) as mensajes_usuario,
+        SUM(CASE WHEN rol = 'assistant' THEN 1 ELSE 0 END) as respuestas_ia,
+        SUM(COALESCE(tokens_usados, 0)) as tokens_totales,
+        SUM(CASE WHEN datos_estructurados IS NOT NULL THEN 1 ELSE 0 END) as tiene_plan
+       FROM conversaciones_ia 
+       GROUP BY sessionId 
+       ORDER BY ultimo_mensaje DESC`,
+      []
+    );
+
+    console.log(`📚 [IA] Sesiones activas: ${sesiones.length}`);
+    res.json(sesiones);
+  } catch (error) {
+    console.error('❌ Error listando sesiones:', error.message);
+    res.status(500).json({ error: 'Error al listar sesiones' });
+  }
+});
+
+
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log('✅ MÓDULO 6: Endpoints de IA inicializados');
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+
+// Extraer fecha y hora de un archivo (EXIF o metadatos del sistema)
 
 
 // Extraer fecha y hora de un archivo (EXIF o metadatos del sistema)
@@ -6114,9 +6508,6 @@ if (isProduction) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ENDPOINTS DE IA - PERPLEXITY (AISLADOS DEL RESTO DEL SISTEMA)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-const PerplexityClient = require('./backend-services/perplexity-client');
-const perplexityClient = new PerplexityClient();
 
 /**
  * POST /api/ia/chat

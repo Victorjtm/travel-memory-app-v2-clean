@@ -2,6 +2,54 @@
 // MODELOS TYPESCRIPT PARA CONVERSACIONES CON IA
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
+/**
+ * Actividad dentro de un itinerario
+ */
+export interface ActividadIA {
+    nombre: string;
+    descripcion?: string;
+    hora_inicio: string;  // HH:MM
+    hora_fin: string;     // HH:MM
+    tipo_actividad?: string;
+    ubicacion?: string;
+    notas?: string;
+}
+
+
+/**
+ * Itinerario de un día específico
+ */
+export interface ItinerarioIA {
+    fecha: string;  // YYYY-MM-DD
+    descripcion?: string;
+    tipo_viaje?: 'costa' | 'naturaleza' | 'rural' | 'urbana' | 'cultural' | 'trabajo';
+    actividades: ActividadIA[];
+}
+
+
+/**
+ * Información general del viaje
+ */
+export interface ViajeIA {
+    nombre: string;
+    destino: string;
+    fecha_inicio: string;  // YYYY-MM-DD
+    fecha_fin: string;     // YYYY-MM-DD
+    descripcion?: string;
+}
+
+
+/**
+ * Plan de viaje estructurado generado por la IA
+ */
+export interface PlanEstructurado {
+    plan_completo: boolean;
+    viaje: ViajeIA;
+    itinerarios: ItinerarioIA[];
+}
+
+
 /**
  * Representa un mensaje individual en la conversación
  */
@@ -18,48 +66,6 @@ export interface MensajeIA {
     tipo_interaccion?: 'planificacion' | 'refinamiento' | 'pregunta';
 }
 
-/**
- * Plan de viaje estructurado generado por la IA
- */
-export interface PlanEstructurado {
-    plan_completo: boolean;
-    viaje: ViajeIA;
-    itinerarios: ItinerarioIA[];
-}
-
-/**
- * Información general del viaje
- */
-export interface ViajeIA {
-    nombre: string;
-    destino: string;
-    fecha_inicio: string;  // YYYY-MM-DD
-    fecha_fin: string;     // YYYY-MM-DD
-    descripcion?: string;
-}
-
-/**
- * Itinerario de un día específico
- */
-export interface ItinerarioIA {
-    fecha: string;  // YYYY-MM-DD
-    descripcion?: string;
-    tipo_viaje?: 'costa' | 'naturaleza' | 'rural' | 'urbana' | 'cultural' | 'trabajo';
-    actividades: ActividadIA[];
-}
-
-/**
- * Actividad dentro de un itinerario
- */
-export interface ActividadIA {
-    nombre: string;
-    descripcion?: string;
-    hora_inicio: string;  // HH:MM
-    hora_fin: string;     // HH:MM
-    tipo_actividad?: string;
-    ubicacion?: string;
-    notas?: string;
-}
 
 /**
  * Respuesta completa del endpoint /api/ia/chat
@@ -72,7 +78,15 @@ export interface RespuestaChat {
     plan_detectado: boolean;
     datos_estructurados: PlanEstructurado | null;
     citations?: any[];
+    // ✨ NUEVO: Información de límites de seguridad
+    limite_tokens?: {
+        consumidos: number;
+        maximo: number;
+        restantes: number;
+        porcentaje_usado: number;
+    };
 }
+
 
 /**
  * Historial completo de una sesión
@@ -82,6 +96,7 @@ export interface HistorialSesion {
     total: number;
     mensajes: MensajeIA[];
 }
+
 
 /**
  * Resumen de sesiones activas

@@ -40,6 +40,17 @@ export class IAService {
     public planDetectado$ = this.planDetectadoSubject.asObservable();
     public cargando$ = this.cargandoSubject.asObservable();
 
+    // ✨ NUEVO: Estado de consumo de tokens
+    private limiteTokensSubject = new BehaviorSubject<{
+        consumidos: number;
+        maximo: number;
+        restantes: number;
+        porcentaje_usado: number;
+    } | null>(null);
+
+    public limiteTokens$ = this.limiteTokensSubject.asObservable();
+
+
     // API Key del usuario (opcional)
     private apiKeyUsuario: string | null = null;
 
@@ -179,6 +190,12 @@ export class IAService {
             tap(respuesta => {
                 console.log(`📥 Respuesta recibida (${respuesta.tokens} tokens, ${respuesta.tiempo_ms}ms)`);
 
+                // ✨ NUEVO: Actualizar información de límite de tokens
+                if (respuesta.limite_tokens) {
+                    this.limiteTokensSubject.next(respuesta.limite_tokens);
+                    console.log(`📊 Tokens: ${respuesta.limite_tokens.consumidos}/${respuesta.limite_tokens.maximo} (${respuesta.limite_tokens.porcentaje_usado}% usado)`);
+                }
+
                 // Añadir respuesta de la IA al historial
                 const mensajeIA: MensajeIA = {
                     id: respuesta.id,
@@ -202,6 +219,7 @@ export class IAService {
 
                 this.cargandoSubject.next(false);
             }),
+
             catchError(error => {
                 this.cargandoSubject.next(false);
                 return this.handleError(error);

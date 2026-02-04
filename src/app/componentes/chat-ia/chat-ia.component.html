@@ -167,12 +167,39 @@
     <!-- FOOTER CON INFO                                                   -->
     <!-- ══════════════════════════════════════════════════════════════════ -->
     <div class="chat-footer">
-        <small>
+        <!-- ✨ NUEVO: Barra de progreso de tokens -->
+        <div class="tokens-progress" *ngIf="limiteTokens">
+            <div class="tokens-info">
+                <span class="tokens-label">🪙 Consumo de tokens:</span>
+                <span class="tokens-numeros">
+                    {{ limiteTokens.consumidos.toLocaleString('es-ES') }} /
+                    {{ limiteTokens.maximo.toLocaleString('es-ES') }}
+                </span>
+                <span class="tokens-porcentaje" [class.warning]="limiteTokens.porcentaje_usado >= 75"
+                    [class.danger]="limiteTokens.porcentaje_usado >= 90">
+                    ({{ limiteTokens.porcentaje_usado }}%)
+                </span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" [style.width.%]="limiteTokens.porcentaje_usado"
+                    [class.warning]="limiteTokens.porcentaje_usado >= 75"
+                    [class.danger]="limiteTokens.porcentaje_usado >= 90">
+                </div>
+            </div>
+            <div class="tokens-restantes">
+                <small>
+                    Quedan {{ limiteTokens.restantes.toLocaleString('es-ES') }} tokens disponibles
+                </small>
+            </div>
+        </div>
+
+        <small class="footer-text">
             Powered by Perplexity AI •
             {{ mensajes.length }} mensajes •
             <span *ngIf="!apiKeyConfigurada" class="advertencia">⚠️ API Key no configurada</span>
             <span *ngIf="apiKeyConfigurada" class="ok">✓ API Key configurada</span>
         </small>
     </div>
+
 
 </div>

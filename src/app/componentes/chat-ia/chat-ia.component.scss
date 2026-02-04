@@ -545,14 +545,16 @@ $spacing-lg: 24px;
 // ══════════════════════════════════════════════════════════════════════
 
 .chat-footer {
-    padding: $spacing-sm $spacing-lg;
+    padding: $spacing-md $spacing-lg;
     background: $color-fondo;
     border-top: 1px solid $color-borde;
-    text-align: center;
 
-    small {
+    small.footer-text {
+        display: block;
         color: $color-texto-claro;
         font-size: 0.8rem;
+        text-align: center;
+        margin-top: $spacing-sm;
 
         .advertencia {
             color: $color-error;
@@ -565,6 +567,92 @@ $spacing-lg: 24px;
         }
     }
 }
+
+// ══════════════════════════════════════════════════════════════════════
+// BARRA DE PROGRESO DE TOKENS
+// ══════════════════════════════════════════════════════════════════════
+
+.tokens-progress {
+    margin-bottom: $spacing-sm;
+    padding: 12px;
+    background: $color-blanco;
+    border-radius: 8px;
+    border: 1px solid $color-borde;
+}
+
+.tokens-info {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    margin-bottom: 8px;
+    font-size: 13px;
+    flex-wrap: wrap;
+
+    .tokens-label {
+        font-weight: 600;
+        color: $color-texto;
+    }
+
+    .tokens-numeros {
+        color: $color-texto-claro;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+    }
+
+    .tokens-porcentaje {
+        padding: 2px 8px;
+        border-radius: 12px;
+        background: rgba(76, 175, 80, 0.15);
+        color: $color-secundario;
+        font-weight: 600;
+        font-size: 11px;
+        margin-left: auto;
+
+        &.warning {
+            background: rgba(255, 152, 0, 0.15);
+            color: #ff9800;
+        }
+
+        &.danger {
+            background: rgba(244, 67, 54, 0.15);
+            color: $color-error;
+        }
+    }
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, $color-secundario, #66bb6a);
+    border-radius: 4px;
+    transition: width 0.5s ease, background 0.3s ease;
+
+    &.warning {
+        background: linear-gradient(90deg, #ff9800, #ffb74d);
+    }
+
+    &.danger {
+        background: linear-gradient(90deg, $color-error, #ef5350);
+    }
+}
+
+.tokens-restantes {
+    text-align: center;
+
+    small {
+        color: $color-texto-claro;
+        font-size: 11px;
+    }
+}
+
 
 // ══════════════════════════════════════════════════════════════════════
 // RESPONSIVE

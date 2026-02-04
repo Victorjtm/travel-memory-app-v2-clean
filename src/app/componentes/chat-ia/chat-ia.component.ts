@@ -30,6 +30,15 @@ export class ChatIAComponent implements OnInit, OnDestroy, AfterViewChecked {
     mostrarJson: boolean = false;
     apiKeyConfigurada: boolean = false;
 
+    // ✨ NUEVO: Información de límite de tokens
+    limiteTokens: {
+        consumidos: number;
+        maximo: number;
+        restantes: number;
+        porcentaje_usado: number;
+    } | null = null;
+
+
     // Control de scroll
     @ViewChild('mensajesContainer') private mensajesContainer!: ElementRef;
     private shouldScroll = false;
@@ -85,6 +94,17 @@ export class ChatIAComponent implements OnInit, OnDestroy, AfterViewChecked {
             .subscribe(id => {
                 this.sessionId = id;
             });
+
+        // ✨ NUEVO: Suscribirse a límites de tokens
+        this.iaService.limiteTokens$
+            .pipe(takeUntil(this.destroy$))
+            .subscribe(limite => {
+                this.limiteTokens = limite;
+                if (limite && limite.porcentaje_usado >= 90) {
+                    console.warn(`⚠️ Advertencia: ${limite.porcentaje_usado}% de tokens consumidos`);
+                }
+            });
+
     }
 
     ngAfterViewChecked(): void {
