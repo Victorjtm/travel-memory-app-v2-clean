@@ -4,24 +4,41 @@ import { Observable } from 'rxjs';
 
 @Injectable()
 export class NgrokInterceptor implements HttpInterceptor {
-  
   intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    // Si la petición es hacia una URL de ngrok, agregar headers necesarios
-    if (req.url.includes('ngrok-free.app') || req.url.includes('ngrok.io')) {
-      console.log('🔧 [NgrokInterceptor] Agregando headers para ngrok:', req.url);
-      
-      const modifiedReq = req.clone({
-        setHeaders: {
-          'ngrok-skip-browser-warning': '1',
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
+
+    console.log('🔍 [NgrokInterceptor] Interceptando:', req.url);
+
+    // 1. INTERCEPTAR LOCALHOST Y USAR LA IP DETECTADA
+    const realApiUrl = (window as any).__API_URL__;
+
+    if (realApiUrl && req.url.includes('localhost:3000')) {
+      const newUrl = req.url.replace('http://localhost:3000', realApiUrl);
+      console.log(`🔄 [NgrokInterceptor] localhost → ${newUrl}`);
+
+      const clonedRequest = req.clone({
+        url: newUrl
       });
-      
-      return next.handle(modifiedReq);
+
+      return next.handle(clonedRequest);
     }
-    
-    // Para peticiones normales, no modificar nada
+
+    // 2. INTERCEPTAR NGROK (lógica original)
+    const ngrokBackendUrl = (window as any).NGROK_BACKEND_URL;
+
+    if (ngrokBackendUrl && req.url.includes('localhost')) {
+      const newUrl = req.url.replace(/http:\/\/localhost:\d+/, ngrokBackendUrl);
+      console.log(`🔄 [NgrokInterceptor] ngrok → ${newUrl}`);
+
+      const clonedRequest = req.clone({
+        url: newUrl
+      });
+
+      return next.handle(clonedRequest);
+    }
+
+    console.log('➡️ [NgrokInterceptor] Sin cambios');
+
+    // 3. Si no hay cambios, continuar normal
     return next.handle(req);
   }
 }

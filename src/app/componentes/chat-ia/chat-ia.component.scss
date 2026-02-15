@@ -208,6 +208,25 @@ $spacing-lg: 24px;
                     }
                 }
             }
+
+            .btn-guardar {
+                background: $color-secundario !important;
+                color: $color-blanco !important;
+                border-color: $color-secundario !important;
+                font-weight: 600;
+
+                &:hover:not(:disabled) {
+                    background: darken($color-secundario, 10%) !important;
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+                }
+
+                &:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
+                }
+            }
+
         }
 
         .json-container {

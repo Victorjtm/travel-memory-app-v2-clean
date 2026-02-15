@@ -1,0 +1,165 @@
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- COMPONENTE: DETALLE DE VIAJE FUTURO                                  -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+<div class="viaje-detalle-container">
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- CARGANDO                                                           -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="loading" *ngIf="cargando">
+        <div class="spinner"></div>
+        <p>Cargando viaje...</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- ERROR                                                              -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="error" *ngIf="error && !cargando">
+        <h2>❌ Error</h2>
+        <p>{{ error }}</p>
+        <button class="btn-volver" (click)="volver()">← Volver</button>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- CONTENIDO DEL VIAJE                                                -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="viaje-content" *ngIf="viaje && !cargando">
+
+        <!-- HEADER -->
+        <div class="viaje-header">
+            <button class="btn-back" (click)="volver()">
+                ← Volver
+            </button>
+
+            <div class="header-actions">
+                <button class="btn-eliminar" (click)="eliminarViaje()">
+                    🗑️ Eliminar viaje
+                </button>
+            </div>
+        </div>
+
+        <!-- INFORMACIÓN PRINCIPAL -->
+        <div class="viaje-info">
+            <div class="info-principal">
+                <h1>{{ viaje!.viaje.nombre }}</h1>
+                <div class="destino">
+                    <span class="icon">📍</span>
+                    <span>{{ viaje!.viaje.destino }}</span>
+                </div>
+            </div>
+
+            <div class="info-fechas">
+                <div class="fecha-item">
+                    <span class="label">Inicio</span>
+                    <span class="valor">{{ formatearFecha(viaje!.viaje.fecha_inicio) }}</span>
+                </div>
+                <div class="separador">→</div>
+                <div class="fecha-item">
+                    <span class="label">Fin</span>
+                    <span class="valor">{{ formatearFecha(viaje!.viaje.fecha_fin) }}</span>
+                </div>
+            </div>
+
+            <p class="descripcion" *ngIf="viaje!.viaje.descripcion">
+                {{ viaje!.viaje.descripcion }}
+            </p>
+        </div>
+
+        <!-- ESTADÍSTICAS -->
+        <div class="estadisticas">
+            <div class="stat-card">
+                <div class="stat-icon">🗓️</div>
+                <div class="stat-info">
+                    <span class="stat-valor">{{ viaje!.estadisticas.total_dias }}</span>
+                    <span class="stat-label">Días</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">🎯</div>
+                <div class="stat-info">
+                    <span class="stat-valor">{{ viaje!.estadisticas.total_actividades }}</span>
+                    <span class="stat-label">Actividades</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">📊</div>
+                <div class="stat-info">
+                    <span class="stat-valor">{{ viaje!.estadisticas.actividades_por_dia }}</span>
+                    <span class="stat-label">Por día</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">{{ getIconoTipoViaje(viaje!.itinerarios[0]?.tipoDeViaje) }}</div>
+                <div class="stat-info">
+                    <span class="stat-valor">{{ viaje!.itinerarios[0]?.tipoDeViaje || 'Urbana' }}</span>
+                    <span class="stat-label">Tipo</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ITINERARIOS -->
+        <div class="itinerarios-section" *ngIf="viaje!.itinerarios.length > 0">
+            <h2>📋 Itinerario General</h2>
+
+            <div class="itinerario-card" *ngFor="let itinerario of viaje!.itinerarios">
+                <div class="itinerario-header">
+                    <h3>{{ itinerario.descripcionGeneral || 'Sin descripción' }}</h3>
+                    <span class="duracion">{{ itinerario.duracionDias }} días</span>
+                </div>
+
+                <div class="itinerario-info">
+                    <p><strong>Destinos por día:</strong></p>
+                    <p class="destinos-dia">{{ itinerario.destinosPorDia }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ACTIVIDADES POR DÍA -->
+        <div class="actividades-section" *ngIf="viaje!.actividades.length > 0">
+            <h2>🎯 Actividades Planificadas</h2>
+
+            <div class="dia-grupo" *ngFor="let fecha of getFechasOrdenadas()">
+                <h3 class="dia-titulo">
+                    📅 {{ formatearFecha(fecha) }}
+                </h3>
+
+                <div class="actividades-lista">
+                    <div class="actividad-card" *ngFor="let actividad of agruparActividadesPorDia()[fecha]">
+                        <div class="actividad-hora">
+                            <span class="hora-inicio">{{ actividad.horaInicio }}</span>
+                            <span class="separador">-</span>
+                            <span class="hora-fin">{{ actividad.horaFin }}</span>
+                            <span class="duracion">
+                                ({{ formatearDuracion(calcularDuracion(actividad.horaInicio, actividad.horaFin)) }})
+                            </span>
+                        </div>
+
+                        <div class="actividad-contenido">
+                            <h4>{{ limpiarNombreActividad(actividad.nombre) }}</h4>
+                            <p *ngIf="actividad.descripcion">{{ actividad.descripcion }}</p>
+                            <div class="actividad-meta">
+                                <span class="tipo" *ngIf="actividad.tipoActividad">
+                                    🏷️ {{ actividad.tipoActividad }}
+                                </span>
+                                <span class="ubicacion" *ngIf="actividad.ubicacion_planeada">
+                                    📍 {{ actividad.ubicacion_planeada }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MENSAJE SI NO HAY ACTIVIDADES -->
+        <div class="no-actividades" *ngIf="viaje!.actividades.length === 0">
+            <p>⚠️ Este viaje aún no tiene actividades planificadas.</p>
+        </div>
+
+    </div>
+
+</div>

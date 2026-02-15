@@ -13,6 +13,8 @@ import {
     HistorialSesion,
     ResumenSesion
 } from '../modelos/conversacion-ia.model';
+import { environment } from '../../environments/environment';
+
 
 @Injectable({
     providedIn: 'root'
@@ -23,7 +25,8 @@ export class IAService {
     // CONFIGURACIÓN
     // ══════════════════════════════════════════════════════════════════════
 
-    private apiUrl = 'http://localhost:3000/api/ia';
+    private apiUrl = `${environment.apiUrl}/ia`;
+
 
     // ══════════════════════════════════════════════════════════════════════
     // ESTADO REACTIVO (RxJS)
@@ -294,6 +297,30 @@ export class IAService {
             catchError(this.handleError)
         );
     }
+
+    /**
+ * Guarda un plan de viaje estructurado en la base de datos
+ */
+    guardarViajeDesdePlan(plan: PlanEstructurado): Observable<{
+        viaje_id: number;
+        itinerarios_creados: number;
+        actividades_creadas: number;
+    }> {
+        console.log('📤 Enviando plan al backend para guardar...');
+
+        return this.http.post<{
+            viaje_id: number;
+            itinerarios_creados: number;
+            actividades_creadas: number;
+        }>(`${this.apiUrl.replace('/ia', '')}/viajes-futuros/desde-ia`, { plan }).pipe(
+
+            tap(resultado => {
+                console.log('✅ Viaje guardado:', resultado);
+            }),
+            catchError(this.handleError)
+        );
+    }
+
 
     // ══════════════════════════════════════════════════════════════════════
     // MANEJO DE ERRORES

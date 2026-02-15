@@ -8,11 +8,12 @@ import { NgrokInterceptor } from './interceptors/ngrok.interceptor';
 
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideZoneChangeDetection({ eventCoalescing: true }), 
+    provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
-    provideHttpClient(), // Proveedor del HTTP client
-    provideAnimationsAsync(), // Para Angular Material si lo usas
-    // Registrar el interceptor de ngrok
+    provideHttpClient(),
+    provideAnimationsAsync(),
+
+    // Interceptor unificado (localhost + ngrok)
     {
       provide: HTTP_INTERCEPTORS,
       useClass: NgrokInterceptor,

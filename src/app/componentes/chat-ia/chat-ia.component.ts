@@ -8,6 +8,8 @@ import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { IAService } from '../../servicios/ia.service';
 import { MensajeIA, PlanEstructurado } from '../../modelos/conversacion-ia.model';
+import { Router } from '@angular/router';
+
 
 @Component({
     selector: 'app-chat-ia',
@@ -29,6 +31,7 @@ export class ChatIAComponent implements OnInit, OnDestroy, AfterViewChecked {
     sessionId: string = '';
     mostrarJson: boolean = false;
     apiKeyConfigurada: boolean = false;
+    guardandoViaje: boolean = false;
 
     // ✨ NUEVO: Información de límite de tokens
     limiteTokens: {
@@ -50,7 +53,11 @@ export class ChatIAComponent implements OnInit, OnDestroy, AfterViewChecked {
     // CONSTRUCTOR
     // ══════════════════════════════════════════════════════════════════════
 
-    constructor(public iaService: IAService) { }
+    constructor(
+        private iaService: IAService,
+        private router: Router  // ← AÑADIR
+    ) { }
+
 
     // ══════════════════════════════════════════════════════════════════════
     // CICLO DE VIDA
@@ -315,4 +322,52 @@ export class ChatIAComponent implements OnInit, OnDestroy, AfterViewChecked {
             return total + (itinerario.actividades?.length || 0);
         }, 0);
     }
+    /**
+ * Guarda el plan de viaje en la base de datos
+ */
+    guardarViaje(): void {
+        if (!this.planDetectado) {
+            alert('No hay plan para guardar');
+            return;
+        }
+
+        const confirmar = confirm(
+            `¿Guardar el viaje "${this.planDetectado.viaje.nombre}"?\n\n` +
+            `Destino: ${this.planDetectado.viaje.destino}\n` +
+            `Fechas: ${this.planDetectado.viaje.fecha_inicio} - ${this.planDetectado.viaje.fecha_fin}\n` +
+            `Días: ${this.planDetectado.itinerarios.length}`
+        );
+
+        if (!confirmar) return;
+
+        this.guardandoViaje = true;
+        console.log('💾 Guardando viaje en base de datos...');
+
+        this.iaService.guardarViajeDesdePlan(this.planDetectado).subscribe({
+            next: (resultado) => {
+                console.log('✅ Viaje guardado con ID:', resultado.viaje_id);
+
+                const confirmarNavegar = confirm(
+                    `✅ Viaje guardado correctamente\n\n` +
+                    `ID: ${resultado.viaje_id}\n` +
+                    `Itinerarios: ${resultado.itinerarios_creados}\n` +
+                    `Actividades: ${resultado.actividades_creadas}\n\n` +
+                    `¿Quieres ver el viaje ahora?`
+                );
+
+                this.guardandoViaje = false;
+
+                if (confirmarNavegar) {
+                    this.router.navigate(['/']);  // O la ruta específica del viaje
+                }
+
+            },
+            error: (error) => {
+                console.error('❌ Error guardando viaje:', error);
+                alert(`Error al guardar viaje:\n\n${error.message}`);
+                this.guardandoViaje = false;
+            }
+        });
+    }
+
 }

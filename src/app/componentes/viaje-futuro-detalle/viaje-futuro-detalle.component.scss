@@ -1,0 +1,542 @@
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// COMPONENTE: DETALLE DE VIAJE FUTURO
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ══════════════════════════════════════════════════════════════════════
+// VARIABLES
+// ══════════════════════════════════════════════════════════════════════
+
+$color-primary: #2563eb;
+$color-danger: #dc2626;
+$color-success: #16a34a;
+$color-warning: #f59e0b;
+$color-bg: #f8fafc;
+$color-card: #ffffff;
+$color-border: #e2e8f0;
+$color-text: #1e293b;
+$color-text-light: #64748b;
+$shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+$shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+$shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+
+// ══════════════════════════════════════════════════════════════════════
+// CONTENEDOR PRINCIPAL
+// ══════════════════════════════════════════════════════════════════════
+
+.viaje-detalle-container {
+    min-height: 100vh;
+    background: $color-bg;
+    padding: 1.5rem;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ESTADOS: CARGANDO Y ERROR
+// ══════════════════════════════════════════════════════════════════════
+
+.loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    gap: 1rem;
+
+    .spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid $color-border;
+        border-top-color: $color-primary;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    p {
+        color: $color-text-light;
+        font-size: 1rem;
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.error {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: $shadow-md;
+    text-align: center;
+    max-width: 500px;
+    margin: 2rem auto;
+
+    h2 {
+        color: $color-danger;
+        margin-bottom: 1rem;
+    }
+
+    p {
+        color: $color-text;
+        margin-bottom: 1.5rem;
+    }
+
+    .btn-volver {
+        background: $color-primary;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+
+        &:hover {
+            background: darken($color-primary, 10%);
+            transform: translateY(-1px);
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// CONTENIDO DEL VIAJE
+// ══════════════════════════════════════════════════════════════════════
+
+.viaje-content {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// HEADER
+// ══════════════════════════════════════════════════════════════════════
+
+.viaje-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+
+    .btn-back {
+        background: white;
+        color: $color-text;
+        padding: 0.75rem 1.5rem;
+        border: 1px solid $color-border;
+        border-radius: 8px;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        &:hover {
+            background: $color-bg;
+            border-color: $color-primary;
+            color: $color-primary;
+            transform: translateX(-3px);
+        }
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .btn-eliminar {
+        background: white;
+        color: $color-danger;
+        padding: 0.75rem 1.5rem;
+        border: 1px solid $color-danger;
+        border-radius: 8px;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+
+        &:hover {
+            background: $color-danger;
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: $shadow-md;
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// INFORMACIÓN PRINCIPAL
+// ══════════════════════════════════════════════════════════════════════
+
+.viaje-info {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: $shadow-md;
+    margin-bottom: 2rem;
+
+    .info-principal {
+        margin-bottom: 1.5rem;
+
+        h1 {
+            font-size: 2rem;
+            color: $color-text;
+            margin: 0 0 0.75rem 0;
+            font-weight: 700;
+        }
+
+        .destino {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.125rem;
+            color: $color-text-light;
+
+            .icon {
+                font-size: 1.25rem;
+            }
+        }
+    }
+
+    .info-fechas {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        padding: 1rem;
+        background: $color-bg;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+
+        .fecha-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+
+            .label {
+                font-size: 0.875rem;
+                color: $color-text-light;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+
+            .valor {
+                font-size: 1.125rem;
+                font-weight: 600;
+                color: $color-text;
+            }
+        }
+
+        .separador {
+            font-size: 1.5rem;
+            color: $color-text-light;
+        }
+    }
+
+    .descripcion {
+        color: $color-text;
+        line-height: 1.6;
+        margin: 0;
+        font-size: 1rem;
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ESTADÍSTICAS
+// ══════════════════════════════════════════════════════════════════════
+
+.estadisticas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+
+    .stat-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: $shadow-md;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        transition: all 0.2s;
+
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: $shadow-lg;
+        }
+
+        .stat-icon {
+            font-size: 2.5rem;
+        }
+
+        .stat-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+
+            .stat-valor {
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: $color-text;
+            }
+
+            .stat-label {
+                font-size: 0.875rem;
+                color: $color-text-light;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ITINERARIOS
+// ══════════════════════════════════════════════════════════════════════
+
+.itinerarios-section {
+    margin-bottom: 2rem;
+
+    h2 {
+        font-size: 1.5rem;
+        color: $color-text;
+        margin-bottom: 1rem;
+        font-weight: 700;
+    }
+
+    .itinerario-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: $shadow-md;
+        margin-bottom: 1rem;
+
+        .itinerario-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+
+            h3 {
+                font-size: 1.25rem;
+                color: $color-text;
+                margin: 0;
+                font-weight: 600;
+            }
+
+            .duracion {
+                background: $color-primary;
+                color: white;
+                padding: 0.25rem 0.75rem;
+                border-radius: 20px;
+                font-size: 0.875rem;
+                font-weight: 600;
+            }
+        }
+
+        .itinerario-info {
+            p {
+                margin: 0.5rem 0;
+                color: $color-text;
+                line-height: 1.6;
+
+                strong {
+                    font-weight: 600;
+                }
+            }
+
+            .destinos-dia {
+                padding-left: 1rem;
+                color: $color-text-light;
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ACTIVIDADES
+// ══════════════════════════════════════════════════════════════════════
+
+.actividades-section {
+    margin-bottom: 2rem;
+
+    >h2 {
+        font-size: 1.5rem;
+        color: $color-text;
+        margin-bottom: 1.5rem;
+        font-weight: 700;
+    }
+
+    .dia-grupo {
+        margin-bottom: 2rem;
+
+        .dia-titulo {
+            font-size: 1.25rem;
+            color: $color-text;
+            margin-bottom: 1rem;
+            padding: 0.75rem 1rem;
+            background: white;
+            border-radius: 8px;
+            box-shadow: $shadow-sm;
+            font-weight: 600;
+        }
+
+        .actividades-lista {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+    }
+}
+
+.actividad-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: $shadow-md;
+    display: flex;
+    gap: 1.5rem;
+    transition: all 0.2s;
+    border-left: 4px solid $color-primary;
+
+    &:hover {
+        transform: translateX(4px);
+        box-shadow: $shadow-lg;
+    }
+
+    .actividad-hora {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+        min-width: 100px;
+        padding: 0.75rem;
+        background: $color-bg;
+        border-radius: 8px;
+
+        .hora-inicio,
+        .hora-fin {
+            font-size: 1rem;
+            font-weight: 600;
+            color: $color-text;
+        }
+
+        .separador {
+            color: $color-text-light;
+            font-size: 0.875rem;
+        }
+
+        .duracion {
+            font-size: 0.75rem;
+            color: $color-text-light;
+            margin-top: 0.25rem;
+        }
+    }
+
+    .actividad-contenido {
+        flex: 1;
+
+        h4 {
+            font-size: 1.125rem;
+            color: $color-text;
+            margin: 0 0 0.5rem 0;
+            font-weight: 600;
+        }
+
+        p {
+            color: $color-text-light;
+            line-height: 1.5;
+            margin: 0 0 0.75rem 0;
+            font-size: 0.9375rem;
+        }
+
+        .actividad-meta {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+
+            .tipo,
+            .ubicacion {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.25rem;
+                font-size: 0.875rem;
+                color: $color-text-light;
+                background: $color-bg;
+                padding: 0.375rem 0.75rem;
+                border-radius: 6px;
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// MENSAJE SIN ACTIVIDADES
+// ══════════════════════════════════════════════════════════════════════
+
+.no-actividades {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: $shadow-md;
+    text-align: center;
+
+    p {
+        color: $color-warning;
+        font-size: 1.125rem;
+        margin: 0;
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// RESPONSIVE
+// ══════════════════════════════════════════════════════════════════════
+
+@media (max-width: 768px) {
+    .viaje-detalle-container {
+        padding: 1rem;
+    }
+
+    .viaje-info {
+        .info-principal h1 {
+            font-size: 1.5rem;
+        }
+
+        .info-fechas {
+            flex-direction: column;
+            align-items: flex-start;
+
+            .separador {
+                transform: rotate(90deg);
+            }
+        }
+    }
+
+    .estadisticas {
+        grid-template-columns: 1fr;
+    }
+
+    .actividad-card {
+        flex-direction: column;
+
+        .actividad-hora {
+            width: 100%;
+            flex-direction: row;
+            justify-content: center;
+        }
+    }
+
+    .viaje-header {
+        flex-direction: column;
+        align-items: stretch;
+
+        .btn-back,
+        .btn-eliminar {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+}

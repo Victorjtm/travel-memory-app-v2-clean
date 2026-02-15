@@ -68,13 +68,20 @@
             </div>
 
             <div class="plan-actions">
+                <button class="btn-plan btn-guardar" (click)="guardarViaje()"
+                    *ngIf="planDetectado && planDetectado.plan_completo" [disabled]="guardandoViaje">
+                    {{ guardandoViaje ? '⏳ Guardando...' : '💾 Guardar viaje' }}
+                </button>
+
                 <button class="btn-plan" (click)="toggleMostrarJson()">
                     {{ mostrarJson ? '📋 Ocultar JSON' : '📋 Ver JSON' }}
                 </button>
+
                 <button class="btn-plan btn-copiar" (click)="copiarJson()">
                     📋 Copiar JSON
                 </button>
             </div>
+
 
             <!-- JSON expandible -->
             <div class="json-container" *ngIf="mostrarJson">

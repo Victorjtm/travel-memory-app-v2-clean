@@ -749,10 +749,10 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 1. LISTAR VIAJES FUTUROS
-// GET /api/viajes-futuros?estado=planificado
+// GET /viajes-futuros?estado=planificado
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.get('/api/viajes-futuros', (req, res) => {
+app.get('/viajes-futuros', (req, res) => {
   const { estado } = req.query;
 
   let sql = 'SELECT * FROM viajes_futuros';
@@ -779,73 +779,71 @@ app.get('/api/viajes-futuros', (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 2. OBTENER VIAJE FUTURO POR ID (con itinerarios y actividades anidados)
-// GET /api/viajes-futuros/:id
+// GET /viajes-futuros/:id
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.get('/api/viajes-futuros/:id', (req, res) => {
+app.get('/viajes-futuros/:id', async (req, res) => {
   const { id } = req.params;
 
-  db.get('SELECT * FROM viajes_futuros WHERE id = ?', [id], (err, viaje) => {
-    if (err) {
-      console.error('❌ Error al obtener viaje futuro:', err.message);
-      return res.status(500).json({ error: 'Error al obtener viaje futuro' });
-    }
+  try {
+    // 1. Obtener viaje
+    const viaje = await dbQuery.get(
+      `SELECT * FROM viajes_futuros WHERE id = ?`,
+      [id]
+    );
 
     if (!viaje) {
-      return res.status(404).json({ error: 'Viaje futuro no encontrado' });
+      return res.status(404).json({ error: 'Viaje no encontrado' });
     }
 
-    // Obtener itinerarios
-    db.all('SELECT * FROM itinerarios_futuros WHERE viajeFuturoId = ? ORDER BY fechaInicio', [id], (err, itinerarios) => {
-      if (err) {
-        console.error('❌ Error al obtener itinerarios:', err.message);
-        return res.status(500).json({ error: 'Error al obtener itinerarios' });
+    // 2. Obtener itinerarios
+    const itinerarios = await dbQuery.all(
+      `SELECT * FROM itinerarios_futuros WHERE viajeFuturoId = ? ORDER BY fechaInicio`,
+      [id]
+    );
+
+    // 3. Obtener actividades con el nombre del tipo
+    const actividades = await dbQuery.all(
+      `SELECT 
+                a.*,
+                t.nombre as tipoActividad
+             FROM actividades_futuras a
+             LEFT JOIN TiposActividad t ON t.id = a.tipoActividadId
+             WHERE a.viajeFuturoId = ?
+             ORDER BY a.horaInicio`,
+      [id]
+    );
+
+    // 4. Calcular estadísticas
+    const totalDias = itinerarios.reduce((sum, it) => sum + it.duracionDias, 0);
+    const totalActividades = actividades.length;
+    const actividadesPorDia = totalDias > 0 ? (totalActividades / totalDias).toFixed(1) : 0;
+
+    console.log(`✅ Viaje futuro ${id} obtenido: ${totalActividades} actividades en ${totalDias} días`);
+
+    res.json({
+      viaje,
+      itinerarios,
+      actividades,
+      estadisticas: {
+        total_dias: totalDias,
+        total_actividades: totalActividades,
+        actividades_por_dia: parseFloat(actividadesPorDia)
       }
-
-      if (itinerarios.length === 0) {
-        viaje.itinerarios = [];
-        return res.json(viaje);
-      }
-
-      // Para cada itinerario, obtener sus actividades
-      let itinerariosCompletos = [];
-      let pendientes = itinerarios.length;
-
-      itinerarios.forEach(itinerario => {
-        db.all(
-          'SELECT * FROM actividades_futuras WHERE itinerarioFuturoId = ? ORDER BY horaInicio',
-          [itinerario.id],
-          (err, actividades) => {
-            if (err) {
-              console.error('❌ Error al obtener actividades:', err.message);
-            } else {
-              itinerario.actividades = actividades || [];
-            }
-
-            itinerariosCompletos.push(itinerario);
-            pendientes--;
-
-            if (pendientes === 0) {
-              viaje.itinerarios = itinerariosCompletos.sort((a, b) =>
-                new Date(a.fechaInicio) - new Date(b.fechaInicio)
-              );
-              console.log(`✅ Viaje futuro obtenido: ${viaje.nombre}`);
-              res.json(viaje);
-            }
-          }
-        );
-      });
     });
-  });
-});
 
+  } catch (error) {
+    console.error('❌ Error obteniendo viaje futuro:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 3. CREAR VIAJE FUTURO
-// POST /api/viajes-futuros
+// POST /viajes-futuros
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.post('/api/viajes-futuros', (req, res) => {
+app.post('/viajes-futuros', (req, res) => {
   const { nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion, sessionId } = req.body;
 
   if (!nombre || !fecha_inicio || !fecha_fin) {
@@ -886,10 +884,10 @@ app.post('/api/viajes-futuros', (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 4. ACTUALIZAR VIAJE FUTURO
-// PUT /api/viajes-futuros/:id
+// PUT /viajes-futuros/:id
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.put('/api/viajes-futuros/:id', (req, res) => {
+app.put('/viajes-futuros/:id', (req, res) => {
   const { id } = req.params;
   const { nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion } = req.body;
 
@@ -933,10 +931,10 @@ app.put('/api/viajes-futuros/:id', (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 5. ELIMINAR VIAJE FUTURO
-// DELETE /api/viajes-futuros/:id
+// DELETE /viajes-futuros/:id
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.delete('/api/viajes-futuros/:id', (req, res) => {
+app.delete('/viajes-futuros/:id', (req, res) => {
   const { id } = req.params;
 
   db.run('DELETE FROM viajes_futuros WHERE id = ?', [id], function (err) {
@@ -957,10 +955,10 @@ app.delete('/api/viajes-futuros/:id', (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 6. CREAR ITINERARIO PARA UN VIAJE FUTURO
-// POST /api/viajes-futuros/:id/itinerarios
+// POST /viajes-futuros/:id/itinerarios
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.post('/api/viajes-futuros/:id/itinerarios', (req, res) => {
+app.post('/viajes-futuros/:id/itinerarios', (req, res) => {
   const { id } = req.params;
   const { fechaInicio, fechaFin, duracionDias, destinosPorDia, descripcionGeneral, horaInicio, horaFin, climaGeneral, tipoDeViaje } = req.body;
 
@@ -993,10 +991,10 @@ app.post('/api/viajes-futuros/:id/itinerarios', (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 7. CREAR ACTIVIDAD PARA UN ITINERARIO FUTURO
-// POST /api/itinerarios-futuros/:id/actividades
+// POST /itinerarios-futuros/:id/actividades
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.post('/api/itinerarios-futuros/:id/actividades', (req, res) => {
+app.post('/itinerarios-futuros/:id/actividades', (req, res) => {
   const { id } = req.params;
   const { viajeFuturoId, tipoActividadId, actividadDisponibleId, nombre, descripcion, horaInicio, horaFin, ubicacion_planeada } = req.body;
 
@@ -1028,10 +1026,10 @@ app.post('/api/itinerarios-futuros/:id/actividades', (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 8. ACTUALIZAR ITINERARIO FUTURO
-// PUT /api/itinerarios-futuros/:id
+// PUT /itinerarios-futuros/:id
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.put('/api/itinerarios-futuros/:id', (req, res) => {
+app.put('/itinerarios-futuros/:id', (req, res) => {
   const { id } = req.params;
   const { fechaInicio, fechaFin, duracionDias, destinosPorDia, descripcionGeneral, horaInicio, horaFin, climaGeneral, tipoDeViaje } = req.body;
 
@@ -1063,10 +1061,10 @@ app.put('/api/itinerarios-futuros/:id', (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 9. ACTUALIZAR ACTIVIDAD FUTURA
-// PUT /api/actividades-futuras/:id
+// PUT /actividades-futuras/:id
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.put('/api/actividades-futuras/:id', (req, res) => {
+app.put('/actividades-futuras/:id', (req, res) => {
   const { id } = req.params;
   const { tipoActividadId, actividadDisponibleId, nombre, descripcion, horaInicio, horaFin, ubicacion_planeada } = req.body;
 
@@ -1098,10 +1096,10 @@ app.put('/api/actividades-futuras/:id', (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 10. ELIMINAR ITINERARIO FUTURO
-// DELETE /api/itinerarios-futuros/:id
+// DELETE /itinerarios-futuros/:id
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.delete('/api/itinerarios-futuros/:id', (req, res) => {
+app.delete('/itinerarios-futuros/:id', (req, res) => {
   const { id } = req.params;
 
   db.run('DELETE FROM itinerarios_futuros WHERE id = ?', [id], function (err) {
@@ -1122,10 +1120,10 @@ app.delete('/api/itinerarios-futuros/:id', (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 11. ELIMINAR ACTIVIDAD FUTURA
-// DELETE /api/actividades-futuras/:id
+// DELETE /actividades-futuras/:id
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.delete('/api/actividades-futuras/:id', (req, res) => {
+app.delete('/actividades-futuras/:id', (req, res) => {
   const { id } = req.params;
 
   db.run('DELETE FROM actividades_futuras WHERE id = ?', [id], function (err) {
@@ -1145,10 +1143,10 @@ app.delete('/api/actividades-futuras/:id', (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 12. LISTAR ITINERARIOS DE UN VIAJE FUTURO
-// GET /api/viajes-futuros/:id/itinerarios
+// GET /viajes-futuros/:id/itinerarios
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.get('/api/viajes-futuros/:id/itinerarios', (req, res) => {
+app.get('/viajes-futuros/:id/itinerarios', (req, res) => {
   const { id } = req.params;
 
   db.all('SELECT * FROM itinerarios_futuros WHERE viajeFuturoId = ? ORDER BY fechaInicio', [id], (err, rows) => {
@@ -1165,10 +1163,10 @@ app.get('/api/viajes-futuros/:id/itinerarios', (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 13. LISTAR ACTIVIDADES DE UN ITINERARIO FUTURO
-// GET /api/itinerarios-futuros/:id/actividades
+// GET /itinerarios-futuros/:id/actividades
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.get('/api/itinerarios-futuros/:id/actividades', (req, res) => {
+app.get('/itinerarios-futuros/:id/actividades', (req, res) => {
   const { id } = req.params;
 
   db.all('SELECT * FROM actividades_futuras WHERE itinerarioFuturoId = ? ORDER BY horaInicio', [id], (err, rows) => {
@@ -1192,12 +1190,120 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ENDPOINT ESPECIAL: GUARDAR VIAJE DESDE PLAN DE IA
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.post('/viajes-futuros/desde-ia', async (req, res) => {
+  const { plan } = req.body;
+
+  if (!plan || !plan.viaje || !plan.itinerarios) {
+    return res.status(400).json({ error: 'Plan incompleto' });
+  }
+
+  try {
+    // 1. Crear el viaje
+    const resultadoViaje = await dbQuery.run(
+      `INSERT INTO viajes_futuros 
+             (nombre, destino, fecha_inicio, fecha_fin, descripcion, estado, sessionId)
+             VALUES (?, ?, ?, ?, ?, 'planificado', ?)`,
+      [
+        plan.viaje.nombre,
+        plan.viaje.destino,
+        plan.viaje.fecha_inicio,
+        plan.viaje.fecha_fin,
+        plan.viaje.descripcion || '',
+        `ia-${Date.now()}`
+      ]
+    );
+
+    const viajeId = resultadoViaje.lastID;
+    console.log(`✅ Viaje creado con ID: ${viajeId}`);
+
+    // 2. Preparar datos para un solo itinerario (resumen del viaje completo)
+    const destinosPorDia = plan.itinerarios.map(it => {
+      const numActividades = it.actividades?.length || 0;
+      return `${it.fecha}: ${it.descripcion || 'Sin descripción'} (${numActividades} actividades)`;
+    }).join(' | ');
+
+    const duracionDias = plan.itinerarios.length;
+
+    // 3. Crear UN itinerario general que engloba todo el viaje
+    const resultadoItinerario = await dbQuery.run(
+      `INSERT INTO itinerarios_futuros 
+             (viajeFuturoId, fechaInicio, fechaFin, duracionDias, destinosPorDia, descripcionGeneral, tipoDeViaje)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        viajeId,
+        plan.viaje.fecha_inicio,
+        plan.viaje.fecha_fin,
+        duracionDias,
+        destinosPorDia,
+        plan.viaje.descripcion || `Viaje planificado con IA - ${duracionDias} días`,
+        plan.itinerarios[0]?.tipo_viaje || 'urbana'
+      ]
+    );
+
+    const itinerarioId = resultadoItinerario.lastID;
+    console.log(`✅ Itinerario general creado con ID: ${itinerarioId}`);
+
+    // 4. Obtener ID del tipo de actividad por defecto (turismo)
+    const tipoTurismo = await dbQuery.get(
+      `SELECT id FROM TiposActividad WHERE nombre = 'Turismo' LIMIT 1`
+    );
+    const tipoTurismoId = tipoTurismo?.id || 1;
+
+    // 5. Crear todas las actividades
+    let actividadesCreadas = 0;
+
+    for (const itinerarioDia of plan.itinerarios) {
+      if (itinerarioDia.actividades && itinerarioDia.actividades.length > 0) {
+        for (const act of itinerarioDia.actividades) {
+          await dbQuery.run(
+            `INSERT INTO actividades_futuras 
+                         (viajeFuturoId, itinerarioFuturoId, tipoActividadId, nombre, descripcion, 
+                          horaInicio, horaFin, ubicacion_planeada)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              viajeId,
+              itinerarioId,
+              tipoTurismoId,
+              `${act.nombre} (${itinerarioDia.fecha})`,
+              act.descripcion || '',
+              act.hora_inicio,
+              act.hora_fin,
+              act.ubicacion || ''
+            ]
+          );
+
+          actividadesCreadas++;
+        }
+      }
+    }
+
+    console.log(`✅ Plan guardado: 1 itinerario general, ${actividadesCreadas} actividades`);
+
+    res.json({
+      viaje_id: viajeId,
+      itinerarios_creados: 1,
+      actividades_creadas: actividadesCreadas,
+      mensaje: `Viaje "${plan.viaje.nombre}" guardado correctamente`
+    });
+
+  } catch (error) {
+    console.error('❌ Error guardando plan desde IA:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MÓDULO 6: ENDPOINTS IA - INTEGRACIÓN CON PERPLEXITY
 // Fecha: 2026-02-04
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-app.post('/api/ia/chat', iaRateLimiter, verificarLimiteTokens, async (req, res) => {
+app.post('/ia/chat', iaRateLimiter, verificarLimiteTokens, async (req, res) => {
   const { sessionId, mensaje, apiKey } = req.body;
 
   if (!sessionId || !mensaje) {
@@ -1353,10 +1459,10 @@ IMPORTANTE:
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 2. VALIDAR API KEY
-// POST /api/ia/validar-apikey
+// POST /ia/validar-apikey
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.post('/api/ia/validar-apikey', async (req, res) => {
+app.post('/ia/validar-apikey', async (req, res) => {
   const { apiKey } = req.body;
 
   if (!apiKey) {
@@ -1379,10 +1485,10 @@ app.post('/api/ia/validar-apikey', async (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 3. OBTENER HISTORIAL DE UNA SESIÓN
-// GET /api/ia/historial/:sessionId
+// GET /ia/historial/:sessionId
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.get('/api/ia/historial/:sessionId', async (req, res) => {
+app.get('/ia/historial/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
 
   try {
@@ -1419,10 +1525,10 @@ app.get('/api/ia/historial/:sessionId', async (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 4. LIMPIAR HISTORIAL DE UNA SESIÓN
-// DELETE /api/ia/historial/:sessionId
+// DELETE /ia/historial/:sessionId
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.delete('/api/ia/historial/:sessionId', async (req, res) => {
+app.delete('/ia/historial/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
 
   try {
@@ -1446,10 +1552,10 @@ app.delete('/api/ia/historial/:sessionId', async (req, res) => {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 5. LISTAR SESIONES ACTIVAS
-// GET /api/ia/sesiones-activas
+// GET /ia/sesiones-activas
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.get('/api/ia/sesiones-activas', async (req, res) => {
+app.get('/ia/sesiones-activas', async (req, res) => {
   try {
     const sesiones = await dbQuery.all(
       `SELECT 
@@ -6505,180 +6611,12 @@ if (isProduction) {
   });
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ENDPOINTS DE IA - PERPLEXITY (AISLADOS DEL RESTO DEL SISTEMA)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * POST /api/ia/chat
- * Envía un mensaje a Perplexity y guarda en historial
- * Body: { sessionId, mensaje, apiKey (opcional) }
- */
-app.post('/api/ia/chat', (req, res) => {
-  const { sessionId, mensaje, apiKey } = req.body;
-
-  if (!sessionId || !mensaje) {
-    return res.status(400).json({ error: 'sessionId y mensaje son requeridos' });
-  }
-
-  console.log(`\n💬 Nueva conversación en sesión: ${sessionId}`);
-  console.log(`👤 Usuario: ${mensaje.substring(0, 100)}...`);
-
-  // 1. Guardar mensaje del usuario
-  db.run(
-    `INSERT INTO conversaciones_ia (sessionId, rol, mensaje, tipo_interaccion)
-     VALUES (?, 'user', ?, 'planificacion')`,
-    [sessionId, mensaje],
-    function (err) {
-      if (err) {
-        console.error('❌ Error guardando mensaje del usuario:', err.message);
-        return res.status(500).json({ error: 'Error guardando mensaje' });
-      }
-
-      // 2. Obtener historial completo de la sesión
-      db.all(
-        `SELECT rol, mensaje FROM conversaciones_ia 
-         WHERE sessionId = ? 
-         ORDER BY timestamp ASC`,
-        [sessionId],
-        (err, historial) => {
-          if (err) {
-            console.error('❌ Error obteniendo historial:', err.message);
-            return res.status(500).json({ error: 'Error obteniendo historial' });
-          }
-
-          // 3. Construir mensajes para Perplexity
-          const messages = [
-            {
-              role: 'system',
-              content: `Eres un asistente experto en planificación de viajes. 
-
-INSTRUCCIONES:
-- Ayuda al usuario a planificar su viaje de forma conversacional
-- Haz preguntas clarificadoras si falta información (destino, fechas, preferencias, presupuesto)
-- Cuando tengas suficiente información, genera un plan detallado día por día
-- El plan debe incluir: destino, fechas exactas, actividades por día con horarios
-
-FORMATO DE RESPUESTA FINAL (solo cuando el plan esté completo):
-Responde de forma natural AL USUARIO explicando el plan, pero AL FINAL añade un bloque JSON con esta estructura:
-
-\`\`\`json
-{
-  "plan_completo": true,
-  "viaje": {
-    "nombre": "Escapada a Barcelona",
-    "destino": "Barcelona, España",
-    "fecha_inicio": "2026-03-15",
-    "fecha_fin": "2026-03-18",
-    "descripcion": "Viaje cultural de 3 días"
-  },
-  "itinerarios": [
-    {
-      "fecha": "2026-03-15",
-      "descripcion": "Día 1: Llegada y centro histórico",
-      "tipo_viaje": "urbana",
-      "actividades": [
-        {
-          "nombre": "Check-in hotel",
-          "descripcion": "Llegada al hotel en el Barrio Gótico",
-          "hora_inicio": "14:00",
-          "hora_fin": "15:00",
-          "tipo_actividad": "alojamiento"
-        },
-        {
-          "nombre": "Visita a La Rambla",
-          "descripcion": "Paseo por La Rambla y Mercado de La Boquería",
-          "hora_inicio": "16:00",
-          "hora_fin": "18:30",
-          "tipo_actividad": "turismo"
-        }
-      ]
-    }
-  ]
-}
-\`\`\`
-
-IMPORTANTE:
-- tipo_viaje debe ser uno de: costa, naturaleza, rural, urbana, cultural, trabajo
-- tipo_actividad puede ser: turismo, gastronomia, deporte, cultura, relax, transporte, alojamiento
-- Las fechas deben estar en formato YYYY-MM-DD
-- Las horas en formato HH:MM (24 horas)
-
-Si aún falta información, responde normalmente SIN el JSON.`
-            },
-            ...historial.map(h => ({
-              role: h.rol,
-              content: h.mensaje
-            }))
-          ];
-
-          // 4. Llamar a Perplexity
-          perplexityClient.chat(messages, apiKey)
-            .then(respuestaIA => {
-              // 5. Extraer JSON si existe
-              let datosEstructurados = null;
-              const jsonMatch = respuestaIA.contenido.match(/```json\n([\s\S]*?)\n```/);
-              if (jsonMatch) {
-                try {
-                  datosEstructurados = JSON.parse(jsonMatch[1]);
-                  console.log('✨ Plan estructurado detectado:', datosEstructurados.plan_completo);
-                } catch (e) {
-                  console.warn('⚠️  JSON encontrado pero no válido:', e.message);
-                }
-              }
-
-              // 6. Guardar respuesta de IA
-              db.run(
-                `INSERT INTO conversaciones_ia 
-                 (sessionId, rol, mensaje, tokens_usados, modelo, tiempo_respuesta, datos_estructurados, tipo_interaccion)
-                 VALUES (?, 'assistant', ?, ?, ?, ?, ?, 'planificacion')`,
-                [
-                  sessionId,
-                  respuestaIA.contenido,
-                  respuestaIA.tokens,
-                  respuestaIA.modelo,
-                  respuestaIA.tiempo_ms,
-                  datosEstructurados ? JSON.stringify(datosEstructurados) : null
-                ],
-                function (err) {
-                  if (err) {
-                    console.error('❌ Error guardando respuesta de IA:', err.message);
-                    return res.status(500).json({ error: 'Error guardando respuesta' });
-                  }
-
-                  console.log(`🤖 IA respondió (${respuestaIA.tokens} tokens, ${respuestaIA.tiempo_ms}ms)`);
-
-                  // 7. Responder al frontend
-                  res.json({
-                    id: this.lastID,
-                    mensaje: respuestaIA.contenido,
-                    tokens: respuestaIA.tokens,
-                    tiempo_ms: respuestaIA.tiempo_ms,
-                    plan_detectado: !!datosEstructurados,
-                    datos_estructurados: datosEstructurados,
-                    citations: respuestaIA.citations
-                  });
-                }
-              );
-            })
-            .catch(error => {
-              console.error('❌ Error en /api/ia/chat:', error);
-              res.status(error.status || 500).json({
-                error: error.message || 'Error al comunicarse con la IA',
-                tiempo_ms: error.tiempo_ms
-              });
-            });
-        }
-      );
-    }
-  );
-});
-
-/**
- * GET /api/ia/historial/:sessionId
+ * GET /ia/historial/:sessionId
  * Obtiene el historial de una sesión
  */
-app.get('/api/ia/historial/:sessionId', (req, res) => {
+app.get('/ia/historial/:sessionId', (req, res) => {
   const { sessionId } = req.params;
 
   db.all(
@@ -6718,10 +6656,10 @@ app.get('/api/ia/historial/:sessionId', (req, res) => {
 });
 
 /**
- * DELETE /api/ia/historial/:sessionId
+ * DELETE /ia/historial/:sessionId
  * Limpia el historial de una sesión
  */
-app.delete('/api/ia/historial/:sessionId', (req, res) => {
+app.delete('/ia/historial/:sessionId', (req, res) => {
   const { sessionId } = req.params;
 
   db.run(
@@ -6744,10 +6682,10 @@ app.delete('/api/ia/historial/:sessionId', (req, res) => {
 });
 
 /**
- * POST /api/ia/validar-apikey
+ * POST /ia/validar-apikey
  * Valida que una API Key funciona
  */
-app.post('/api/ia/validar-apikey', (req, res) => {
+app.post('/ia/validar-apikey', (req, res) => {
   const { apiKey } = req.body;
 
   if (!apiKey) {
@@ -6770,10 +6708,10 @@ app.post('/api/ia/validar-apikey', (req, res) => {
 });
 
 /**
- * GET /api/ia/sesiones-activas
+ * GET /ia/sesiones-activas
  * Lista las sesiones con actividad reciente
  */
-app.get('/api/ia/sesiones-activas', (req, res) => {
+app.get('/ia/sesiones-activas', (req, res) => {
   db.all(`
     SELECT 
       sessionId,

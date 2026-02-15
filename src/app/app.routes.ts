@@ -22,6 +22,8 @@ import { CrudArchivosSinAsignacionComponent } from './paginas/configuracion/crud
 
 import { TestViajesFuturosComponent } from './paginas/test-viajes-futuros/test-viajes-futuros.component';
 
+// 🆕 NUEVO: Componente de detalle de viaje futuro
+import { ViajeFuturoDetalleComponent } from './componentes/viaje-futuro-detalle/viaje-futuro-detalle.component';
 
 export const routes: Routes = [
   { path: '', component: InicioComponent },
@@ -35,11 +37,8 @@ export const routes: Routes = [
   // ✨ NUEVO: Lista de viajes futuros (lo que antes era /viajes)
   { path: 'viajes-futuros', component: ViajesComponent },
 
-  // ✨ NUEVO: Planificador de viajes con IA (Chatbot)
-  { path: 'planificar-viaje', component: PlanificarViajeComponent },
-
-  // ✨ NUEVO: Lista de viajes futuros (lo que antes era /viajes)
-  { path: 'viajes-futuros', component: ViajesComponent },
+  // 🆕 NUEVO: Detalle de viaje futuro individual
+  { path: 'viaje-futuro/:id', component: ViajeFuturoDetalleComponent },
 
   // Recuerdos (viajes realizados)
   { path: 'recuerdos', component: RecuerdosComponent },
@@ -136,7 +135,6 @@ export const routes: Routes = [
     path: 'visualizador-foto',
     loadComponent: () => import('./paginas/viajes-previstos/visualizador-foto/visualizador-foto.component').then(m => m.VisualizadorFotoComponent)
   },
-
 
   // Rutas para el álbum en formato libro desde viajes previstos
   {

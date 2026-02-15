@@ -40,12 +40,69 @@ export interface ViajeCreado {
     sessionId: string | null;
 }
 
+export interface ItinerarioFuturo {
+    id: number;
+    viajeFuturoId: number;
+    fechaInicio: string;
+    fechaFin: string;
+    duracionDias: number;
+    destinosPorDia: string;
+    descripcionGeneral?: string;
+    horaInicio?: string;
+    horaFin?: string;
+    climaGeneral?: string;
+    tipoDeViaje?: 'costa' | 'naturaleza' | 'rural' | 'urbana' | 'cultural' | 'trabajo';
+    itinerario_real_id?: number;
+}
+
+export interface ActividadFutura {
+    id: number;
+    viajeFuturoId: number;
+    itinerarioFuturoId: number;
+    tipoActividadId: number;
+    actividadDisponibleId?: number;
+    nombre: string;
+    descripcion?: string;
+    horaInicio: string;
+    horaFin: string;
+    ubicacion_planeada?: string;
+
+    // Campos estadísticas (vacíos en planificación)
+    distanciaKm?: number;
+    duracionSegundos?: number;
+    calorias?: number;
+
+    fechaCreacion: string;
+    fechaActualizacion: string;
+    actividad_real_id?: number;
+
+    // Datos extras al hacer JOIN
+    tipoActividad?: string;
+}
+
+export interface ViajeFuturoCompleto {
+    viaje: ViajeFuturo;
+    itinerarios: ItinerarioFuturo[];
+    actividades: ActividadFutura[];
+    estadisticas: {
+        total_dias: number;
+        total_actividades: number;
+        actividades_por_dia: number;
+    };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SERVICIO
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 @Injectable({
     providedIn: 'root'
 })
 export class ViajesFuturosService {
 
     private apiUrl = `${environment.apiUrl}/viajes-futuros`;
+
+
 
     constructor(private http: HttpClient) { }
 
@@ -67,8 +124,8 @@ export class ViajesFuturosService {
     // GET /api/viajes-futuros/:id
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    obtenerViajeFuturo(id: number): Observable<ViajeFuturo> {
-        return this.http.get<ViajeFuturo>(`${this.apiUrl}/${id}`);
+    obtenerViajeFuturo(id: number): Observable<ViajeFuturoCompleto> {
+        return this.http.get<ViajeFuturoCompleto>(`${this.apiUrl}/${id}`);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
