@@ -228,7 +228,8 @@ app.use((req, res, next) => {
 });
 
 // 5. Parseo del cuerpo
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true, parameterLimit: 50000 }));
 
 // ✅ Servir archivos estáticos desde "uploads"
 const uploadsPath = path.join(process.cwd(), 'uploads');
@@ -272,7 +273,10 @@ const storage = multer.diskStorage({
     cb(null, uniqueSuffix + ext);
   }
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 500 * 1024 * 1024 } // 500MB por archivo
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TABLA CONVERSACIONES_IA (NUEVA)
@@ -5597,7 +5601,7 @@ const importStorage = multer.diskStorage({
 
 const importUpload = multer({
   storage: importStorage,
-  limits: { fileSize: 100 * 1024 * 1024 } // 100MB por archivo
+  limits: { fileSize: 500 * 1024 * 1024 } // 500MB por archivo
 });
 
 /**
