@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { RouterModule, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpEventType } from '@angular/common/http';
 import { timeout, catchError } from 'rxjs/operators';
 import { throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -437,29 +437,45 @@ export class InicioComponent implements OnInit {
 
       const uploadUrl = `${this.API_URL}/import-tracking`;
       console.log(`📤 Subiendo a:`, uploadUrl);
-      this.mensajeProgreso = 'Subiendo al servidor...';
-      this.progresoSubida = 50;
+      this.mensajeProgreso = 'Iniciando subida...';
+      this.progresoSubida = 0;
 
-      // Subir al backend con timeout de 30 minutos para archivos grandes
-      const resultado: any = await this.http.post(uploadUrl, formData, {
-        reportProgress: true,
-        observe: 'body'
-      }).pipe(
-        // ✅ CRÍTICO: Timeout de 30 minutos (1800000 ms)
-        // Esto evita que el navegador reintente la petición por su cuenta
-        timeout(1800000),
-        catchError(err => {
-          if (err.name === 'TimeoutError') {
-            console.error('❌ [TIMEOUT] La subida ha superado los 30 minutos');
-            return throwError(() => new Error('La subida ha superado el tiempo máximo (30 min). Por favor, intenta con menos archivos o mejor conexión.'));
+      // Subir al backend con seguimiento de progreso real y timeout de 30 min
+      const resultado = await new Promise<any>((resolve, reject) => {
+        this.http.post(uploadUrl, formData, {
+          reportProgress: true,
+          observe: 'events'
+        }).pipe(
+          timeout(1800000), // 30 minutos
+          catchError(err => {
+            if (err.name === 'TimeoutError') {
+              console.error('❌ [TIMEOUT] La subida ha superado los 30 minutos');
+              return throwError(() => new Error('La subida ha superado el tiempo máximo (30 min). Por favor, intenta con menos archivos o mejor conexión.'));
+            }
+            return throwError(() => err);
+          })
+        ).subscribe({
+          next: (event: any) => {
+            if (event.type === HttpEventType.UploadProgress) {
+              // CALCULAR PROGRESO REAL (0-100%)
+              const total = event.total || totalBytes;
+              this.progresoSubida = Math.round((event.loaded / total) * 100);
+              const mbSubidos = (event.loaded / 1024 / 1024).toFixed(2);
+              const mbTotal = (total / 1024 / 1024).toFixed(2);
+              this.mensajeProgreso = `Subiendo archivos... ${this.progresoSubida}% (${mbSubidos} / ${mbTotal} MB)`;
+            } else if (event.type === HttpEventType.Response) {
+              console.log('✅ Servidor recibió los archivos. Procesando...');
+              this.mensajeProgreso = 'Procesando en servidor...';
+              this.progresoSubida = 100;
+              resolve(event.body);
+            }
+          },
+          error: (err) => {
+            console.error('❌ Error en subida:', err);
+            reject(err);
           }
-          return throwError(() => err);
-        })
-      ).toPromise();
-
-      // Progreso completado
-      this.progresoSubida = 100;
-      this.mensajeProgreso = 'Procesando en servidor...';
+        });
+      });
 
       console.log('✅ Importación completada:', resultado);
 
