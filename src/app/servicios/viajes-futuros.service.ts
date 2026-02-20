@@ -92,7 +92,7 @@ export interface ViajeFuturoCompleto {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// SERVICIO
+//SERVICIO
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 @Injectable({
@@ -100,15 +100,18 @@ export interface ViajeFuturoCompleto {
 })
 export class ViajesFuturosService {
 
-    private apiUrl = `${environment.apiUrl}/viajes-futuros`;
-
-
+    // Usar la IP detectada dinámicamente si existe
+    private get apiUrl(): string {
+        const detectedUrl = (window as any).__API_URL__;
+        const baseUrl = detectedUrl || environment.apiUrl;
+        return `${baseUrl}/viajes-futuros`;
+    }
 
     constructor(private http: HttpClient) { }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // LISTAR VIAJES FUTUROS
-    // GET /api/viajes-futuros?estado=planificado
+    // GET /viajes-futuros?estado=planificado
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     obtenerViajesFuturos(estado?: 'planificado' | 'migrado'): Observable<ViajeFuturo[]> {
@@ -121,7 +124,7 @@ export class ViajesFuturosService {
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // OBTENER VIAJE FUTURO POR ID (con itinerarios y actividades anidados)
-    // GET /api/viajes-futuros/:id
+    // GET /viajes-futuros/:id
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     obtenerViajeFuturo(id: number): Observable<ViajeFuturoCompleto> {
@@ -130,7 +133,7 @@ export class ViajesFuturosService {
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // CREAR VIAJE FUTURO
-    // POST /api/viajes-futuros
+    // POST /viajes-futuros
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     crearViajeFuturo(viaje: Partial<ViajeFuturo>): Observable<ViajeCreado> {
@@ -139,7 +142,7 @@ export class ViajesFuturosService {
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // ACTUALIZAR VIAJE FUTURO
-    // PUT /api/viajes-futuros/:id
+    // PUT /viajes-futuros/:id
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     actualizarViajeFuturo(id: number, viaje: Partial<ViajeFuturo>): Observable<{ message: string; id: number }> {
@@ -148,7 +151,7 @@ export class ViajesFuturosService {
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // ELIMINAR VIAJE FUTURO
-    // DELETE /api/viajes-futuros/:id
+    // DELETE /viajes-futuros/:id
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     eliminarViajeFuturo(id: number): Observable<{ message: string; id: number }> {

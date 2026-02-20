@@ -1,0 +1,44 @@
+<h2>Viajes futuros</h2>
+
+@if (cargando) {
+<div>Cargando viajes...</div>
+} @else if (error) {
+<div class="error">{{ error }}</div>
+} @else if (viajes.length === 0) {
+<div>No hay viajes futuros planificados.</div>
+} @else {
+<ul>
+    @for (viaje of viajes; track viaje.id; let i = $index) {
+    <li class="viaje-item">
+        <div class="viaje-info">
+            <strong class="destino">{{ viaje.destino || viaje.nombre }}</strong>
+
+            <div class="fechas">
+                📅 {{ viaje.fecha_inicio }} → {{ viaje.fecha_fin }}
+                @if (viaje.estado) {
+                <span class="badge-estado">
+                    {{ viaje.estado === 'planificado' ? 'Planificado' : 'Migrado' }}
+                </span>
+                }
+            </div>
+
+            @if (viaje.descripcion) {
+            <p class="descripcion">{{ viaje.descripcion }}</p>
+            }
+        </div>
+
+        <div class="acciones">
+            <button (click)="abrirDetalle(viaje)" class="btn-detalle">
+                <i class="fa fa-eye"></i> Ver detalle
+            </button>
+        </div>
+    </li>
+    }
+</ul>
+
+<div class="acciones-globales">
+    <button (click)="cargarViajes()" class="btn-recargar">
+        <i class="fa fa-refresh"></i> Recargar
+    </button>
+</div>
+}

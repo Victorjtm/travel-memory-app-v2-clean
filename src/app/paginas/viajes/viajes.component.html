@@ -1,10 +1,117 @@
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- COMPONENTE: LISTADO DE VIAJES FUTUROS                                  -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
 <div class="viajes-container">
-    <h1>Mis Viajes</h1>
-    <ul>
-      <li *ngFor="let viaje of viajes">
-        <p>{{ viaje.nombre }} - {{ viaje.fecha }}</p>
-      </li>
-    </ul>
-    <a routerLink="/recuerdos" class="btn">Ir a Recuerdos</a>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- HEADER                                                             -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+
+  <div class="header">
+    <h1>✈️ Mis Viajes Futuros</h1>
+    <p class="subtitle">Viajes planificados con IA</p>
   </div>
-  
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- ESTADO: CARGANDO                                                   -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+
+  <div class="loading-state" *ngIf="cargando">
+    <div class="spinner"></div>
+    <p>Cargando viajes...</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- ESTADO: ERROR                                                      -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+
+  <div class="error-state" *ngIf="error && !cargando">
+    <div class="error-icon">⚠️</div>
+    <h3>Error al cargar los viajes</h3>
+    <p>{{ error }}</p>
+    <button class="btn-retry" (click)="cargarViajesFuturos()">
+      🔄 Reintentar
+    </button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- ESTADO: SIN VIAJES                                                 -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+
+  <div class="empty-state" *ngIf="!cargando && !error && viajes.length === 0">
+    <div class="empty-icon">🗺️</div>
+    <h3>Aún no tienes viajes planificados</h3>
+    <p>Comienza planificando tu próximo viaje con nuestro asistente de IA</p>
+    <a routerLink="/planificar-viaje" class="btn-primary">
+      ✨ Planificar viaje con IA
+    </a>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- LISTA DE VIAJES                                                    -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+
+  <div class="viajes-grid" *ngIf="!cargando && !error && viajes.length > 0">
+
+    <div *ngFor="let viaje of viajes" class="viaje-card" (click)="verDetalle(viaje.id!)"
+      [attr.data-estado]="viaje.estado">
+
+      <!-- BADGE DE ESTADO -->
+      <div class="viaje-badge">
+        <span class="icono">{{ getIconoEstado(viaje.estado) }}</span>
+        <span class="texto">{{ viaje.estado || 'planificado' }}</span>
+      </div>
+
+      <!-- CONTENIDO PRINCIPAL -->
+      <div class="viaje-content">
+
+        <!-- Nombre del viaje -->
+        <h3 class="viaje-nombre">{{ viaje.nombre }}</h3>
+
+        <!-- Destino -->
+        <div class="viaje-destino">
+          <span class="icon">📍</span>
+          <span>{{ viaje.destino }}</span>
+        </div>
+
+        <!-- Fechas -->
+        <div class="viaje-fechas">
+          <span class="icon">📅</span>
+          <span>{{ formatearFecha(viaje.fecha_inicio) }}</span>
+          <span class="separador">→</span>
+          <span>{{ formatearFecha(viaje.fecha_fin) }}</span>
+        </div>
+
+        <!-- Etiqueta de tiempo -->
+        <div class="viaje-tiempo">
+          <span class="etiqueta-tiempo">
+            {{ getEtiquetaTiempo(viaje.fecha_inicio) }}
+          </span>
+        </div>
+
+        <!-- Descripción (si existe) -->
+        <p class="viaje-descripcion" *ngIf="viaje.descripcion">
+          {{ viaje.descripcion }}
+        </p>
+
+      </div>
+
+      <!-- FOOTER CON ACCIÓN -->
+      <div class="viaje-footer">
+        <span class="ver-mas">Ver detalle →</span>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- BOTÓN FLOTANTE: PLANIFICAR NUEVO VIAJE                            -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+
+  <a routerLink="/planificar-viaje" class="btn-float" *ngIf="!cargando" title="Planificar nuevo viaje">
+    ✨
+  </a>
+
+</div>

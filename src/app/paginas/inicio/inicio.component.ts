@@ -3,6 +3,8 @@ import { RouterModule, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { timeout, catchError } from 'rxjs/operators';
+import { throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -251,16 +253,81 @@ export class InicioComponent implements OnInit {
       }
 
       // Filtrar solo videos MP4
-      const videoFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.mp4'));
+      const allMp4 = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.mp4'));
 
-      if (videoFiles.length === 0) {
-        alert('⚠️ No se encontraron archivos MP4 en la carpeta seleccionada.');
-        return;
+      // ✅ LOGICA ROBUSTA DE FILTRADO
+      // 1. Extraer fecha del tracking desde el nombre del manifest (ej: "Recorrido_20260217" -> "20260217")
+      const matchFecha = this.manifestData.nombre?.match(/(\d{8})/);
+      const fechaTracking = matchFecha ? matchFecha[1] : null;
+
+      // 2. Obtener nombres de videos del manifest para comparación (sin extensión)
+      const videosEnManifest = this.manifestData.multimedia
+        ?.filter((m: any) => m.tipo === 'video')
+        .map((m: any) => m.nombre.toLowerCase()) || [];
+
+      console.log(`🎯 Fecha de referencia: ${fechaTracking}`);
+      console.log(`📋 Videos en manifest: ${videosEnManifest.length}`);
+      console.log(`📂 Videos totales en carpeta: ${allMp4.length}`);
+
+      const videoFiles = allMp4.filter(file => {
+        const nombre = file.name.toLowerCase();
+        const basename = nombre.replace(/\.[^.]+$/, '');
+
+        // A. DETECCIÓN DE FECHA EN EL NOMBRE (Prioridad Máxima de rechazo/aceptación)
+        // Buscamos un patrón de 8 dígitos (YYYYMMDD)
+        const matchFechaArchivo = nombre.match(/(\d{8})/);
+        const fechaEnNombre = matchFechaArchivo ? matchFechaArchivo[1] : null;
+
+        // Caso crítico: Si el nombre tiene una fecha y NO coincide con el tracking, DESCARTAMOS inmediatamente
+        // Esto evita que videos del día 15 o 17 entren en el tracking del 16 si se copiaron ese día.
+        if (fechaEnNombre && fechaTracking && fechaEnNombre !== fechaTracking) {
+          console.log(`❌ DESCARTADO (Fecha incorrecta en nombre): ${file.name}`);
+          return false;
+        }
+
+        // B. COINCIDENCIA POR LISTA DEL MANIFEST (Basename)
+        // El manifest es la fuente de verdad definitiva de lo que AudioPhotoApp incluyó.
+        if (videosEnManifest.some((v: string) => basename.includes(v) || v.includes(basename))) {
+          console.log(`✅ Coincidencia por MANIFEST: ${file.name}`);
+          return true;
+        }
+
+        // C. COINCIDENCIA POR NOMBRE (Fecha correcta)
+        if (fechaTracking && fechaEnNombre === fechaTracking) {
+          console.log(`✅ Coincidencia por NOMBRE (Fecha correcta): ${file.name}`);
+          return true;
+        }
+
+        // D. COINCIDENCIA POR METADATOS (Solo si no hay fecha clara en el nombre)
+        if (!fechaEnNombre && fechaTracking) {
+          const fechaMod = new Date(file.lastModified);
+          const y = fechaMod.getFullYear();
+          const m = String(fechaMod.getMonth() + 1).padStart(2, '0');
+          const d = String(fechaMod.getDate()).padStart(2, '0');
+          const fechaModStr = `${y}${m}${d}`;
+
+          if (fechaModStr === fechaTracking) {
+            console.log(`✅ Coincidencia por METADATOS: ${file.name}`);
+            return true;
+          }
+        }
+
+        return false;
+      });
+
+      if (videoFiles.length === 0 && allMp4.length > 0) {
+        const confirmar = confirm(`⚠️ No se detectaron videos del día ${fechaTracking || ''} en la carpeta.\n\n¿Quieres usar TODOS los videos (${allMp4.length}) de todos modos?`);
+        if (confirmar) {
+          this.archivosVideo = allMp4;
+        } else {
+          return;
+        }
+      } else {
+        this.archivosVideo = videoFiles;
       }
 
-      this.archivosVideo = videoFiles;
       this.videosSeleccionados = true;
-      console.log(`✅ ${videoFiles.length} videos cargados desde carpeta adicional.`);
+      console.log(`✅ ${this.archivosVideo.length} videos listos para subir.`);
 
     } catch (error: any) {
       console.error('❌ Error seleccionando carpeta de videos:', error);
@@ -351,31 +418,44 @@ export class InicioComponent implements OnInit {
       // COMBINAR ARCHIVOS: Exportación + Videos (si los hay)
       const todosLosArchivos = [...this.archivosSeleccionados, ...this.archivosVideo];
 
+      // ✅ LOG: Tamaño total a enviar
+      const totalBytes = todosLosArchivos.reduce((sum, f) => sum + f.size, 0);
+      console.log(`📊 Análisis final de subida:`);
+      console.log(`   Archivos totales: ${todosLosArchivos.length}`);
+      console.log(`   Tamaño total: ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
+
+      // Añadir todos los archivos al FormData
       todosLosArchivos.forEach((file, index) => {
-        // Preservar la ruta completa del archivo (ej: "fotos/JPEG_123.jpg")
-        // Para los videos de la carpeta extra, webkitRelativePath puede ser diferente, 
-        // pero el backend busca por nombre de archivo (basename) para los videos, así que servirá.
         const relativePath = (file as any).webkitRelativePath || file.name;
         formData.append('archivos', file, relativePath);
 
-        // ✅ NUEVO: Log específico para archivos importantes
-        if (file.name.endsWith('.gpx') || file.name.endsWith('.png') || file.name === 'manifest.json' || file.name.endsWith('.mp4')) {
-          console.log(`📤 Agregando a FormData: ${relativePath}`);
-        }
-
-        // Actualizar progreso de preparación
+        // Actualizar progreso de preparación (0-30%)
         const progreso = Math.round((index / todosLosArchivos.length) * 30);
         this.progresoSubida = progreso;
         this.mensajeProgreso = `Preparando archivos... ${index + 1}/${todosLosArchivos.length}`;
       });
 
       const uploadUrl = `${this.API_URL}/import-tracking`;
-      console.log(`📤 Subiendo ${this.archivosSeleccionados.length} archivos a:`, uploadUrl);
+      console.log(`📤 Subiendo a:`, uploadUrl);
       this.mensajeProgreso = 'Subiendo al servidor...';
       this.progresoSubida = 50;
 
-      // Subir al backend
-      const resultado: any = await this.http.post(uploadUrl, formData).toPromise();
+      // Subir al backend con timeout de 30 minutos para archivos grandes
+      const resultado: any = await this.http.post(uploadUrl, formData, {
+        reportProgress: true,
+        observe: 'body'
+      }).pipe(
+        // ✅ CRÍTICO: Timeout de 30 minutos (1800000 ms)
+        // Esto evita que el navegador reintente la petición por su cuenta
+        timeout(1800000),
+        catchError(err => {
+          if (err.name === 'TimeoutError') {
+            console.error('❌ [TIMEOUT] La subida ha superado los 30 minutos');
+            return throwError(() => new Error('La subida ha superado el tiempo máximo (30 min). Por favor, intenta con menos archivos o mejor conexión.'));
+          }
+          return throwError(() => err);
+        })
+      ).toPromise();
 
       // Progreso completado
       this.progresoSubida = 100;

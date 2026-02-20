@@ -200,6 +200,30 @@ app.use(cors({
   ]
 }));
 
+// ✅ NUEVO: Interceptor global para asegurar que TODAS las respuestas incluyan cabeceras CORS
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  // Solo añadir cabeceras si hay un origen
+  if (origin) {
+    // Verificar si el origen está permitido
+    const isLocalNetwork = /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+):\d+$/.test(origin);
+    const isAllowedOrigin = allowedOrigins.includes(origin);
+    const isNgrok = /^https:\/\/.*\.ngrok(-free)?\.app$/.test(origin) || /^https:\/\/.*\.ngrok\.io$/.test(origin);
+
+    if (isLocalNetwork || isAllowedOrigin || isNgrok || !origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, ngrok-skip-browser-warning');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+      console.log(`✅ [GLOBAL CORS] Cabeceras añadidas para: ${origin}`);
+    }
+  }
+
+  next();
+});
+
 // 2. Evitar la página de advertencia de ngrok
 app.use((req, res, next) => {
   res.set('ngrok-skip-browser-warning', '1');
@@ -228,8 +252,20 @@ app.use((req, res, next) => {
 });
 
 // 5. Parseo del cuerpo
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ limit: '50mb', extended: true, parameterLimit: 50000 }));
+// ✅ Solo usar bodyParser para JSON y URL-encoded, NO para multipart
+app.use((req, res, next) => {
+  const contentType = req.headers['content-type'] || '';
+
+  // Si es multipart/form-data, dejar que multer lo maneje
+  if (contentType.includes('multipart/form-data')) {
+    return next();
+  }
+
+  // Para todo lo demás, usar bodyParser
+  bodyParser.json({ limit: '50mb' })(req, res, () => {
+    bodyParser.urlencoded({ limit: '50mb', extended: true })(req, res, next);
+  });
+});
 
 // ✅ Servir archivos estáticos desde "uploads"
 const uploadsPath = path.join(process.cwd(), 'uploads');
@@ -275,7 +311,12 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 500 * 1024 * 1024 } // 500MB por archivo
+  limits: {
+    fileSize: 500 * 1024 * 1024, // ✅ 500 MB por archivo
+    files: 100, // ✅ Máximo 100 archivos
+    fieldSize: 500 * 1024 * 1024, // ✅ 500 MB para campos
+    parts: 200 // ✅ Partes totales (archivos + campos)
+  }
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -4872,8 +4913,8 @@ app.post('/archivos-asociados', (req, res) => {
 
     db.run(
       `INSERT INTO archivos_asociados 
-      (archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, descripcion, fechaCreacion, fechaActualizacion, version)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, descripcion, fechaCreacion, fechaActualizacion, version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         archivoPrincipalId,
         tipo,
@@ -4969,8 +5010,8 @@ app.post('/archivos-asociados/subir', upload.single('archivo'), (req, res) => {
 
     db.run(
       `INSERT INTO archivos_asociados 
-      (archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, descripcion, fechaCreacion, fechaActualizacion, version)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, descripcion, fechaCreacion, fechaActualizacion, version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         archivoPrincipalId,
         tipo,
@@ -5078,10 +5119,10 @@ app.put('/archivos/actividad/:actividadId/geolocalizacion', (req, res) => {
   }
 
   const sql = `
-    UPDATE archivos
-    SET geolocalizacion = ?, fechaActualizacion = datetime('now')
-    WHERE actividadId = ? AND tipo IN ('foto', 'imagen')
-  `;
+      UPDATE archivos
+      SET geolocalizacion = ?, fechaActualizacion = datetime('now')
+      WHERE actividadId = ? AND tipo IN ('foto', 'imagen')
+    `;
 
   db.run(sql, [geolocalizacion, actividadId], function (err) {
     if (err) {
@@ -5513,9 +5554,9 @@ function actualizarItinerarioYViaje(actividadId, callback) {
     // Obtener la fecha más temprana y más tardía de los archivos
     db.get(
       `SELECT 
-        MIN(fechaCreacion || ' ' || horaCaptura) as fechaMin,
-        MAX(fechaCreacion || ' ' || horaCaptura) as fechaMax
-       FROM archivos WHERE actividadId = ?`,
+          MIN(fechaCreacion || ' ' || horaCaptura) as fechaMin,
+          MAX(fechaCreacion || ' ' || horaCaptura) as fechaMax
+        FROM archivos WHERE actividadId = ?`,
       [actividadId],
       (err, result) => {
         if (err || !result.fechaMin) {
@@ -5531,9 +5572,9 @@ function actualizarItinerarioYViaje(actividadId, callback) {
         // ✅ Actualizar ItinerarioGeneral (nombre correcto de la tabla)
         db.run(
           `UPDATE ItinerarioGeneral 
-           SET fechaInicio = datetime(?, 'start of day'),
-               fechaFin = datetime(?, 'start of day', '+23 hours', '+59 minutes', '+59 seconds')
-           WHERE id = ?`,
+            SET fechaInicio = datetime(?, 'start of day'),
+                fechaFin = datetime(?, 'start of day', '+23 hours', '+59 minutes', '+59 seconds')
+            WHERE id = ?`,
           [fechaInicio, fechaFin, itinerarioId],
           (err) => {
             if (err) {
@@ -5555,9 +5596,9 @@ function actualizarItinerarioYViaje(actividadId, callback) {
               // Actualizar tabla viajes
               db.run(
                 `UPDATE viajes 
-   SET fecha_inicio = date(?),
-       fecha_fin = date(?)
-   WHERE id = ?`,
+    SET fecha_inicio = date(?),
+        fecha_fin = date(?)
+    WHERE id = ?`,
                 [fechaInicio, fechaFin, itinerario.viajePrevistoId],
                 (err) => {
                   if (err) {
@@ -5587,6 +5628,7 @@ console.log('📥 Registrando endpoint de importación de trackings...');
 // Configurar multer para importación con múltiples archivos
 const importStorage = multer.diskStorage({
   destination: (req, file, cb) => {
+    console.log(`📁 [MULTER] Procesando destino para: ${file.originalname}`);
     const tempPath = path.join(uploadsPath, 'temp-imports');
     if (!fs.existsSync(tempPath)) {
       fs.mkdirSync(tempPath, { recursive: true });
@@ -5594,14 +5636,76 @@ const importStorage = multer.diskStorage({
     cb(null, tempPath);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '-' + file.originalname);
+    try {
+      // ✅ CRÍTICO: Decodificar nombres de archivo URL-encoded del File System Access API
+      // Los nombres vienen como: "tree/primary%3ADocuments%2FAudioPhotoApp/document/primary%3ADocuments%2FAudioPhotoApp%2Frecorrido.gpx"
+      // Necesitamos extraer solo el nombre del archivo: "recorrido.gpx"
+
+      let decodedName = decodeURIComponent(file.originalname);
+      console.log(`🔍 [MULTER] Nombre original: ${file.originalname}`);
+      console.log(`🔍 [MULTER] Nombre decodificado: ${decodedName}`);
+
+      // Extraer solo el basename (último segmento después de /)
+      const basename = path.basename(decodedName);
+      console.log(`🔍 [MULTER] Basename extraído: ${basename}`);
+
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const filename = uniqueSuffix + '-' + basename;
+      console.log(`📝 [MULTER] Guardando archivo como: ${filename}`);
+
+      cb(null, filename);
+    } catch (error) {
+      console.error(`❌ [MULTER] Error procesando nombre de archivo:`, error);
+      // Fallback: usar un nombre genérico si falla la decodificación
+      const fallbackName = Date.now() + '-' + Math.round(Math.random() * 1E9) + '-file';
+      cb(null, fallbackName);
+    }
   }
 });
 
 const importUpload = multer({
   storage: importStorage,
-  limits: { fileSize: 500 * 1024 * 1024 } // 500MB por archivo
+  limits: {
+    fileSize: 5 * 1024 * 1024 * 1024, // ✅ AUMENTAR a 5 GB por archivo
+    files: 500, // ✅ AUMENTAR de 200 a 500
+    fieldSize: 5 * 1024 * 1024 * 1024,
+    parts: 1000 // ✅ AUMENTAR de 500 a 1000 (partes totales)
+  }
+});
+
+console.log('🔧 [DEBUG] Antes de registrar endpoint:');
+console.log('   importUpload:', typeof importUpload);
+console.log('   importUpload.any:', typeof importUpload?.any);
+
+console.log('✅ [DEBUG] importUpload creado correctamente');
+console.log('   Tipo:', typeof importUpload);
+console.log('   Método any():', typeof importUpload.any);
+
+// ========================================
+// ✅ MANEJADOR PREFLIGHT PARA /import-tracking
+// ========================================
+app.options('/import-tracking', (req, res) => {
+  const origin = req.headers.origin;
+
+  // Verificar si el origen está permitido (misma lógica que tu CORS global)
+  if (!origin ||
+    allowedOrigins.includes(origin) ||
+    /^https:\/\/.*\.ngrok(-free)?\.app$/.test(origin) ||
+    /^https:\/\/.*\.ngrok\.io$/.test(origin) ||
+    /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+):\d+$/.test(origin)) {
+
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, ngrok-skip-browser-warning');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('ngrok-skip-browser-warning', '1');
+
+    console.log('✅ [OPTIONS] Preflight permitido para /import-tracking:', origin);
+    res.status(200).end();
+  } else {
+    console.log('❌ [OPTIONS] Preflight bloqueado para /import-tracking:', origin);
+    res.status(403).end();
+  }
 });
 
 /**
@@ -5609,7 +5713,62 @@ const importUpload = multer({
  * Importa un tracking completo desde AudioPhotoApp
  * Recibe: FormData con archivos + metadata
  */
-app.post('/import-tracking', importUpload.any(), async (req, res) => {
+// ✅ DESPUÉS (CORRECTO - CORS ANTES de multer)
+// ✅ DESPUÉS (CORRECTO - CORS ANTES de multer)
+app.post('/import-tracking', (req, res, next) => {
+  // ✅ PRIMERO: Añadir cabeceras CORS ANTES de multer
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  console.log('\n🔍 [DEBUG] Middleware ejecutado - Antes de multer');
+  console.log('   Content-Type:', req.headers['content-type']);
+  console.log('   Method:', req.method);
+  console.log('   URL:', req.url);
+  console.log('   Content-Length:', req.headers['content-length']);
+
+  // ✅ AUMENTAR TIMEOUT: 30 minutos para archivos grandes
+  req.setTimeout(30 * 60 * 1000); // 30 minutos
+  res.setTimeout(30 * 60 * 1000);
+
+  let filesProcessed = 0;
+  const startTime = Date.now();
+
+  // Interceptar el stream para trackear progreso
+  const originalOn = req.on.bind(req);
+  req.on = function (event, handler) {
+    if (event === 'file') {
+      return originalOn(event, function (...args) {
+        filesProcessed++;
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`📦 [MULTER PROGRESS] Archivo ${filesProcessed} procesado (${elapsed}s)`);
+        return handler.apply(this, args);
+      });
+    }
+    return originalOn(event, handler);
+  };
+
+  importUpload.any()(req, res, (err) => {
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`\n🔍 [DEBUG] Después de multer (${totalTime}s)`);
+    console.log('   Error multer:', err || 'ninguno');
+    console.log('   Files:', req.files?.length || 0);
+    console.log('   Body keys:', Object.keys(req.body || {}));
+
+    if (err) {
+      console.error('❌ [MULTER] Error:', err.message);
+      console.error('   Stack:', err.stack);
+      return res.status(500).json({ error: err.message });
+    }
+
+    next();
+  });
+}, async (req, res) => {
+  // Las cabeceras CORS ya están puestas en el middleware anterior
+  req.setTimeout(600000);
+  res.setTimeout(600000);
+
   console.log('\n🚀 =============== IMPORTACIÓN DE TRACKING ===============');
   console.log('📦 Archivos recibidos:', req.files?.length || 0);
 
@@ -5843,7 +6002,7 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
     viajeId = await new Promise((resolve, reject) => {
       db.run(
         `INSERT INTO viajes (nombre, destino, fecha_inicio, fecha_fin, descripcion) 
-        VALUES (?, ?, ?, ?, ?)`,
+          VALUES (?, ?, ?, ?, ?)`,
         [
           nombreViaje,
           destinoCompleto,
@@ -5888,9 +6047,9 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
     itinerarioId = await new Promise((resolve, reject) => {
       db.run(
         `INSERT INTO ItinerarioGeneral 
-        (viajePrevistoId, fechaInicio, fechaFin, duracionDias, destinosPorDia, 
-          descripcionGeneral, horaInicio, horaFin, tipoDeViaje) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (viajePrevistoId, fechaInicio, fechaFin, duracionDias, destinosPorDia, 
+            descripcionGeneral, horaInicio, horaFin, tipoDeViaje) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           viajeId,
           fechaRecorridoReal,
@@ -5974,10 +6133,10 @@ app.post('/import-tracking', importUpload.any(), async (req, res) => {
     }
 
     const descripcionActividad = `Distancia: ${distKm} km
-Duración: ${duracionFmt}
-Velocidad media: ${velMedia} km/h
-Calorías: ${cals} kcal
-Pasos: ${pasos}${desgloseTxt}`;
+  Duración: ${duracionFmt}
+  Velocidad media: ${velMedia} km/h
+  Calorías: ${cals} kcal
+  Pasos: ${pasos}${desgloseTxt}`;
 
     let rutaGpxCompleto = null;
     let rutaMapaCompleto = null;
@@ -6043,13 +6202,13 @@ Pasos: ${pasos}${desgloseTxt}`;
     actividadId = await new Promise((resolve, reject) => {
       db.run(
         `INSERT INTO actividades 
-        (viajePrevistoId, itinerarioId, tipoActividadId, nombre, descripcion, horaInicio, horaFin,
-         distanciaKm, distanciaMetros, duracionSegundos, duracionFormateada, 
-         velocidadMediaKmh, velocidadMaximaKmh, velocidadMinimaKmh, 
-         calorias, pasosEstimados, puntosGPS, perfilTransporte,
-         rutaGpxCompleto, rutaMapaCompleto, rutaManifest, rutaEstadisticas,
-         fechaCreacion, fechaActualizacion) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (viajePrevistoId, itinerarioId, tipoActividadId, nombre, descripcion, horaInicio, horaFin,
+          distanciaKm, distanciaMetros, duracionSegundos, duracionFormateada, 
+          velocidadMediaKmh, velocidadMaximaKmh, velocidadMinimaKmh, 
+          calorias, pasosEstimados, puntosGPS, perfilTransporte,
+          rutaGpxCompleto, rutaMapaCompleto, rutaManifest, rutaEstadisticas,
+          fechaCreacion, fechaActualizacion) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           viajeId,
           itinerarioId,
@@ -6080,10 +6239,10 @@ Pasos: ${pasos}${desgloseTxt}`;
           if (err) return reject(err);
           console.log('✅ Actividad creada con ID:', this.lastID);
           console.log(`📊 Estadísticas guardadas:
-    ✓ Distancia: ${distKm} km
-    ✓ Velocidad media: ${velMedia} km/h
-    ✓ Calorías: ${cals} kcal
-    ✓ Pasos: ${pasos}`);
+      ✓ Distancia: ${distKm} km
+      ✓ Velocidad media: ${velMedia} km/h
+      ✓ Calorías: ${cals} kcal
+      ✓ Pasos: ${pasos}`);
           resolve(this.lastID);
         }
       );
@@ -6231,8 +6390,8 @@ Pasos: ${pasos}${desgloseTxt}`;
       const archivoId = await new Promise((resolve, reject) => {
         db.run(
           `INSERT INTO archivos 
-          (actividadId, tipo, nombreArchivo, rutaArchivo, horaCaptura, geolocalizacion, metadatos, fechaCreacion) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            (actividadId, tipo, nombreArchivo, rutaArchivo, horaCaptura, geolocalizacion, metadatos, fechaCreacion) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             actividadId,
             dbTipo,
@@ -6306,8 +6465,8 @@ Pasos: ${pasos}${desgloseTxt}`;
         await new Promise((resolve, reject) => {
           db.run(
             `INSERT INTO archivos_asociados 
-            (archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, fechaCreacion) 
-            VALUES (?, ?, ?, ?, ?)`,
+              (archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, fechaCreacion) 
+              VALUES (?, ?, ?, ?, ?)`,
             [archivoId, 'audio', audioFileName, audioRutaRelativa, new Date().toISOString()],
             function (err) {
               if (err) return reject(err);
@@ -6357,8 +6516,8 @@ Pasos: ${pasos}${desgloseTxt}`;
         await new Promise((resolve, reject) => {
           db.run(
             `INSERT INTO archivos_asociados 
-      (archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, fechaCreacion) 
-      VALUES (?, ?, ?, ?, ?)`,
+        (archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, fechaCreacion) 
+        VALUES (?, ?, ?, ?, ?)`,
             [archivoId, 'gpx', gpxFileName, gpxRutaRelativa, new Date().toISOString()],
             function (err) {
               if (err) return reject(err);
@@ -6411,8 +6570,8 @@ Pasos: ${pasos}${desgloseTxt}`;
         await new Promise((resolve, reject) => {
           db.run(
             `INSERT INTO archivos_asociados 
-            (archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, fechaCreacion) 
-            VALUES (?, ?, ?, ?, ?)`,
+              (archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, fechaCreacion) 
+              VALUES (?, ?, ?, ?, ?)`,
             [archivoId, 'mapa_ubicacion', path.basename(decodeURIComponent(mapaFile.originalname)), mapaRutaRelativa, new Date().toISOString()],
             function (err) {
               if (err) return reject(err);
@@ -6473,8 +6632,8 @@ Pasos: ${pasos}${desgloseTxt}`;
     await new Promise((resolve, reject) => {
       db.run(
         `UPDATE actividades 
-         SET rutaGpxCompleto = ?, rutaMapaCompleto = ?, rutaManifest = ?, rutaEstadisticas = ?, fechaActualizacion = ?
-         WHERE id = ?`,
+          SET rutaGpxCompleto = ?, rutaMapaCompleto = ?, rutaManifest = ?, rutaEstadisticas = ?, fechaActualizacion = ?
+          WHERE id = ?`,
         [rutaGpxCompleto, rutaMapaCompleto, rutaManifest, rutaEstadisticas, new Date().toISOString(), actividadId],
         (err) => {
           if (err) {
@@ -6581,7 +6740,40 @@ Pasos: ${pasos}${desgloseTxt}`;
 
 console.log('✅ Endpoint de importación registrado correctamente');
 
+// ✅ AÑADIR: Manejador de errores de multer
+app.use((error, req, res, next) => {
+  // ✅ CRÍTICO: Asegurar que las cabeceras CORS estén presentes en las respuestas de error
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, ngrok-skip-browser-warning');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
 
+  if (error instanceof multer.MulterError) {
+    console.error('❌ [MULTER ERROR]:', error.message);
+    console.error('   Código:', error.code);
+    console.error('   Campo:', error.field);
+
+    return res.status(400).json({
+      success: false,
+      error: `Error de subida: ${error.message}`,
+      code: error.code,
+      field: error.field
+    });
+  }
+
+  if (error) {
+    console.error('❌ [ERROR GENERAL]:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+
+  next();
+});
 
 // ----------------------------------------
 
@@ -6625,8 +6817,8 @@ app.get('/ia/historial/:sessionId', (req, res) => {
 
   db.all(
     `SELECT * FROM conversaciones_ia 
-     WHERE sessionId = ? 
-     ORDER BY timestamp ASC`,
+      WHERE sessionId = ? 
+      ORDER BY timestamp ASC`,
     [sessionId],
     (err, historial) => {
       if (err) {
@@ -6717,20 +6909,20 @@ app.post('/ia/validar-apikey', (req, res) => {
  */
 app.get('/ia/sesiones-activas', (req, res) => {
   db.all(`
-    SELECT 
-      sessionId,
-      COUNT(*) as num_mensajes,
-      MIN(timestamp) as inicio,
-      MAX(timestamp) as ultimo_mensaje,
-      SUM(CASE WHEN rol = 'user' THEN 1 ELSE 0 END) as mensajes_usuario,
-      SUM(CASE WHEN rol = 'assistant' THEN 1 ELSE 0 END) as respuestas_ia,
-      SUM(COALESCE(tokens_usados, 0)) as tokens_totales,
-      MAX(CASE WHEN datos_estructurados IS NOT NULL THEN 1 ELSE 0 END) as tiene_plan
-    FROM conversaciones_ia
-    GROUP BY sessionId
-    ORDER BY ultimo_mensaje DESC
-    LIMIT 50
-  `, (err, sesiones) => {
+      SELECT 
+        sessionId,
+        COUNT(*) as num_mensajes,
+        MIN(timestamp) as inicio,
+        MAX(timestamp) as ultimo_mensaje,
+        SUM(CASE WHEN rol = 'user' THEN 1 ELSE 0 END) as mensajes_usuario,
+        SUM(CASE WHEN rol = 'assistant' THEN 1 ELSE 0 END) as respuestas_ia,
+        SUM(COALESCE(tokens_usados, 0)) as tokens_totales,
+        MAX(CASE WHEN datos_estructurados IS NOT NULL THEN 1 ELSE 0 END) as tiene_plan
+      FROM conversaciones_ia
+      GROUP BY sessionId
+      ORDER BY ultimo_mensaje DESC
+      LIMIT 50
+    `, (err, sesiones) => {
     if (err) {
       console.error('❌ Error obteniendo sesiones activas:', err.message);
       return res.status(500).json({ error: err.message });
