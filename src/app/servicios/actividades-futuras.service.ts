@@ -89,6 +89,16 @@ export class ActividadesFuturasService {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // OBTENER ACTIVIDADES DE UN ITINERARIO (para validar solapamientos)
+    // GET /api/itinerarios-futuros/:id/actividades
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    obtenerActividadesDeItinerario(itinerarioFuturoId: number): Observable<ActividadFutura[]> {
+        // Reutilizamos el endpoint que ya tienes definido en obtenerActividades
+        return this.obtenerActividades(itinerarioFuturoId);
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // ELIMINAR ACTIVIDAD
     // DELETE /api/actividades-futuras/:id
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

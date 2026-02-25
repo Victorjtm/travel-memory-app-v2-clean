@@ -177,4 +177,19 @@ export class ViajesPrevistosComponent implements OnInit {
       { queryParams: { origen: 'viaje' } }
     );
   }
+
+  irAItinerarios(viajeId: number, rango?: any): void {
+    if (rango) {
+      console.log(`[NAVIGATE] Ir a itinerarios de viaje ${viajeId} con filtro:`, rango);
+      this.router.navigate(['/itinerarios', viajeId], {
+        queryParams: {
+          inicio: rango.inicio,
+          fin: rango.fin
+        }
+      });
+    } else {
+      console.log(`[NAVIGATE] Ir a todos los itinerarios de viaje ${viajeId}`);
+      this.router.navigate(['/itinerarios', viajeId]);
+    }
+  }
 }

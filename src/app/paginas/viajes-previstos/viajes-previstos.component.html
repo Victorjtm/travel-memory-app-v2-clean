@@ -9,7 +9,8 @@
       <div class="rangos-fechas" *ngIf="rangosFechasPorViaje[viaje.id]">
         <ng-container *ngIf="rangosFechasPorViaje[viaje.id].rangos.length === 1">
           <!-- Un solo rango: mostrar directamente -->
-          <div class="rango-unico">
+          <div class="rango-unico clickable"
+            (click)="irAItinerarios(viaje.id, rangosFechasPorViaje[viaje.id].rangos[0])">
             📅 {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
             <span class="badge-dias">({{ rangosFechasPorViaje[viaje.id].total }} días)</span>
           </div>
@@ -18,19 +19,21 @@
         <ng-container *ngIf="rangosFechasPorViaje[viaje.id].rangos.length > 1">
           <!-- Múltiples rangos: mostrar con desplegable -->
           <div class="rangos-multiples">
-            <div class="rango-principal" (click)="toggleDesplegable(viaje.id)">
+            <div class="rango-principal" (click)="irAItinerarios(viaje.id, rangosFechasPorViaje[viaje.id].rangos[0])">
               <span class="rango-texto">
                 📅 {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
               </span>
               <span class="badge-dias">({{ rangosFechasPorViaje[viaje.id].total }} días total)</span>
-              <span class="icono-desplegable" [class.abierto]="desplegablesAbiertos[viaje.id]">
+              <span class="icono-desplegable" [class.abierto]="desplegablesAbiertos[viaje.id]"
+                (click)="toggleDesplegable(viaje.id); $event.stopPropagation()">
                 ▼
               </span>
             </div>
 
             <!-- Rangos adicionales (desplegables) -->
             <div class="rangos-adicionales" *ngIf="desplegablesAbiertos[viaje.id]">
-              <div class="rango-item" *ngFor="let rango of rangosFechasPorViaje[viaje.id].rangos.slice(1)">
+              <div class="rango-item" *ngFor="let rango of rangosFechasPorViaje[viaje.id].rangos.slice(1)"
+                (click)="irAItinerarios(viaje.id, rango)">
                 📅 {{ formatearRango(rango) }}
                 <span class="badge-dias-secundario">({{ rango.dias }} días)</span>
               </div>
@@ -53,7 +56,7 @@
         <i class="fa fa-pencil"></i> Actualizar
       </button>
       <!-- Agregamos un botón que navegue a la página de itinerarios del viaje -->
-      <button [routerLink]="['/itinerarios', viaje.id]" class="btn-itinerarios">
+      <button (click)="irAItinerarios(viaje.id)" class="btn-itinerarios">
         <i class="fa fa-map"></i> Ver itinerarios
       </button>
     </div>

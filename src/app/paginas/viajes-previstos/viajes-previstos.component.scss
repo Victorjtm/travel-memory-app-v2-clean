@@ -270,6 +270,19 @@ button i {
   gap: 8px;
   color: #2c3e50;
   font-weight: 500;
+
+  &.clickable {
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: all 0.2s;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.7);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      transform: translateY(-1px);
+    }
+  }
 }
 
 .rangos-multiples {

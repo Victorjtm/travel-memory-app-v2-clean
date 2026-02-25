@@ -22,6 +22,9 @@ export class ItinerariosComponent implements OnInit {
 
   itinerarios: Itinerario[] = [];
   viajePrevistoId!: number;
+  filtroInicio: string | null = null;
+  filtroFin: string | null = null;
+  itinerariosCompletos: Itinerario[] = [];
 
   // Este objeto se usará para capturar los valores del itinerario en el formulario de actualización
   itinerarioActualizado: Itinerario = {
@@ -46,19 +49,54 @@ export class ItinerariosComponent implements OnInit {
   ) { }
 
   ngOnInit(): void {
+    // Escuchar parámetros de ruta (ID del viaje)
     this.route.paramMap.subscribe(params => {
       const idParam = params.get('viajePrevistoId');
       if (idParam) {
         this.viajePrevistoId = +idParam;
-        this.cargarItinerarios();
+
+        // Escuchar parámetros de consulta (filtros de fecha)
+        this.route.queryParamMap.subscribe(queryParams => {
+          this.filtroInicio = queryParams.get('inicio');
+          this.filtroFin = queryParams.get('fin');
+          console.log('[FILTER] Fechas detectadas:', { inicio: this.filtroInicio, fin: this.filtroFin });
+
+          this.cargarItinerarios();
+        });
       }
     });
   }
 
   cargarItinerarios(): void {
     this.itinerarioService.getItinerarios(this.viajePrevistoId).subscribe(itinerarios => {
-      this.itinerarios = itinerarios;
+      this.itinerariosCompletos = itinerarios;
+      this.aplicarFiltro();
       this.checkDuplicados();
+    });
+  }
+
+  aplicarFiltro(): void {
+    if (this.filtroInicio && this.filtroFin) {
+      this.itinerarios = this.itinerariosCompletos.filter(it => {
+        // Normalizar fechas para comparar solo la parte YYYY-MM-DD
+        const itInicio = it.fechaInicio.split('T')[0];
+        const itFin = it.fechaFin.split('T')[0];
+        const filtroI = this.filtroInicio!.split('T')[0];
+        const filtroF = this.filtroFin!.split('T')[0];
+
+        return itInicio >= filtroI && itFin <= filtroF;
+      });
+      console.log(`[FILTER] Itinerarios filtrados (${this.itinerarios.length}/${this.itinerariosCompletos.length})`);
+    } else {
+      this.itinerarios = [...this.itinerariosCompletos];
+    }
+  }
+
+  limpiarFiltro(): void {
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { inicio: null, fin: null },
+      queryParamsHandling: 'merge'
     });
   }
 

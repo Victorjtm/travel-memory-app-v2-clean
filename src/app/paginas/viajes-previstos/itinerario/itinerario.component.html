@@ -12,6 +12,18 @@
   <p *ngIf="hayDuplicados" style="color: #ff9800; font-size: 0.8rem; margin-top: 5px;">(Modo Unificación Activo: Se han
     detectado fechas duplicadas)</p>
 
+  <!-- Banner de Filtro Activo -->
+  <div *ngIf="filtroInicio && filtroFin" class="filtro-banner">
+    <div class="filtro-info">
+      <i class="fa fa-filter"></i>
+      <span>Filtrando por fecha: <strong>{{ filtroInicio }}</strong> al <strong>{{ filtroFin }}</strong></span>
+      <span class="badge-conteo">({{ itinerarios.length }} itinerarios)</span>
+    </div>
+    <button (click)="limpiarFiltro()" class="btn-limpiar-filtro">
+      <i class="fa fa-times-circle"></i> Mostrar todos
+    </button>
+  </div>
+
   <hr>
 
   <!-- Mostrar formulario de actualización solo cuando se seleccione un itinerario -->

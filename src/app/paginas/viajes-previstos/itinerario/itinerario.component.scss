@@ -15,6 +15,59 @@ h2 {
     margin-bottom: 1.5rem;
 }
 
+.filtro-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #e3f2fd;
+    border: 1px solid #90caf9;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+
+    .filtro-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #1565c0;
+
+        i {
+            font-size: 1.2rem;
+        }
+
+        strong {
+            color: #0d47a1;
+        }
+
+        .badge-conteo {
+            background: #1976d2;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+    }
+
+    .btn-limpiar-filtro {
+        background-color: #2196f3;
+        color: white;
+        margin: 0;
+        padding: 6px 12px;
+        font-weight: 500;
+
+        &:hover {
+            background-color: #1976d2;
+            transform: scale(1.05);
+        }
+
+        i {
+            margin-right: 6px;
+        }
+    }
+}
+
 form {
     display: flex;
     flex-direction: column;
