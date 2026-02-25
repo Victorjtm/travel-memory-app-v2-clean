@@ -596,8 +596,15 @@ export class ActividadesItinerariosComponent implements OnInit {
       (marker as any).archivosGrupo = archivos;
       (marker as any).numeroSecuencial = numeroSecuencial;
 
-      // Click para abrir modal
+      // Click para abrir modal o visualizador avanzado
       marker.on('click', () => {
+        // ✨ MEJORADO: Si hay un solo archivo y es foto, abrir visualizador avanzado directamente
+        if (archivos.length === 1 && archivos[0].archivo.tipo === 'foto') {
+          const item = archivos[0];
+          this.abrirModalMultimedia(item.archivo.rutaArchivo, item.archivo.nombreArchivo, item.archivo.tipo);
+          return;
+        }
+
         setTimeout(() => {
           this.abrirModalGrupo(archivos, numeroSecuencial);
         }, 100);
@@ -655,7 +662,15 @@ export class ActividadesItinerariosComponent implements OnInit {
     let mediaElement: HTMLImageElement | HTMLVideoElement;
 
     if (esFoto) {
-      // Crear elemento de imagen
+      // ✨ MEJORADO: Usar el visualizador avanzado en nueva ventana
+      const backendUrl = environment.apiUrl;
+      const urlArchivo = `${backendUrl}/uploads/${rutaArchivo}`;
+      const fullUrl = `${window.location.origin}/visualizador-foto?url=${encodeURIComponent(urlArchivo)}&descripcion=${encodeURIComponent(nombre)}`;
+
+      window.open(fullUrl, '_blank', 'noopener,noreferrer');
+      return;
+
+      // Código antiguo para fallback o por si falla la ventana
       const imagen = document.createElement('img');
       imagen.src = urlArchivo;
       imagen.style.cssText = `
@@ -835,14 +850,15 @@ export class ActividadesItinerariosComponent implements OnInit {
 
         <div style="position: relative; margin: 15px 0;">
           ${esFoto
-          ? `<img src="${urlArchivo}" style="
+          ? `<img id="img-carrusel" src="${urlArchivo}" style="
                 width: 100%;
                 height: auto;
                 max-height: 450px;
                 object-fit: contain;
                 border-radius: 8px;
                 background: #f0f0f0;
-              " />`
+                cursor: pointer;
+              " title="Clic para ampliar y rotar" />`
           : `<video src="${urlArchivo}" controls style="
                 width: 100%;
                 height: auto;
@@ -914,6 +930,15 @@ export class ActividadesItinerariosComponent implements OnInit {
             indiceActual++;
             actualizarContenido();
           }
+        });
+      }
+
+      // ✨ NUEVO: Click en la imagen para abrir visualizador avanzado
+      if (esFoto) {
+        const imgCarrusel = contenido.querySelector('#img-carrusel');
+        imgCarrusel?.addEventListener('click', () => {
+          const fullUrl = `${window.location.origin}/visualizador-foto?url=${encodeURIComponent(urlArchivo)}&descripcion=${encodeURIComponent(archivo.descripcion || archivo.nombreArchivo)}`;
+          window.open(fullUrl, '_blank', 'noopener,noreferrer');
         });
       }
     };
