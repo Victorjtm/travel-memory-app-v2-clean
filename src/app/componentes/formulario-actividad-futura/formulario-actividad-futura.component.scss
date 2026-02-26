@@ -1,0 +1,529 @@
+// ============================================================
+// ✈️  FORMULARIO ACTIVIDAD — SCSS v4 FINAL
+// ============================================================
+
+$primary: #1a73e8;
+$primary-dark: #0d47a1;
+$danger: #e53935;
+$danger-bg: #fff5f5;
+$danger-border: #ffcdd2;
+$text-main: #1c2b4a;
+$text-sub: #607d8b;
+$text-muted: #90a4ae;
+$border: #dde3ee;
+$surface: #fff;
+$bg-soft: #f4f7fb;
+$radius: 12px;
+$transition: all 0.2s ease;
+
+:host {
+    display: block;
+}
+
+// ── WRAPPER ─────────────────────────────────────────────────
+.modal-wrap {
+    display: flex;
+    flex-direction: column;
+    font-family: 'Nunito', 'Segoe UI', sans-serif;
+    color: $text-main;
+    background: $surface;
+    width: 100%;
+}
+
+// ── HEADER ──────────────────────────────────────────────────
+.modal-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 20px;
+    background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 55%, #283593 100%);
+
+    .head-icon {
+        width: 44px;
+        height: 44px;
+        background: rgba(255, 255, 255, 0.18);
+        border: 2px solid rgba(255, 255, 255, 0.30);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+
+        .head-emoji {
+            font-size: 20px;
+            line-height: 1;
+        }
+    }
+
+    .head-text {
+        flex: 1;
+        min-width: 0;
+
+        .head-title {
+            margin: 0;
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .head-sub {
+            margin: 2px 0 0;
+            font-size: 0.78rem;
+            color: rgba(255, 255, 255, 0.72);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    }
+
+    // Botón cerrar nativo — sin mat-icon, sin problemas
+    .close-btn {
+        flex-shrink: 0;
+        width: 34px;
+        height: 34px;
+        border: none;
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 50%;
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: $transition;
+        line-height: 1;
+
+        &:hover {
+            background: rgba(255, 255, 255, 0.28);
+            color: #fff;
+        }
+    }
+}
+
+// ── CUERPO ───────────────────────────────────────────────────
+.modal-body {
+    padding: 20px 24px 8px !important;
+    overflow-y: auto;
+    max-height: calc(80vh - 150px);
+
+    &::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: $border;
+        border-radius: 4px;
+    }
+}
+
+// ── LOADING ──────────────────────────────────────────────────
+.loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 40px 0;
+    color: $text-sub;
+    font-weight: 600;
+    font-size: 0.9rem;
+
+    .loading-ring {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: conic-gradient($primary 0deg 270deg, $border 270deg 360deg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: spin 0.9s linear infinite;
+
+        .ring-inner {
+            width: 26px;
+            height: 26px;
+            background: $surface;
+            border-radius: 50%;
+        }
+    }
+}
+
+// ── FORM ─────────────────────────────────────────────────────
+.activity-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+// ── FIELD GROUP ──────────────────────────────────────────────
+.field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+}
+
+.field-label {
+    font-size: 0.73rem;
+    font-weight: 700;
+    color: $text-sub;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+
+    .required {
+        color: $danger;
+        margin-left: 2px;
+    }
+
+    .optional {
+        font-size: 0.68rem;
+        font-weight: 500;
+        color: $text-muted;
+        text-transform: none;
+        letter-spacing: 0;
+        background: $bg-soft;
+        border: 1px solid $border;
+        padding: 1px 7px;
+        border-radius: 20px;
+        margin-left: 6px;
+        vertical-align: middle;
+    }
+}
+
+// ── INPUT SHELL ──────────────────────────────────────────────
+.input-shell {
+    display: flex;
+    align-items: center;
+    background: $bg-soft;
+    border: 1.5px solid $border;
+    border-radius: $radius;
+    transition: $transition;
+    overflow: hidden;
+
+    &:focus-within {
+        border-color: $primary;
+        background: $surface;
+        box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.10);
+    }
+
+    &.has-error {
+        border-color: $danger;
+        background: $danger-bg;
+        box-shadow: 0 0 0 3px rgba(229, 57, 53, 0.08);
+    }
+
+    &.time-shell .field-input {
+        text-align: center;
+        font-size: 1.05rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+
+    &.textarea-shell {
+        align-items: flex-start;
+    }
+
+    &.select-shell {
+        padding: 0;
+
+        ::ng-deep .mat-mdc-select {
+            width: 100%;
+            padding: 11px 14px;
+
+            .mat-mdc-select-trigger {
+                display: flex;
+                align-items: center;
+            }
+
+            .mat-mdc-select-value {
+                font-size: 0.93rem;
+                font-family: inherit;
+                color: $text-main;
+            }
+
+            .mat-mdc-select-arrow {
+                color: $text-muted;
+            }
+
+            .mdc-line-ripple,
+            .mat-mdc-form-field-subscript-wrapper {
+                display: none !important;
+            }
+        }
+    }
+}
+
+.field-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    padding: 11px 14px;
+    font-size: 0.93rem;
+    color: $text-main;
+    font-family: 'Nunito', 'Segoe UI', sans-serif;
+    width: 100%;
+    min-width: 0;
+
+    &::placeholder {
+        color: $text-muted;
+    }
+
+    &[type="time"] {
+        padding: 10px 14px;
+    }
+}
+
+.field-textarea {
+    resize: none;
+    line-height: 1.55;
+    min-height: 78px;
+}
+
+.field-error {
+    font-size: 0.78rem;
+    color: $danger;
+    font-weight: 600;
+    padding-left: 2px;
+}
+
+// ── FILA HORARIO ─────────────────────────────────────────────
+.field-row {
+    display: grid;
+    grid-template-columns: 1fr 28px 1fr;
+    gap: 6px;
+    align-items: end;
+
+    @media (max-width: 480px) {
+        grid-template-columns: 1fr;
+
+        .time-arrow {
+            display: none;
+        }
+    }
+}
+
+.time-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 10px;
+    color: $text-muted;
+    font-size: 1.2rem;
+    font-weight: 700;
+    user-select: none;
+}
+
+// ── ERROR INLINE ─────────────────────────────────────────────
+.inline-error {
+    font-size: 0.82rem;
+    color: $danger;
+    font-weight: 600;
+    background: $danger-bg;
+    border: 1px solid $danger-border;
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-top: -8px;
+}
+
+// ── CONFLICT BANNER ──────────────────────────────────────────
+.conflict-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: $danger-bg;
+    border: 1.5px solid $danger-border;
+    border-radius: $radius;
+    padding: 14px 16px;
+    animation: shake 0.4s ease;
+
+    .conflict-icon-wrap {
+        font-size: 22px;
+        flex-shrink: 0;
+        line-height: 1;
+    }
+
+    .conflict-info {
+        flex: 1;
+        min-width: 0;
+
+        .conflict-title {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 800;
+            color: $danger;
+            margin-bottom: 2px;
+        }
+
+        .conflict-desc {
+            margin: 0;
+            font-size: 0.8rem;
+            color: darken($danger, 15%);
+            line-height: 1.4;
+        }
+    }
+
+    .fix-btn {
+        flex-shrink: 0;
+        background: transparent;
+        border: 1.5px solid $danger;
+        border-radius: 8px;
+        color: $danger;
+        font-size: 0.8rem;
+        font-weight: 700;
+        font-family: inherit;
+        padding: 6px 14px;
+        cursor: pointer;
+        transition: $transition;
+        height: 34px;
+
+        &:hover {
+            background: rgba(229, 57, 53, 0.08);
+        }
+    }
+}
+
+// ── FOOTER ───────────────────────────────────────────────────
+.modal-foot {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 14px 24px 18px !important;
+    border-top: 1.5px solid $border;
+    min-height: unset !important;
+
+    .foot-spacer {
+        flex: 1;
+    }
+}
+
+.btn-secondary {
+    height: 40px;
+    padding: 0 18px !important;
+    font-size: 0.88rem !important;
+    font-weight: 600 !important;
+    color: $text-sub !important;
+    border-radius: $radius !important;
+    font-family: inherit !important;
+    transition: $transition;
+
+    &:hover {
+        background: $bg-soft !important;
+        color: $text-main !important;
+    }
+}
+
+.btn-danger {
+    height: 40px;
+    padding: 0 18px !important;
+    font-size: 0.88rem !important;
+    font-weight: 700 !important;
+    color: $danger !important;
+    border-radius: $radius !important;
+    font-family: inherit !important;
+    transition: $transition;
+
+    &:hover {
+        background: $danger-bg !important;
+    }
+}
+
+.btn-primary {
+    height: 40px;
+    padding: 0 22px !important;
+    font-size: 0.9rem !important;
+    font-weight: 800 !important;
+    color: #fff !important;
+    background: linear-gradient(135deg, $primary 0%, $primary-dark 100%) !important;
+    border-radius: $radius !important;
+    font-family: inherit !important;
+    box-shadow: 0 4px 14px rgba(26, 115, 232, 0.28) !important;
+    transition: $transition;
+
+    &:hover:not([disabled]) {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(26, 115, 232, 0.38) !important;
+    }
+
+    &[disabled] {
+        opacity: 0.45 !important;
+        box-shadow: none !important;
+        transform: none !important;
+    }
+}
+
+// ── SELECT PANEL ─────────────────────────────────────────────
+::ng-deep .custom-select-panel {
+    border-radius: $radius !important;
+    box-shadow: 0 8px 24px rgba(26, 115, 232, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+    border: 1.5px solid $border !important;
+
+    .mat-mdc-option {
+        font-size: 0.9rem;
+        font-family: 'Nunito', 'Segoe UI', sans-serif;
+        color: $text-main;
+
+        &.mdc-list-item--selected {
+            background: #e8f0fe !important;
+            color: $primary;
+            font-weight: 700;
+        }
+
+        &:hover:not(.mdc-list-item--disabled) {
+            background: $bg-soft;
+        }
+    }
+}
+
+// ── ANIMACIONES ──────────────────────────────────────────────
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes shake {
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    25% {
+        transform: translateX(-5px);
+    }
+
+    75% {
+        transform: translateX(5px);
+    }
+}
+
+// ── MOBILE ───────────────────────────────────────────────────
+@media (max-width: 576px) {
+    .modal-head {
+        padding: 14px 16px;
+    }
+
+    .modal-body {
+        padding: 14px 14px 6px !important;
+    }
+
+    .modal-foot {
+        flex-wrap: wrap;
+        padding: 12px 14px 16px !important;
+
+        .btn-primary,
+        .btn-danger,
+        .btn-secondary {
+            flex: 1;
+            justify-content: center !important;
+        }
+
+        .foot-spacer {
+            display: none;
+        }
+    }
+}

@@ -1,0 +1,115 @@
+<div class="modal-wrap">
+
+    <!-- HEADER -->
+    <div class="modal-head">
+        <div class="head-icon">
+            <span class="head-emoji">{{ data.actividadId ? '✏️' : '📍' }}</span>
+        </div>
+        <div class="head-text">
+            <h2 class="head-title">{{ data.actividadId ? 'Editar Actividad' : 'Nueva Actividad' }}</h2>
+            <p class="head-sub">{{ data.actividadId ? 'Modifica los detalles de tu plan' : 'Añade un nuevo plan a tu
+                itinerario' }}</p>
+        </div>
+        <button class="close-btn" type="button" (click)="cancelar()">✕</button>
+    </div>
+
+    <!-- CONTENT -->
+    <mat-dialog-content class="modal-body">
+
+        <div class="loading-state" *ngIf="cargando">
+            <div class="loading-ring">
+                <div class="ring-inner"></div>
+            </div>
+            <span>Cargando actividad…</span>
+        </div>
+
+        <form [formGroup]="form" *ngIf="!cargando" class="activity-form">
+
+            <!-- CONFLICT BANNER -->
+            <div class="conflict-card" *ngIf="errorSolapamiento">
+                <div class="conflict-icon-wrap">⚠️</div>
+                <div class="conflict-info">
+                    <span class="conflict-title">Conflicto de horario</span>
+                    <p class="conflict-desc">{{ errorSolapamiento.mensaje }}</p>
+                </div>
+                <button type="button" class="fix-btn" (click)="editarConflicto()">Resolver</button>
+            </div>
+
+            <!-- NOMBRE -->
+            <div class="field-group">
+                <label class="field-label">Nombre de la actividad <span class="required">*</span></label>
+                <div class="input-shell" [class.has-error]="form.get('nombre')?.invalid && form.get('nombre')?.touched">
+                    <input class="field-input" formControlName="nombre" placeholder="Ej: Visita al Coliseo Romano" />
+                </div>
+                <span class="field-error"
+                    *ngIf="form.get('nombre')?.hasError('required') && form.get('nombre')?.touched">
+                    El nombre es obligatorio
+                </span>
+            </div>
+
+            <!-- HORARIO -->
+            <div class="field-row">
+                <div class="field-group">
+                    <label class="field-label">Hora de inicio</label>
+                    <div class="input-shell time-shell" [class.has-error]="errorSolapamiento">
+                        <input class="field-input" type="time" formControlName="horaInicio" />
+                    </div>
+                </div>
+                <div class="time-arrow">→</div>
+                <div class="field-group">
+                    <label class="field-label">Hora de fin</label>
+                    <div class="input-shell time-shell" [class.has-error]="errorSolapamiento">
+                        <input class="field-input" type="time" formControlName="horaFin" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="inline-error" *ngIf="form.hasError('horasNoCoherentes')">
+                ⚠️ La hora de fin debe ser posterior a la de inicio
+            </div>
+
+            <!-- CATEGORÍA -->
+            <div class="field-group">
+                <label class="field-label">Categoría</label>
+                <div class="input-shell select-shell">
+                    <mat-select formControlName="tipoActividadId" panelClass="custom-select-panel">
+                        <mat-option *ngFor="let tipo of tiposActividad" [value]="tipo.id">
+                            {{ tipo.nombre }}
+                        </mat-option>
+                    </mat-select>
+                </div>
+            </div>
+
+            <!-- UBICACIÓN -->
+            <div class="field-group">
+                <label class="field-label">Ubicación <span class="optional">opcional</span></label>
+                <div class="input-shell">
+                    <input class="field-input" formControlName="ubicacion_planeada"
+                        placeholder="Ciudad, dirección o punto de interés" />
+                </div>
+            </div>
+
+            <!-- DESCRIPCIÓN -->
+            <div class="field-group">
+                <label class="field-label">Notas <span class="optional">opcional</span></label>
+                <div class="input-shell textarea-shell">
+                    <textarea class="field-input field-textarea" formControlName="descripcion" rows="3"
+                        placeholder="Detalles, recordatorios o notas sobre esta actividad…"></textarea>
+                </div>
+            </div>
+
+        </form>
+    </mat-dialog-content>
+
+    <!-- FOOTER -->
+    <mat-dialog-actions class="modal-foot">
+        <button class="btn-secondary" mat-button (click)="cancelar()">Cancelar</button>
+        <div class="foot-spacer"></div>
+        <button class="btn-danger" mat-button *ngIf="data.actividadId" (click)="eliminar()">Eliminar</button>
+        <button class="btn-primary" mat-button (click)="guardar()"
+            [disabled]="form.invalid || cargando || !!errorSolapamiento || !formChanged">
+            {{ data.actividadId ? 'Actualizar' : 'Guardar' }}
+        </button>
+    </mat-dialog-actions>
+
+</div>
