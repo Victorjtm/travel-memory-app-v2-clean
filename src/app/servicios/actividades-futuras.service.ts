@@ -62,6 +62,14 @@ export class ActividadesFuturasService {
     constructor(private http: HttpClient) { }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // OBTENER ACTIVIDAD INDIVIDUAL
+    // GET /api/actividades-futuras/:id
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    obtenerActividad(id: number): Observable<ActividadFutura> {
+        return this.http.get<ActividadFutura>(`${this.apiUrl}/actividades-futuras/${id}`);
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // LISTAR ACTIVIDADES DE UN ITINERARIO FUTURO
     // GET /api/itinerarios-futuros/:id/actividades
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

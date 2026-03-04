@@ -298,6 +298,42 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
 .itinerarios-section {
     margin-bottom: 2rem;
 
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+
+        h2 {
+            margin: 0;
+        }
+
+        .btn-add-activity {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+
+            &:hover {
+                background: #1976D2;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            }
+
+            mat-icon {
+                font-size: 18px;
+                width: 18px;
+                height: 18px;
+            }
+        }
+    }
+
     h2 {
         font-size: 1.5rem;
         color: $color-text;
@@ -402,9 +438,15 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
     transition: all 0.2s;
     border-left: 4px solid $color-primary;
 
-    &:hover {
-        transform: translateX(4px);
-        box-shadow: $shadow-lg;
+    &.clickable {
+        cursor: pointer;
+
+        &:hover {
+            transform: translateX(4px);
+            box-shadow: $shadow-lg;
+            border-left-color: #2196F3;
+            background-color: #fbfdff;
+        }
     }
 
     .actividad-hora {

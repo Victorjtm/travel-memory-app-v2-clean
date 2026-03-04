@@ -103,7 +103,12 @@
 
         <!-- ITINERARIOS -->
         <div class="itinerarios-section" *ngIf="viaje!.itinerarios.length > 0">
-            <h2>📋 Itinerario General</h2>
+            <div class="section-header">
+                <h2>📋 Itinerario General</h2>
+                <button class="btn-add-activity" (click)="abrirNuevaActividad(viaje!.itinerarios[0].id!)">
+                    <mat-icon>add</mat-icon> Nueva Actividad
+                </button>
+            </div>
 
             <div class="itinerario-card" *ngFor="let itinerario of viaje!.itinerarios">
                 <div class="itinerario-header">
@@ -128,7 +133,8 @@
                 </h3>
 
                 <div class="actividades-lista">
-                    <div class="actividad-card" *ngFor="let actividad of agruparActividadesPorDia()[fecha]">
+                    <div class="actividad-card clickable" *ngFor="let actividad of agruparActividadesPorDia()[fecha]"
+                        (click)="abrirEditorActividad(actividad)">
                         <div class="actividad-hora">
                             <span class="hora-inicio">{{ actividad.horaInicio }}</span>
                             <span class="separador">-</span>

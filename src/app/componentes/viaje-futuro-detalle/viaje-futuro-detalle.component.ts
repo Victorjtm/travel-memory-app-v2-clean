@@ -10,11 +10,15 @@ import {
   ViajeFuturoCompleto,
   ActividadFutura
 } from '../../servicios/viajes-futuros.service';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { FormularioActividadFuturaComponent } from '../formulario-actividad-futura/formulario-actividad-futura.component';
+import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
 
 @Component({
   selector: 'app-viaje-futuro-detalle',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, MatDialogModule, MatIconModule, MatButtonModule],
   templateUrl: './viaje-futuro-detalle.component.html',
   styleUrls: ['./viaje-futuro-detalle.component.scss']
 })
@@ -37,7 +41,8 @@ export class ViajeFuturoDetalleComponent implements OnInit {
   constructor(
     private route: ActivatedRoute,
     private router: Router,
-    private viajesService: ViajesFuturosService
+    private viajesService: ViajesFuturosService,
+    private dialog: MatDialog
   ) { }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -80,6 +85,51 @@ export class ViajeFuturoDetalleComponent implements OnInit {
         console.error('❌ Error cargando viaje:', error);
         this.error = error.error?.error || 'Error al cargar el viaje';
         this.cargando = false;
+      }
+    });
+  }
+
+  /**
+   * Abrir editor de actividad
+   */
+  abrirEditorActividad(actividad: ActividadFutura): void {
+    if (!actividad.id) return;
+
+    console.log(`✏️ Editando actividad: ${actividad.nombre} (ID: ${actividad.id})`);
+
+    const dialogRef = this.dialog.open(FormularioActividadFuturaComponent, {
+      width: '550px',
+      maxHeight: '90vh',
+      data: {
+        actividadId: actividad.id,
+        itinerarioId: actividad.itinerarioFuturoId
+      },
+      disableClose: true
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result === 'guardado' || result === 'eliminado') {
+        this.cargarViaje();
+      }
+    });
+  }
+
+  /**
+   * Abrir nueva actividad
+   */
+  abrirNuevaActividad(itinerarioId: number): void {
+    const dialogRef = this.dialog.open(FormularioActividadFuturaComponent, {
+      width: '550px',
+      data: {
+        actividadId: 0,
+        itinerarioId: itinerarioId
+      },
+      disableClose: true
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result === 'guardado') {
+        this.cargarViaje();
       }
     });
   }

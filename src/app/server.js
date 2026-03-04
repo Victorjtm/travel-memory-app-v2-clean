@@ -1164,7 +1164,30 @@ app.delete('/itinerarios-futuros/:id', (req, res) => {
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 11. ELIMINAR ACTIVIDAD FUTURA
+// 11. OBTENER ACTIVIDAD FUTURA INDIVIDUAL
+// GET /actividades-futuras/:id
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.get('/actividades-futuras/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.get('SELECT * FROM actividades_futuras WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      console.error('❌ Error al obtener actividad:', err.message);
+      return res.status(500).json({ error: 'Error al obtener actividad' });
+    }
+
+    if (!row) {
+      return res.status(404).json({ error: 'Actividad no encontrada' });
+    }
+
+    res.json(row);
+  });
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 12. ELIMINAR ACTIVIDAD FUTURA
 // DELETE /actividades-futuras/:id
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
