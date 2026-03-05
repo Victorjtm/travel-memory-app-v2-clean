@@ -1302,8 +1302,11 @@ Los archivos sin fecha en el nombre usarán la fecha del archivo anterior.
 
 Formatos soportados:
 - IMG_20220129_134353.jpg
-- JPEG_20251230_105305_1767088385958.jpg
-- 1767698649281_archivo.jpg`;
+- IMG20250501143632.jpg
+- 2014-11-15 12.25.30.jpg (Espacios y puntos)
+- IMG-20141115-WA0014.jpeg (WhatsApp)
+- 2014-11-15.jpg (Solo fecha)
+- 1767698649281_archivo.jpg (Timestamp)`;
 
     if (!confirm(mensaje)) {
       return;

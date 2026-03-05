@@ -5413,36 +5413,66 @@ app.post('/actividades/:id/corregir-fechas-nombre', (req, res) => {
     archivos.forEach((archivo) => {
       let fechaCaptura = null;
 
-      // 3️⃣ Intentar extraer fecha del nombre
-      // Formatos soportados:
-      // IMG_20220129_134353.jpg
-      // JPEG_20251230_105305_1767088385958.jpg
-      // 1767698649281_DSCN00013.JPG (timestamp en milisegundos)
+      // 3️⃣ Intentar extraer fecha del nombre (v2 mejorada)
+      let match;
+      let extractMode = null;
 
-      const match1 = archivo.nombreArchivo.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
-      const match2 = archivo.nombreArchivo.match(/^(\d{13})/); // timestamp de 13 dígitos
-
-      if (match1) {
-        // Formato: IMG_20220129_134353.jpg
-        fechaCaptura = new Date(
-          parseInt(match1[1]), // año
-          parseInt(match1[2]) - 1, // mes (0-indexed)
-          parseInt(match1[3]), // día
-          parseInt(match1[4]), // hora
-          parseInt(match1[5]), // minuto
-          parseInt(match1[6])  // segundo
-        );
-        ultimaFechaExtraida = fechaCaptura;
-        console.log(`✅ Fecha extraída de ${archivo.nombreArchivo}:`, fechaCaptura);
-      } else if (match2) {
-        // Formato: 1767698649281_DSCN00013.JPG (timestamp)
-        fechaCaptura = new Date(parseInt(match2[1]));
-        ultimaFechaExtraida = fechaCaptura;
-        console.log(`✅ Fecha extraída (timestamp) de ${archivo.nombreArchivo}:`, fechaCaptura);
+      // a) Timestamp (13 dígitos al inicio)
+      if (match = archivo.nombreArchivo.match(/^(\d{13})/)) {
+        fechaCaptura = new Date(parseInt(match[1]));
+        extractMode = "Timestamp";
+      }
+      // b) Formato Espacio/Punto: 2014-11-15 12.25.30
+      else if (match = archivo.nombreArchivo.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2})/)) {
+        const d = [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
+        if (d[1] >= 1 && d[1] <= 12 && d[2] >= 1 && d[2] <= 31) {
+          fechaCaptura = new Date(d[0], d[1] - 1, d[2], parseInt(match[4]), parseInt(match[5]), parseInt(match[6]));
+          extractMode = "Space/Dot";
+        }
+      }
+      // c) Estilo WhatsApp: IMG-20141115-WA0014
+      else if (match = archivo.nombreArchivo.match(/IMG-(\d{4})(\d{2})(\d{2})-WA/)) {
+        fechaCaptura = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]), 12, 0, 0);
+        extractMode = "WhatsApp";
+      }
+      // d) Estilo Guión Bajo (Estándar): IMG_20220129_134353
+      else if (match = archivo.nombreArchivo.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/)) {
+        const d = [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
+        if (d[1] >= 1 && d[1] <= 12 && d[2] >= 1 && d[2] <= 31) {
+          fechaCaptura = new Date(d[0], d[1] - 1, d[2], parseInt(match[4]), parseInt(match[5]), parseInt(match[6]));
+          extractMode = "Underscore";
+        }
+      }
+      // e) Dígitos continuos (14 dígitos): 20250501143632
+      else if (match = archivo.nombreArchivo.match(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/)) {
+        const d = [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
+        if (d[1] >= 1 && d[1] <= 12 && d[2] >= 1 && d[2] <= 31) {
+          fechaCaptura = new Date(d[0], d[1] - 1, d[2], parseInt(match[4]), parseInt(match[5]), parseInt(match[6]));
+          extractMode = "Continuous";
+        }
+      }
+      // f) Fecha con guiones solamente: 2014-11-15
+      else if (match = archivo.nombreArchivo.match(/(\d{4})-(\d{2})-(\d{2})/)) {
+        const d = [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
+        if (d[1] >= 1 && d[1] <= 12 && d[2] >= 1 && d[2] <= 31) {
+          fechaCaptura = new Date(d[0], d[1] - 1, d[2], 12, 0, 0);
+          extractMode = "HyphenDate";
+        }
+      }
+      // g) Solo 8 dígitos (Fecha): 20141115
+      else if (match = archivo.nombreArchivo.match(/(\d{4})(\d{2})(\d{2})/)) {
+        const d = [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
+        if (d[1] >= 1 && d[1] <= 12 && d[2] >= 1 && d[2] <= 31) {
+          fechaCaptura = new Date(d[0], d[1] - 1, d[2], 12, 0, 0);
+          extractMode = "8-Digits";
+        }
       }
 
-      // 4️⃣ Si no se pudo extraer, usar la última fecha válida
-      if (!fechaCaptura && ultimaFechaExtraida) {
+      if (fechaCaptura) {
+        ultimaFechaExtraida = fechaCaptura;
+        console.log(`✅ Fecha extraída (${extractMode}) de ${archivo.nombreArchivo}:`, fechaCaptura);
+      } else if (ultimaFechaExtraida) {
+        // 4️⃣ Si no se pudo extraer, usar la última fecha válida
         fechaCaptura = new Date(ultimaFechaExtraida);
         console.log(`⚠️ Usando fecha anterior para ${archivo.nombreArchivo}`);
       }
