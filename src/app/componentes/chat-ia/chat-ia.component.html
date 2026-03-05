@@ -27,6 +27,12 @@
                 🔄
             </button>
 
+            <!-- Cargar JSON -->
+            <input type="file" accept=".json" hidden #fileInput (change)="onFileSelected($event)">
+            <button class="btn-header btn-nueva" (click)="fileInput.click()" title="Cargar JSON externo">
+                📁
+            </button>
+
             <!-- Limpiar historial -->
             <button class="btn-header btn-limpiar" (click)="limpiarHistorial()" [disabled]="mensajes.length === 0"
                 title="Limpiar historial">

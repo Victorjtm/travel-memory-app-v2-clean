@@ -38,12 +38,17 @@ export class FormularioActividadFuturaComponent implements OnInit {
   errorSolapamiento: { mensaje: string; conflictoId?: number; conflictoNombre?: string | null } | null = null;
   formChanged = false;
 
-  // Tus tipos de actividad (ajusta según tu configuración)
+  // Tipos de actividad — IDs alineados con tabla TiposActividad de la BD
   tiposActividad = [
-    { id: 1, nombre: 'Visita turística' },
-    { id: 2, nombre: 'Comida/Restaurante' },
-    { id: 3, nombre: 'Transporte' },
-    { id: 4, nombre: 'Actividad deportiva' }
+    { id: 1, nombre: 'costa' },
+    { id: 2, nombre: 'naturaleza' },
+    { id: 3, nombre: 'rural' },
+    { id: 4, nombre: 'urbana' },
+    { id: 5, nombre: 'cultural' },
+    { id: 6, nombre: 'deportiva' },
+    { id: 7, nombre: 'fiesta' },
+    { id: 8, nombre: 'transporte' },
+    { id: 9, nombre: 'restauración' }
   ];
 
   constructor(
@@ -145,7 +150,14 @@ export class FormularioActividadFuturaComponent implements OnInit {
 
           // Buscar conflicto
           const conflicto = otrasActividades.find(otraAct =>
-            this.haySolapamiento(inicio, fin, otraAct.horaInicio, otraAct.horaFin)
+            this.haySolapamiento(
+              inicio,
+              fin,
+              otraAct.horaInicio,
+              otraAct.horaFin,
+              group.get('nombre')?.value || '',
+              otraAct.nombre || ''
+            )
           );
 
           if (conflicto) {
@@ -165,7 +177,13 @@ export class FormularioActividadFuturaComponent implements OnInit {
     });
   }
 
-  haySolapamiento(h1i: string, h1f: string, h2i: string, h2f: string): boolean {
+  haySolapamiento(h1i: string, h1f: string, h2i: string, h2f: string, n1: string, n2: string): boolean {
+    const f1 = n1.match(/\((\d{4}-\d{2}-\d{2})\)/)?.[1];
+    const f2 = n2.match(/\((\d{4}-\d{2}-\d{2})\)/)?.[1];
+    if (f1 && f2 && f1 !== f2) {
+      return false; // Son de días distintos, no hay solapamiento
+    }
+
     const m1i = this.horaToMinutos(h1i);
     const m1f = this.horaToMinutos(h1f);
     const m2i = this.horaToMinutos(h2i);

@@ -44,6 +44,7 @@ export class ChatIAComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     // Control de scroll
     @ViewChild('mensajesContainer') private mensajesContainer!: ElementRef;
+    @ViewChild('fileInput') private fileInput!: ElementRef;
     private shouldScroll = false;
 
     // Control de subscripciones
@@ -369,5 +370,81 @@ export class ChatIAComponent implements OnInit, OnDestroy, AfterViewChecked {
             }
         });
     }
+
+    /**
+     * Maneja la selección de un archivo JSON externo
+     */
+    onFileSelected(event: any): void {
+        const file: File = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e: any) => {
+            try {
+                const jsonContent = e.target.result;
+                const parseado = JSON.parse(jsonContent);
+
+                // Normalizar la estructura si viene en un formato diferente (ej. exportado externamente con trip_name, days)
+                let planNormalizado: any = parseado;
+
+                if (!parseado.viaje && parseado.trip_name) {
+                    // Mapear formato externo a PlanEstructurado
+                    planNormalizado = {
+                        plan_completo: true,
+                        viaje: {
+                            nombre: parseado.trip_name || 'Viaje Importado',
+                            destino: parseado.location || 'Destino desconocido',
+                            fecha_inicio: parseado.dates?.start || '',
+                            fecha_fin: parseado.dates?.end || ''
+                        },
+                        itinerarios: (parseado.days || []).map((day: any) => {
+                            const actividades: any[] = [];
+
+                            // Extraer actividades de las partes del día
+                            const partes = ['morning', 'lunch', 'afternoon', 'dinner'];
+                            partes.forEach(parte => {
+                                if (day[parte]) {
+                                    actividades.push({
+                                        nombre: day[parte].title || parte,
+                                        descripcion: day[parte].description || '',
+                                        hora_inicio: day[parte].start_time || '',
+                                        hora_fin: '',
+                                        tipo_actividad: day[parte].category || '',
+                                        ubicacion: day[parte].location || '',
+                                        notas: day[parte].notes || ''
+                                    });
+                                }
+                            });
+
+                            return {
+                                fecha: day.date || '',
+                                descripcion: day.title || '',
+                                actividades: actividades
+                            };
+                        })
+                    };
+                }
+
+                // Validar la estructura básica de un PlanEstructurado
+                if (planNormalizado && planNormalizado.viaje && planNormalizado.viaje.destino && planNormalizado.itinerarios) {
+                    console.log('✅ JSON válido cargado:', planNormalizado.viaje.nombre);
+                    planNormalizado.plan_completo = true; // Asegurar que plan_completo esté en true
+                    this.planDetectado = planNormalizado;
+                } else {
+                    alert('❌ El archivo JSON no tiene el formato de un Plan de Viaje esperado.\nSe necesita al menos "viaje.destino" y "itinerarios", o "trip_name" y "days".');
+                }
+            } catch (error) {
+                console.error('Error parseando JSON:', error);
+                alert('❌ El archivo seleccionado no es un JSON válido.');
+            } finally {
+                // Limpiar el input para permitir seleccionar el mismo archivo de nuevo
+                if (this.fileInput && this.fileInput.nativeElement) {
+                    this.fileInput.nativeElement.value = '';
+                }
+            }
+        };
+        reader.readAsText(file);
+    }
+
 
 }
