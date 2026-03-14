@@ -58,7 +58,13 @@ export class ItinerariosComponent implements OnInit {
         // Escuchar parámetros de consulta (filtros de fecha)
         this.route.queryParamMap.subscribe(queryParams => {
           this.filtroInicio = queryParams.get('inicio');
-          this.filtroFin = queryParams.get('fin');
+          let fFin = queryParams.get('fin');
+          
+          if (this.filtroInicio && fFin && (this.filtroInicio === fFin || fFin.endsWith('00:00:00'))) {
+              fFin = fFin.substring(0, 10) + ' 23:59:59';
+          }
+          
+          this.filtroFin = fFin;
           console.log('[FILTER] Fechas detectadas:', { inicio: this.filtroInicio, fin: this.filtroFin });
 
           this.cargarItinerarios();
@@ -78,11 +84,11 @@ export class ItinerariosComponent implements OnInit {
   aplicarFiltro(): void {
     if (this.filtroInicio && this.filtroFin) {
       this.itinerarios = this.itinerariosCompletos.filter(it => {
-        // Normalizar fechas para comparar solo la parte YYYY-MM-DD
-        const itInicio = it.fechaInicio.split('T')[0];
-        const itFin = it.fechaFin.split('T')[0];
-        const filtroI = this.filtroInicio!.split('T')[0];
-        const filtroF = this.filtroFin!.split('T')[0];
+        // Normalizar fechas para comparar solo la parte YYYY-MM-DD (los primeros 10 caracteres)
+        const itInicio = it.fechaInicio ? it.fechaInicio.substring(0, 10) : '';
+        const itFin = it.fechaFin ? it.fechaFin.substring(0, 10) : '';
+        const filtroI = this.filtroInicio!.substring(0, 10);
+        const filtroF = this.filtroFin!.substring(0, 10);
 
         return itInicio >= filtroI && itFin <= filtroF;
       });

@@ -151,10 +151,15 @@ console.log(`⏱️ Duración total calculada del video: ${duracionVideoSegundos
 let mimeType = this.detectarMejorCodec();
 console.log('🎬 Códec seleccionado:', mimeType);
 
-this.mediaRecorder = new MediaRecorder(this.stream, {
-  mimeType: mimeType,
-  videoBitsPerSecond: this.obtenerBitrate(configuracion.calidad)
-});
+try {
+  this.mediaRecorder = new MediaRecorder(this.stream, {
+    mimeType: mimeType,
+    videoBitsPerSecond: this.obtenerBitrate(configuracion.calidad)
+  });
+} catch (e) {
+  console.error('❌ Error fatal al crear MediaRecorder:', e);
+  throw new Error(`MediaRecorder no soportado para ${mimeType}: ${e instanceof Error ? e.message : 'Error desconocido'}`);
+}
         
         this.chunks = [];
         this.mediaRecorder.ondataavailable = (event) => {
@@ -186,6 +191,15 @@ this.mediaRecorder = new MediaRecorder(this.stream, {
         const videoSinAudio = await new Promise<Blob>((resolve, reject) => {
           this.mediaRecorder!.onstop = () => {
             try {
+              if (this.chunks.length === 0) {
+                console.error('❌ Error: No se recibieron datos (chunks vacíos) de MediaRecorder');
+                reject(new Error('El video generado está vacío (0 chunks)'));
+                return;
+              }
+              
+              const totalSize = this.chunks.reduce((acc, chunk) => acc + chunk.size, 0);
+              console.log(`🎬 Video generado: ${this.chunks.length} chunks, total ${ (totalSize / 1024).toFixed(2) } KB`);
+              
               const blob = new Blob(this.chunks, { type: 'video/webm' });
               resolve(blob);
             } catch (error) {
@@ -552,14 +566,34 @@ private procesarVideo(archivo: Archivo): Promise<{archivo: Archivo, video: HTMLV
     return extensiones.includes(extension);
   }
 
-    private cargarImagen(archivo: Archivo): Promise<HTMLImageElement> {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error(`Error cargando ${archivo.nombreArchivo}`));
-        img.src = this.obtenerUrlArchivo(archivo);
-      });
+    private async cargarImagen(archivo: Archivo): Promise<HTMLImageElement> {
+      try {
+        const url = this.obtenerUrlArchivo(archivo);
+        console.log(`🖼️ Cargando imagen mediante fetch: ${url}`);
+        
+        // ✨ USAR FETCH PARA EVITAR CANVA TAINTED (CORS)
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          // NO usar crossOrigin con Blob URLs para evitar problemas de seguridad
+          img.onload = () => {
+            URL.revokeObjectURL(blobUrl);
+            resolve(img);
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(blobUrl);
+            reject(new Error(`Error cargando imagen blob de ${archivo.nombreArchivo}`));
+          };
+          img.src = blobUrl;
+        });
+      } catch (error) {
+        console.error(`❌ Error en fetch de imagen ${archivo.nombreArchivo}:`, error);
+        throw error;
+      }
     }
 
     private obtenerUrlArchivo(archivo: Archivo): string {
@@ -1174,7 +1208,9 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
     }
 
   private async esperarFrame(): Promise<void> {
-    return new Promise(resolve => requestAnimationFrame(() => resolve()));
+    // ✨ CAMBIO: Usar setTimeout en lugar de requestAnimationFrame
+    // Esto garantiza que el loop continúe aunque la ventana esté en segundo plano
+    return new Promise(resolve => setTimeout(resolve, 1000 / 30)); // 30 FPS ≈ 33.3ms
   }
 
     private async dibujarTitulo(titulo: string, frames: number, onFrame?: () => void): Promise<void> {

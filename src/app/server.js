@@ -275,7 +275,7 @@ if (!fs.existsSync(uploadsPath)) {
 }
 
 console.log('📁 Sirviendo archivos estáticos desde:', uploadsPath);
-app.use('/uploads', express.static(uploadsPath));
+app.use('/uploads', cors(), express.static(uploadsPath));
 
 // Configurar la base de datos SQLite
 const db = new sqlite3.Database('./viajes.db', (err) => {

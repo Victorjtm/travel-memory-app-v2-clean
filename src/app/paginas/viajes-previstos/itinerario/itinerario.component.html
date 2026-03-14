@@ -16,7 +16,7 @@
   <div *ngIf="filtroInicio && filtroFin" class="filtro-banner">
     <div class="filtro-info">
       <i class="fa fa-filter"></i>
-      <span>Filtrando por fecha: <strong>{{ filtroInicio }}</strong> al <strong>{{ filtroFin }}</strong></span>
+      <span>Fecha: <strong>{{ filtroInicio }} - {{ filtroFin }}</strong></span>
       <span class="badge-conteo">({{ itinerarios.length }} itinerarios)</span>
     </div>
     <button (click)="limpiarFiltro()" class="btn-limpiar-filtro">

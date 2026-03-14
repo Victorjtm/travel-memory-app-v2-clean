@@ -2599,6 +2599,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
       // Determinar el contexto actual para la generación del video
       const contexto = this.determinarContextoVideo();
+
+      // ✨ NUEVO: Asegurar que listaItinerarios esté cargada si es contexto viaje
+      if (contexto === 'paginaPrincipal' && this.listaItinerarios.length === 0) {
+        this.progresoVideo = { fase: 'cargando', porcentaje: 5, mensaje: 'Cargando itinerarios del viaje...' };
+        await this.cargarItinerariosDelViaje(this.contextoViaje!.viajeId);
+      }
+
       const imagenesArchivos = this.obtenerImagenesPorContexto(contexto);
       console.log(`📹 Generando video desde contexto: ${contexto}`);
 
@@ -2652,17 +2659,23 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.cerrarDialogoVideo();
 
     } catch (error) {
-      console.error('Error generando video:', error);
+      console.error('❌ Error fatal generando video:', error);
       this.progresoVideo = {
         fase: 'error',
         porcentaje: 0,
-        mensaje: `Error: ${error instanceof Error ? error.message : 'Error desconocido'}`
+        mensaje: `Error: ${error instanceof Error ? error.message : 'Error desconocido'}. Revisa la consola para más detalles.`
       };
+      // NO quitar el mensaje de error inmediatamente para que el usuario pueda leerlo
+      this.generandoVideo = false;
+      return; // Salir sin limpiar progresoVideo inmediatamente
     } finally {
-      setTimeout(() => {
-        this.generandoVideo = false;
-        this.progresoVideo = null;
-      }, 3000);
+      // Solo limpiar si NO hay error, o después de un tiempo si lo hay
+      if (this.progresoVideo?.fase !== 'error') {
+        setTimeout(() => {
+          this.generandoVideo = false;
+          this.progresoVideo = null;
+        }, 3000);
+      }
     }
   }
 
