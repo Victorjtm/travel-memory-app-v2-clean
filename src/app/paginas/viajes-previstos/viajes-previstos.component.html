@@ -1,6 +1,22 @@
 <h2>Viajes previstos</h2>
 
-<ul>
+<div class="acciones-globales">
+  <button (click)="irAlFormulario()" class="btn-agregar">
+    <i class="fa fa-plus"></i> Añadir viaje
+  </button>
+
+  <button (click)="ejecutarUnificacion()" class="btn-unificar">
+    <i class="fa fa-compress"></i> Unificar Destinos
+  </button>
+
+  <button (click)="toggleVista()" class="btn-toggle-vista">
+    <i class="fa" [ngClass]="vistaModo === 'viajes' ? 'fa-calendar' : 'fa-suitcase'"></i>
+    {{ vistaModo === 'viajes' ? 'Ver por fechas' : 'Ver por viajes' }}
+  </button>
+</div>
+
+<!-- VISTA POR VIAJES (Original) -->
+<ul *ngIf="vistaModo === 'viajes'">
   <li *ngFor="let viaje of viajesPrevistos; index as i" class="viaje-item">
     <div class="viaje-info">
       <strong class="destino">{{ viaje.destino }}</strong>
@@ -13,8 +29,11 @@
             (click)="irAItinerarios(viaje.id, rangosFechasPorViaje[viaje.id].rangos[0])">
             📅 {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
             <span class="badge-dias">({{ rangosFechasPorViaje[viaje.id].total }} días)</span>
-            <span *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].descripcion" class="itinerario-descripcion">
-              - {{ rangosFechasPorViaje[viaje.id].rangos[0].descripcion }}
+            <span class="tooltip-container" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].destinos">
+              - {{ limpiarDestinos(rangosFechasPorViaje[viaje.id].rangos[0].destinos) }}
+              <span class="tooltip-box" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].descripcion">
+                {{ rangosFechasPorViaje[viaje.id].rangos[0].descripcion }}
+              </span>
             </span>
           </div>
         </ng-container>
@@ -25,8 +44,11 @@
             <div class="rango-principal" (click)="irAItinerarios(viaje.id, rangosFechasPorViaje[viaje.id].rangos[0])">
               <span class="rango-texto">
                 📅 {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
-                <span *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].descripcion" class="itinerario-descripcion-inline">
-                  - {{ rangosFechasPorViaje[viaje.id].rangos[0].descripcion }}
+                <span class="tooltip-container" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].destinos">
+                  - {{ limpiarDestinos(rangosFechasPorViaje[viaje.id].rangos[0].destinos) }}
+                  <span class="tooltip-box" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].descripcion">
+                    {{ rangosFechasPorViaje[viaje.id].rangos[0].descripcion }}
+                  </span>
                 </span>
               </span>
               <span class="badge-dias">({{ rangosFechasPorViaje[viaje.id].total }} días total)</span>
@@ -42,8 +64,11 @@
                 (click)="irAItinerarios(viaje.id, rango)">
                 📅 {{ formatearRango(rango) }}
                 <span class="badge-dias-secundario">({{ rango.dias }} días)</span>
-                <span *ngIf="rango.descripcion" class="itinerario-descripcion-secundaria">
-                  - {{ rango.descripcion }}
+                <span class="tooltip-container" *ngIf="rango.destinos">
+                  - {{ limpiarDestinos(rango.destinos) }}
+                  <span class="tooltip-box" *ngIf="rango.descripcion">
+                    {{ rango.descripcion }}
+                  </span>
                 </span>
               </div>
             </div>
@@ -72,12 +97,22 @@
   </li>
 </ul>
 
-<div class="acciones-globales">
-  <button (click)="irAlFormulario()" class="btn-agregar">
-    <i class="fa fa-plus"></i> Añadir viaje
-  </button>
-
-  <button (click)="ejecutarUnificacion()" class="btn-unificar">
-    <i class="fa fa-compress"></i> Unificar Destinos
-  </button>
-</div>
+<!-- VISTA POR FECHAS (Cronológica) -->
+<ul *ngIf="vistaModo === 'fechas'" class="lista-cronologica">
+  <li *ngFor="let item of itinerariosCombinados" class="itinerario-item-cronologico"
+    (click)="irAItinerarios(item.viajeId, item)">
+    <div class="itinerario-fecha-info">
+      <span class="fecha-texto">📅 {{ formatearRango(item) }}</span>
+      <span class="badge-dias-secundario">({{ item.dias }} días)</span>
+    </div>
+    <div class="itinerario-detalle">
+      <strong class="viaje-nombre">{{ item.nombreViaje }}</strong>
+      <span class="tooltip-container" *ngIf="item.destinos">
+        - {{ limpiarDestinos(item.destinos) }}
+        <span class="tooltip-box" *ngIf="item.descripcion">
+          {{ item.descripcion }}
+        </span>
+      </span>
+    </div>
+  </li>
+</ul>

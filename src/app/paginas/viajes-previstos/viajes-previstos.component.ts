@@ -20,6 +20,10 @@ export class ViajesPrevistosComponent implements OnInit {
   rangosFechasPorViaje: { [viajeId: number]: any } = {};
   desplegablesAbiertos: { [viajeId: number]: boolean } = {};
 
+  // ✨ NUEVO: Gestión de vistas
+  vistaModo: 'viajes' | 'fechas' = 'viajes';
+  itinerariosCombinados: any[] = [];
+
   constructor(
     private viajesPrevistosService: ViajesPrevistosService,
     private router: Router
@@ -49,6 +53,7 @@ export class ViajesPrevistosComponent implements OnInit {
       next: (resultado) => {
         this.rangosFechasPorViaje[viajeId] = resultado;
         console.log(`[RANGOS] Viaje ${viajeId}:`, resultado);
+        this.actualizarItinerariosCombinados();
       },
       error: (error) => {
         console.error(`[RANGOS] Error viaje ${viajeId}:`, error);
@@ -56,8 +61,44 @@ export class ViajesPrevistosComponent implements OnInit {
     });
   }
 
+  // ✨ NUEVO: Lógica para la vista por fechas
+  actualizarItinerariosCombinados(): void {
+    const todos: any[] = [];
+    this.viajesPrevistos.forEach(viaje => {
+      const infoRanges = this.rangosFechasPorViaje[viaje.id];
+      if (infoRanges && infoRanges.rangos) {
+        infoRanges.rangos.forEach((rango: any) => {
+          todos.push({
+            ...rango,
+            viajeId: viaje.id,
+            nombreViaje: viaje.nombre || viaje.destino,
+            destino: viaje.destino,
+            destinos: rango.destinos // ✨ Asegurar que se pasa la propiedad destinos
+          });
+        });
+      }
+    });
+
+    // Ordenar por fecha de inicio descendente
+    this.itinerariosCombinados = todos.sort((a, b) => {
+      return new Date(b.inicio).getTime() - new Date(a.inicio).getTime();
+    });
+  }
+
+  toggleVista(): void {
+    this.vistaModo = this.vistaModo === 'viajes' ? 'fechas' : 'viajes';
+    console.log('[VIEW] Modo de vista cambiado a:', this.vistaModo);
+  }
+
   toggleDesplegable(viajeId: number): void {
     this.desplegablesAbiertos[viajeId] = !this.desplegablesAbiertos[viajeId];
+  }
+
+  // ✨ NUEVO: Limpiar comillas de los destinos
+  limpiarDestinos(texto: string | null): string {
+    if (!texto) return 'Sin destinos';
+    // Eliminar comillas escapadas y normales al inicio y final
+    return texto.replace(/^["\\]+|["\\]+$/g, '').replace(/\\"/g, '"');
   }
 
   formatearFecha(fecha: string): string {

@@ -1795,7 +1795,7 @@ app.get('/viajes/:id/rangos-fechas', (req, res) => {
   console.log(`📅 Obteniendo rangos de fechas para viaje ${id}...`);
 
   const sql = `
-    SELECT fechaInicio, fechaFin, descripcionGeneral 
+    SELECT fechaInicio, fechaFin, descripcionGeneral, destinosPorDia 
     FROM ItinerarioGeneral 
     WHERE viajePrevistoId = ? 
     ORDER BY fechaInicio ASC
@@ -1817,7 +1817,8 @@ app.get('/viajes/:id/rangos-fechas', (req, res) => {
       inicio: itinerarios[0].fechaInicio,
       fin: itinerarios[0].fechaInicio,
       dias: 1,
-      descripcion: itinerarios[0].descripcionGeneral || ''
+      descripcion: itinerarios[0].descripcionGeneral || '',
+      destinos: itinerarios[0].destinosPorDia || ''
     };
 
     for (let i = 1; i < itinerarios.length; i++) {
@@ -1839,7 +1840,8 @@ app.get('/viajes/:id/rangos-fechas', (req, res) => {
           inicio: itinerarios[i].fechaInicio,
           fin: itinerarios[i].fechaInicio,
           dias: 1,
-          descripcion: itinerarios[i].descripcionGeneral || ''
+          descripcion: itinerarios[i].descripcionGeneral || '',
+          destinos: itinerarios[i].destinosPorDia || ''
         };
       }
     }
