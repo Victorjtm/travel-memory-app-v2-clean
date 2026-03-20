@@ -30,7 +30,7 @@
             📅 {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
             <span class="badge-dias">({{ rangosFechasPorViaje[viaje.id].total }} días)</span>
             <span class="tooltip-container" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].destinos">
-              - {{ limpiarDestinos(rangosFechasPorViaje[viaje.id].rangos[0].destinos) }}
+              <span class="destinos-texto">- {{ limpiarDestinos(rangosFechasPorViaje[viaje.id].rangos[0].destinos) }}</span>
               <span class="tooltip-box" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].descripcion">
                 {{ rangosFechasPorViaje[viaje.id].rangos[0].descripcion }}
               </span>
@@ -45,7 +45,7 @@
               <span class="rango-texto">
                 📅 {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
                 <span class="tooltip-container" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].destinos">
-                  - {{ limpiarDestinos(rangosFechasPorViaje[viaje.id].rangos[0].destinos) }}
+                  <span class="destinos-texto">- {{ limpiarDestinos(rangosFechasPorViaje[viaje.id].rangos[0].destinos) }}</span>
                   <span class="tooltip-box" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].descripcion">
                     {{ rangosFechasPorViaje[viaje.id].rangos[0].descripcion }}
                   </span>
@@ -65,7 +65,7 @@
                 📅 {{ formatearRango(rango) }}
                 <span class="badge-dias-secundario">({{ rango.dias }} días)</span>
                 <span class="tooltip-container" *ngIf="rango.destinos">
-                  - {{ limpiarDestinos(rango.destinos) }}
+                  <span class="destinos-texto">- {{ limpiarDestinos(rango.destinos) }}</span>
                   <span class="tooltip-box" *ngIf="rango.descripcion">
                     {{ rango.descripcion }}
                   </span>
@@ -108,7 +108,7 @@
     <div class="itinerario-detalle">
       <strong class="viaje-nombre">{{ item.nombreViaje }}</strong>
       <span class="tooltip-container" *ngIf="item.destinos">
-        - {{ limpiarDestinos(item.destinos) }}
+        <span class="destinos-texto">- {{ limpiarDestinos(item.destinos) }}</span>
         <span class="tooltip-box" *ngIf="item.descripcion">
           {{ item.descripcion }}
         </span>
