@@ -377,3 +377,23 @@ button i {
     transform: translateY(0);
   }
 }
+
+.itinerario-descripcion,
+.itinerario-descripcion-inline,
+.itinerario-descripcion-secundaria {
+  font-size: 0.85rem;
+  color: #7f8c8d;
+  font-style: italic;
+  margin-left: 5px;
+  max-width: 60%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.itinerario-descripcion-secundaria {
+  font-size: 0.8rem;
+  max-width: 70%;
+}

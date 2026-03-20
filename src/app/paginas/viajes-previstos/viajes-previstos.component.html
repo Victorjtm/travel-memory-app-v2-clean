@@ -13,6 +13,9 @@
             (click)="irAItinerarios(viaje.id, rangosFechasPorViaje[viaje.id].rangos[0])">
             📅 {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
             <span class="badge-dias">({{ rangosFechasPorViaje[viaje.id].total }} días)</span>
+            <span *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].descripcion" class="itinerario-descripcion">
+              - {{ rangosFechasPorViaje[viaje.id].rangos[0].descripcion }}
+            </span>
           </div>
         </ng-container>
 
@@ -22,6 +25,9 @@
             <div class="rango-principal" (click)="irAItinerarios(viaje.id, rangosFechasPorViaje[viaje.id].rangos[0])">
               <span class="rango-texto">
                 📅 {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
+                <span *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].descripcion" class="itinerario-descripcion-inline">
+                  - {{ rangosFechasPorViaje[viaje.id].rangos[0].descripcion }}
+                </span>
               </span>
               <span class="badge-dias">({{ rangosFechasPorViaje[viaje.id].total }} días total)</span>
               <span class="icono-desplegable" [class.abierto]="desplegablesAbiertos[viaje.id]"
@@ -36,6 +42,9 @@
                 (click)="irAItinerarios(viaje.id, rango)">
                 📅 {{ formatearRango(rango) }}
                 <span class="badge-dias-secundario">({{ rango.dias }} días)</span>
+                <span *ngIf="rango.descripcion" class="itinerario-descripcion-secundaria">
+                  - {{ rango.descripcion }}
+                </span>
               </div>
             </div>
           </div>

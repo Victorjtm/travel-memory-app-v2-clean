@@ -1795,7 +1795,7 @@ app.get('/viajes/:id/rangos-fechas', (req, res) => {
   console.log(`📅 Obteniendo rangos de fechas para viaje ${id}...`);
 
   const sql = `
-    SELECT fechaInicio, fechaFin 
+    SELECT fechaInicio, fechaFin, descripcionGeneral 
     FROM ItinerarioGeneral 
     WHERE viajePrevistoId = ? 
     ORDER BY fechaInicio ASC
@@ -1816,7 +1816,8 @@ app.get('/viajes/:id/rangos-fechas', (req, res) => {
     let rangoActual = {
       inicio: itinerarios[0].fechaInicio,
       fin: itinerarios[0].fechaInicio,
-      dias: 1
+      dias: 1,
+      descripcion: itinerarios[0].descripcionGeneral || ''
     };
 
     for (let i = 1; i < itinerarios.length; i++) {
@@ -1837,7 +1838,8 @@ app.get('/viajes/:id/rangos-fechas', (req, res) => {
         rangoActual = {
           inicio: itinerarios[i].fechaInicio,
           fin: itinerarios[i].fechaInicio,
-          dias: 1
+          dias: 1,
+          descripcion: itinerarios[i].descripcionGeneral || ''
         };
       }
     }
@@ -2069,6 +2071,10 @@ app.post('/viajes/unificar', async (req, res) => {
           // Verificar solapamiento: StartA < EndB AND EndA > StartB. (Aquí rango [Start, End))
           // "actual.horaFin > siguiente.horaInicio" es suficiente si están ordenados por Start.
           if (actual.horaFin > siguiente.horaInicio) {
+            // ✨ FIX: Ignorar si son exactamente el mismo bloque (posible duplicidad)
+            if (actual.horaInicio === siguiente.horaInicio && actual.horaFin === siguiente.horaFin) {
+              continue;
+            }
             colisionDetectada = `Conflicto el ${fecha} entre ${actual.horaInicio}-${actual.horaFin} y ${siguiente.horaInicio}-${siguiente.horaFin}`;
             break;
           }
@@ -2124,6 +2130,47 @@ app.post('/viajes/unificar', async (req, res) => {
             await new Promise((resolve, reject) => {
               db.run('DELETE FROM ItinerarioGeneral WHERE id = ?', [itinSec.id], err => err ? reject(err) : resolve());
             });
+
+            // ✨ NUEVO: DEDUPLICAR ACTIVIDADES Y ARCHIVOS EN EL MAESTRO
+            console.log(`    -> Limpiando duplicados en itinerario fusionado...`);
+            const actsMaestro = await new Promise((resolve, reject) => {
+              db.all('SELECT * FROM actividades WHERE itinerarioId = ? ORDER BY horaInicio ASC', [itinMaestro.id], (err, rows) => err ? reject(err) : resolve(rows || []));
+            });
+
+            const actsVistas = {};
+            for (const act of actsMaestro) {
+              const key = `${act.nombre || ''}_${act.horaInicio}_${act.horaFin}`.toLowerCase();
+              if (!actsVistas[key]) {
+                actsVistas[key] = act;
+              } else {
+                const masterAct = actsVistas[key];
+                console.log(`      -> Fusionando actividad duplicada: "${act.nombre}" (ID ${act.id} -> ${masterAct.id})`);
+
+                // Mover archivos evitando duplicados en BD
+                const archivosSec = await new Promise((resolve, reject) => {
+                  db.all('SELECT * FROM archivos WHERE actividadId = ?', [act.id], (err, rows) => err ? reject(err) : resolve(rows || []));
+                });
+
+                for (const f of archivosSec) {
+                  const existe = await new Promise((resolve, reject) => {
+                    db.get('SELECT id FROM archivos WHERE actividadId = ? AND nombreArchivo = ? AND tipo = ?', [masterAct.id, f.nombreArchivo, f.tipo], (err, row) => err ? reject(err) : resolve(row));
+                  });
+                  if (existe) {
+                    await new Promise((resolve, reject) => {
+                      db.run('DELETE FROM archivos WHERE id = ?', [f.id], err => err ? reject(err) : resolve());
+                    });
+                  } else {
+                    await new Promise((resolve, reject) => {
+                      db.run('UPDATE archivos SET actividadId = ? WHERE id = ?', [masterAct.id, f.id], err => err ? reject(err) : resolve());
+                    });
+                  }
+                }
+                // Eliminar actividad secundaria
+                await new Promise((resolve, reject) => {
+                  db.run('DELETE FROM actividades WHERE id = ?', [act.id], err => err ? reject(err) : resolve());
+                });
+              }
+            }
           } else {
             // REASIGNAR
             console.log(`    -> Reasignando itinerario ${itinSec.fechaInicio} al maestro`);
