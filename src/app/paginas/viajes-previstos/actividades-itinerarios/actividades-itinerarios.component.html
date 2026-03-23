@@ -31,6 +31,9 @@
       <button class="btn-gpx" (click)="verGPX(actividad.id)">
         <i class="fa fa-map-marker"></i> Ver GPX
       </button>
+      <button class="btn-animacion" (click)="animarGPX(actividad.id)">
+        <i class="fa fa-play-circle"></i> Animación
+      </button>
       <button class="btn-mapa" (click)="verMapa(actividad.id)">
         <i class="fa fa-image"></i> Ver Mapa
       </button>
@@ -197,10 +200,18 @@
           </div>
         </div>
       </div>
-
     </div>
   </div>
 </div>
+
+<!-- ✨ NUEVO: REPRODUCTOR ANIMADO GPX -->
+<app-gpx-animation 
+  *ngIf="mostrarReproductorAnimado" 
+  [gpxText]="gpxTextAnimacion" 
+  [multimedia]="multimediaAnimacion"
+  [transportSegments]="desgloseTransporteAnimacion"
+  (onCerrar)="cerrarAnimacion()">
+</app-gpx-animation>
 
 <!-- ✅ MODAL MAPA GPX MEJORADO CON PANEL Y FABS -->
 <div class="modal" *ngIf="mostrarModalGPXMapa" (click)="cerrarModalGPXMapa()">

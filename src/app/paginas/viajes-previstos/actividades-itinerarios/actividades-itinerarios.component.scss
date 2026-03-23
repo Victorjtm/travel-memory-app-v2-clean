@@ -501,6 +501,20 @@ textarea:focus {
   }
 }
 
+.btn-animacion {
+  background: linear-gradient(135deg, #e67e22, color.adjust(#e67e22, $lightness: -10%));
+  color: $color-blanco;
+
+  &:hover {
+    box-shadow: 0 4px 15px rgba(#e67e22, 0.3);
+  }
+
+  &:focus {
+    outline: 3px solid rgba(#e67e22, 0.3);
+    outline-offset: 2px;
+  }
+}
+
 .btn-mapa {
   background: linear-gradient(135deg, #1abc9c, color.adjust(#1abc9c, $lightness: -10%));
   color: $color-blanco;
@@ -773,6 +787,7 @@ textarea:focus {
     flex-direction: column;
 
     .btn-gpx,
+    .btn-animacion,
     .btn-mapa,
     .btn-estadisticas {
       width: 100%;

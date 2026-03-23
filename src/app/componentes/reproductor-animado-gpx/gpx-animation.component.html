@@ -1,0 +1,74 @@
+<div class="reproductor-container">
+  <!-- Mapa Leaflet -->
+  <div id="map-animation" class="mapa-fullscreen"></div>
+
+  <!-- HUD: Métricas en Tiempo Real (Detallado por Modo) -->
+  <div class="hud-overlay" *ngIf="stats">
+    <div class="hud-card detailed">
+      <div class="mode-row" *ngFor="let mode of modeList" 
+           [class.active]="mode === currentMode"
+           [style.border-left-color]="MODE_COLORS[mode]">
+        <div class="mode-info">
+          <span class="mode-name">{{ getModeName(mode) }}</span>
+        </div>
+        <div class="mode-metrics">
+          <div class="m-item">
+            <span class="v">{{ modeStats[mode].dist | number:'1.2-2' }}</span>
+            <span class="u">km</span>
+          </div>
+          <div class="m-item" *ngIf="isWalkingMode(mode)">
+            <span class="v">{{ modeStats[mode].steps | number:'1.0-0' }}</span>
+            <span class="u">pasos</span>
+          </div>
+          <div class="m-item time">
+            <span class="v">{{ formatSeconds(modeStats[mode].time) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barra de Progreso Inferior -->
+  <div class="progreso-container">
+    <div class="progreso-bar" [style.width.%]="progress"></div>
+  </div>
+
+  <!-- Controles de Animación -->
+  <div class="controles-fijos">
+    <button class="btn-control" (click)="togglePlay()">
+      <span class="icon">{{ isPlaying ? '⏸' : '▶' }}</span>
+    </button>
+    <div class="velocidad-selector">
+      <label>x{{ speed }}</label>
+      <input type="range" min="1" max="10" step="1" [(ngModel)]="speed">
+    </div>
+    <button class="btn-cerrar" (click)="cerrar()">✕</button>
+  </div>
+
+  <!-- Overlay Multimedia de Eventos -->
+  <div class="multimedia-overlay" *ngIf="activeEvent" @fadeInOut>
+    <div class="event-card">
+      <div class="event-header">
+        <h3>📍 Evento Multimedia</h3>
+        <button class="btn-mini-cerrar" (click)="resumeFromEvent()">✕</button>
+      </div>
+      <div class="event-body">
+        <div *ngFor="let archivo of activeEvent.archivos" class="media-item">
+          <!-- Foto -->
+          <img *ngIf="archivo.tipo === 'foto'" [src]="getMediaUrl(archivo.rutaArchivo)" alt="Foto del evento">
+          
+          <!-- Video -->
+          <video *ngIf="archivo.tipo === 'video'" [src]="getMediaUrl(archivo.rutaArchivo)" controls></video>
+          
+          <!-- Audio -->
+          <audio *ngIf="archivo.tipo === 'audio'" [src]="getMediaUrl(archivo.rutaArchivo)" controls></audio>
+          
+          <p class="media-caption">{{ archivo.nombreArchivo }}</p>
+        </div>
+      </div>
+      <div class="event-footer">
+        <button class="btn-continuar" (click)="resumeFromEvent()">Continuar Recorrido</button>
+      </div>
+    </div>
+  </div>
+</div>

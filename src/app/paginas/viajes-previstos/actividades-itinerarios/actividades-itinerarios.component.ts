@@ -5,6 +5,7 @@ import { HttpClient } from '@angular/common/http';
 import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { take } from 'rxjs/operators';
+import { GpxAnimationComponent } from '../../../componentes/reproductor-animado-gpx/gpx-animation.component';
 
 import { Actividad } from '../../../modelos/actividad.model';
 import { ActividadesItinerariosService } from '../../../servicios/actividades-itinerarios.service';
@@ -17,7 +18,8 @@ import { environment } from '../../../../environments/environment';
     CommonModule,
     HttpClientModule,
     FormsModule,
-    RouterModule
+    RouterModule,
+    GpxAnimationComponent
   ],
   templateUrl: './actividades-itinerarios.component.html',
   styleUrls: ['./actividades-itinerarios.component.scss']
@@ -33,6 +35,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   mostrarModalMapa = false;
   mostrarModalEstadisticas = false;
   mostrarModalGPXMapa = false;
+  mostrarReproductorAnimado = false; // ✨ NUEVA PROPIEDAD
 
   urlMapaDataURL: string | null = null;
   estadisticasActuales: any = null;
@@ -86,6 +89,11 @@ export class ActividadesItinerariosComponent implements OnInit {
       tiempoIdaFormateado: '00:00:00',
       tiempoVueltaFormateado: '00:00:00'
     };
+
+  // ✨ NUEVAS PROPIEDADES PARA ANIMACIÓN
+  gpxTextAnimacion: string = '';
+  multimediaAnimacion: any[] = [];
+  desgloseTransporteAnimacion: any[] = [];
 
 
   // ✅ COLORES POR MODO DE TRANSPORTE
@@ -249,6 +257,46 @@ export class ActividadesItinerariosComponent implements OnInit {
     });
   }
 
+  // ✅ NUEVO: Animar GPX con multimedia
+  animarGPX(actividadId: number): void {
+    console.log('🎬 Iniciando animación para actividad:', actividadId);
+
+    // 1. Obtener multimedia sincronizada
+    const backendUrl = environment.apiUrl;
+    const url = `${backendUrl}/archivos?actividadId=${actividadId}`;
+
+    this.http.get<any[]>(url).subscribe({
+      next: (archivos: any[]) => {
+        this.multimediaAnimacion = archivos.filter((f: any) =>
+          (f.tipo === 'foto' || f.tipo === 'video' || f.tipo === 'audio') && f.geolocalizacion
+        );
+
+        // 2. Obtener GPX
+        this.actividadService.obtenerGPX(actividadId).subscribe({
+          next: (blob) => {
+            const reader = new FileReader();
+            reader.onload = (e: any) => {
+              this.gpxTextAnimacion = e.target.result;
+              // this.multimediaAnimacion ya está filtrado arriba
+              this.desgloseTransporteAnimacion = this.estadisticasGPX?.desgloseTransporte || [];
+              this.mostrarReproductorAnimado = true;
+              this.cdr.detectChanges();
+            };
+            reader.readAsText(blob);
+          },
+          error: err => console.error('❌ Error obteniendo GPX para animación:', err)
+        });
+      },
+      error: err => console.error('❌ Error obteniendo multimedia para animación:', err)
+    });
+  }
+
+  cerrarAnimacion(): void {
+    this.mostrarReproductorAnimado = false;
+    this.gpxTextAnimacion = '';
+    this.multimediaAnimacion = [];
+    this.cdr.detectChanges();
+  }
 
   // Parsear GPX y extraer coordenadas
   parseGPX(gpxText: string): void {
