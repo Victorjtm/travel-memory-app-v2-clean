@@ -1,9 +1,11 @@
-import { Component, Input, OnInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { trigger, transition, style, animate } from '@angular/animations';
 import { GpxAnimationService, GpxPoint, AnimationStats } from '../../servicios/gpx-animation.service';
 import { ArchivoService } from '../../servicios/archivo.service';
+import { VideoGeneratorService, ProgresoVideo, ConfiguracionVideo } from '../../servicios/video-generator.service';
+import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -28,6 +30,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   @Input() gpxText!: string;
   @Input() multimedia: any[] = [];
   @Input() transportSegments: any[] = [];
+  @Input() actividadActual: any;
   @Output() onCerrar = new EventEmitter<void>();
 
   // Leaflet
@@ -400,3 +403,5 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     return 1;
   }
 }
+
+

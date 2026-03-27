@@ -34,6 +34,9 @@
       <button class="btn-animacion" (click)="animarGPX(actividad.id)">
         <i class="fa fa-play-circle"></i> Animación
       </button>
+      <button class="btn-gpx" (click)="abrirConfiguracionVideo(actividad)" title="Exportar Vídeo GPX" [disabled]="generandoVideo">
+        <i class="fa fa-video-camera"></i> Crear Vídeo
+      </button>
       <button class="btn-mapa" (click)="verMapa(actividad.id)">
         <i class="fa fa-image"></i> Ver Mapa
       </button>
@@ -204,12 +207,81 @@
   </div>
 </div>
 
+<!-- ✨ DIÁLOGO DE CONFIGURACIÓN DE VÍDEO -->
+<div class="modal" *ngIf="mostrarConfiguracionVideo" (click)="cerrarConfiguracionVideo()">
+  <div class="modal-contenido video-config-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>🎬 Configuración de Vídeo GPX</h3>
+      <button class="btn-cerrar" (click)="cerrarConfiguracionVideo()" [disabled]="generandoVideo">✕</button>
+    </div>
+    
+    <div class="modal-body" *ngIf="!generandoVideo && configuracionVideo">
+      <div class="config-group">
+        <label>Resolución</label>
+        <select [(ngModel)]="configuracionVideo.resolucion">
+          <option value="1080p">Alta (1080p)</option>
+          <option value="720p">Media (720p)</option>
+          <option value="480p">Baja (480p)</option>
+        </select>
+      </div>
+
+      <div class="config-group">
+        <label>Calidad</label>
+        <select [(ngModel)]="configuracionVideo.calidad">
+          <option value="alta">Alta Calidad</option>
+          <option value="media">Media</option>
+          <option value="baja">Rápida (Baja)</option>
+        </select>
+      </div>
+
+      <div class="config-group">
+        <label>Segundos por Foto (Base)</label>
+        <input type="number" [(ngModel)]="configuracionVideo.duracionPorFoto" min="1" max="10">
+        <small>* Si la foto tiene audio, durará lo que este dicte.</small>
+      </div>
+
+      <div class="config-group checkbox">
+        <label>
+          <input type="checkbox" [(ngModel)]="configuracionVideo.mostrarDescripciones">
+          Mostrar descripciones y métricas
+        </label>
+      </div>
+
+      <div class="config-group checkbox">
+        <label>
+          <input type="checkbox" [(ngModel)]="configuracionVideo.incluirAudiosSinImagen">
+          Incluir audios independientes (sin imagen)
+        </label>
+      </div>
+
+      <div class="modal-actions" style="margin-top:20px; text-align:right;">
+        <button class="btn-cancelar" (click)="cerrarConfiguracionVideo()" style="margin-right:10px;">Cancelar</button>
+        <button class="btn-guardar" (click)="generarVideo()">
+          <i class="fa fa-magic"></i> Generar Vídeo
+        </button>
+      </div>
+    </div>
+
+    <!-- ✨ PROGRESO DE GENERACIÓN -->
+    <div class="modal-body processing" *ngIf="generandoVideo && progresoVideo" style="text-align:center;">
+      <div class="loader" style="margin:20px auto;"></div>
+      <h4>{{ progresoVideo.mensaje }}</h4>
+      <div class="progress-container" style="background:#eee; border-radius:10px; overflow:hidden; margin:10px 0;">
+        <div class="progress-bar" [style.width.%]="progresoVideo.porcentaje" style="background:#4CAF50; height:20px;"></div>
+      </div>
+      <p class="percentage">{{ progresoVideo.porcentaje }}%</p>
+      <p class="warning" style="color:#d32f2f; font-size:0.9em;"><i class="fa fa-warning"></i> Por favor, no cierres esta ventana hasta que termine.</p>
+    </div>
+  </div>
+</div>
+
 <!-- ✨ NUEVO: REPRODUCTOR ANIMADO GPX -->
 <app-gpx-animation 
   *ngIf="mostrarReproductorAnimado" 
   [gpxText]="gpxTextAnimacion" 
   [multimedia]="multimediaAnimacion"
   [transportSegments]="desgloseTransporteAnimacion"
+  [actividadActual]="actividadAnimacion"
   (onCerrar)="cerrarAnimacion()">
 </app-gpx-animation>
 

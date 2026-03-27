@@ -10,6 +10,10 @@ import { GpxAnimationComponent } from '../../../componentes/reproductor-animado-
 import { Actividad } from '../../../modelos/actividad.model';
 import { ActividadesItinerariosService } from '../../../servicios/actividades-itinerarios.service';
 import { environment } from '../../../../environments/environment';
+import { GpxAnimationService } from '../../../servicios/gpx-animation.service';
+import { VideoGeneratorService, ConfiguracionVideo, ProgresoVideo } from '../../../servicios/video-generator.service';
+import { ArchivoService } from '../../../servicios/archivo.service';
+import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-actividades-itinerarios',
@@ -40,6 +44,13 @@ export class ActividadesItinerariosComponent implements OnInit {
   urlMapaDataURL: string | null = null;
   estadisticasActuales: any = null;
   actividadSeleccionada: number | null = null;
+
+  // ✨ ESTADOS PARA CONFIGURACION DE VIDEO GPX
+  generandoVideo = false;
+  progresoVideo: ProgresoVideo | null = null;
+  mostrarConfiguracionVideo = false;
+  configuracionVideo: ConfiguracionVideo | null = null;
+  actividadVideoSeleccionada: any = null;
 
   // ✨ PROPIEDADES PARA MAPA GPX
   mapaGPX: any = null;
@@ -94,6 +105,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   gpxTextAnimacion: string = '';
   multimediaAnimacion: any[] = [];
   desgloseTransporteAnimacion: any[] = [];
+  actividadAnimacion: any = null; // ✨ NUEVA PROPIEDAD
 
 
   // ✅ COLORES POR MODO DE TRANSPORTE
@@ -111,7 +123,10 @@ export class ActividadesItinerariosComponent implements OnInit {
     private router: Router,
     private cdr: ChangeDetectorRef,
     private ngZone: NgZone,
-    private http: HttpClient
+    private http: HttpClient,
+    private gpxAnimationService: GpxAnimationService,
+    private videoGeneratorService: VideoGeneratorService,
+    private archivoService: ArchivoService
   ) { }
 
   ngOnInit(): void {
@@ -138,6 +153,118 @@ export class ActividadesItinerariosComponent implements OnInit {
         },
         error: err => console.error('Error cargando actividades:', err)
       });
+  }
+
+  // ==========================================
+  // ✨ CONFIGURACIÓN Y GENERACIÓN DE VÍDEO GPX
+  // ==========================================
+
+  abrirConfiguracionVideo(actividad: any): void {
+    this.actividadVideoSeleccionada = actividad;
+    this.configuracionVideo = {
+      duracionPorFoto: 3,
+      tipoTransicion: 'fade',
+      duracionTransicion: 1,
+      incluirTexto: true,
+      calidad: 'media',
+      mostrarDescripciones: true,
+      resolucion: '720p',
+      transicionesAleatorias: false,
+      incluirAudiosSinImagen: true
+    };
+    this.mostrarConfiguracionVideo = true;
+  }
+
+  cerrarConfiguracionVideo(): void {
+    if (this.generandoVideo) return;
+    this.mostrarConfiguracionVideo = false;
+    this.actividadVideoSeleccionada = null;
+  }
+
+  async generarVideo(): Promise<void> {
+    if (this.generandoVideo || !this.actividadVideoSeleccionada || !this.configuracionVideo) return;
+
+    try {
+      this.generandoVideo = true;
+      this.progresoVideo = {
+        fase: 'cargando',
+        porcentaje: 0,
+        mensaje: 'Preparando datos para el vídeo...'
+      };
+
+      // 1. Obtener GPX y parsear
+      this.progresoVideo.mensaje = 'Descargando ruta GPX...';
+      const blobGpx = await firstValueFrom(this.actividadService.obtenerGPX(this.actividadVideoSeleccionada.id));
+      const gpxContent = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e: any) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsText(blobGpx);
+      });
+      if (!gpxContent) throw new Error('No se pudo encontrar o descargar el archivo GPX asociado a esta actividad.');
+
+      let points = this.gpxAnimationService.parseGpx(gpxContent);
+      
+      // 2. Asociar multimedia y audios perdidos
+      this.progresoVideo.mensaje = 'Sincronizando fotos, vídeos y audios...';
+      const archivoUrl = `${environment.apiUrl}/archivos?actividadId=${this.actividadVideoSeleccionada.id}`;
+      const archivosAsociados = await firstValueFrom(this.http.get<any[]>(archivoUrl));
+      
+      points = this.gpxAnimationService.syncMultimedia(points, archivosAsociados);
+      points = this.gpxAnimationService.applyTransportSegments(points, []);
+
+      const itemsConAudio = [...points.filter(p => p.event).map(p => p.event)];
+      for (const event of itemsConAudio) {
+        if (event.archivos && event.archivos.length > 0) {
+          for (const archivo of event.archivos) {
+            if (!archivo.audioUrl && (archivo.tipo === 'foto' || archivo.tipo === 'imagen')) {
+              try {
+                const asociados = await firstValueFrom(this.archivoService.getArchivosAsociados(archivo.id));
+                const audio = asociados.find((a: any) => a.tipo === 'audio');
+                if (audio) {
+                  archivo.audioUrl = this.archivoService.getUrlArchivoAsociado(audio);
+                }
+              } catch (e) {
+                console.warn(`No se pudo cargar audio asociadio para archivo ${archivo.id}`, e);
+              }
+            }
+          }
+        }
+      }
+
+      this.progresoVideo.porcentaje = 5;
+
+      // 3. Ejecutar generador de Video
+      const videoBlob = await this.videoGeneratorService.generarVideoGpx(
+        points,
+        this.actividadVideoSeleccionada,
+        this.configuracionVideo,
+        (progreso) => {
+          this.progresoVideo = progreso;
+          this.cdr.detectChanges();
+        }
+      );
+
+      // 4. Descargar
+      const url = URL.createObjectURL(videoBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      const nombreArchivo = (this.actividadVideoSeleccionada.nombre || 'recorrido').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      a.download = `animacion_gpx_${nombreArchivo}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      this.cerrarConfiguracionVideo();
+      
+    } catch (error) {
+      console.error('Error generando vídeo:', error);
+      alert('Error al generar el vídeo: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+    } finally {
+      this.generandoVideo = false;
+      this.progresoVideo = null;
+      this.cdr.detectChanges();
+    }
   }
 
   eliminarActividad(id: number): void {
@@ -279,6 +406,7 @@ export class ActividadesItinerariosComponent implements OnInit {
               this.gpxTextAnimacion = e.target.result;
               // this.multimediaAnimacion ya está filtrado arriba
               this.desgloseTransporteAnimacion = this.estadisticasGPX?.desgloseTransporte || [];
+              this.actividadAnimacion = this.actividades.find(a => a.id === actividadId); // ✨ GUARDAR ACTIVIDAD
               this.mostrarReproductorAnimado = true;
               this.cdr.detectChanges();
             };

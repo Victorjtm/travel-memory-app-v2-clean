@@ -1,6 +1,7 @@
   import { Injectable } from '@angular/core';
   import { Archivo } from '../modelos/archivo';
   import { environment } from '../../environments/environment';
+  import html2canvas from 'html2canvas';
 
   export interface ConfiguracionVideo {
     duracionPorFoto: number;
@@ -10,8 +11,9 @@
     calidad: 'alta' | 'media' | 'baja';
     mostrarDescripciones: boolean;
     resolucion: '1080p' | '720p' | '480p';
-    transicionesAleatorias: boolean; // 👈 AÑADIR ESTA LÍNEA
-    modoAjuste?: 'contain' | 'cover'; // ✨ NUEVO: modo de ajuste de imágenes
+    transicionesAleatorias: boolean;
+    modoAjuste?: 'contain' | 'cover';
+    incluirAudiosSinImagen?: boolean; // ✨ NUEVO
   }
 
   export interface ProgresoVideo {
@@ -408,14 +410,15 @@ private async mezclarAudioYVideo(
       }
     }
 
-    private detectarMejorCodec(): string {
-  // Lista de códecs en orden de preferencia (más compatible primero)
+  private detectarMejorCodec(): string {
+  // Priorizar MP4/H264 para mayor compatibilidad con Windows y WhatsApp
   const codecsPreferidos = [
+    'video/mp4;codecs=avc1',
+    'video/mp4;codecs=h264',
+    'video/mp4',
+    'video/webm;codecs=h264,opus',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
-    'video/webm;codecs=h264,opus',
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
     'video/webm'
   ];
   
@@ -429,6 +432,11 @@ private async mezclarAudioYVideo(
   console.warn('⚠️ No se encontró códec ideal, usando WebM básico');
   return 'video/webm';
 }
+
+  public getExtensionVideo(): string {
+    const codec = this.detectarMejorCodec();
+    return codec.includes('mp4') ? 'mp4' : 'webm';
+  }
 
 private calcularDuracionTotalVideo(
   imagenes: Array<{archivo: Archivo, imagen: HTMLImageElement}>,
@@ -600,8 +608,8 @@ private procesarVideo(archivo: Archivo): Promise<{archivo: Archivo, video: HTMLV
       if (!archivo?.rutaArchivo) return '/assets/images/no-image.jpg';
       if (archivo.rutaArchivo.startsWith('http')) return archivo.rutaArchivo;
       
-      const nombreArchivo = archivo.rutaArchivo.split(/[\\/]/).pop();
-      return `${environment.apiUrl}/uploads/${nombreArchivo}`;
+      const rutaLimpia = archivo.rutaArchivo.replace(/\\/g, '/');
+      return `${environment.apiUrl}/uploads/${rutaLimpia}`;
     }
 
   private async generarSecuencia(
@@ -1207,10 +1215,8 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       this.ctx.restore();
     }
 
-  private async esperarFrame(): Promise<void> {
-    // ✨ CAMBIO: Usar setTimeout en lugar de requestAnimationFrame
-    // Esto garantiza que el loop continúe aunque la ventana esté en segundo plano
-    return new Promise(resolve => setTimeout(resolve, 1000 / 30)); // 30 FPS ≈ 33.3ms
+  private async esperarFrame(ms?: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms || 33));
   }
 
     private async dibujarTitulo(titulo: string, frames: number, onFrame?: () => void): Promise<void> {
@@ -1345,13 +1351,590 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       onFrame?.();
       await this.esperarFrame();
     }
-  } // ← AGREGAR ESTA LLAVE
+  }
 
   // Métodos auxiliares
 
-    private esImagen(nombreArchivo: string): boolean {
-      const extensiones = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'];
-      const extension = nombreArchivo.toLowerCase().substring(nombreArchivo.lastIndexOf('.'));
-      return extensiones.includes(extension);
+  private esImagen(nombreArchivo: string): boolean {
+    if (!nombreArchivo) return false;
+    const extensiones = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'];
+    const lastDotIndex = nombreArchivo.lastIndexOf('.');
+    if (lastDotIndex === -1) return false;
+    const extension = nombreArchivo.toLowerCase().substring(lastDotIndex);
+    return extensiones.includes(extension);
+  }
+
+  /**
+   * ✨ NUEVO: Genera un vídeo a partir de una ruta GPX animada con multimedia sincronizada.
+   */
+  async generarVideoGpx(
+    points: any[], 
+    actividad: any,
+    configuracion: any,
+    onProgress?: (progreso: ProgresoVideo) => void
+  ): Promise<Blob> {
+    console.log('🎬 [WebP→WebM] Iniciando generación de vídeo GPX...');
+
+    try {
+      this.configurarResolucion(configuracion.resolucion || '720p');
+      const W = this.canvas.width;
+      const H = this.canvas.height;
+      const fps = 30;
+      const webpFrames: string[] = [];
+      
+      onProgress?.({ fase: 'cargando', porcentaje: 5, mensaje: 'Preparando captura de frames...' });
+
+      // Helper: capturar frame del canvas como WebP
+      const capturarFrame = () => {
+        webpFrames.push(this.canvas.toDataURL('image/webp', 0.85));
+      };
+
+      // == 1. Mapa Headless ==
+      onProgress?.({ fase: 'cargando', porcentaje: 8, mensaje: 'Creando mapa satélite...' });
+      
+      const mapDiv = document.createElement('div');
+      mapDiv.style.width = `${W}px`;
+      mapDiv.style.height = `${H}px`;
+      mapDiv.style.position = 'fixed';
+      mapDiv.style.top = '-9999px';
+      mapDiv.style.left = '-9999px';
+      document.body.appendChild(mapDiv);
+
+      const L = await import('leaflet');
+      const map = L.map(mapDiv, {
+        zoomControl: false, attributionControl: false,
+        fadeAnimation: false, zoomAnimation: false, markerZoomAnimation: false
+      });
+      
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 18, crossOrigin: true
+      }).addTo(map);
+
+      const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
+      map.fitBounds(bounds, { padding: [50, 50], animate: false });
+
+      onProgress?.({ fase: 'cargando', porcentaje: 10, mensaje: 'Descargando cartografía satélite...' });
+      await new Promise(r => setTimeout(r, 3000));
+
+      const mapaFondo = await html2canvas(mapDiv, {
+        useCORS: true, allowTaint: false, backgroundColor: '#000'
+      });
+
+      const proyeccion = (lat: number, lng: number) => {
+        const pt = map.latLngToContainerPoint([lat, lng]);
+        return { x: pt.x, y: pt.y };
+      };
+
+      onProgress?.({ fase: 'cargando', porcentaje: 20, mensaje: 'Mapa capturado. Capturando frames...' });
+
+      // == 2. Fase Título (2.5 segundos = 75 frames) ==
+      const tituloFrames = Math.floor(2.5 * fps);
+      for (let f = 0; f < tituloFrames; f++) {
+        this.ctx.fillStyle = '#000';
+        this.ctx.fillRect(0, 0, W, H);
+        let alpha = 1;
+        if (f < 20) alpha = f / 20;
+        else if (f > tituloFrames - 20) alpha = (tituloFrames - f) / 20;
+        this.ctx.globalAlpha = alpha;
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = `bold ${Math.floor(H / 15)}px Arial`;
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(actividad.nombre || 'Mi Ruta', W / 2, H / 2);
+        this.ctx.globalAlpha = 1;
+        capturarFrame();
+        if (f % 15 === 0) await new Promise(r => setTimeout(r, 0));
+      }
+
+      // == 3. Animación de Ruta ==
+      const numPuntos = points.length;
+      const totalFramesAnimacion = 300;
+      
+      const rutaBuffer = document.createElement('canvas');
+      rutaBuffer.width = W;
+      rutaBuffer.height = H;
+      const rutaCtx = rutaBuffer.getContext('2d')!;
+      let ultimoIdx = -1;
+
+      const puntosMedia: { idx: number; archivos: any[] }[] = [];
+      for (let i = 0; i < numPuntos; i++) {
+        if (points[i].event?.archivos?.length > 0) {
+          puntosMedia.push({ idx: i, archivos: points[i].event.archivos });
+        }
+      }
+      let nextMedia = 0;
+
+      console.log(`🎬 ${numPuntos} puntos GPS → ${totalFramesAnimacion} frames de animación`);
+
+      for (let frame = 0; frame < totalFramesAnimacion; frame++) {
+        const progreso = frame / totalFramesAnimacion;
+        const idxPunto = Math.min(Math.floor(progreso * numPuntos), numPuntos - 1);
+        const punto = points[idxPunto];
+        const pct = 20 + progreso * 70;
+
+        if (idxPunto > ultimoIdx) {
+          rutaCtx.lineWidth = 10;
+          rutaCtx.lineCap = 'round';
+          rutaCtx.lineJoin = 'round';
+          rutaCtx.strokeStyle = '#2196F3';
+          rutaCtx.beginPath();
+          const si = Math.max(0, ultimoIdx);
+          const sp = proyeccion(points[si].lat, points[si].lng);
+          rutaCtx.moveTo(sp.x, sp.y);
+          for (let k = si + 1; k <= idxPunto; k++) {
+            const p = proyeccion(points[k].lat, points[k].lng);
+            rutaCtx.lineTo(p.x, p.y);
+          }
+          rutaCtx.stroke();
+          ultimoIdx = idxPunto;
+        }
+
+        this.ctx.drawImage(mapaFondo, 0, 0, W, H);
+        this.ctx.drawImage(rutaBuffer, 0, 0);
+        this.dibujarMarker(punto, proyeccion);
+        capturarFrame();
+
+        // Multimedia
+        while (nextMedia < puntosMedia.length && puntosMedia[nextMedia].idx <= idxPunto) {
+          const m = puntosMedia[nextMedia];
+          for (const archivo of m.archivos) {
+            onProgress?.({ fase: 'procesando', porcentaje: pct, mensaje: `Mostrando: ${archivo.nombreArchivo}` });
+            if (this.esImagen(archivo.nombreArchivo)) {
+              try {
+                const img = await this.cargarImagen(archivo);
+                const durSec = configuracion.duracionPorFoto || 3;
+                const numF = Math.floor(durSec * fps);
+                for (let mf = 0; mf < numF; mf++) {
+                  this.ctx.fillStyle = '#000';
+                  this.ctx.fillRect(0, 0, W, H);
+                  this.dibujarImagenCentrada(img, 'contain');
+                  this.dibujarTextoImagen(archivo);
+                  capturarFrame();
+                  if (mf % 10 === 0) await new Promise(r => setTimeout(r, 0));
+                }
+              } catch (e) {
+                console.warn('⚠️ Error cargando imagen:', e);
+              }
+            }
+            this.ctx.drawImage(mapaFondo, 0, 0, W, H);
+            this.ctx.drawImage(rutaBuffer, 0, 0);
+            this.dibujarMarker(punto, proyeccion);
+            capturarFrame();
+          }
+          nextMedia++;
+        }
+
+        if (frame % 10 === 0) {
+          await new Promise(r => setTimeout(r, 0));
+          onProgress?.({ fase: 'procesando', porcentaje: pct, mensaje: `Capturando frames... (${webpFrames.length})` });
+        }
+      }
+
+      // Cleanup mapa
+      if (mapDiv.parentElement) {
+        document.body.removeChild(mapDiv);
+        map.remove();
+      }
+
+      // == 4. Ensamblar WebM desde frames WebP ==
+      onProgress?.({ fase: 'generando', porcentaje: 92, mensaje: `Ensamblando ${webpFrames.length} frames en vídeo...` });
+      console.log(`🎬 Total frames capturados: ${webpFrames.length}. Ensamblando WebM...`);
+      
+      await new Promise(r => setTimeout(r, 50)); // yield antes del ensamblado pesado
+      const blob = this.ensamblarWebM(webpFrames, fps, W, H);
+      
+      console.log(`✅ Vídeo generado: ${(blob.size / 1024 / 1024).toFixed(2)} MB, ${webpFrames.length} frames`);
+      onProgress?.({ fase: 'completado', porcentaje: 100, mensaje: 'Vídeo generado con éxito' });
+      
+      return blob;
+
+    } catch (error: any) {
+      try {
+        const md = document.querySelector('div[style*="-9999px"]');
+        if (md?.parentElement) document.body.removeChild(md);
+      } catch(e) {}
+      console.error('❌ Error generando vídeo GPX:', error);
+      onProgress?.({ fase: 'error', porcentaje: 0, mensaje: error.message });
+      throw error;
     }
   }
+
+  /**
+   * Ensambla frames WebP en un contenedor WebM usando EBML binario.
+   * Basado en el algoritmo Whammy.js — funciona en cualquier Chrome/Edge sin WebCodecs.
+   */
+  private ensamblarWebM(frames: string[], fps: number, width: number, height: number): Blob {
+    const durationMs = (frames.length / fps) * 1000;
+    
+    // Convertir data URLs a ArrayBuffers
+    const clusters: ArrayBuffer[] = [];
+    for (const dataUrl of frames) {
+      const webpData = this.dataUrlToArrayBuffer(dataUrl);
+      clusters.push(webpData);
+    }
+
+    // Construir estructura EBML/WebM
+    const EBML: any[] = [
+      { id: 0x1a45dfa3, data: [ // EBML Header
+        { id: 0x4286, data: 1 },         // EBMLVersion
+        { id: 0x42f7, data: 1 },         // EBMLReadVersion
+        { id: 0x42f2, data: 4 },         // EBMLMaxIDLength
+        { id: 0x42f3, data: 8 },         // EBMLMaxSizeLength
+        { id: 0x4282, data: 'webm' },    // DocType
+        { id: 0x4287, data: 2 },         // DocTypeVersion
+        { id: 0x4285, data: 2 }          // DocTypeReadVersion
+      ]},
+      { id: 0x18538067, data: [ // Segment
+        { id: 0x1549a966, data: [ // Info
+          { id: 0x2ad7b1, data: 1000000 },  // TimecodeScale (ns)
+          { id: 0x4d80, data: 'TravelMemory' }, // MuxingApp
+          { id: 0x5741, data: 'TravelMemory' }, // WritingApp
+          { id: 0x4489, data: durationMs }   // Duration (float)
+        ]},
+        { id: 0x1654ae6b, data: [ // Tracks
+          { id: 0xae, data: [ // TrackEntry
+            { id: 0xd7, data: 1 },        // TrackNumber
+            { id: 0x73c5, data: 1 },      // TrackUID  
+            { id: 0x83, data: 1 },        // TrackType (video)
+            { id: 0x86, data: 'V_VP8' },  // CodecID
+            { id: 0xe0, data: [ // Video
+              { id: 0xb0, data: width },   // PixelWidth
+              { id: 0xba, data: height }   // PixelHeight
+            ]}
+          ]}
+        ]},
+        // Clusters (frames agrupados)
+        ...this.crearClusters(clusters, fps)
+      ]}
+    ];
+
+    const buffer = this.generarEBML(EBML);
+    return new Blob([buffer], { type: 'video/webm' });
+  }
+
+  private crearClusters(frames: ArrayBuffer[], fps: number): any[] {
+    const clusterSize = 30; // 1 cluster por segundo
+    const result: any[] = [];
+    const frameDuration = 1000 / fps;
+    
+    for (let i = 0; i < frames.length; i += clusterSize) {
+      const clusterFrames: any[] = [];
+      const clusterTimecode = Math.round(i * frameDuration);
+      
+      for (let j = 0; j < clusterSize && (i + j) < frames.length; j++) {
+        const relativeTimecode = Math.round(j * frameDuration);
+        // SimpleBlock: trackNum=1, timecode(2 bytes), flags(keyframe)
+        const block = this.crearSimpleBlock(frames[i + j], relativeTimecode, j === 0);
+        clusterFrames.push({ id: 0xa3, data: block }); // SimpleBlock
+      }
+      
+      result.push({
+        id: 0x1f43b675, // Cluster
+        data: [
+          { id: 0xe7, data: clusterTimecode }, // Timecode
+          ...clusterFrames
+        ]
+      });
+    }
+    return result;
+  }
+
+  private crearSimpleBlock(frameData: ArrayBuffer, timecode: number, keyframe: boolean): ArrayBuffer {
+    // Track number (EBML coded: 0x81 = track 1)
+    // Timecode (2 bytes, signed int16)
+    // Flags: 0x80 = keyframe, 0x00 = not keyframe
+    const header = new ArrayBuffer(4);
+    const view = new DataView(header);
+    view.setUint8(0, 0x81); // Track 1
+    view.setInt16(1, timecode); // Relative timecode
+    view.setUint8(3, keyframe ? 0x80 : 0x00); // Flags
+    
+    const result = new Uint8Array(header.byteLength + frameData.byteLength);
+    result.set(new Uint8Array(header), 0);
+    result.set(new Uint8Array(frameData), header.byteLength);
+    return result.buffer;
+  }
+
+  private dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
+    const base64 = dataUrl.split(',')[1];
+    // Extraer solo el frame VP8 del WebP (strip RIFF/WebP header de 12 bytes)
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    // El contenedor WebP tiene: RIFF(4) + size(4) + WEBP(4) + VP8_chunk_header(8) = 20 bytes header
+    // Buscamos el chunk VP8 
+    let offset = 12; // Skip RIFF header
+    while (offset < bytes.length - 8) {
+      const chunkId = String.fromCharCode(bytes[offset], bytes[offset+1], bytes[offset+2], bytes[offset+3]);
+      const chunkSize = bytes[offset+4] | (bytes[offset+5] << 8) | (bytes[offset+6] << 16) | (bytes[offset+7] << 24);
+      if (chunkId === 'VP8 ' || chunkId === 'VP8L') {
+        return bytes.slice(offset + 8, offset + 8 + chunkSize).buffer;
+      }
+      offset += 8 + chunkSize + (chunkSize % 2); // padding
+    }
+    // Fallback: return everything after RIFF header
+    return bytes.slice(12).buffer;
+  }
+
+  private generarEBML(elements: any[]): ArrayBuffer {
+    const buffers: ArrayBuffer[] = [];
+    for (const el of elements) {
+      buffers.push(this.codificarElementoEBML(el));
+    }
+    return this.concatenarBuffers(buffers);
+  }
+
+  private codificarElementoEBML(element: any): ArrayBuffer {
+    const idBytes = this.codificarEBMLId(element.id);
+    let dataBuffer: ArrayBuffer;
+
+    if (Array.isArray(element.data)) {
+      dataBuffer = this.generarEBML(element.data);
+    } else if (typeof element.data === 'string') {
+      const enc = new TextEncoder();
+      dataBuffer = enc.encode(element.data).buffer;
+    } else if (typeof element.data === 'number') {
+      if (element.id === 0x4489) { 
+        // Duration: encode as float64
+        const buf = new ArrayBuffer(8);
+        new DataView(buf).setFloat64(0, element.data);
+        dataBuffer = buf;
+      } else {
+        dataBuffer = this.codificarEBMLUint(element.data);
+      }
+    } else if (element.data instanceof ArrayBuffer) {
+      dataBuffer = element.data;
+    } else {
+      dataBuffer = new ArrayBuffer(0);
+    }
+
+    const sizeBytes = this.codificarEBMLSize(dataBuffer.byteLength);
+    return this.concatenarBuffers([idBytes, sizeBytes, dataBuffer]);
+  }
+
+  private codificarEBMLId(id: number): ArrayBuffer {
+    const bytes: number[] = [];
+    while (id > 0) {
+      bytes.unshift(id & 0xff);
+      id >>= 8;
+    }
+    return new Uint8Array(bytes).buffer;
+  }
+
+  private codificarEBMLSize(size: number): ArrayBuffer {
+    if (size < 0x7f) {
+      return new Uint8Array([0x80 | size]).buffer;
+    } else if (size < 0x3fff) {
+      return new Uint8Array([0x40 | (size >> 8), size & 0xff]).buffer;
+    } else if (size < 0x1fffff) {
+      return new Uint8Array([0x20 | (size >> 16), (size >> 8) & 0xff, size & 0xff]).buffer;
+    } else {
+      return new Uint8Array([
+        0x10 | ((size >> 24) & 0x0f), (size >> 16) & 0xff, (size >> 8) & 0xff, size & 0xff
+      ]).buffer;
+    }
+  }
+
+  private codificarEBMLUint(value: number): ArrayBuffer {
+    const bytes: number[] = [];
+    if (value === 0) return new Uint8Array([0]).buffer;
+    let v = value;
+    while (v > 0) {
+      bytes.unshift(v & 0xff);
+      v >>= 8;
+    }
+    return new Uint8Array(bytes).buffer;
+  }
+
+  private concatenarBuffers(buffers: ArrayBuffer[]): ArrayBuffer {
+    let totalLength = 0;
+    for (const buf of buffers) totalLength += buf.byteLength;
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const buf of buffers) {
+      result.set(new Uint8Array(buf), offset);
+      offset += buf.byteLength;
+    }
+    return result.buffer;
+  }
+
+  private async cargarMapaActividad(actividadId: number): Promise<HTMLImageElement> {
+    const url = `${environment.apiUrl}/actividades/${actividadId}/mapa`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('No se pudo descargar el mapa de la actividad');
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(blobUrl); resolve(img); };
+      img.onerror = () => reject(new Error('Error al decodificar imagen del mapa'));
+      img.src = blobUrl;
+    });
+  }
+
+  private calcularBBox(points: any[]) {
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    points.forEach(p => {
+      if (p.lat < minLat) minLat = p.lat;
+      if (p.lat > maxLat) maxLat = p.lat;
+      if (p.lng < minLng) minLng = p.lng;
+      if (p.lng > maxLng) maxLng = p.lng;
+    });
+    const latMargin = (maxLat - minLat) * 0.05;
+    const lngMargin = (maxLng - minLng) * 0.05;
+    return { 
+      minLat: minLat - latMargin, 
+      maxLat: maxLat + latMargin, 
+      minLng: minLng - lngMargin, 
+      maxLng: maxLng + lngMargin 
+    };
+  }
+
+  private crearProyeccion(bbox: any, width: number, height: number, padding: number) {
+    const w = width - (padding * 2);
+    const h = height - (padding * 2);
+    const latRange = bbox.maxLat - bbox.minLat;
+    const lngRange = bbox.maxLng - bbox.minLng;
+    const aspect = (lngRange || 1) / (latRange || 1);
+    const canvasAspect = w / h;
+    
+    let drawW = w;
+    let drawH = h;
+    let offsetX = padding;
+    let offsetY = padding;
+
+    if (aspect > canvasAspect) {
+      drawH = drawW / aspect;
+      offsetY += (h - drawH) / 2;
+    } else {
+      drawW = drawH * aspect;
+      offsetX += (w - drawW) / 2;
+    }
+
+    return (lat: number, lng: number) => {
+      const x = offsetX + ((lng - bbox.minLng) / (lngRange || 1)) * drawW;
+      const y = offsetY + (drawH - ((lat - bbox.minLat) / (latRange || 1)) * drawH);
+      return { x, y };
+    };
+  }
+
+  // NOTA: dibujarRutaProgresiva ya no se usa en generarVideoGpx (reemplazada por buffer incremental)
+  // Se mantiene por compatibilidad con otros flujos que puedan usarla.
+  private dibujarRutaProgresiva(points: any[], index: number, proyeccion: any) {
+    this.ctx.beginPath();
+    this.ctx.lineWidth = 10;
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
+    this.ctx.strokeStyle = '#2196F3';
+    
+    for (let i = 0; i <= index; i++) {
+      const { x, y } = proyeccion(points[i].lat, points[i].lng);
+      if (i === 0) this.ctx.moveTo(x, y);
+      else this.ctx.lineTo(x, y);
+    }
+    this.ctx.stroke();
+  }
+
+  private dibujarMarker(punto: any, proyeccion: any) {
+    const { x, y } = proyeccion(punto.lat, punto.lng);
+    this.ctx.fillStyle = '#f44336';
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, 14, 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.strokeStyle = 'white';
+    this.ctx.lineWidth = 4;
+    this.ctx.stroke();
+  }
+
+  private async procesarMediaGpx(
+    archivo: any, 
+    configuracion: any, 
+    audioCtx: AudioContext, 
+    audioDest: MediaStreamAudioDestinationNode
+  ) {
+    if (this.esImagen(archivo.nombreArchivo)) {
+      const img = await this.cargarImagen(archivo);
+      let durationSec = configuracion.duracionPorFoto || 4;
+      
+      let audioSource: AudioBufferSourceNode | null = null;
+      if (archivo.audioAsociadoUrl) {
+        try {
+          const resp = await fetch(archivo.audioAsociadoUrl);
+          const arrayBuffer = await resp.arrayBuffer();
+          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+          durationSec = Math.max(durationSec, audioBuffer.duration);
+          audioSource = audioCtx.createBufferSource();
+          audioSource.buffer = audioBuffer;
+          audioSource.connect(audioDest);
+          audioSource.start();
+        } catch (e) {
+          console.warn('⚠️ No se pudo cargar audio asociado:', e);
+        }
+      }
+
+      const numFrames = Math.floor(durationSec * 30);
+      for (let f = 0; f < numFrames; f++) {
+        this.ctx.fillStyle = 'black';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.dibujarImagenCentrada(img, 'contain');
+        this.dibujarTextoImagen(archivo);
+        await this.esperarFrame();
+      }
+      if (audioSource) audioSource.stop();
+
+    } else if (this.esVideo(archivo.nombreArchivo)) {
+      const videoData = await this.procesarVideo(archivo);
+      const { video, duracion } = videoData;
+      let source: MediaElementAudioSourceNode | null = null;
+      try {
+        source = audioCtx.createMediaElementSource(video);
+        source.connect(audioDest);
+        video.muted = false;
+      } catch (e) {
+        console.warn('⚠️ No se pudo capturar audio del video:', e);
+      }
+      await video.play();
+      const numFrames = Math.floor(duracion * 30);
+      for (let f = 0; f < numFrames; f++) {
+        this.ctx.fillStyle = 'black';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.dibujarVideoCentrado(video);
+        this.dibujarTextoImagen(archivo);
+        await this.esperarFrame();
+      }
+      video.pause();
+      if (source) source.disconnect();
+
+    } else if (archivo.tipo === 'audio' && configuracion.incluirAudiosSinImagen) {
+      // 🎼 Manejo de Audio Solitario (sin imagen)
+      try {
+        const resp = await fetch(this.getMediaUrl(archivo.rutaArchivo));
+        const arrayBuffer = await resp.arrayBuffer();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        
+        const durationSec = audioBuffer.duration;
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioDest);
+        source.start();
+
+        const numFrames = Math.floor(durationSec * 30);
+        for (let f = 0; f < numFrames; f++) {
+          // Mantener el fondo (mapa) mientras suena el audio
+          // No limpiamos el canvas aquí para que se vea por donde íbamos
+          this.dibujarTextoImagen(archivo); // Mostrar nombre del audio
+          await this.esperarFrame();
+        }
+        source.stop();
+      } catch (e) {
+        console.warn('⚠️ No se pudo procesar audio solitario:', e);
+      }
+    }
+  }
+
+  private getMediaUrl(ruta: string): string {
+    const rutaStr = ruta ? ruta.replace(/\\/g, '/') : '';
+    return `${environment.apiUrl}/uploads/${rutaStr}`;
+  }
+}
