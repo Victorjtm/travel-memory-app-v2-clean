@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { trigger, transition, style, animate } from '@angular/animations';
 import { GpxAnimationService, GpxPoint, AnimationStats } from '../../servicios/gpx-animation.service';
+import { ArchivoService } from '../../servicios/archivo.service';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -101,6 +102,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   constructor(
     private animationService: GpxAnimationService,
+    private archivoService: ArchivoService,
     private cdr: ChangeDetectorRef,
     private ngZone: NgZone
   ) { }
@@ -261,9 +263,28 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
-  private pauseForEvent(event: any) {
+  private async pauseForEvent(event: any) {
     this.isPlaying = false;
     this.stopAnimation();
+    
+    // ✨ Buscar audios asociados para cada foto/video en el evento
+    if (event.archivos && event.archivos.length > 0) {
+      for (const archivo of event.archivos) {
+        if (archivo.tipo === 'foto' || archivo.tipo === 'imagen') {
+          try {
+            const asociados = await this.archivoService.getArchivosAsociados(archivo.id).toPromise();
+            const audioAsociado = asociados?.find((a: any) => a.tipo === 'audio');
+            if (audioAsociado) {
+              archivo.audioUrl = this.archivoService.getUrlArchivoAsociado(audioAsociado);
+              console.log(`🎵 Audio asociado encontrado para ${archivo.nombreArchivo}:`, archivo.audioUrl);
+            }
+          } catch (error) {
+            console.error('Error buscando archivos asociados:', error);
+          }
+        }
+      }
+    }
+
     this.activeEvent = event;
     this.cdr.detectChanges();
   }
@@ -309,6 +330,17 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   getMediaUrl(ruta: string): string {
     return `${environment.apiUrl}/uploads/${ruta}`;
+  }
+
+  abrirVisorFoto(archivo: any) {
+    const urlArchivo = this.getMediaUrl(archivo.rutaArchivo);
+    let fullUrl = `${window.location.origin}/visualizador-foto?url=${encodeURIComponent(urlArchivo)}&descripcion=${encodeURIComponent(archivo.descripcion || archivo.nombreArchivo)}`;
+    
+    if (archivo.audioUrl) {
+      fullUrl += `&audioUrl=${encodeURIComponent(archivo.audioUrl)}`;
+    }
+    
+    window.open(fullUrl, '_blank', 'noopener,noreferrer');
   }
 
   getModeName(mode: string | null | undefined): string {

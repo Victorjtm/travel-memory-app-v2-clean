@@ -16,6 +16,7 @@ export class VisualizadorFotoComponent implements OnInit, AfterViewInit {
     @ViewChild('imageElement') imageElement!: ElementRef<HTMLImageElement>;
 
     imageUrl: string = '';
+    audioUrl: string = '';
     descripcion: string = '';
     viewer: any;
     isLoading: boolean = true;
@@ -26,8 +27,10 @@ export class VisualizadorFotoComponent implements OnInit, AfterViewInit {
         console.log('VisualizadorFotoComponent: OnInit');
         this.route.queryParams.subscribe(params => {
             this.imageUrl = params['url'];
+            this.audioUrl = params['audioUrl'] || '';
             this.descripcion = params['descripcion'] || '';
-            console.log('VisualizadorFotoComponent: URL recibida', this.imageUrl);
+            console.log('VisualizadorFotoComponent: URL Imagen', this.imageUrl);
+            if (this.audioUrl) console.log('VisualizadorFotoComponent: URL Audio', this.audioUrl);
         });
     }
 

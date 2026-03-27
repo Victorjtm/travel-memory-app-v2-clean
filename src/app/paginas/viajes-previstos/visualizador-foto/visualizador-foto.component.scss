@@ -118,3 +118,36 @@
         }
     }
 }
+
+// ✨ ESTILOS PARA EL REPRODUCTOR DE AUDIO
+.audio-container {
+    position: fixed;
+    bottom: 100px; // Encima de la barra de herramientas de ViewerJS
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.75);
+    padding: 15px 20px;
+    border-radius: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    z-index: 2016; // Justo encima de la toolbar de viewer (2015)
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+}
+
+.audio-label {
+    color: #4CAF50;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.custom-audio-player {
+    height: 40px;
+    width: 250px;
+    filter: invert(100%) hue-rotate(180deg) brightness(1.5); // Para que se vea blanco/verde sobre negro
+}

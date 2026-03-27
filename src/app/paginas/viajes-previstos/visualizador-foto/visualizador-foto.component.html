@@ -10,4 +10,10 @@
     <div class="loading-overlay" *ngIf="isLoading">
         <div style="color: white; font-size: 1.5rem; text-align: center; margin-top: 50vh;">Cargando foto...</div>
     </div>
+
+    <!-- Reproductor de Audio si existe audioUrl -->
+    <div class="audio-container" *ngIf="audioUrl && !isLoading">
+        <div class="audio-label">🔊 Audio Asociado</div>
+        <audio [src]="audioUrl" controls autoplay class="custom-audio-player"></audio>
+    </div>
 </div>

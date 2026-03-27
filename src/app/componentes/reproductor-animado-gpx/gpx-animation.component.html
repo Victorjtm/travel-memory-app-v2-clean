@@ -55,13 +55,22 @@
       <div class="event-body">
         <div *ngFor="let archivo of activeEvent.archivos" class="media-item">
           <!-- Foto -->
-          <img *ngIf="archivo.tipo === 'foto'" [src]="getMediaUrl(archivo.rutaArchivo)" alt="Foto del evento">
+          <div class="photo-container" *ngIf="archivo.tipo === 'foto'" (click)="abrirVisorFoto(archivo)" title="Clic para ver en grande">
+            <img [src]="getMediaUrl(archivo.rutaArchivo)" alt="Foto del evento">
+            <div class="audio-badge" *ngIf="archivo.audioUrl">🔊 Audio</div>
+            <div class="zoom-hint">🔍 Ampliar</div>
+          </div>
           
           <!-- Video -->
           <video *ngIf="archivo.tipo === 'video'" [src]="getMediaUrl(archivo.rutaArchivo)" controls></video>
           
-          <!-- Audio -->
+          <!-- Audio (si es un archivo independiente, no asociado) -->
           <audio *ngIf="archivo.tipo === 'audio'" [src]="getMediaUrl(archivo.rutaArchivo)" controls></audio>
+          
+          <!-- Audio asociado mostrado en el card si no quieres abrir el visor aún -->
+          <div class="associated-audio" *ngIf="archivo.audioUrl && archivo.tipo === 'foto'">
+             <audio [src]="archivo.audioUrl" controls></audio>
+          </div>
           
           <p class="media-caption">{{ archivo.nombreArchivo }}</p>
         </div>
