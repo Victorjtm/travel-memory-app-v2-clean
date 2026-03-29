@@ -77,15 +77,7 @@
       <i class="fas fa-video" aria-hidden="true"></i>
     </button>
 
-    <!-- Botón ℹ️ (información) --->
-    <button class="info-trigger" [class.active]="mostrarInfoDetalle"
-      (click)="toggleInfoDetalle(); $event.stopPropagation()"
-      (mouseenter)="!infoDetalleEsModal && (mostrarInfoDetalle = true); cancelarOcultarInfo()"
-      (mouseleave)="!infoDetalleEsModal && ocultarInfoDetalle()"
-      *ngIf="paginaActualData && !paginaActualData.esIndice && !paginaActualData.esCartaManuscrita"
-      aria-label="Mostrar información del archivo" title="Ver información del archivo">
-      <i class="fas fa-info-circle"></i>
-    </button>
+    <!-- Viejo Botón ℹ️ Eliminado -->
 
     <div class="archivos-asociados-botones"
       *ngIf="paginaActualData && $any(paginaActualData).archivosAsociados && $any(paginaActualData).archivosAsociados.length > 0">
@@ -93,45 +85,59 @@
 
 
       <!-- Audio asociado -->
-      <button class="btn-asociado btn-audio" *ngIf="tieneArchivoAsociado(paginaActualData, 'audio')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'audio')" title="Reproducir audio asociado"
+      <button class="btn-asociado btn-audio" *ngIf="tieneArchivoAsociado(paginaActualData!, 'audio')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'audio')" title="Reproducir audio asociado"
         aria-label="Reproducir audio asociado">
         <i class="fa fa-volume-up"></i>
       </button>
 
-      <!-- GPX asociado - Abre mapa satelital -->
-      <button class="btn-asociado btn-gpx" *ngIf="tieneArchivoAsociado(paginaActualData, 'gpx')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'gpx')" title="Ver ruta GPX en mapa satelital"
-        aria-label="Ver ruta GPX en mapa satelital">
+      <!-- Video asociado -->
+      <button class="btn-asociado btn-video-asoc" *ngIf="tieneArchivoAsociado(paginaActualData!, 'video')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'video')" title="Reproducir video asociado"
+        aria-label="Reproducir video asociado">
+        <i class="fa fa-video"></i>
+      </button>
+
+      <!-- GPX asociado (Ver Mapa) -->
+      <button class="btn-asociado btn-map" *ngIf="tieneArchivoAsociado(paginaActualData!, 'gpx')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'gpx')" title="Ver mapa del recorrido"
+        aria-label="Ver mapa del recorrido">
         <i class="fa fa-map-marked-alt"></i>
       </button>
 
       <!-- Mapa de ubicación (PNG) -->
-      <button class="btn-asociado btn-imagen" *ngIf="tieneArchivoAsociado(paginaActualData, 'mapa_ubicacion')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'mapa_ubicacion')" title="Ver mapa PNG"
+      <button class="btn-asociado btn-imagen" *ngIf="tieneArchivoAsociado(paginaActualData!, 'mapa_ubicacion')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'mapa_ubicacion')" title="Ver mapa PNG"
         aria-label="Ver mapa PNG">
         <i class="fa fa-map"></i>
       </button>
 
       <!-- Manifest JSON -->
-      <button class="btn-asociado btn-manifest" *ngIf="tieneArchivoAsociado(paginaActualData, 'manifest')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'manifest')" title="Ver manifest JSON"
+      <button class="btn-asociado btn-manifest" *ngIf="tieneArchivoAsociado(paginaActualData!, 'manifest')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'manifest')" title="Ver manifest JSON"
         aria-label="Ver manifest JSON">
         <i class="fa fa-file-code"></i>
       </button>
 
       <!-- Estadísticas JSON -->
-      <button class="btn-asociado btn-estadisticas" *ngIf="tieneArchivoAsociado(paginaActualData, 'estadisticas')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'estadisticas')" title="Ver estadísticas"
+      <button class="btn-asociado btn-estadisticas" *ngIf="tieneArchivoAsociado(paginaActualData!, 'estadisticas')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'estadisticas')" title="Ver estadísticas"
         aria-label="Ver estadísticas">
         <i class="fa fa-chart-bar"></i>
       </button>
 
       <!-- Texto asociado -->
-      <button class="btn-asociado btn-texto" *ngIf="tieneArchivoAsociado(paginaActualData, 'texto')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'texto')" title="Ver texto asociado"
+      <button class="btn-asociado btn-texto" *ngIf="tieneArchivoAsociado(paginaActualData!, 'texto')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'texto')" title="Ver texto asociado"
         aria-label="Ver texto asociado">
         <i class="fa fa-file-text"></i>
+      </button>
+
+      <!-- PDF asociado -->
+      <button class="btn-asociado btn-pdf" *ngIf="tieneArchivoAsociado(paginaActualData!, 'pdf')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'pdf')" title="Ver PDF asociado"
+        aria-label="Ver PDF asociado">
+        <i class="fa fa-file-pdf"></i>
       </button>
 
     </div>
@@ -181,7 +187,7 @@
             </div>
             <div class="info-text">
               <span class="info-label">Fecha y hora</span>
-              <span class="info-value">{{ obtenerFechaFormateada(paginaActualData) }}</span>
+              <span class="info-value">{{ obtenerFechaFormateada(paginaActualData!) }}</span>
             </div>
           </div>
 
@@ -290,6 +296,21 @@
 
         <!-- --- Contenedor multimedia --->
         <div class="media-container" [attr.data-tipo]="paginaActual.tipoMedia">
+
+          <!-- ✅ HUD DE FECHA Y BOTÓN INFORMACIÓN (REUBICADO) -->
+          <div class="hud-superior-album" *ngIf="!paginaActual.esIndice">
+            <div class="hud-inner">
+              <!-- Botón ℹ️ (Info) -->
+              <button class="info-trigger-icon" [class.active]="mostrarInfoDetalle"
+                (click)="toggleInfoDetalle(); $event.stopPropagation()" aria-label="Información del archivo"
+                title="Ver información del archivo">
+                <i class="fas fa-info-circle"></i>
+              </button>
+
+              <!-- Texto Fecha/Hora -->
+              <span class="fecha-hud-texto">{{ obtenerFechaFormateada(paginaActual) }}</span>
+            </div>
+          </div>
 
           <!-- --- Loader --->
           <div class="loader" *ngIf="!paginaActual.cargado && paginaActual.tipoMedia !== 'desconocido'" role="status"
@@ -402,8 +423,8 @@
 
       <!-- --- Información de paginación --->
       <div *ngIf="paginas[paginaActual] as paginaInfo" class="info-pagina">
-        <span class="tipo-pagina">
-          {{ paginaInfo.esIndice ? 'Índice' : obtenerFechaFormateada(paginaInfo) }}
+        <span class="tipo-pagina" *ngIf="paginaInfo.esIndice">
+          Índice
         </span>
         <span class="numero-pagina" *ngIf="!paginaInfo.esIndice">
           {{ paginaActual }} / {{ paginas.length - 1 }}
@@ -473,9 +494,11 @@
   <div class="modo-pantalla-completa" [class.activo]="mostrarFullscreen" (click)="cerrarFullscreen()" role="dialog"
     aria-modal="true" aria-label="Contenido en pantalla completa" *ngIf="mostrarFullscreen">
 
-    <!-- --- Contenido multimedia --->
-    <img *ngIf="tipoFullscreen === 'imagen'" [src]="mediaFullscreen" class="media-fullscreen imagen-fullscreen"
-      (click)="$event.stopPropagation()" [alt]="paginaActualData?.titulo || 'Imagen en pantalla completa'" />
+    <!-- --- Contenido multimedia --- -->
+    <div class="media-fullscreen-wrapper" [class]="'transition-' + transicionActual">
+      <img *ngIf="tipoFullscreen === 'imagen'" [src]="mediaFullscreen" class="media-fullscreen imagen-fullscreen"
+        (click)="$event.stopPropagation()" [alt]="paginaActualData?.titulo || 'Imagen en pantalla completa'" />
+    </div>
 
     <video *ngIf="tipoFullscreen === 'video'" [src]="mediaFullscreen" class="media-fullscreen video-fullscreen" controls
       autoplay (click)="$event.stopPropagation()"
@@ -513,9 +536,23 @@
     <!-- CARTA MANUSCRITA -->
     <div *ngIf="tipoFullscreen === 'carta-manuscrita'" class="media-fullscreen carta-manuscrita-fullscreen"
       (click)="$event.stopPropagation()">
-      <div class="papel-manuscrito">
-        <h2>{{ fullscreenTitulo }}</h2>
-        <p>{{ fullscreenDescripcion }}</p>
+      <div class="carta-manuscrita-container">
+        <div class="carta-manuscrita">
+          <div class="papel-manuscrito">
+            <div class="contenido-carta">
+              <h2 class="titulo-carta">{{ fullscreenTitulo }}</h2>
+              <div class="fecha-carta" *ngIf="paginaActualData?.fecha">
+                {{ formatearFecha(paginaActualData!.fecha) }}
+              </div>
+              <div class="texto-manuscrito">
+                {{ fullscreenDescripcion }}
+              </div>
+              <div class="firma-carta">
+                <em>— Tu diario de viaje —</em>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -525,56 +562,68 @@
       <i class="fas fa-times" aria-hidden="true"></i>
     </button>
 
-    <!-- --- Botón ℹ️ en pantalla completa --->
-    <button class="info-trigger-fullscreen" [class.active]="mostrarInfoDetalle"
-      (click)="toggleInfoDetalle(); $event.stopPropagation()"
-      *ngIf="paginaActualData && !paginaActualData.esIndice && !paginaActualData.esCartaManuscrita"
-      aria-label="Mostrar información del archivo" title="Ver información del archivo">
-      <i class="fas fa-info-circle"></i>
+    <!-- --- Botón SLIDESHOW (Play/Pause) --- -->
+    <button class="btn-slideshow-fullscreen" [class.active]="reproduciendoSlideshow"
+      (click)="toggleSlideshow($event)"
+      [attr.aria-label]="reproduciendoSlideshow ? 'Pausar diapositivas' : 'Iniciar diapositivas'"
+      [title]="reproduciendoSlideshow ? 'Pausar (P)' : 'Reproducir (P)'">
+      <i class="fas" [class.fa-pause]="reproduciendoSlideshow" [class.fa-play]="!reproduciendoSlideshow"></i>
     </button>
+
+    <!-- --- Botón ℹ️ en pantalla completa --- -->
+    <div class="info-wrapper-fullscreen" *ngIf="paginaActualData && !paginaActualData.esIndice && !paginaActualData.esCartaManuscrita">
+      <button class="info-trigger-fullscreen" [class.active]="mostrarInfoDetalle"
+        (click)="toggleInfoDetalle(); $event.stopPropagation()"
+        aria-label="Mostrar información del archivo" title="Ver información del archivo">
+        <i class="fas fa-info-circle"></i>
+      </button>
+      <div class="metadata-hud-fullscreen">
+        <span class="fecha-hora">{{ obtenerFechaFormateada(paginaActualData!) }}</span>
+      </div>
+    </div>
 
     <!-- ✅ NUEVO: Botones flotantes para archivos asociados en fullscreen -->
     <div class="archivos-asociados-botones-fullscreen"
       *ngIf="paginaActualData && $any(paginaActualData).archivosAsociados && $any(paginaActualData).archivosAsociados.length > 0">
 
       <!-- Audio asociado -->
-      <button class="btn-asociado btn-audio" *ngIf="tieneArchivoAsociado(paginaActualData, 'audio')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'audio'); $event.stopPropagation()"
+      <button class="btn-asociado btn-audio" *ngIf="tieneArchivoAsociado(paginaActualData!, 'audio')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'audio'); $event.stopPropagation()"
         title="Reproducir audio asociado" aria-label="Reproducir audio asociado">
         <i class="fa fa-volume-up"></i>
       </button>
 
       <!-- GPX asociado -->
-      <button class="btn-asociado btn-gpx" *ngIf="tieneArchivoAsociado(paginaActualData, 'gpx')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'gpx'); $event.stopPropagation()"
+      <button class="btn-asociado btn-gpx" *ngIf="tieneArchivoAsociado(paginaActualData!, 'gpx')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'gpx'); $event.stopPropagation()"
         title="Ver ruta GPX en mapa satelital" aria-label="Ver ruta GPX en mapa satelital">
         <i class="fa fa-map-marked-alt"></i>
       </button>
 
       <!-- Mapa de ubicación (PNG) -->
-      <button class="btn-asociado btn-imagen" *ngIf="tieneArchivoAsociado(paginaActualData, 'mapa_ubicacion')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'mapa_ubicacion'); $event.stopPropagation()"
+      <button class="btn-asociado btn-imagen" *ngIf="tieneArchivoAsociado(paginaActualData!, 'mapa_ubicacion')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'mapa_ubicacion'); $event.stopPropagation()"
         title="Ver mapa PNG" aria-label="Ver mapa PNG">
         <i class="fa fa-map"></i>
       </button>
 
       <!-- Manifest JSON -->
-      <button class="btn-asociado btn-manifest" *ngIf="tieneArchivoAsociado(paginaActualData, 'manifest')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'manifest'); $event.stopPropagation()" title="Ver manifest JSON"
+      <button class="btn-asociado btn-manifest" *ngIf="tieneArchivoAsociado(paginaActualData!, 'manifest')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'manifest'); $event.stopPropagation()" title="Ver manifest JSON"
         aria-label="Ver manifest JSON">
         <i class="fa fa-file-code"></i>
       </button>
 
       <!-- Estadísticas JSON -->
-      <button class="btn-asociado btn-estadisticas" *ngIf="tieneArchivoAsociado(paginaActualData, 'estadisticas')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'estadisticas'); $event.stopPropagation()"
+      <button class="btn-asociado btn-estadisticas" *ngIf="tieneArchivoAsociado(paginaActualData!, 'estadisticas')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'estadisticas'); $event.stopPropagation()"
         title="Ver estadísticas" aria-label="Ver estadísticas">
         <i class="fa fa-chart-bar"></i>
       </button>
 
       <!-- Texto asociado -->
-      <button class="btn-asociado btn-texto" *ngIf="tieneArchivoAsociado(paginaActualData, 'texto')"
-        (click)="abrirArchivoAsociado(paginaActualData, 'texto'); $event.stopPropagation()" title="Ver texto asociado"
+      <button class="btn-asociado btn-texto" *ngIf="tieneArchivoAsociado(paginaActualData!, 'texto')"
+        (click)="abrirArchivoAsociado(paginaActualData!, 'texto'); $event.stopPropagation()" title="Ver texto asociado"
         aria-label="Ver texto asociado">
         <i class="fa fa-file-text"></i>
       </button>
@@ -594,12 +643,12 @@
 
     <!-- --- Controles de navegación --->
     <div class="controles-fullscreen">
-      <button class="btn-nav-fullscreen btn-anterior" *ngIf="hayPaginaAnterior && !paginas[paginaActual - 1]?.esIndice"
+      <button class="btn-nav-fullscreen btn-prev" *ngIf="hayPaginaAnterior && !paginas[paginaActual - 1]?.esIndice"
         (click)="navegarEnFullscreen(-1); $event.stopPropagation()" aria-label="Archivo anterior"
         title="Archivo anterior">
         <i class="fas fa-chevron-left" aria-hidden="true"></i>
       </button>
-      <button class="btn-nav-fullscreen btn-siguiente"
+      <button class="btn-nav-fullscreen btn-next"
         *ngIf="hayPaginaSiguiente && !paginas[paginaActual + 1]?.esIndice"
         (click)="navegarEnFullscreen(1); $event.stopPropagation()" aria-label="Archivo siguiente"
         title="Archivo siguiente">

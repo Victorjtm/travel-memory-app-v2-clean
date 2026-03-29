@@ -142,6 +142,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   mostrarInfoDetalle: boolean = false;
   timeoutOcultarInfo: any = null;
 
+  // ==========================================
+  // PROPIEDADES PARA SLIDESHOW (PASE DE DIAPOSITIVAS)
+  // ==========================================
+  reproduciendoSlideshow: boolean = false;
+  private timerSlideshow: any = null;
+  transicionActual: string = 'fade'; // fade, slide-left, slide-right, zoom-in, zoom-out
+  private readonly INTERVALO_SLIDESHOW = 5000; // 5 segundos
+  private readonly TRANSICIONES = ['fade', 'slide-left', 'slide-right', 'zoom-in', 'zoom-out'];
+
 
   // Determina si debe mostrarse como modal (móviles) o tooltip (desktop)
   get infoDetalleEsModal(): boolean {
@@ -224,6 +233,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     // Limpiar audio
     this.limpiarAudioViaje();
+
+    // Limpiar slideshow
+    this.detenerSlideshow();
   }
 
   // ============================================
@@ -268,7 +280,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   tieneArchivoAsociado(
     archivo: any,
-    tipo: 'audio' | 'texto' | 'mapa_ubicacion' | 'gpx' | 'manifest' | 'estadisticas'
+    tipo: 'audio' | 'texto' | 'mapa_ubicacion' | 'gpx' | 'manifest' | 'estadisticas' | 'video' | 'pdf'
   ): boolean {
     return !!archivo?.archivosAsociados?.some((a: any) => a.tipo === tipo);  // ✅ Tipado con 'any'
   }
@@ -276,7 +288,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   abrirArchivoAsociado(
     archivo: any,
-    tipo: 'audio' | 'texto' | 'mapa_ubicacion' | 'gpx' | 'manifest' | 'estadisticas'
+    tipo: 'audio' | 'texto' | 'mapa_ubicacion' | 'gpx' | 'manifest' | 'estadisticas' | 'video' | 'pdf'
   ): void {
     const asociado = archivo?.archivosAsociados?.find((a: any) => a.tipo === tipo);  // ✅ Tipado
     if (!asociado) return;
@@ -299,6 +311,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         break;
       case 'estadisticas':
         this.mostrarJSON(asociado);
+        break;
+      case 'video':
+        this.mostrarVideo(asociado);
+        break;
+      case 'pdf':
+        this.mostrarPDF(asociado);
         break;
     }
   }
@@ -466,6 +484,85 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       alert('No se pudo cargar la imagen');
       cerrar();
     };
+  }
+
+  private mostrarVideo(asociado: any): void {
+    if (!asociado || !asociado.id || !asociado.rutaArchivo) {
+      alert('Video asociado inválido');
+      return;
+    }
+
+    const url = this.archivoService.getUrlArchivoAsociado(asociado);
+    if (!url) {
+      alert('No se pudo obtener la URL del video');
+      return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.95);
+    z-index: 10001;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  `;
+
+    const video = document.createElement('video');
+    video.src = url;
+    video.controls = true;
+    video.autoplay = true;
+    video.style.cssText = `
+    max-width: 90%;
+    max-height: 80%;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  `;
+
+    const btnCerrar = document.createElement('button');
+    btnCerrar.textContent = 'Cerrar';
+    btnCerrar.style.cssText = `
+    margin-top: 20px;
+    padding: 12px 30px;
+    background: #f44336;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    z-index: 10002;
+  `;
+
+    btnCerrar.onclick = () => {
+      video.pause();
+      document.body.removeChild(overlay);
+      document.body.style.overflow = '';
+    };
+
+    overlay.appendChild(video);
+    overlay.appendChild(btnCerrar);
+    document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
+  }
+
+  private mostrarPDF(asociado: any): void {
+    if (!asociado || !asociado.id) {
+      alert('PDF asociado inválido');
+      return;
+    }
+
+    const url = this.archivoService.getUrlArchivoAsociado(asociado);
+    if (!url) {
+      alert('No se pudo obtener la URL del PDF');
+      return;
+    }
+
+    window.open(url, '_blank');
   }
 
   private mostrarJSON(asociado: any): void {
@@ -1804,8 +1901,68 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.restaurarVolumenAudioViaje();
     }
   }
+
+  // ==========================================
+  // MÉTODOS DE SLIDESHOW
+  // ==========================================
+
+  toggleSlideshow(event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+
+    if (this.reproduciendoSlideshow) {
+      this.detenerSlideshow();
+    } else {
+      this.iniciarSlideshow();
+    }
+  }
+
+  private iniciarSlideshow(): void {
+    console.log('▶️ Iniciando slideshow...');
+    this.reproduciendoSlideshow = true;
+
+    // Primer avance opcional o esperar al intervalo
+    this.timerSlideshow = setInterval(() => {
+      this.ngZone.run(() => {
+        this.avanzarSlideshow();
+      });
+    }, this.INTERVALO_SLIDESHOW);
+  }
+
+  private detenerSlideshow(): void {
+    console.log('⏸️ Deteniendo slideshow...');
+    this.reproduciendoSlideshow = false;
+    if (this.timerSlideshow) {
+      clearInterval(this.timerSlideshow);
+      this.timerSlideshow = null;
+    }
+  }
+
+  private avanzarSlideshow(): void {
+    if (!this.mostrarFullscreen || !this.reproduciendoSlideshow) {
+      this.detenerSlideshow();
+      return;
+    }
+
+    const SIGUIENTE_PAGINA = this.paginaActual + 1;
+
+    if (SIGUIENTE_PAGINA < this.paginas.length) {
+      // Elegir transición aleatoria
+      this.transicionActual = this.TRANSICIONES[Math.floor(Math.random() * this.TRANSICIONES.length)];
+
+      // Cambiar de página
+      this.navegarEnFullscreen(1);
+      this.cdr.detectChanges();
+    } else {
+      console.log('🏁 Fin del álbum alcanzado en slideshow');
+      this.detenerSlideshow();
+    }
+  }
+
   cerrarFullscreen(): void {
     console.log('❌ Cerrando pantalla completa');
+    this.detenerSlideshow(); // Detener si estaba activo
     this.mostrarFullscreen = false;
     this.tipoFullscreen = 'imagen';
     this.fullscreenTitulo = '';

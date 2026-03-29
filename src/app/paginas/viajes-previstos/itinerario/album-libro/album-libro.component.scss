@@ -749,64 +749,6 @@
 
 
 
-  /* ========================================
-    BOTÓN ℹ️ EN VISTA NORMAL
-    ESQUINA SUPERIOR IZQUIERDA – ALINEADO CON EL DE CERRAR
-  ======================================== */
-  .info-trigger {
-    position: absolute;
-    top: 1rem;
-    left: 1rem;
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(10px);
-    border: 2px solid rgba(0, 0, 0, 0.1);
-    color: $color-primario;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    z-index: 10;
-    font-size: 24px;
-    line-height: 1;
-    padding: 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-
-    i {
-      transition: color 0.3s ease;
-    }
-
-    &:hover {
-      background: rgba($color-primario, 0.95);
-      border-color: rgba($color-primario, 1);
-      transform: scale(1.1);
-      box-shadow: 0 4px 12px rgba($color-primario, 0.3);
-
-      i {
-        color: $color-blanco;
-      }
-    }
-
-    &.active {
-      background: rgba($color-primario, 1);
-      border-color: rgba($color-primario, 1);
-
-      i {
-        color: $color-blanco;
-      }
-    }
-
-    @media (max-width: 768px) {
-      top: 0.5rem;
-      left: 0.5rem;
-      width: 44px;
-      height: 44px;
-      font-size: 20px;
-    }
-  }
 
   /* ==========================================
     TOOLTIP/MODAL DE INFORMACIÓN COMPLETA
@@ -1790,67 +1732,41 @@
       }
     }
 
-    /* --- Información en Pantalla Completa --- */
-    .info-fullscreen {
-      position: absolute;
-      bottom: 30px;
-      left: 30px;
-      max-width: 60%;
-      background: rgba(0, 0, 0, 0.8);
-      color: $color-blanco;
-      padding: 1.2rem;
-      border-radius: $radio;
-      backdrop-filter: blur(10px);
+    /* --- Página de Carta Manuscrita (Portada/Descripción) --- */
+    .carta-manuscrita-fullscreen {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.85);
 
-      h4 {
-        margin: 0 0 0.5rem 0;
-        font-size: 1.2rem;
-        line-height: 1.3;
-      }
+      .carta-manuscrita-container {
+        max-width: 900px;
+        max-height: 90%;
+        overflow-y: auto;
+        padding: 40px;
 
-      p {
-        margin: 0 0 0.8rem 0;
-        font-size: 0.9rem;
-        opacity: 0.9;
-        line-height: 1.4;
-      }
-
-      .metadata-fullscreen {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        font-size: 0.8rem;
-        opacity: 0.8;
-        margin: 0;
-
-        span {
-          &:not(:last-child)::after {
-            content: '';
-            margin-left: 0.5rem;
-          }
+        @media (max-width: 768px) {
+          padding: 10px;
+          max-height: 95%;
         }
       }
 
-      @media (max-width: 768px) {
-        left: 15px;
-        right: 15px;
-        bottom: 80px;
-        max-width: none;
-        padding: 1rem;
+      .papel-manuscrito {
+        // Reusamos los estilos base pero aseguramos visibilidad
+        min-height: auto;
+        padding: 60px 80px;
+        transform: none !important; // Quitar inclinación en fullscreen para legibilidad
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
 
-        h4 {
-          font-size: 1.1rem;
-        }
-
-        p {
-          font-size: 0.85rem;
-        }
-
-        .metadata-fullscreen {
-          font-size: 0.75rem;
+        @media (max-width: 768px) {
+          padding: 40px 30px;
         }
       }
     }
+
+
 
     /* --- Controles de Navegación en Pantalla Completa --- */
     .controles-fullscreen {
@@ -1860,12 +1776,13 @@
       display: flex;
       justify-content: space-between;
       transform: translateY(-50%);
-      padding: 0 20px;
+      padding: 0 40px;
+      pointer-events: none; // Permite clics a través del contenedor
 
       .btn-nav-fullscreen {
-        background: rgba($color-blanco, 0.2);
-        color: $color-blanco;
-        border: none;
+        background: rgba($color-blanco, 0.1);
+        color: rgba($color-blanco, 0.6);
+        border: 1px solid rgba($color-blanco, 0.2);
         width: 60px;
         height: 60px;
         border-radius: 50%;
@@ -1876,10 +1793,21 @@
         font-size: 1.5rem;
         backdrop-filter: blur(5px);
         transition: $transicion;
+        pointer-events: auto; // Habilita clics solo en el botón
 
         &:hover {
           background: rgba($color-acento, 0.8);
+          color: white;
           transform: scale(1.1);
+          border-color: transparent;
+        }
+
+        &.btn-prev {
+          margin-left: 10px;
+        }
+
+        &.btn-next {
+          margin-right: 10px;
         }
 
         @media (max-width: 768px) {
@@ -2105,12 +2033,29 @@
 
   /* ========================================
     BOTÓN ℹ️ EN PANTALLA COMPLETA
-    ESQUINA SUPERIOR IZQUIERDA
+    ESQUINA SUPERIOR IZQUIERDA + HUD DE FECHA
   ======================================== */
-  .info-trigger-fullscreen {
+  .info-wrapper-fullscreen {
     position: absolute;
     top: 20px;
     left: 20px;
+    display: flex;
+    align-items: center;
+    z-index: 1002;
+    padding-left: 60px; // Spacing to "push" the date to the right, leaving room for the absolute icon
+
+    @media (max-width: 768px) {
+      top: 15px;
+      left: 15px;
+      padding-left: 50px;
+    }
+  }
+
+  .info-trigger-fullscreen {
+    position: absolute; // Positioned absolutely within the wrapper
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
     width: 50px;
     height: 50px;
     border-radius: 50%;
@@ -2123,11 +2068,11 @@
     justify-content: center;
     cursor: pointer;
     transition: all 0.3s ease;
-    z-index: 1001;
     font-size: 24px;
     line-height: 1;
     padding: 0;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    z-index: 2;
 
     i {
       transition: transform 0.3s ease;
@@ -2136,7 +2081,7 @@
     &:hover {
       background: rgba($color-primario, 0.9);
       border-color: rgba($color-primario, 1);
-      transform: scale(1.1);
+      transform: translateY(-50%) scale(1.1);
       box-shadow: 0 6px 20px rgba($color-primario, 0.4);
 
       i {
@@ -2150,12 +2095,227 @@
     }
 
     @media (max-width: 768px) {
+      width: 40px;
+      height: 40px;
+      font-size: 18px;
+    }
+  }
+
+  .metadata-hud-fullscreen {
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(12px);
+    padding: 8px 18px;
+    border-radius: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    animation: fadeInHUD 0.5s ease-out;
+    margin-left: 10px; // Small extra margin from the anchor point
+    height: 40px;
+    box-sizing: border-box;
+    position: relative;
+    z-index: 1;
+
+    .fecha-hora {
+      font-family: 'Cinzel', serif;
+      font-size: 0.95rem;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+      line-height: 1;
+
+      @media (max-width: 768px) {
+        font-size: 0.8rem;
+      }
+    }
+  }
+
+  @keyframes fadeInHUD {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* ========================================
+    NUEVO HUD SUPERIOR (ÁLBUM NORMAL)
+  ======================================== */
+  .hud-superior-album {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    z-index: 100;
+    pointer-events: none;
+
+    .hud-inner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      pointer-events: auto;
+    }
+
+    .info-trigger-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1.5px solid rgba(0, 0, 0, 0.1);
+      color: $color-primario;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 18px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+
+      &:hover {
+        background: $color-primario;
+        color: white;
+        transform: scale(1.1);
+      }
+
+      &.active {
+        background: $color-primario;
+        color: white;
+      }
+    }
+
+    .fecha-hud-texto {
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+      padding: 6px 14px;
+      border-radius: 20px;
+      color: white;
+      font-size: 0.9rem;
+      font-weight: 500;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    @media (max-width: 768px) {
+      top: 10px;
+      left: 10px;
+
+      .info-trigger-icon {
+        width: 35px;
+        height: 35px;
+        font-size: 16px;
+      }
+
+      .fecha-hud-texto {
+        font-size: 0.8rem;
+        padding: 4px 12px;
+      }
+    }
+  }
+
+  /* ========================================
+    BOTÓN SLIDESHOW (PANTALLA COMPLETA)
+  ======================================== */
+  .btn-slideshow-fullscreen {
+    position: absolute;
+    top: 20px;
+    right: 85px; // Al lado del botón cerrar (20 + 50 + 15)
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: $color-blanco;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 1.2rem;
+    z-index: 2005;
+
+    &:hover {
+      background: rgba($color-exito, 0.8);
+      transform: scale(1.1);
+      border-color: rgba($color-exito, 1);
+    }
+
+    &.active {
+      background: rgba($color-exito, 0.9);
+      border-color: rgba($color-exito, 1);
+      animation: pulsateGlow 2s infinite;
+    }
+
+    @media (max-width: 768px) {
       top: 15px;
-      left: 15px;
+      right: 75px;
       width: 45px;
       height: 45px;
-      font-size: 20px;
+      font-size: 1rem;
     }
+  }
+
+  @keyframes pulsateGlow {
+    0% { box-shadow: 0 0 0 0 rgba($color-exito, 0.4); }
+    70% { box-shadow: 0 0 0 15px rgba($color-exito, 0); }
+    100% { box-shadow: 0 0 0 0 rgba($color-exito, 0); }
+  }
+
+  /* ========================================
+    TRANSICIONES DEL SLIDESHOW
+  ======================================== */
+  .media-fullscreen-wrapper {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+
+    &.transition-fade img {
+      animation: slideFade 0.8s ease-out;
+    }
+
+    &.transition-slide-left img {
+      animation: slideInLeft 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    &.transition-slide-right img {
+      animation: slideInRight 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    &.transition-zoom-in img {
+      animation: zoomInMedia 0.8s ease-out;
+    }
+
+    &.transition-zoom-out img {
+      animation: zoomOutMedia 0.8s ease-out;
+    }
+  }
+
+  @keyframes slideFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(100px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(-100px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes zoomInMedia {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes zoomOutMedia {
+    from { opacity: 0; transform: scale(1.2); }
+    to { opacity: 1; transform: scale(1); }
   }
 
   /* ========================================
