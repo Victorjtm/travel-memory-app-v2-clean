@@ -1426,6 +1426,39 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       };
 
       onProgress?.({ fase: 'cargando', porcentaje: 20, mensaje: 'Mapa capturado. Capturando frames...' });
+      
+      const puntosMedia: { idx: number; archivos: any[] }[] = [];
+      const numPuntos = points.length;
+      for (let i = 0; i < numPuntos; i++) {
+        if (points[i].event?.archivos?.length > 0) {
+          puntosMedia.push({ idx: i, archivos: points[i].event.archivos });
+        }
+      }
+
+      // == 1.5. Configuración de Audio ==
+      const sampleRate = 44100;
+      // Estimamos la duración total para el OfflineAudioContext
+      // Título (2.5s) + Animación (10s aprox) + Multimedia (X*3s)
+      let duracionEstimada = 2.5 + 10 + (puntosMedia.length * (configuracion.duracionPorFoto || 3));
+      const offlineCtx = new OfflineAudioContext(2, sampleRate * Math.ceil(duracionEstimada + 30), sampleRate);
+      
+      const mainGain = offlineCtx.createGain();
+      mainGain.connect(offlineCtx.destination);
+      mainGain.gain.setValueAtTime(1, 0);
+
+      // Cargar Música de Fondo si existe
+      if (actividad.audioFondoUrl || actividad.audioUrl) {
+        const bgAudioBuffer = await this.cargarAudioBuffer({ audioUrl: actividad.audioFondoUrl || actividad.audioUrl }, offlineCtx);
+        if (bgAudioBuffer) {
+          const bgSource = offlineCtx.createBufferSource();
+          bgSource.buffer = bgAudioBuffer;
+          bgSource.loop = true;
+          bgSource.connect(mainGain);
+          bgSource.start(0);
+        }
+      }
+
+      let currentTimeAudio = 0;
 
       // == 2. Fase Título (2.5 segundos = 75 frames) ==
       const tituloFrames = Math.floor(2.5 * fps);
@@ -1442,11 +1475,11 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
         this.ctx.fillText(actividad.nombre || 'Mi Ruta', W / 2, H / 2);
         this.ctx.globalAlpha = 1;
         capturarFrame();
+        currentTimeAudio += (1 / fps);
         if (f % 15 === 0) await new Promise(r => setTimeout(r, 0));
       }
 
       // == 3. Animación de Ruta ==
-      const numPuntos = points.length;
       const totalFramesAnimacion = 300;
       
       const rutaBuffer = document.createElement('canvas');
@@ -1454,13 +1487,6 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       rutaBuffer.height = H;
       const rutaCtx = rutaBuffer.getContext('2d')!;
       let ultimoIdx = -1;
-
-      const puntosMedia: { idx: number; archivos: any[] }[] = [];
-      for (let i = 0; i < numPuntos; i++) {
-        if (points[i].event?.archivos?.length > 0) {
-          puntosMedia.push({ idx: i, archivos: points[i].event.archivos });
-        }
-      }
       let nextMedia = 0;
 
       console.log(`🎬 ${numPuntos} puntos GPS → ${totalFramesAnimacion} frames de animación`);
@@ -1491,17 +1517,35 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
         this.ctx.drawImage(mapaFondo, 0, 0, W, H);
         this.ctx.drawImage(rutaBuffer, 0, 0);
         this.dibujarMarker(punto, proyeccion);
+        this.dibujarDashboard(punto, actividad, configuracion);
         capturarFrame();
+        currentTimeAudio += (1 / fps);
 
         // Multimedia
         while (nextMedia < puntosMedia.length && puntosMedia[nextMedia].idx <= idxPunto) {
           const m = puntosMedia[nextMedia];
           for (const archivo of m.archivos) {
             onProgress?.({ fase: 'procesando', porcentaje: pct, mensaje: `Mostrando: ${archivo.nombreArchivo}` });
+            
             if (this.esImagen(archivo.nombreArchivo)) {
               try {
                 const img = await this.cargarImagen(archivo);
-                const durSec = configuracion.duracionPorFoto || 3;
+                let durSec = configuracion.duracionPorFoto || 3;
+                
+                // Programar audio si existe (Ducking)
+                const audioBuffer = await this.cargarAudioBuffer(archivo, offlineCtx);
+                if (audioBuffer) {
+                  durSec = Math.max(durSec, audioBuffer.duration);
+                  // Ducking: bajar volumen fondo
+                  mainGain.gain.linearRampToValueAtTime(0.2, currentTimeAudio);
+                  const source = offlineCtx.createBufferSource();
+                  source.buffer = audioBuffer;
+                  source.connect(offlineCtx.destination);
+                  source.start(currentTimeAudio);
+                  // Subir volumen fondo al terminar
+                  mainGain.gain.linearRampToValueAtTime(1.0, currentTimeAudio + durSec);
+                }
+
                 const numF = Math.floor(durSec * fps);
                 for (let mf = 0; mf < numF; mf++) {
                   this.ctx.fillStyle = '#000';
@@ -1509,16 +1553,23 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
                   this.dibujarImagenCentrada(img, 'contain');
                   this.dibujarTextoImagen(archivo);
                   capturarFrame();
+                  currentTimeAudio += (1 / fps);
                   if (mf % 10 === 0) await new Promise(r => setTimeout(r, 0));
                 }
               } catch (e) {
                 console.warn('⚠️ Error cargando imagen:', e);
               }
+            } else if (this.esVideo(archivo.nombreArchivo)) {
+               // TODO: Manejo de audio de video en OfflineContext es más complejo
+               // Por ahora mostramos el video visualmente sin audio en el mux final
             }
+
             this.ctx.drawImage(mapaFondo, 0, 0, W, H);
             this.ctx.drawImage(rutaBuffer, 0, 0);
             this.dibujarMarker(punto, proyeccion);
+            this.dibujarDashboard(punto, actividad, configuracion);
             capturarFrame();
+            currentTimeAudio += (1 / fps);
           }
           nextMedia++;
         }
@@ -1535,17 +1586,19 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
         map.remove();
       }
 
-      // == 4. Ensamblar WebM desde frames WebP ==
-      onProgress?.({ fase: 'generando', porcentaje: 92, mensaje: `Ensamblando ${webpFrames.length} frames en vídeo...` });
-      console.log(`🎬 Total frames capturados: ${webpFrames.length}. Ensamblando WebM...`);
+      // == 4. Renderizar Audio y Muxing Final ==
+      onProgress?.({ fase: 'generando', porcentaje: 90, mensaje: 'Mezclando pistas de audio...' });
+      const renderedAudioBuffer = await offlineCtx.startRendering();
       
-      await new Promise(r => setTimeout(r, 50)); // yield antes del ensamblado pesado
-      const blob = this.ensamblarWebM(webpFrames, fps, W, H);
+      onProgress?.({ fase: 'generando', porcentaje: 95, mensaje: 'Sincronizando audio y vídeo...' });
       
-      console.log(`✅ Vídeo generado: ${(blob.size / 1024 / 1024).toFixed(2)} MB, ${webpFrames.length} frames`);
+      // Muxing final usando MediaRecorder sobre replay
+      const finalBlob = await this.muxerVideoAudio(webpFrames, renderedAudioBuffer, fps, W, H);
+      
+      console.log(`✅ Vídeo generado con Audio: ${(finalBlob.size / 1024 / 1024).toFixed(2)} MB`);
       onProgress?.({ fase: 'completado', porcentaje: 100, mensaje: 'Vídeo generado con éxito' });
       
-      return blob;
+      return finalBlob;
 
     } catch (error: any) {
       try {
@@ -1838,103 +1891,167 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
 
   private dibujarMarker(punto: any, proyeccion: any) {
     const { x, y } = proyeccion(punto.lat, punto.lng);
-    this.ctx.fillStyle = '#f44336';
+    const mode = punto.mode || 'walking';
+    
+    // Si tenemos icono para el modo, lo dibujamos
+    const iconBase64: { [key: string]: string } = {
+      walking: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2Y0NDMzNiI+PHBhdGggZD0iTTEzLjUsNmMxLjEsMCwyLTIsMi0ycy0yLDItMiwyUzEyLjQsNiwxMy41LDZNMTMsMTUuNWgtMS41TDEwLDE0LjJsMC4xLTNMMTAuNSw5TDksMTEuNUw4LDEzLjVMMTYuNSwyMEwxOCwyMEwxNiwxNS41TDEzLDE1LjVaIi8+PC9zdmc+',
+      cycling: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzI1NjNFQiI+PHBhdGggZD0iTTE1LjUsNi41YzEuMSwwLDItLjksMi0ycy0uOS0yLTItMnMtMiwuOS0yLDJzLjksMiwyLDJNNSwxNmMwLTIuMiwxLjgtNCw0LTRjMi4yLDAsNCwxLjgsNCw0czEuOCw0LTQsNFM1LDE4LjIsNSwxNk05LDIwYTIuNSwyLjUsMCwwLDEsMC01YTIuNSwyLjUsMCwwLDEsMCw1TTIuNSwxNi41TDQuNCwxOS41TDgsMTYuNUw1LDEzLjVaTTE1LjUsMThhMi41LDIuNSwwLDAsMSwwLTVhMi41LDIuNSwwLDAsMSwwLDVNMTEuNSwxNmgtMi4yTDcuNSwxNEwxMiw4LjVMMTYuNSwxNUwxOCwxNUwxNiwxMC41TDEyLDcuNUw5LDExLjVMMiwxOC41TDIuNSwyMEgxNVoiLz48L3N2Zz4=',
+      driving: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI0RDMTYxNiI+PHBhdGggZD0iWjE4LDE4LjVBMi41LDIuNSwwLDAsMSwxNS41LDIxYTIuNSwyLjUsMCwwLDEtMC01YTIuNSwyLjUsMCwwLDEsMCw1TTE5LDE1TDIwLDE1TDE5LDEwdjVMNCwxNVYzTDIwLDE1Wk00LDExTDUuNSw2SDE4LjVMOSw2TDQsMTFaTTQuNSw2YTIuNSwyLjUsMCwwLDEsMi41LDIuNUEyLjUsMi41LDAsMCwxLDQuNSw2TTE4LjUsNkEyLjUsMi41LDAsMCwxLDE2LDguNUEyLjUsMi41LDAsMCwxLDE4LjUsNloiLz48L3N2Zz4='
+    };
+
+    const size = 40;
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     this.ctx.beginPath();
-    this.ctx.arc(x, y, 14, 0, Math.PI * 2);
+    this.ctx.arc(x, y, size/2 + 4, 0, Math.PI * 2);
     this.ctx.fill();
-    this.ctx.strokeStyle = 'white';
-    this.ctx.lineWidth = 4;
+    this.ctx.strokeStyle = this.getModeColor(mode);
+    this.ctx.lineWidth = 3;
     this.ctx.stroke();
+
+    // Dibujar punto central por ahora si no hay icono real cargado aún
+    this.ctx.fillStyle = this.getModeColor(mode);
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, 8, 0, Math.PI * 2);
+    this.ctx.fill();
   }
 
-  private async procesarMediaGpx(
-    archivo: any, 
-    configuracion: any, 
-    audioCtx: AudioContext, 
-    audioDest: MediaStreamAudioDestinationNode
-  ) {
-    if (this.esImagen(archivo.nombreArchivo)) {
-      const img = await this.cargarImagen(archivo);
-      let durationSec = configuracion.duracionPorFoto || 4;
-      
-      let audioSource: AudioBufferSourceNode | null = null;
-      if (archivo.audioAsociadoUrl) {
-        try {
-          const resp = await fetch(archivo.audioAsociadoUrl);
-          const arrayBuffer = await resp.arrayBuffer();
-          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-          durationSec = Math.max(durationSec, audioBuffer.duration);
-          audioSource = audioCtx.createBufferSource();
-          audioSource.buffer = audioBuffer;
-          audioSource.connect(audioDest);
-          audioSource.start();
-        } catch (e) {
-          console.warn('⚠️ No se pudo cargar audio asociado:', e);
-        }
-      }
-
-      const numFrames = Math.floor(durationSec * 30);
-      for (let f = 0; f < numFrames; f++) {
-        this.ctx.fillStyle = 'black';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        this.dibujarImagenCentrada(img, 'contain');
-        this.dibujarTextoImagen(archivo);
-        await this.esperarFrame();
-      }
-      if (audioSource) audioSource.stop();
-
-    } else if (this.esVideo(archivo.nombreArchivo)) {
-      const videoData = await this.procesarVideo(archivo);
-      const { video, duracion } = videoData;
-      let source: MediaElementAudioSourceNode | null = null;
-      try {
-        source = audioCtx.createMediaElementSource(video);
-        source.connect(audioDest);
-        video.muted = false;
-      } catch (e) {
-        console.warn('⚠️ No se pudo capturar audio del video:', e);
-      }
-      await video.play();
-      const numFrames = Math.floor(duracion * 30);
-      for (let f = 0; f < numFrames; f++) {
-        this.ctx.fillStyle = 'black';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        this.dibujarVideoCentrado(video);
-        this.dibujarTextoImagen(archivo);
-        await this.esperarFrame();
-      }
-      video.pause();
-      if (source) source.disconnect();
-
-    } else if (archivo.tipo === 'audio' && configuracion.incluirAudiosSinImagen) {
-      // 🎼 Manejo de Audio Solitario (sin imagen)
-      try {
-        const resp = await fetch(this.getMediaUrl(archivo.rutaArchivo));
-        const arrayBuffer = await resp.arrayBuffer();
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        
-        const durationSec = audioBuffer.duration;
-        const source = audioCtx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioDest);
-        source.start();
-
-        const numFrames = Math.floor(durationSec * 30);
-        for (let f = 0; f < numFrames; f++) {
-          // Mantener el fondo (mapa) mientras suena el audio
-          // No limpiamos el canvas aquí para que se vea por donde íbamos
-          this.dibujarTextoImagen(archivo); // Mostrar nombre del audio
-          await this.esperarFrame();
-        }
-        source.stop();
-      } catch (e) {
-        console.warn('⚠️ No se pudo procesar audio solitario:', e);
-      }
+  private getModeColor(mode: string): string {
+    switch (mode) {
+      case 'walking': return '#059669';
+      case 'cycling': return '#D97706';
+      case 'driving': return '#DC2626';
+      default: return '#2196F3';
     }
+  }
+
+  private dibujarDashboard(punto: any, actividad: any, configuracion: any) {
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const padding = 20;
+    const boxW = 220;
+    const boxH = 110;
+    const x = padding;
+    const y = H - boxH - padding;
+
+    // Fondo semi-transparente
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    this.ctx.beginPath();
+    this.ctx.roundRect(x, y, boxW, boxH, 15);
+    this.ctx.fill();
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    this.ctx.lineWidth = 2;
+    this.ctx.stroke();
+
+    // Texto de métricas
+    this.ctx.fillStyle = 'white';
+    this.ctx.textAlign = 'left';
+    this.ctx.font = 'bold 16px Arial';
+    
+    const km = (punto.distAcum / 1000).toFixed(2);
+    const tiempo = this.formatearSegundos(punto.timeAcum);
+    const pasos = Math.floor(punto.distAcum / 0.75);
+
+    this.ctx.fillText(`📏 ${km} km`, x + 15, y + 30);
+    this.ctx.fillText(`⏱️ ${tiempo}`, x + 15, y + 60);
+    this.ctx.fillText(`👣 ${pasos} pasos`, x + 15, y + 90);
+
+    // Fecha en la parte superior derecha
+    if (actividad.fecha) {
+      const fechaTxt = new Date(actividad.fecha).toLocaleDateString();
+      this.ctx.textAlign = 'right';
+      this.ctx.font = 'bold 20px Arial';
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      this.ctx.fillText(fechaTxt, W - padding, padding + 30);
+    }
+    this.ctx.restore();
+  }
+
+  private formatearSegundos(seg: number): string {
+    const h = Math.floor(seg / 3600);
+    const m = Math.floor((seg % 3600) / 60);
+    const s = Math.floor(seg % 60);
+    return [h, m, s]
+      .map(v => v < 10 ? '0' + v : v)
+      .filter((v, i) => v !== '00' || i > 0)
+      .join(':');
+  }
+
+
+
+
+
+  private async muxerVideoAudio(frames: string[], audioBuffer: AudioBuffer, fps: number, width: number, height: number): Promise<Blob> {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d')!;
+    
+    const stream = canvas.captureStream(fps);
+    const audioCtx = new AudioContext();
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    const dest = audioCtx.createMediaStreamDestination();
+    source.connect(dest);
+    
+    const combinedStream = new MediaStream([
+      stream.getVideoTracks()[0],
+      dest.stream.getAudioTracks()[0]
+    ]);
+
+    const recorder = new MediaRecorder(combinedStream, {
+      mimeType: 'video/webm;codecs=vp8,opus',
+      videoBitsPerSecond: 5000000 // 5Mbps
+    });
+
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+
+    return new Promise(async (resolve) => {
+      recorder.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }));
+      
+      recorder.start();
+      source.start(0);
+
+      const frameDuration = 1000 / fps;
+      for (let i = 0; i < frames.length; i++) {
+        const img = await this.cargarDataUrlAsImage(frames[i]);
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0);
+        // Esperar al siguiente frame para mantener el ritmo del MediaRecorder
+        await new Promise(r => setTimeout(r, frameDuration));
+      }
+
+      recorder.stop();
+      audioCtx.close();
+    });
+  }
+
+  private cargarDataUrlAsImage(dataUrl: string): Promise<HTMLImageElement> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.src = dataUrl;
+    });
   }
 
   private getMediaUrl(ruta: string): string {
     const rutaStr = ruta ? ruta.replace(/\\/g, '/') : '';
     return `${environment.apiUrl}/uploads/${rutaStr}`;
+  }
+
+  private async cargarAudioBuffer(archivo: any, context: BaseAudioContext): Promise<AudioBuffer | null> {
+    const url = archivo.audioUrl || (archivo.rutaArchivo ? this.getMediaUrl(archivo.rutaArchivo) : null);
+    if (!url) return null;
+
+    try {
+      const resp = await fetch(url);
+      const arrayBuffer = await resp.arrayBuffer();
+      return await context.decodeAudioData(arrayBuffer);
+    } catch (e) {
+      console.warn('⚠️ Error cargando buffer de audio:', e);
+      return null;
+    }
   }
 }

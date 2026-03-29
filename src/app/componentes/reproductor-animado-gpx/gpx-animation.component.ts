@@ -89,6 +89,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   currentDistKm = 0;
   currentSteps = 0;
   currentTimeSeg = 0;
+  currentPointTime: Date | null = null; // ✨ NUEVA PROPIEDAD
   currentMode: string | null = null;
   
   // Estadísticas por modo
@@ -124,6 +125,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       this.currentMode = this.points[0].mode || 'walking';
       this.modeStats[this.currentMode] = { dist: 0, time: 0, steps: 0 };
       this.modeList.push(this.currentMode);
+      this.currentPointTime = this.points[0].time || null; // ✨ INICIALIZAR TIEMPO
       
       // Creamos la primera polilínea para que se vea desde el inicio
       await this.initMap(); // Aseguramos que el mapa esté listo
@@ -188,82 +190,153 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   }
 
   private update(timestamp: number) {
-    if (this.currentIndex >= this.points.length - 1) {
-      this.isPlaying = false;
+    if (!this.lastTimestamp) {
+      this.lastTimestamp = timestamp;
       return;
     }
 
-    // El avance depende del tiempo transcurrido y la velocidad seleccionada
-    // Pero para simplificar y asegurar que pasamos por todos los puntos,
-    // avanzamos N puntos por frame dependiendo de la velocidad.
-    // Una opción más fluida es interpolar, pero aquí avanzaremos índices proporcionalmente.
-    
-    // Factor de velocidad dinámico según el modo
+    const dt = (timestamp - this.lastTimestamp) / 1000;
+    this.lastTimestamp = timestamp;
+    const safeDt = Math.max(0, Math.min(dt, 0.1));
+    const frames = safeDt / (1/60);
+
+    // Motor: El índice avanza por frames (Fluidez Total)
+    const currentSpeed = Number(this.speed) || 2;
     const speedFactor = this.getSpeedFactor(this.currentMode);
-    const factor = 0.5 * this.speed * speedFactor;
     
-    const prevIndexFloor = Math.floor(this.currentIndex);
-    this.currentIndex += factor;
-    const nextIndexFloor = Math.floor(this.currentIndex);
+    // ~0.5 puntos por frame at 60fps
+    const indexProgress = 0.5 * currentSpeed * speedFactor * frames;
     
-    if (nextIndexFloor > prevIndexFloor) {
-      for (let i = prevIndexFloor + 1; i <= nextIndexFloor && i < this.points.length; i++) {
-        const point = this.points[i];
-        const prevPoint = this.points[i - 1] || this.points[0];
-        
-        // Actualizar Modo y Color de Ruta
-        if (point.mode !== this.currentMode) {
-          this.currentMode = point.mode || 'walking';
-          this.createNewPolyline(this.currentMode, [point.lat, point.lng]);
+    const prevIdx = Math.floor(this.currentIndex);
+    this.currentIndex += indexProgress;
+    const newIdx = Math.floor(Math.min(this.currentIndex, this.points.length - 1));
+
+    // Si cruzamos puntos reales, gestionar modos y estadísticas
+    if (newIdx > prevIdx) {
+      for (let i = prevIdx + 1; i <= newIdx; i++) {
+        const p = this.points[i];
+        const prevP = this.points[i - 1] || this.points[0];
+
+        if (p.mode !== this.currentMode) {
+          this.currentMode = p.mode || 'walking';
+          this.createNewPolyline(this.currentMode, [p.lat, p.lng]);
           this.updateMarkerIcon(this.currentMode);
           
           if (!this.modeStats[this.currentMode]) {
             this.modeStats[this.currentMode] = { dist: 0, time: 0, steps: 0 };
             this.modeList.push(this.currentMode);
           }
+        } else if (this.currentPolyline) {
+          // Añadimos solo puntos reales a la polilínea
+          this.currentPolyline.addLatLng([p.lat, p.lng]);
         }
 
-        // Calcular incrementos
-        const d = (point.distAcum - prevPoint.distAcum) / 1000; // en km
-        const t = point.timeAcum - prevPoint.timeAcum; // en seg
-        
-        // Acumular en modo actual
-        if (this.currentMode) {
-          const ms = this.modeStats[this.currentMode];
-          ms.dist += d;
-          ms.time += t;
-          if (this.isWalkingMode(this.currentMode)) {
-            ms.steps += d * 1400;
-          }
+        // Stats acumuladas (Síncronas con los puntos)
+        const d = (p.distAcum - prevP.distAcum) / 1000;
+        const t = p.timeAcum - prevP.timeAcum;
+        if (this.currentMode && this.modeStats[this.currentMode]) {
+          const s = this.modeStats[this.currentMode];
+          s.dist += d;
+          s.time += t;
+          if (this.isWalkingMode(this.currentMode)) s.steps += d * 1400;
         }
 
-        // Actualizar UI Global
-        this.currentDistKm = point.distAcum / 1000;
-        if (this.isWalkingMode(this.currentMode)) {
-           this.currentSteps = (point.distAcum / 1000) * 1400; 
-        }
-
-        this.currentTimeSeg = point.timeAcum;
-        this.progress = (point.distAcum / (this.stats?.distanciaTotalKm || 1) / 1000) * 100;
-
-        // Actualizar Mapa
-        const latlng = [point.lat, point.lng];
-        if (this.currentPolyline) {
-          this.currentPolyline.addLatLng(latlng);
-        }
-        this.marker.setLatLng(latlng);
-        this.map.panTo(latlng, { animate: true, duration: 0.1 });
-
-        // Detección de Eventos
-        if (point.event) {
-          this.pauseForEvent(point.event);
-          this.currentIndex = i;
+        if (p.event) {
+          this.pauseForEvent(p.event);
+          this.currentIndex = i; 
+          this.renderCurrentFrame();
           return;
         }
       }
     }
+
+    if (this.currentIndex >= this.points.length - 1) {
+      this.isPlaying = false;
+      this.currentIndex = this.points.length - 1;
+    }
+
+    this.renderCurrentFrame();
+  }
+
+  private renderCurrentFrame() {
+    if (!this.map || !this.marker || !this.points.length) return;
+
+    const floorIdx = Math.floor(this.currentIndex);
+    const ceilIdx = Math.min(floorIdx + 1, this.points.length - 1);
     
+    const p1 = this.points[floorIdx];
+    const p2 = this.points[ceilIdx];
+
+    if (p1 && p2) {
+      const alpha = this.currentIndex - floorIdx;
+
+      // 1. Posición Física (Interpolación Fluida)
+      const lat = p1.lat + (p2.lat - p1.lat) * alpha;
+      const lng = p1.lng + (p2.lng - p1.lng) * alpha;
+      const latlng = [lat, lng];
+
+      this.marker.setLatLng(latlng);
+      this.map.panTo(latlng, { animate: false }); 
+
+      // 2. Tiempo (Slave Clock) - El reloj "sigue" al muñeco
+      this.currentTimeSeg = p1.timeAcum + (p2.timeAcum - p1.timeAcum) * alpha;
+
+      // 3. Métricas Globales
+      const interpDist = p1.distAcum + (p2.distAcum - p1.distAcum) * alpha;
+      this.currentDistKm = interpDist / 1000;
+      
+      if (this.isWalkingMode(this.currentMode)) {
+        this.currentSteps = (interpDist / 1000) * 1400;
+      }
+
+      // Reloj absoluto (Safe Check)
+      if (p1.time && p2.time) {
+        const t1 = p1.time.getTime();
+        const t2 = p2.time.getTime();
+        this.currentPointTime = new Date(t1 + (t2 - t1) * alpha);
+      } else {
+        this.currentPointTime = p1.time || null;
+      }
+
+      this.progress = (interpDist / ((this.stats?.distanciaTotalKm || 1) * 1000)) * 100;
+    }
+
     this.cdr.detectChanges();
+  }
+
+  // Helper para mostrar estadísticas fluidas en el HUD
+  getDisplayTime(mode: string): number {
+    const stats = this.modeStats[mode];
+    if (!stats) return 0;
+    
+    if (mode === this.currentMode) {
+      const p1 = this.points[Math.floor(this.currentIndex)];
+      const deltaT = Math.max(0, this.currentTimeSeg - p1.timeAcum);
+      return stats.time + deltaT;
+    }
+    return stats.time;
+  }
+
+  getDisplayDist(mode: string): number {
+    const stats = this.modeStats[mode];
+    if (!stats) return 0;
+    
+    if (mode === this.currentMode) {
+      const p1 = this.points[Math.floor(this.currentIndex)];
+      const p2 = this.points[Math.min(Math.floor(this.currentIndex) + 1, this.points.length - 1)];
+      const timeDiff = p2.timeAcum - p1.timeAcum;
+      const alpha = timeDiff > 0 ? (this.currentTimeSeg - p1.timeAcum) / timeDiff : 0;
+      const safeAlpha = Math.max(0, Math.min(1, alpha));
+      
+      const deltaD = ((p2.distAcum - p1.distAcum) / 1000) * safeAlpha;
+      return stats.dist + deltaD;
+    }
+    return stats.dist;
+  }
+
+  getDisplaySteps(mode: string): number {
+    if (!this.isWalkingMode(mode)) return 0;
+    return this.getDisplayDist(mode) * 1400;
   }
 
   private async pauseForEvent(event: any) {
@@ -398,8 +471,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     if (m.includes('walk') || m.includes('andan') || m.includes('camin')) return 0.4;
     if (m.includes('run') || m.includes('corr')) return 0.8;
     if (m.includes('bic') || m.includes('cycl')) return 1.5;
-    if (m.includes('car') || m.includes('coch') || m.includes('driv')) return 3.5;
-    if (m.includes('bus')) return 2.5;
+    if (m.includes('car') || m.includes('coch') || m.includes('driv')) return 1.5; // Reducido de 3.5 a 1.5
+    if (m.includes('bus')) return 2.0;
     return 1;
   }
 }

@@ -4,6 +4,12 @@
 
   <!-- HUD: Métricas en Tiempo Real (Detallado por Modo) -->
   <div class="hud-overlay" *ngIf="stats">
+    <!-- NUEVO: Registro de Tiempo Real -->
+    <div class="hud-card time-display" *ngIf="currentPointTime">
+      <div class="time-header">📅 {{ currentPointTime | date:'dd/MM/yyyy' }}</div>
+      <div class="time-value">🕒 {{ currentPointTime | date:'HH:mm:ss' }}</div>
+    </div>
+
     <div class="hud-card detailed">
       <div class="mode-row" *ngFor="let mode of modeList" 
            [class.active]="mode === currentMode"
@@ -13,15 +19,15 @@
         </div>
         <div class="mode-metrics">
           <div class="m-item">
-            <span class="v">{{ modeStats[mode].dist | number:'1.2-2' }}</span>
+            <span class="v">{{ getDisplayDist(mode) | number:'1.2-2' }}</span>
             <span class="u">km</span>
           </div>
           <div class="m-item" *ngIf="isWalkingMode(mode)">
-            <span class="v">{{ modeStats[mode].steps | number:'1.0-0' }}</span>
+            <span class="v">{{ getDisplaySteps(mode) | number:'1.0-0' }}</span>
             <span class="u">pasos</span>
           </div>
           <div class="m-item time">
-            <span class="v">{{ formatSeconds(modeStats[mode].time) }}</span>
+            <span class="v">{{ formatSeconds(getDisplayTime(mode)) }}</span>
           </div>
         </div>
       </div>
@@ -40,7 +46,7 @@
     </button>
     <div class="velocidad-selector">
       <label>x{{ speed }}</label>
-      <input type="range" min="1" max="10" step="1" [(ngModel)]="speed">
+      <input type="range" min="1" max="1000" step="1" [(ngModel)]="speed">
     </div>
     <button class="btn-cerrar" (click)="cerrar()">✕</button>
   </div>

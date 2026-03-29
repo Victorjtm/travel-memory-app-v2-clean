@@ -384,39 +384,82 @@ export class ActividadesItinerariosComponent implements OnInit {
     });
   }
 
-  // ✅ NUEVO: Animar GPX con multimedia
+  // ✅ NUEVO: Animar GPX con multimedia (MEJORADO: Carga estadísticas primero)
   animarGPX(actividadId: number): void {
-    console.log('🎬 Iniciando animación para actividad:', actividadId);
+    console.log('🎬 Iniciando proceso de animación para actividad:', actividadId);
 
-    // 1. Obtener multimedia sincronizada
-    const backendUrl = environment.apiUrl;
-    const url = `${backendUrl}/archivos?actividadId=${actividadId}`;
+    // 1. PASO 1: Asegurar que tengamos las estadísticas para los segmentos de transporte
+    this.actividadService.obtenerEstadisticas(actividadId).subscribe({
+      next: (stats) => {
+        console.log('📊 Estadísticas cargadas para animación:', stats);
+        this.estadisticasGPX = {
+          distanciaKm: stats.distancia?.km || '0.00',
+          distanciaMetros: stats.distancia?.metros || 0,
+          duracion: stats.duracion || { formateada: '00:00:00', segundos: 0 },
+          velocidad: stats.velocidad || { media: '0.0', maxima: '0.0', minima: '0.0' },
+          energia: stats.energia || { calorias: 0, pasos: 0 },
+          tracking: stats.tracking || { puntosGPS: 0, perfilTransporte: '' },
+          transportePrincipal: stats.transportePrincipal || null,
+          desgloseTransporte: stats.desgloseTransporte || [],
+          fecha: stats.fecha || '',
+          horario: stats.horario || { inicio: '', fin: '' }
+        };
 
-    this.http.get<any[]>(url).subscribe({
-      next: (archivos: any[]) => {
-        this.multimediaAnimacion = archivos.filter((f: any) =>
-          (f.tipo === 'foto' || f.tipo === 'video' || f.tipo === 'audio') && f.geolocalizacion
-        );
+        // 2. PASO 2: Obtener multimedia sincronizada
+        const backendUrl = environment.apiUrl;
+        const urlFiles = `${backendUrl}/archivos?actividadId=${actividadId}`;
 
-        // 2. Obtener GPX
-        this.actividadService.obtenerGPX(actividadId).subscribe({
-          next: (blob) => {
-            const reader = new FileReader();
-            reader.onload = (e: any) => {
-              this.gpxTextAnimacion = e.target.result;
-              // this.multimediaAnimacion ya está filtrado arriba
-              this.desgloseTransporteAnimacion = this.estadisticasGPX?.desgloseTransporte || [];
-              this.actividadAnimacion = this.actividades.find(a => a.id === actividadId); // ✨ GUARDAR ACTIVIDAD
-              this.mostrarReproductorAnimado = true;
-              this.cdr.detectChanges();
-            };
-            reader.readAsText(blob);
+        this.http.get<any[]>(urlFiles).subscribe({
+          next: (archivos: any[]) => {
+            this.multimediaAnimacion = archivos.filter((f: any) =>
+              (f.tipo === 'foto' || f.tipo === 'video' || f.tipo === 'audio') && f.geolocalizacion
+            );
+
+            // 3. PASO 3: Obtener GPX y lanzar reproductor
+            this.actividadService.obtenerGPX(actividadId).subscribe({
+              next: (blob) => {
+                const reader = new FileReader();
+                reader.onload = (e: any) => {
+                  this.gpxTextAnimacion = e.target.result;
+                  this.desgloseTransporteAnimacion = this.estadisticasGPX?.desgloseTransporte || [];
+                  this.actividadAnimacion = this.actividades.find(a => a.id === actividadId);
+                  
+                  console.log('🎬 Lanzando reproductor animado con', this.desgloseTransporteAnimacion.length, 'segmentos');
+                  this.mostrarReproductorAnimado = true;
+                  this.cdr.detectChanges();
+                };
+                reader.readAsText(blob);
+              },
+              error: err => console.error('❌ Error obteniendo GPX para animación:', err)
+            });
           },
-          error: err => console.error('❌ Error obteniendo GPX para animación:', err)
+          error: err => console.error('❌ Error obteniendo multimedia para animación:', err)
         });
       },
-      error: err => console.error('❌ Error obteniendo multimedia para animación:', err)
+      error: (err) => {
+        console.error('❌ Error cargando estadísticas para animación:', err);
+        // Fallback: continuar sin estadísticas (perderá tramos de transporte)
+        this.desgloseTransporteAnimacion = [];
+        this.iniciarAnimacionSinStats(actividadId);
+      }
     });
+  }
+
+  // Método auxiliar por si fallan las estadísticas
+  private iniciarAnimacionSinStats(actividadId: number): void {
+     // Lógica similar a la original pero sin depender de this.estadisticasGPX
+     this.actividadService.obtenerGPX(actividadId).subscribe({
+       next: (blob) => {
+         const reader = new FileReader();
+         reader.onload = (e: any) => {
+           this.gpxTextAnimacion = e.target.result;
+           this.actividadAnimacion = this.actividades.find(a => a.id === actividadId);
+           this.mostrarReproductorAnimado = true;
+           this.cdr.detectChanges();
+         };
+         reader.readAsText(blob);
+       }
+     });
   }
 
   cerrarAnimacion(): void {
