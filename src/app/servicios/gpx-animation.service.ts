@@ -99,40 +99,62 @@ export class GpxAnimationService {
         return;
       }
 
-      const mLat = geoData.latitud ?? geoData.latitude;
-      const mLng = geoData.longitud ?? geoData.longitude;
-      const mTime = geoData.timestamp ? new Date(geoData.timestamp).getTime() : null;
+      const mLat = geoData?.latitud ?? geoData?.latitude;
+      const mLng = geoData?.longitud ?? geoData?.longitude;
+      const mTimeString = geoData?.timestamp || item.fechaCreacion;
+      const mTime = mTimeString ? new Date(mTimeString).getTime() : null;
 
-      if (!mLat || !mLng) return;
+      let bestIdx = -1;
+      let minDistance = Infinity;
+      let minTimeDiff = Infinity;
 
-      // Buscar el punto más cercano
-      let minIdx = -1;
-      let minVal = Infinity;
-
+      // Usar lógica de "Sincronización Inteligente"
       points.forEach((p, idx) => {
-        // Prioridad 1: Tiempo (si ambos tienen)
-        if (mTime && p.time) {
-          const diff = Math.abs(p.time.getTime() - mTime);
-          if (diff < minVal) {
-            minVal = diff;
-            minIdx = idx;
-          }
-        } else {
-          // Prioridad 2: Distancia GPS
+        // 1. Prioridad: Coincidencia Espacial (Si hay geolocalización)
+        // Aumentamos el radio de confianza a 200m para captar fotos ligeramente fuera del track o con jitter
+        if (mLat && mLng) {
           const d = this.getDistance(p.lat, p.lng, mLat, mLng);
-          if (d < minVal) {
-            minVal = d;
-            minIdx = idx;
+          if (d < minDistance) {
+            minDistance = d;
+            // Si la foto está muy cerca en el espacio, la vinculamos directamente
+            if (d < 200 && (bestIdx === -1 || d < minDistance)) {
+              bestIdx = idx;
+            }
           }
+        }
+
+        // 2. Prioridad: Coincidencia de Tiempo con OFFSET (Si no hay éxito espacial)
+        if (bestIdx === -1 && mTime && p.time) {
+          const pt = p.time.getTime();
+          const offsets = [0, 3600000, -3600000, 7200000, -7200000];
+          offsets.forEach(off => {
+            const diff = Math.abs(pt - (mTime + off));
+            if (diff < minTimeDiff) minTimeDiff = diff;
+            // Tolerancia de 1 minuto tras ajustar la hora
+            if (diff < 60000 && (bestIdx === -1 || diff < minTimeDiff)) {
+              bestIdx = idx;
+            }
+          });
         }
       });
 
-      // Si el punto más cercano está a menos de 50 metros o el tiempo es muy cercano (10s)
-      const isCloseEnough = (mTime && points[minIdx].time) ? minVal < 10000 : minVal < 50;
+      // 3. Fallback Espacial Grueso: Si nada encajó bien pero estamos a < 500m
+      if (bestIdx === -1 && minDistance < 500) {
+        let fallbackIdx = -1;
+        let dMin = Infinity;
+        points.forEach((p, idx) => {
+          if (mLat && mLng) {
+            const d = this.getDistance(p.lat, p.lng, mLat, mLng);
+            if (d < dMin) { dMin = d; fallbackIdx = idx; }
+          }
+        });
+        bestIdx = fallbackIdx;
+      }
 
-      if (minIdx !== -1 && isCloseEnough) {
-        if (!points[minIdx].event) points[minIdx].event = { archivos: [] };
-        points[minIdx].event.archivos.push(item);
+      // Asociar evento al punto ganador
+      if (bestIdx !== -1) {
+        if (!points[bestIdx].event) points[bestIdx].event = { archivos: [] };
+        points[bestIdx].event.archivos.push(item);
       }
     });
 
