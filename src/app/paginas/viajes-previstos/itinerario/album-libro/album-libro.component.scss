@@ -1740,6 +1740,10 @@
       justify-content: center;
       align-items: center;
       background: rgba(0, 0, 0, 0.85);
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
 
       .carta-manuscrita-container {
         max-width: 900px;
@@ -1778,6 +1782,7 @@
       transform: translateY(-50%);
       padding: 0 40px;
       pointer-events: none; // Permite clics a través del contenedor
+      z-index: 2010; // Arriba de la carta
 
       .btn-nav-fullscreen {
         background: rgba($color-blanco, 0.1);

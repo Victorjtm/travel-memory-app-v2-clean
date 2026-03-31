@@ -111,19 +111,35 @@ export class GpxAnimationService {
       // Usar lógica de "Sincronización Inteligente"
       points.forEach((p, idx) => {
         // 1. Prioridad: Coincidencia Espacial (Si hay geolocalización)
-        // Aumentamos el radio de confianza a 200m para captar fotos ligeramente fuera del track o con jitter
         if (mLat && mLng) {
           const d = this.getDistance(p.lat, p.lng, mLat, mLng);
-          if (d < minDistance) {
-            minDistance = d;
-            // Si la foto está muy cerca en el espacio, la vinculamos directamente
-            if (d < 200 && (bestIdx === -1 || d < minDistance)) {
+          
+          if (d < 25) {
+            // Caso A: No hay candidato previo o este es claramente mejor (>0.5m de margen)
+            if (bestIdx === -1 || d < minDistance - 0.5) {
               bestIdx = idx;
+              minDistance = d;
+            } 
+            // Caso B: Empate espacial (dentro de un margen de 2m) -> Desempate por tiempo
+            else if (Math.abs(d - minDistance) < 2 && mTime && p.time) {
+              const currentPtTime = p.time.getTime();
+              const bestPtTime = points[bestIdx].time?.getTime() || 0;
+              const currentDiff = Math.abs(currentPtTime - mTime);
+              const bestDiff = Math.abs(bestPtTime - mTime);
+              
+              if (currentDiff < bestDiff) {
+                bestIdx = idx;
+                // No actualizamos minDistance aquí porque d es similar
+              }
             }
           }
+          
+          // Actualizar minDistance global para el Fallback (Prioridad 3)
+          if (d < minDistance) minDistance = d;
         }
 
-        // 2. Prioridad: Coincidencia de Tiempo con OFFSET (Si no hay éxito espacial)
+        // 2. Prioridad: Coincidencia de Tiempo con OFFSET (Si aún no hay éxito espacial)
+        // NOTA: Solo se evalúa si no se encontró un punto en el radio de 25m
         if (bestIdx === -1 && mTime && p.time) {
           const pt = p.time.getTime();
           const offsets = [0, 3600000, -3600000, 7200000, -7200000];
@@ -138,8 +154,8 @@ export class GpxAnimationService {
         }
       });
 
-      // 3. Fallback Espacial Grueso: Si nada encajó bien pero estamos a < 500m
-      if (bestIdx === -1 && minDistance < 500) {
+      // 3. Fallback Espacial Grueso: Si nada encajó bien pero estamos a < 50m (margen máximo de error)
+      if (bestIdx === -1 && minDistance < 50) {
         let fallbackIdx = -1;
         let dMin = Infinity;
         points.forEach((p, idx) => {

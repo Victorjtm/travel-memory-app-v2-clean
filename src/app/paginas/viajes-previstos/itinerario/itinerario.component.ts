@@ -152,9 +152,30 @@ export class ItinerariosComponent implements OnInit {
     }
 
     this.itinerarioService.unificarItinerarios(this.viajePrevistoId, opcion).subscribe({
-      next: (res) => {
+      next: (res: any) => {
         console.log('Unificación exitosa:', res);
-        alert(`🧹 Unificación completada!\nItinerarios eliminados: ${res.itinerariosEliminados}\nActividades creadas: ${res.actividadesCreadas}`);
+        
+        let msg = `🧹 ¡Unificación completada!\n\n` +
+                 `• Itinerarios eliminados: ${res.itinerariosEliminados}\n` +
+                 `• Actividades creadas: ${res.actividadesCreadas}\n`;
+        
+        if (res.archivosOmitidosCount > 0) {
+          msg += `• Archivos omitidos (duplicados): ${res.archivosOmitidosCount}\n\n` +
+                 `LISTA DE ARCHIVOS OMITIDOS (Cópiala si la necesitas):\n` +
+                 `--------------------------------------------------\n` +
+                 res.listaOmitidos.join('\n') +
+                 `\n--------------------------------------------------`;
+          
+          // Opcional: copiar al portapapeles automáticamente
+          try {
+            navigator.clipboard.writeText(res.listaOmitidos.join('\n'));
+            msg += `\n\n(La lista se ha copiado automáticamente al portapapeles)`;
+          } catch(e) {
+            console.log('No se pudo copiar al portapapeles');
+          }
+        }
+
+        alert(msg);
         this.cargarItinerarios();
       },
       error: (err) => {

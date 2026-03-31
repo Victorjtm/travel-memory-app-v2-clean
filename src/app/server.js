@@ -2410,6 +2410,7 @@ app.post('/viajes/:id/unificar-itinerarios', async (req, res) => {
 
     let itinerariosProcesados = 0;
     let actividadesCreadas = 0;
+    let archivosOmitidos = [];
 
     for (const fecha in porFecha) {
       const its = porFecha[fecha];
@@ -2459,11 +2460,20 @@ app.post('/viajes/:id/unificar-itinerarios', async (req, res) => {
         const nuevaActId = insertAct.lastID;
         actividadesCreadas++;
 
-        // Mover todos los archivos a la nueva actividad
-        await dbQuery.run(
-          `UPDATE archivos SET actividadId = ? WHERE actividadId IN (${actPlaceholders})`,
-          [nuevaActId, ...actIds]
-        );
+        // Mover todos los archivos a la nueva actividad, evadiendo duplicados por nombre
+        const nombresEnMaestro = new Set();
+        // 1. Ver archivos actuales del maestro (si los hubiera)
+        const actualesMaestro = await dbQuery.all('SELECT nombreArchivo FROM archivos WHERE itinerarioId = ?', [maestroId]);
+        actualesMaestro.forEach(a => nombresEnMaestro.add(a.nombreArchivo));
+
+        for (const archivo of archivos) {
+          if (nombresEnMaestro.has(archivo.nombreArchivo)) {
+            archivosOmitidos.push(archivo.nombreArchivo);
+            continue;
+          }
+          await dbQuery.run('UPDATE archivos SET actividadId = ? WHERE id = ?', [nuevaActId, archivo.id]);
+          nombresEnMaestro.add(archivo.nombreArchivo);
+        }
 
         // Migrar también archivos vinculados a las actividades originales si hubiera una tabla de vinculación directa
         // En este esquema, archivos_asociados cuelgan de archivos, así que al mover el archivo, se mueve el conjunto.
@@ -2527,11 +2537,19 @@ app.post('/viajes/:id/unificar-itinerarios', async (req, res) => {
           actividadesCreadas++;
 
           const clusterFileIds = cluster.map(f => f.id);
-          const filePlaceholders = clusterFileIds.map(() => '?').join(',');
-          await dbQuery.run(
-            `UPDATE archivos SET actividadId = ? WHERE id IN (${filePlaceholders})`,
-            [nuevaActId, ...clusterFileIds]
-          );
+          
+          const nombresEnMaestro = new Set();
+          const actualesMaestro = await dbQuery.all('SELECT nombreArchivo FROM archivos WHERE itinerarioId = ?', [maestroId]);
+          actualesMaestro.forEach(a => nombresEnMaestro.add(a.nombreArchivo));
+
+          for (const f of cluster) {
+            if (nombresEnMaestro.has(f.nombreArchivo)) {
+              archivosOmitidos.push(f.nombreArchivo);
+              continue;
+            }
+            await dbQuery.run('UPDATE archivos SET actividadId = ? WHERE id = ?', [nuevaActId, f.id]);
+            nombresEnMaestro.add(f.nombreArchivo);
+          }
         }
       }
 
@@ -2554,7 +2572,9 @@ app.post('/viajes/:id/unificar-itinerarios', async (req, res) => {
     res.json({
       success: true,
       itinerariosEliminados: itinerariosProcesados,
-      actividadesCreadas: actividadesCreadas
+      actividadesCreadas: actividadesCreadas,
+      archivosOmitidosCount: archivosOmitidos.length,
+      listaOmitidos: archivosOmitidos
     });
 
   } catch (error) {
