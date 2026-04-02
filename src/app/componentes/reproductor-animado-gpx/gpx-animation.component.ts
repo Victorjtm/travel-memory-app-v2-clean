@@ -104,6 +104,21 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private animationFrameId: number | null = null;
   private lastTimestamp = 0;
 
+  // Smoothing State (Shadow Clock v3)
+  private smoothTimeSegInternal = 0;
+  private smoothPointTimeMsInternal = 0;
+  private lastKnownIndex = 0;
+
+  private readonly CLOCK_CONFIG = {
+    snapThresholdSec: 1.5,      // Salto instantáneo si el error es masivo
+    smallDriftSec: 0.2,         // Umbral para suavizado máximo
+    mediumDriftSec: 1.0,        // Umbral para seguimiento agresivo
+    kSmall: 0.12,               // Factor para errores pequeños
+    kMedium: 0.25,              // Factor para errores medios
+    kFast: 0.4,                 // Factor para caza rápida
+    freezeEpsilon: 0.0001       // Umbral de detección de movimiento del marcador
+  };
+
   constructor(
     private animationService: GpxAnimationService,
     private archivoService: ArchivoService,
@@ -270,7 +285,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     if (p1 && p2) {
       const alpha = this.currentIndex - floorIdx;
 
-      // 1. Posición Física (Interpolación Fluida)
+      // 1. Posición Física (Interpolación Fluida) - NO TOCAR
       const lat = p1.lat + (p2.lat - p1.lat) * alpha;
       const lng = p1.lng + (p2.lng - p1.lng) * alpha;
       const latlng = [lat, lng];
@@ -278,10 +293,34 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       this.marker.setLatLng(latlng);
       this.map.panTo(latlng, { animate: false }); 
 
-      // 2. Tiempo (Slave Clock) - El reloj "sigue" al muñeco
-      this.currentTimeSeg = p1.timeAcum + (p2.timeAcum - p1.timeAcum) * alpha;
+      // 2. Tiempo Objetivo (Teórico del GPX)
+      const targetTimeSeg = p1.timeAcum + (p2.timeAcum - p1.timeAcum) * alpha;
+      
+      let targetPointTimeMs = 0;
+      if (p1.time && p2.time) {
+        const t1 = p1.time.getTime();
+        const t2 = p2.time.getTime();
+        targetPointTimeMs = t1 + (t2 - t1) * alpha;
+      } else {
+        targetPointTimeMs = (p1.time || new Date()).getTime();
+      }
 
-      // 3. Métricas Globales
+      // 3. Lógica de Suavizado Fiel (Shadow Clock v3)
+      // Inicialización en el primer frame
+      if (this.smoothTimeSegInternal === 0) {
+        this.smoothTimeSegInternal = targetTimeSeg;
+        this.smoothPointTimeMsInternal = targetPointTimeMs;
+      }
+
+      // Aplicar seguimiento adaptativo a ambas métricas temporales
+      this.smoothTimeSegInternal = this.getAdaptiveFollowValue(this.smoothTimeSegInternal, targetTimeSeg);
+      this.smoothPointTimeMsInternal = this.getAdaptiveFollowValue(this.smoothPointTimeMsInternal, targetPointTimeMs);
+
+      // Asignación a variables de UI (Fidelidad Máxima)
+      this.currentTimeSeg = this.smoothTimeSegInternal;
+      this.currentPointTime = new Date(this.smoothPointTimeMsInternal);
+
+      // 4. Métricas Globales (InterpDist para coherencia absoluta con el marcador)
       const interpDist = p1.distAcum + (p2.distAcum - p1.distAcum) * alpha;
       this.currentDistKm = interpDist / 1000;
       
@@ -289,19 +328,50 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         this.currentSteps = (interpDist / 1000) * 1400;
       }
 
-      // Reloj absoluto (Safe Check)
-      if (p1.time && p2.time) {
-        const t1 = p1.time.getTime();
-        const t2 = p2.time.getTime();
-        this.currentPointTime = new Date(t1 + (t2 - t1) * alpha);
-      } else {
-        this.currentPointTime = p1.time || null;
-      }
-
       this.progress = (interpDist / ((this.stats?.distanciaTotalKm || 1) * 1000)) * 100;
+      
+      // Actualizar estado para detección de movimiento en el siguiente frame
+      this.lastKnownIndex = this.currentIndex;
     }
 
     this.cdr.detectChanges();
+  }
+
+  /**
+   * Helper de Seguimiento Adaptativo (Shadow Clock v3)
+   * Sincroniza el valor mostrado con el target real basándose en el desplazamiento del marcador.
+   */
+  private getAdaptiveFollowValue(current: number, target: number): number {
+    const drift = target - current;
+    const absDrift = Math.abs(drift);
+    
+    // Heurística para detectar si estamos en MS (Hora Absoluta) o Segundos
+    const isMs = absDrift > 10000; 
+    const driftSec = isMs ? absDrift / 1000 : absDrift;
+
+    const markerMoved = Math.abs(this.currentIndex - this.lastKnownIndex) > this.CLOCK_CONFIG.freezeEpsilon;
+
+    // 1. Sincronía instantánea en parada o seek masivo
+    if (!markerMoved || driftSec > this.CLOCK_CONFIG.snapThresholdSec) {
+      return target;
+    }
+
+    // 2. Cálculo de K adaptable según el error detectado (Drift)
+    let k = this.CLOCK_CONFIG.kSmall;
+    if (driftSec > this.CLOCK_CONFIG.mediumDriftSec) {
+      k = this.CLOCK_CONFIG.kFast;
+    } else if (driftSec > this.CLOCK_CONFIG.smallDriftSec) {
+      k = this.CLOCK_CONFIG.kMedium;
+    }
+
+    // DEBUG LOG (Descomentar para depuración intensiva)
+    /*
+    if (k > 0.12) {
+      console.log(`🕒 [Clock] Drift: ${driftSec.toFixed(3)}s, K: ${k}, Target: ${target.toFixed(1)}, Moved: ${markerMoved}`);
+    }
+    */
+
+    return current + (drift * k);
   }
 
   // Helper para mostrar estadísticas fluidas en el HUD
