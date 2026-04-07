@@ -267,6 +267,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  cursor: grab;
+  &:active { cursor: grabbing; }
   h3 { margin: 0; font-size: 18px; color: #333; }
 }
 
@@ -553,6 +555,8 @@
     align-items: center;
     justify-content: center;
     gap: 10px;
+    cursor: grab;
+    &:active { cursor: grabbing; }
 
     .prompt-icon { font-size: 24px; }
     h4 { margin: 0; font-size: 1.1rem; color: #333; }

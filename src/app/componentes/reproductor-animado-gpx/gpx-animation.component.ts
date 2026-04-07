@@ -1,6 +1,7 @@
 import { Component, Input, OnInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { DragDropModule } from '@angular/cdk/drag-drop';
 import { trigger, transition, style, animate } from '@angular/animations';
 import { GpxAnimationService, GpxPoint, AnimationStats } from '../../servicios/gpx-animation.service';
 import { ArchivoService } from '../../servicios/archivo.service';
@@ -12,7 +13,7 @@ import { environment } from '../../../environments/environment';
 @Component({
   selector: 'app-gpx-animation',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DragDropModule],
   templateUrl: './gpx-animation.component.html',
   styleUrls: ['./gpx-animation.component.scss'],
   animations: [
