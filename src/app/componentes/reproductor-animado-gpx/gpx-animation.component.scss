@@ -216,22 +216,25 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0,0,0,0.85);
+  background: none; /* ← 🗑️ Adiós al telón opaco */
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end; /* ← ➡️ Anclado a la derecha en escritorio */
   z-index: 10005;
   padding: 20px;
+  pointer-events: none; /* ← 👆 El mapa de fondo se mantiene interactivo e intocable */
 }
 
 .event-card {
+  pointer-events: auto; /* ← 👆 Solo la tarjeta bloquea clics */
   background: white;
   border-radius: 20px;
   width: 100%;
-  max-width: 500px;
+  max-width: 450px;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 15px 50px rgba(0, 0, 0, 0.4);
 }
 
 .custom-transport-marker {
@@ -513,4 +516,167 @@
   background: #2196F3 !important;
   border-color: #FFF !important;
   &:hover { background: #1976D2 !important; }
+}
+
+/* ✨ ESTILOS DEL PROMPT PRE-MULTIMEDIA */
+.pre-multimedia-prompt {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: none; /* ← 🗑️ Adiós al oscurecedor */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end; /* ← ➡️ Anclado a la derecha en escritorio */
+  z-index: 10010;
+  padding: 20px;
+  pointer-events: none; /* ← 👆 Deja respirar la vista del mapa */
+}
+
+.prompt-card {
+  pointer-events: auto; /* ← 👆 Atrapa eventos aquí */
+  background: white;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 15px 50px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  text-align: center;
+  animation: modal-slide-up 0.3s ease-out;
+
+  .prompt-header {
+    background: #f8f9fa;
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+
+    .prompt-icon { font-size: 24px; }
+    h4 { margin: 0; font-size: 1.1rem; color: #333; }
+  }
+
+  .prompt-body {
+    padding: 25px 20px;
+
+    .prompt-address {
+      font-size: 1rem;
+      color: #1a1a1a;
+      font-weight: 600;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+
+    .prompt-address-fallback {
+      font-size: 0.9rem;
+      color: #666;
+      margin-bottom: 10px;
+    }
+
+    .prompt-question {
+      font-size: 0.95rem;
+      color: #555;
+      margin: 0;
+    }
+  }
+
+  .prompt-actions {
+    display: flex;
+    border-top: 1px solid #eee;
+
+    button {
+      flex: 1;
+      padding: 16px;
+      border: none;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .btn-prompt-no {
+      background: white;
+      color: #f44336;
+      border-right: 1px solid #eee;
+      &:hover { background: #feebeb; }
+    }
+
+    .btn-prompt-yes {
+      background: white;
+      color: #4CAF50;
+      &:hover { background: #e8f5e9; }
+    }
+  }
+}
+
+/* ✨ ESTILOS METADATA EN LA FOTO NORMAL */
+.media-metadata {
+  margin-top: 15px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid #eee;
+  text-align: left;
+
+  .media-title {
+    margin: 0 0 10px 0;
+    font-size: 1.1rem;
+    color: #222;
+  }
+
+  .meta-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    color: #555;
+
+    &:last-child { margin-bottom: 0; }
+
+    .meta-icon {
+      font-size: 16px;
+    }
+
+    .meta-text {
+      flex: 1;
+      line-height: 1.3;
+    }
+  }
+
+  .meta-date-time {
+    display: flex;
+    gap: 20px;
+    border-top: 1px solid #ebebeb;
+    padding-top: 8px;
+    margin-top: 8px;
+
+    .meta-sub {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      color: #666;
+    }
+  }
+}
+
+/* ✨ RESPONSIVE MOBILE - BOTTOM SHEET */
+@media (max-width: 768px) {
+  .multimedia-overlay, .pre-multimedia-prompt {
+    align-items: flex-end; /* Lo lanza abajo de la pantalla en vertical */
+    justify-content: center; /* Lo centra horizontalmente */
+    padding: 15px;
+  }
+  
+  .event-card {
+    max-height: 48vh; /* Tope crucial: asegura que la mitad superior (donde yace el marcador Leaflet) quede siempre purgada de componentes UI */
+    border-radius: 20px 20px 10px 10px;
+  }
+  
+  .prompt-card {
+    margin-bottom: 70px; /* Separación inteligente para que no choque con los botones flotantes basales del GPX */
+  }
 }

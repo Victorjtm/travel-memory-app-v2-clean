@@ -51,7 +51,30 @@
     <button class="btn-cerrar" (click)="cerrar()">✕</button>
   </div>
 
-  <!-- Overlay Multimedia de Eventos -->
+  <!-- Diálogo Pre-Multimedia interactivo (Paso previo) -->
+  <div class="pre-multimedia-prompt" *ngIf="pendingEvent" @fadeInOut>
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-icon">📍</span>
+        <h4>Punto de Interés</h4>
+      </div>
+      <div class="prompt-body">
+        <p class="prompt-address" *ngIf="pendingEvent.archivos && pendingEvent.archivos[0]?.direccionDeducida">
+          {{ pendingEvent.archivos[0].direccionDeducida }}
+        </p>
+        <p class="prompt-address-fallback" *ngIf="!pendingEvent.archivos || !pendingEvent.archivos[0]?.direccionDeducida">
+          <i>Ubicación obtenida por GPS</i>
+        </p>
+        <p class="prompt-question">¿Quieres mostrar el archivo multimedia asociado?</p>
+      </div>
+      <div class="prompt-actions">
+        <button class="btn-prompt-no" (click)="confirmMediaSelection(false)">No</button>
+        <button class="btn-prompt-yes" (click)="confirmMediaSelection(true)">Sí</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overlay Multimedia de Eventos (Paso confirmado) -->
   <div class="multimedia-overlay" *ngIf="activeEvent" @fadeInOut>
     <div class="event-card">
       <div class="event-header">
@@ -78,7 +101,24 @@
              <audio [src]="archivo.audioUrl" controls></audio>
           </div>
           
-          <p class="media-caption">{{ archivo.nombreArchivo }}</p>
+          <!-- Metadata Enriquecida del Evento Multimedia -->
+          <div class="media-metadata">
+            <h4 class="media-title">{{ archivo.nombreArchivo }}</h4>
+            <div class="meta-row" *ngIf="archivo.direccion || archivo.direccionDeducida">
+              <span class="meta-icon">📍</span>
+              <span class="meta-text">{{ archivo.direccion || archivo.direccionDeducida }}</span>
+            </div>
+            <div class="meta-row meta-date-time" *ngIf="archivo.fechaCalculada">
+              <div class="meta-sub">
+                <span class="meta-icon">📅</span>
+                <span class="meta-text">{{ archivo.fechaCalculada | date:'dd/MM/yyyy' }}</span>
+              </div>
+              <div class="meta-sub">
+                <span class="meta-icon">🕒</span>
+                <span class="meta-text">{{ archivo.fechaCalculada | date:'HH:mm:ss' }}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="event-footer">

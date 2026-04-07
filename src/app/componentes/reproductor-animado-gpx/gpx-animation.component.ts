@@ -5,6 +5,7 @@ import { trigger, transition, style, animate } from '@angular/animations';
 import { GpxAnimationService, GpxPoint, AnimationStats } from '../../servicios/gpx-animation.service';
 import { ArchivoService } from '../../servicios/archivo.service';
 import { VideoGeneratorService, ProgresoVideo, ConfiguracionVideo } from '../../servicios/video-generator.service';
+import { GeocodificacionService } from '../../servicios/geocodificacion.service';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
@@ -100,6 +101,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   
   // Multimedia Events
   activeEvent: any = null;
+  pendingEvent: any = null; // ✨ NUEVA PROPIEDAD para paso pre-multimedia
 
   private animationFrameId: number | null = null;
   private lastTimestamp = 0;
@@ -122,6 +124,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   constructor(
     private animationService: GpxAnimationService,
     private archivoService: ArchivoService,
+    private geocodificacionService: GeocodificacionService,
     private cdr: ChangeDetectorRef,
     private ngZone: NgZone
   ) { }
@@ -257,9 +260,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         }
 
         if (p.event) {
-          this.pauseForEvent(p.event);
           this.currentIndex = i; 
-          this.renderCurrentFrame();
+          this.renderCurrentFrame(); // Mueve el marcador e interpola al frame exacto
+          this.pauseForEvent(p.event); // Ejecuta el flyTo sin que sea pisado
           return;
         }
       }
@@ -291,7 +294,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       const latlng = [lat, lng];
 
       this.marker.setLatLng(latlng);
-      this.map.panTo(latlng, { animate: false }); 
+      
+      // Permitimos libertad a flyTo si estamos en un evento multimedia
+      if (!this.pendingEvent && !this.activeEvent) {
+        this.map.panTo(latlng, { animate: false }); 
+      } 
 
       // 2. Tiempo Objetivo (Teórico del GPX)
       const targetTimeSeg = p1.timeAcum + (p2.timeAcum - p1.timeAcum) * alpha;
@@ -413,34 +420,91 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.isPlaying = false;
     this.stopAnimation();
     
-    // ✨ Buscar audios asociados para cada foto/video en el evento
+    // Zoom máximo interactivo (nivel 18) - Acercarse a la ubicación
+    const currentPoint = this.points[Math.floor(this.currentIndex)];
+    if (currentPoint && this.map) {
+      this.map.flyTo([currentPoint.lat, currentPoint.lng], 18, { animate: true, duration: 1.5 });
+    }
+
+    // Preparar metadatos base para la foto (Fecha y Hora) y Dirección pre-cargada si existe
     if (event.archivos && event.archivos.length > 0) {
       for (const archivo of event.archivos) {
-        if (archivo.tipo === 'foto' || archivo.tipo === 'imagen') {
-          try {
-            const asociados = await this.archivoService.getArchivosAsociados(archivo.id).toPromise();
-            const audioAsociado = asociados?.find((a: any) => a.tipo === 'audio');
-            if (audioAsociado) {
-              archivo.audioUrl = this.archivoService.getUrlArchivoAsociado(audioAsociado);
-              console.log(`🎵 Audio asociado encontrado para ${archivo.nombreArchivo}:`, archivo.audioUrl);
-            }
-          } catch (error) {
-            console.error('Error buscando archivos asociados:', error);
-          }
+        if (!archivo.direccion && currentPoint) {
+           // Si no tiene dirección interna, la obtenemos dinámicamente con Geocoding Inverso
+           try {
+             // Fallback al GPS
+             const locationStr = `${currentPoint.lat},${currentPoint.lng}`;
+             const locationData = await firstValueFrom(this.geocodificacionService.obtenerUbicacionPorCoordenadas(locationStr));
+             if (locationData && locationData.direccion) {
+               archivo.direccionDeducida = locationData.direccion;
+             }
+           } catch (error) {
+             console.error('Error buscando dirección inversa:', error);
+           }
+        }
+        
+        // Adjuntar timestamp explícito para lectura directa en caso de usarse en UI
+        if (!archivo.fechaCalculada) {
+          archivo.fechaCalculada = archivo.fecha ? new Date(archivo.fecha) : (currentPoint.time || new Date());
         }
       }
     }
 
-    this.activeEvent = event;
+    this.pendingEvent = event;
     this.cdr.detectChanges();
+  }
+
+  async confirmMediaSelection(choice: boolean) {
+    if (choice && this.pendingEvent) {
+      // ✅ USUARIO EXPRESA "SÍ"
+      const event = this.pendingEvent;
+      this.pendingEvent = null;
+
+      // Realizar las cargas multimedia asincrónicas costosas ahora que aceptó
+      if (event.archivos && event.archivos.length > 0) {
+        for (const archivo of event.archivos) {
+          if (archivo.tipo === 'foto' || archivo.tipo === 'imagen') {
+            try {
+              const asociados = await this.archivoService.getArchivosAsociados(archivo.id).toPromise();
+              const audioAsociado = asociados?.find((a: any) => a.tipo === 'audio');
+              if (audioAsociado) {
+                archivo.audioUrl = this.archivoService.getUrlArchivoAsociado(audioAsociado);
+                console.log(`🎵 Audio asociado encontrado para ${archivo.nombreArchivo}:`, archivo.audioUrl);
+              }
+            } catch (error) {
+              console.error('Error buscando archivos asociados:', error);
+            }
+          }
+        }
+      }
+
+      this.activeEvent = event;
+      this.cdr.detectChanges();
+    } else {
+      // ❌ USUARIO EXPRESA "NO" (o hubo un problema)
+      this.pendingEvent = null;
+      this.resumeFromEvent(); // Llama a revertir zoom y continuar
+    }
   }
 
   resumeFromEvent() {
     this.activeEvent = null;
-    this.isPlaying = true;
-    this.lastTimestamp = performance.now();
-    this.animate();
-    this.cdr.detectChanges();
+    
+    // Retornamos la perspectiva del mapa al zoom "Tracking" habitual (usualmente 16, mismo de initMap)
+    if (this.map) {
+      const currentPoint = this.points[Math.floor(this.currentIndex)];
+      if (currentPoint) {
+         this.map.flyTo([currentPoint.lat, currentPoint.lng], 16, { animate: true, duration: 1.0 });
+      }
+    }
+    
+    // Devolvemos el control transcurridos unos milisegundos para que asimile el zoomOut
+    setTimeout(() => {
+      this.isPlaying = true;
+      this.lastTimestamp = performance.now();
+      this.animate();
+      this.cdr.detectChanges();
+    }, 1000);
   }
 
   private createNewPolyline(mode: string, startLatLng: any) {
