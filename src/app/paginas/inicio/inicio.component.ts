@@ -269,53 +269,135 @@ export class InicioComponent implements OnInit {
       console.log(`📋 Videos en manifest: ${videosEnManifest.length}`);
       console.log(`📂 Videos totales en carpeta: ${allMp4.length}`);
 
-      const videoFiles = allMp4.filter(file => {
+      // 3. Extraer franja horaria real del itinerario
+      let minTrackingTime = Number.MAX_SAFE_INTEGER;
+      let maxTrackingTime = 0;
+
+      const gpxFile = this.archivosSeleccionados.find(f => f.name.toLowerCase().endsWith('.gpx'));
+      if (gpxFile) {
+        try {
+          const textoGpx = await gpxFile.text();
+          const regex = /<time>(.*?)<\/time>/g;
+          let match;
+          while ((match = regex.exec(textoGpx)) !== null) {
+            const dateVal = new Date(match[1]).getTime();
+            if (!isNaN(dateVal)) {
+              minTrackingTime = Math.min(minTrackingTime, dateVal);
+              maxTrackingTime = Math.max(maxTrackingTime, dateVal);
+            }
+          }
+        } catch (e) {
+          console.error("Error leyendo GPX para franja horaria", e);
+        }
+      }
+
+      // Fallback a los metadatos de multimedia si GPX falla o no tiene timestamps
+      if (minTrackingTime === Number.MAX_SAFE_INTEGER && this.manifestData.multimedia?.length > 0) {
+        this.manifestData.multimedia.forEach((m: any) => {
+          const matchTime = m.nombre?.match(/\d{8}_(\d{6})/);
+          if (matchTime && fechaTracking) {
+            const año = parseInt(fechaTracking.substring(0, 4));
+            const mes = parseInt(fechaTracking.substring(4, 6)) - 1;
+            const dia = parseInt(fechaTracking.substring(6, 8));
+            const hr = parseInt(matchTime[1].substring(0, 2));
+            const min = parseInt(matchTime[1].substring(2, 4));
+            const sec = parseInt(matchTime[1].substring(4, 6));
+            const dateVal = new Date(año, mes, dia, hr, min, sec).getTime();
+            minTrackingTime = Math.min(minTrackingTime, dateVal);
+            maxTrackingTime = Math.max(maxTrackingTime, dateVal);
+          }
+        });
+      }
+
+      // Si obtuvimos una franja válida, aplicar un margen de 30 minutos
+      if (minTrackingTime !== Number.MAX_SAFE_INTEGER) {
+        minTrackingTime -= 30 * 60 * 1000;
+        maxTrackingTime += 30 * 60 * 1000;
+        console.log(`⏳ Franja horaria detectada: ${new Date(minTrackingTime).toLocaleTimeString()} - ${new Date(maxTrackingTime).toLocaleTimeString()}`);
+      } else {
+        // Rango infinito si no hay datos horarios
+        minTrackingTime = 0;
+        maxTrackingTime = Number.MAX_SAFE_INTEGER;
+        console.log(`⏳ Sin franja horaria estricta, usando todo el día.`);
+      }
+
+      const videosDentro: File[] = [];
+      const videosFuera: File[] = [];
+
+      allMp4.forEach(file => {
         const nombre = file.name.toLowerCase();
         const basename = nombre.replace(/\.[^.]+$/, '');
 
-        // A. DETECCIÓN DE FECHA EN EL NOMBRE (Prioridad Máxima de rechazo/aceptación)
-        // Buscamos un patrón de 8 dígitos (YYYYMMDD)
+        // B. COINCIDENCIA POR LISTA DEL MANIFEST (Basename) -> Va directo a Dentro
+        if (videosEnManifest.some((v: string) => basename.includes(v) || v.includes(basename))) {
+          console.log(`✅ [DENTRO] Coincidencia por MANIFEST: ${file.name}`);
+          videosDentro.push(file);
+          return;
+        }
+
+        // Obtener fecha del archivo
         const matchFechaArchivo = nombre.match(/(\d{8})/);
         const fechaEnNombre = matchFechaArchivo ? matchFechaArchivo[1] : null;
 
-        // Caso crítico: Si el nombre tiene una fecha y NO coincide con el tracking, DESCARTAMOS inmediatamente
-        // Esto evita que videos del día 15 o 17 entren en el tracking del 16 si se copiaron ese día.
-        if (fechaEnNombre && fechaTracking && fechaEnNombre !== fechaTracking) {
-          console.log(`❌ DESCARTADO (Fecha incorrecta en nombre): ${file.name}`);
-          return false;
+        // Comprobación de que pertenezca al día del Itinerario
+        let fechaCoincide = false;
+        if (fechaEnNombre && fechaTracking) {
+            fechaCoincide = (fechaEnNombre === fechaTracking);
+        } else if (!fechaEnNombre && fechaTracking) {
+            const fechaMod = new Date(file.lastModified);
+            const y = fechaMod.getFullYear();
+            const m = String(fechaMod.getMonth() + 1).padStart(2, '0');
+            const d = String(fechaMod.getDate()).padStart(2, '0');
+            const fechaModStr = `${y}${m}${d}`;
+            fechaCoincide = (fechaModStr === fechaTracking);
         }
 
-        // B. COINCIDENCIA POR LISTA DEL MANIFEST (Basename)
-        // El manifest es la fuente de verdad definitiva de lo que AudioPhotoApp incluyó.
-        if (videosEnManifest.some((v: string) => basename.includes(v) || v.includes(basename))) {
-          console.log(`✅ Coincidencia por MANIFEST: ${file.name}`);
-          return true;
-        }
-
-        // C. COINCIDENCIA POR NOMBRE (Fecha correcta)
-        if (fechaTracking && fechaEnNombre === fechaTracking) {
-          console.log(`✅ Coincidencia por NOMBRE (Fecha correcta): ${file.name}`);
-          return true;
-        }
-
-        // D. COINCIDENCIA POR METADATOS (Solo si no hay fecha clara en el nombre)
-        if (!fechaEnNombre && fechaTracking) {
-          const fechaMod = new Date(file.lastModified);
-          const y = fechaMod.getFullYear();
-          const m = String(fechaMod.getMonth() + 1).padStart(2, '0');
-          const d = String(fechaMod.getDate()).padStart(2, '0');
-          const fechaModStr = `${y}${m}${d}`;
-
-          if (fechaModStr === fechaTracking) {
-            console.log(`✅ Coincidencia por METADATOS: ${file.name}`);
-            return true;
+        if (!fechaCoincide) {
+          // Si el nombre tiene fecha y no cuadra, abortar para este archivo.
+          if (fechaEnNombre && fechaTracking && fechaEnNombre !== fechaTracking) {
+            console.log(`❌ DESCARTADO (Fecha incorrecta): ${file.name}`);
           }
+          return; 
         }
 
-        return false;
-      });
+        // Determinar la hora en epoch local
+        let fileTimeMs: number | null = null;
+        const matchHoraArchivo = nombre.match(/\d{8}_(\d{6})/);
+        if (matchHoraArchivo && fechaTracking) {
+            const año = parseInt(fechaTracking.substring(0, 4));
+            const mes = parseInt(fechaTracking.substring(4, 6)) - 1;
+            const dia = parseInt(fechaTracking.substring(6, 8));
+            const hr = parseInt(matchHoraArchivo[1].substring(0, 2));
+            const min = parseInt(matchHoraArchivo[1].substring(2, 4));
+            const sec = parseInt(matchHoraArchivo[1].substring(4, 6));
+            fileTimeMs = new Date(año, mes, dia, hr, min, sec).getTime();
+        } else {
+            fileTimeMs = new Date(file.lastModified).getTime();
+        }
 
-      if (videoFiles.length === 0 && allMp4.length > 0) {
+        // Dividir por pertenencia a la franja estricta
+        if (fileTimeMs !== null && fileTimeMs >= minTrackingTime && fileTimeMs <= maxTrackingTime) {
+            console.log(`✅ [DENTRO] Horario coincidente: ${file.name}`);
+            videosDentro.push(file);
+        } else {
+            console.log(`⚠️ [FUERA] Horario externo: ${file.name}`);
+            videosFuera.push(file);
+        }
+      });
+      
+      // Control de Interacción con Usuario
+      if (videosFuera.length > 0) {
+        let msg = `ℹ️ Análisis de vídeos para el día seleccionado:\n\n`;
+        msg += `✔️ Se han encontrado ${videosDentro.length} vídeos dentro del horario del itinerario.\n`;
+        msg += `⚠️ Se han encontrado ${videosFuera.length} vídeos del mismo día pero fuera del horario del itinerario.\n\n`;
+        msg += `¿Quieres incorporar también los vídeos fuera del horario?`;
+        
+        if (confirm(msg)) {
+           this.archivosVideo = [...videosDentro, ...videosFuera];
+        } else {
+           this.archivosVideo = videosDentro;
+        }
+      } else if (videosDentro.length === 0 && allMp4.length > 0) {
         const confirmar = confirm(`⚠️ No se detectaron videos del día ${fechaTracking || ''} en la carpeta.\n\n¿Quieres usar TODOS los videos (${allMp4.length}) de todos modos?`);
         if (confirmar) {
           this.archivosVideo = allMp4;
@@ -323,7 +405,7 @@ export class InicioComponent implements OnInit {
           return;
         }
       } else {
-        this.archivosVideo = videoFiles;
+        this.archivosVideo = videosDentro;
       }
 
       this.videosSeleccionados = true;
@@ -380,12 +462,12 @@ export class InicioComponent implements OnInit {
       console.log(`📦 Total de archivos seleccionados: ${this.archivosSeleccionados.length}`);
 
       // Contar por tipo
-      const gpxFiles = this.archivosSeleccionados.filter(f => f.name.endsWith('.gpx'));
-      const pngFiles = this.archivosSeleccionados.filter(f => f.name.endsWith('.png'));
-      const jpgFiles = this.archivosSeleccionados.filter(f => f.name.endsWith('.jpg'));
-      const mp4Files = this.archivosSeleccionados.filter(f => f.name.endsWith('.mp4'));
-      const wavFiles = this.archivosSeleccionados.filter(f => f.name.endsWith('.wav'));
-      const jsonFiles = this.archivosSeleccionados.filter(f => f.name.endsWith('.json'));
+      const gpxFiles = this.archivosSeleccionados.filter(f => f.name.toLowerCase().endsWith('.gpx'));
+      const pngFiles = this.archivosSeleccionados.filter(f => f.name.toLowerCase().endsWith('.png'));
+      const jpgFiles = this.archivosSeleccionados.filter(f => f.name.toLowerCase().endsWith('.jpg'));
+      const mp4Files = this.archivosSeleccionados.filter(f => f.name.toLowerCase().endsWith('.mp4'));
+      const wavFiles = this.archivosSeleccionados.filter(f => f.name.toLowerCase().endsWith('.wav'));
+      const jsonFiles = this.archivosSeleccionados.filter(f => f.name.toLowerCase().endsWith('.json'));
 
       console.log('📊 Resumen por tipo:');
       console.log(`  📍 GPX: ${gpxFiles.length}`);

@@ -116,33 +116,7 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 const app = express();
 
 
-// AGREGA ESTO ANTES de la configuración CORS existente en server.js
-
-// Middleware para manejar preflight OPTIONS requests
-app.options('*', (req, res) => {
-  const origin = req.headers.origin;
-  console.log('🔧 [OPTIONS] Preflight request desde:', origin);
-
-  // Verificar si el origen está permitido
-  if (!origin ||
-    allowedOrigins.includes(origin) ||
-    /^https:\/\/.*\.ngrok(-free)?\.app$/.test(origin) ||
-    /^https:\/\/.*\.ngrok\.io$/.test(origin) ||
-    /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+):\d+$/.test(origin)) {
-
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, ngrok-skip-browser-warning');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('ngrok-skip-browser-warning', '1');
-
-    console.log('✅ [OPTIONS] Preflight permitido para:', origin);
-    res.status(200).end();
-  } else {
-    console.log('❌ [OPTIONS] Preflight bloqueado para:', origin);
-    res.status(403).end();
-  }
-});
+// (Preflight options handling delegada completamente al middleware global cors())
 
 // Aquí va tu configuración CORS existente...
 
@@ -5803,46 +5777,15 @@ console.log('✅ [DEBUG] importUpload creado correctamente');
 console.log('   Tipo:', typeof importUpload);
 console.log('   Método any():', typeof importUpload.any);
 
-// ========================================
-// ✅ MANEJADOR PREFLIGHT PARA /import-tracking
-// ========================================
-app.options('/import-tracking', (req, res) => {
-  const origin = req.headers.origin;
-
-  // Verificar si el origen está permitido (misma lógica que tu CORS global)
-  if (!origin ||
-    allowedOrigins.includes(origin) ||
-    /^https:\/\/.*\.ngrok(-free)?\.app$/.test(origin) ||
-    /^https:\/\/.*\.ngrok\.io$/.test(origin) ||
-    /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+):\d+$/.test(origin)) {
-
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, ngrok-skip-browser-warning');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('ngrok-skip-browser-warning', '1');
-
-    console.log('✅ [OPTIONS] Preflight permitido para /import-tracking:', origin);
-    res.status(200).end();
-  } else {
-    console.log('❌ [OPTIONS] Preflight bloqueado para /import-tracking:', origin);
-    res.status(403).end();
-  }
-});
+// (Preflight manejado por global cors())
 
 /**
  * POST /api/import-tracking
  * Importa un tracking completo desde AudioPhotoApp
  * Recibe: FormData con archivos + metadata
  */
-// ✅ DESPUÉS (CORRECTO - CORS ANTES de multer)
-// ✅ DESPUÉS (CORRECTO - CORS ANTES de multer)
+// ✅ DESPUÉS (CORRECTO - CORS manejado globalmente)
 app.post('/import-tracking', (req, res, next) => {
-  // ✅ PRIMERO: Añadir cabeceras CORS ANTES de multer
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   console.log('\n🔍 [DEBUG] Middleware ejecutado - Antes de multer');
   console.log('   Content-Type:', req.headers['content-type']);
@@ -7061,30 +7004,63 @@ console.log('🤖 Endpoints de IA configurados');
 // FIN ENDPOINTS DE IA
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// ========================================
+// 🛡️ MANEJADOR GLOBAL DE ERRORES (CORS SAFE)
+// ========================================
+app.use((err, req, res, next) => {
+  console.error('\n💥 [ERROR GLOBAL] Detectado error no manejado:', err.message);
+  console.error(err.stack);
+
+  // Asegurar que las cabeceras CORS se mantengan incluso en crash 500
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  }
+
+  res.status(500).json({ 
+    error: 'Error interno del servidor', 
+    detalles: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+
 // Configurar el puerto y poner a escuchar el servidor
 const PORT = process.env.PORT || 3000;
 const HTTPS_PORT = process.env.HTTPS_PORT || 3001;
 
+// Helper para configurar Timeouts Extensos en servidores HTTP
+const configureServerTimeouts = (server) => {
+  server.requestTimeout = 30 * 60 * 1000; // 30 Minutos de parseo
+  server.headersTimeout = 30 * 60 * 1000; // 30 Minutos por si los headers vienen fragmentados
+  server.keepAliveTimeout = 2 * 60 * 1000; // 2 minutos free
+  server.timeout = 30 * 60 * 1000; // Socket general (30 min)
+  console.log('⏱️ Timeouts de red ajustados para permitir subidas gigantes (>1GB)');
+};
+
 // Servidor HTTP (para compatibilidad)
-app.listen(PORT, '0.0.0.0', () => {
+const httpServer = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor backend HTTP escuchando en http://0.0.0.0:${PORT}`);
 });
+configureServerTimeouts(httpServer);
 
 // Servidor HTTPS
 const https = require('https');
 
 // Usar certificado .pfx generado con PowerShell
-let httpsServer;
+let httpsServerInstance;
 try {
   const sslOptions = {
     pfx: fs.readFileSync(path.join(__dirname, '../../ssl/server.pfx')),
     passphrase: 'password'
   };
 
-  httpsServer = https.createServer(sslOptions, app);
-  httpsServer.listen(HTTPS_PORT, '0.0.0.0', () => {
+  httpsServerInstance = https.createServer(sslOptions, app);
+  httpsServerInstance.listen(HTTPS_PORT, '0.0.0.0', () => {
     console.log(`Servidor backend HTTPS escuchando en https://0.0.0.0:${HTTPS_PORT}`);
   });
+  configureServerTimeouts(httpsServerInstance);
 } catch (error) {
   console.log('⚠️  Certificados SSL no encontrados, solo HTTP disponible');
 }
