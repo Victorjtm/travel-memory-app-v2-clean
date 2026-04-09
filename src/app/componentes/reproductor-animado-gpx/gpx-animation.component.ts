@@ -94,6 +94,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   currentPointTime: Date | null = null; // ✨ NUEVA PROPIEDAD
   currentMode: string | null = null;
   
+  // OSRM Gap Fill (Prototipo V2)
+  autoFillGaps = false;
+  isFillingGaps = false;
+
   // Estadísticas por modo
   modeStats: { [key: string]: { dist: number, time: number, steps: number } } = {};
   modeList: string[] = []; // Para mantener el orden de aparición
@@ -197,6 +201,75 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     } else {
       this.stopAnimation();
     }
+  }
+
+  async toggleOsrmFill() {
+    this.autoFillGaps = !this.autoFillGaps;
+    if (this.autoFillGaps && !this.isFillingGaps) {
+      await this.applyOsrmGapFill();
+    }
+  }
+
+  async applyOsrmGapFill() {
+    this.isFillingGaps = true;
+    let filledPoints: GpxPoint[] = [];
+    let gapCount = 0;
+
+    for (let i = 0; i < this.points.length - 1; i++) {
+        const p1 = this.points[i];
+        const p2 = this.points[i+1];
+        filledPoints.push(p1);
+
+        const distKm = this.animationService.getDistance(p1.lat, p1.lng, p2.lat, p2.lng) / 1000;
+        if (distKm > 5) {
+            console.log(`🚧 GAP detectado: ${distKm.toFixed(2)}km → Consultando OSRM...`);
+            const subPoints = await this.animationService.getOsrmRoute(p1, p2);
+            filledPoints.push(...subPoints);
+            if (subPoints.length > 0) gapCount++;
+        }
+    }
+    if (this.points.length > 0) {
+        filledPoints.push(this.points[this.points.length - 1]);
+    }
+
+    if (gapCount > 0) {
+        this.points = this.animationService.recalculateAccumulators(filledPoints);
+        this.stats = this.animationService.getStats(this.points);
+        
+        this.currentIndex = 0;
+        this.progress = 0;
+        
+        if (this.map) {
+             const wasPlaying = this.isPlaying;
+             if (wasPlaying) this.togglePlay(); // pause
+             
+             this.map.eachLayer((layer: any) => {
+               if (layer.options && (layer.options.color || layer.options.icon)) {
+                 this.map.removeLayer(layer);
+               }
+             });
+             this.polylines = [];
+             this.currentPolyline = null;
+             
+             this.currentMode = this.points[0].mode || 'walking';
+             const iconHtml = `<div class="transport-icon-wrapper">${this.getModeIcon(this.currentMode)}</div>`;
+             this.marker = this.L.marker([this.points[0].lat, this.points[0].lng], {
+               icon: this.L.divIcon({
+                 className: 'custom-transport-marker',
+                 html: iconHtml,
+                 iconSize: [40, 40],
+                 iconAnchor: [20, 20]
+               })
+             }).addTo(this.map);
+             this.createNewPolyline(this.currentMode, [this.points[0].lat, this.points[0].lng]);
+             
+             if (wasPlaying) this.togglePlay();
+        }
+        console.log(`✅ OSRM completado. Gaps rellenados: ${gapCount}. Nuevos puntos totales: ${this.points.length}`);
+    }
+    
+    this.isFillingGaps = false;
+    this.cdr.detectChanges();
   }
 
   private animate() {

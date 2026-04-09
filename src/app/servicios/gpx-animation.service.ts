@@ -233,7 +233,7 @@ export class GpxAnimationService {
   /**
    * Calcula distancia en metros entre dos puntos (Fórmula Haversine).
    */
-  private getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  public getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371e3; // Radio de la Tierra en metros
     const phi1 = lat1 * Math.PI / 180;
     const phi2 = lat2 * Math.PI / 180;
@@ -259,5 +259,135 @@ export class GpxAnimationService {
       pasosTotales: Math.round((last.distAcum / 1000) * 1400),
       tiempoTotalSeg: last.timeAcum
     };
+  }
+
+  /**
+   * Decodifica Polyline de Google (Usado por OSRM)
+   */
+  public decodePolyline(str: string, precision: number = 5): [number, number][] {
+    let index = 0, lat = 0, lng = 0;
+    const coordinates: [number, number][] = [];
+    let shift = 0, result = 0, byte = null, latitude_change, longitude_change;
+    const factor = Math.pow(10, precision);
+
+    while (index < str.length) {
+      byte = null; shift = 0; result = 0;
+      do {
+        byte = str.charCodeAt(index++) - 63;
+        result |= (byte & 0x1f) << shift;
+        shift += 5;
+      } while (byte >= 0x20);
+      latitude_change = ((result & 1) ? ~(result >> 1) : (result >> 1));
+      shift = result = 0;
+      do {
+        byte = str.charCodeAt(index++) - 63;
+        result |= (byte & 0x1f) << shift;
+        shift += 5;
+      } while (byte >= 0x20);
+      longitude_change = ((result & 1) ? ~(result >> 1) : (result >> 1));
+
+      lat += latitude_change;
+      lng += longitude_change;
+      coordinates.push([lat / factor, lng / factor]);
+    }
+    return coordinates;
+  }
+
+  /**
+   * Interpola el tiempo y distancia cronológicamente para los puntos inyectados por OSRM
+   */
+  private interpolateTimesForOsrm(p1: GpxPoint, p2: GpxPoint, coords: [number, number][]): GpxPoint[] {
+    if (!p1.time || !p2.time || coords.length === 0) return [];
+    const t1 = p1.time.getTime();
+    const t2 = p2.time.getTime();
+    const timeSpan = t2 - t1;
+    
+    // Calcular distancia total del tramo OSRM para interpolación proporcional
+    const totalDist = coords.reduce((acc, curr, i) => {
+      if (i === 0) return 0;
+      return acc + this.getDistance(coords[i - 1][0], coords[i - 1][1], curr[0], curr[1]);
+    }, 0);
+
+    let distSum = 0;
+    const newPoints: GpxPoint[] = [];
+
+    // Omitimos el primero y último (son casi exactos a p1 y p2)
+    for (let i = 1; i < coords.length - 1; i++) {
+      const d = this.getDistance(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+      distSum += d;
+      const ratio = totalDist > 0 ? (distSum / totalDist) : 0;
+      const newTime = new Date(t1 + timeSpan * ratio);
+      newPoints.push({
+        lat: coords[i][0],
+        lng: coords[i][1],
+        ele: p1.ele, // aproximado del anterior
+        time: newTime,
+        mode: p1.mode || 'driving',
+        distAcum: 0, // Se recalculará globalmente luego
+        timeAcum: 0
+      });
+    }
+    return newPoints;
+  }
+
+  /**
+   * Recupera la ruta desde OSRM o Caché Local
+   */
+  async getOsrmRoute(p1: GpxPoint, p2: GpxPoint): Promise<GpxPoint[]> {
+    const cacheKey = 'osrm_' + p1.lat + '_' + p1.lng + '_' + p2.lat + '_' + p2.lng;
+    const cached = localStorage.getItem(cacheKey);
+
+    if (cached) {
+      console.log('⚡ [OSRM] Cache HIT para hueco ' + p1.lat.toFixed(3) + ',' + p1.lng.toFixed(3) + ' -> ' + p2.lat.toFixed(3) + ',' + p2.lng.toFixed(3));
+      const parsed = JSON.parse(cached);
+      return this.interpolateTimesForOsrm(p1, p2, parsed);
+    }
+
+    const t0 = performance.now();
+    try {
+      const url = 'https://router.project-osrm.org/route/v1/driving/' + p1.lng + ',' + p1.lat + ';' + p2.lng + ',' + p2.lat + '?overview=full';
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      
+      const data = await res.json();
+      const t1 = performance.now();
+      console.log('🌐 [OSRM] Response ' + Math.round(t1 - t0) + 'ms -> Cache MISS');
+
+      if (data.routes && data.routes.length > 0) {
+        const poly = data.routes[0].geometry;
+        const coords = this.decodePolyline(poly, 5);
+        localStorage.setItem(cacheKey, JSON.stringify(coords));
+        return this.interpolateTimesForOsrm(p1, p2, coords);
+      }
+    } catch (e) {
+      console.warn('⚠️ [OSRM] Fallback activado (error red/API). Trazado recto matemático.', e);
+    }
+    return [];
+  }
+
+  /**
+   * Recalcula distAcum y timeAcum para toda la lista después del Auto-Relleno.
+   */
+  recalculateAccumulators(points: GpxPoint[]): GpxPoint[] {
+    if (points.length === 0) return points;
+    
+    let distAcum = 0;
+    let startTime = points[0].time ? points[0].time.getTime() : null;
+    let prev = points[0];
+    prev.distAcum = 0;
+    prev.timeAcum = 0;
+
+    for (let i = 1; i < points.length; i++) {
+      const curr = points[i];
+      distAcum += this.getDistance(prev.lat, prev.lng, curr.lat, curr.lng);
+      curr.distAcum = distAcum;
+      if (startTime !== null && curr.time) {
+        curr.timeAcum = (curr.time.getTime() - startTime) / 1000;
+      } else {
+        curr.timeAcum = prev.timeAcum + 1; // Fallback extremo
+      }
+      prev = curr;
+    }
+    return points;
   }
 }

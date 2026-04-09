@@ -684,3 +684,66 @@
     margin-bottom: 70px; /* Separación inteligente para que no choque con los botones flotantes basales del GPX */
   }
 }
+
+/* ✨ TOGGLE OSRM AUTO-FILL */
+.osrm-toggle-container {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 5px 15px;
+  border-radius: 20px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  margin: 0 10px;
+
+  .osrm-toggle-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    gap: 8px;
+
+    input[type="checkbox"] {
+      display: none;
+    }
+
+    /* Track */
+    .slider {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      background-color: #ccc;
+      border-radius: 20px;
+      transition: .4s;
+      
+      &:before {
+        position: absolute;
+        content: "";
+        height: 16px;
+        width: 16px;
+        border-radius: 50%;
+        left: 2px;
+        bottom: 2px;
+        background-color: white;
+        transition: .4s;
+      }
+    }
+
+    input:checked + .slider {
+      background-color: #4CAF50;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(16px);
+    }
+
+    input:disabled + .slider {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .toggle-text {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #333;
+    }
+  }
+}
