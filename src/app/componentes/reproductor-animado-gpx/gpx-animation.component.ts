@@ -98,6 +98,14 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   autoFillGaps = false;
   isFillingGaps = false;
 
+  // Zoom Dinámico Inteligente (Prototipo V2)
+  private zoomStrategyInterval: any = null;
+  private speedHistory: number[] = [];
+  private targetZoom: number = 16;
+  private currentActualZoom: number = 16;
+  private autoZoomPaused: boolean = false;
+  private lastInteractionTime: number = 0;
+
   // Estadísticas por modo
   modeStats: { [key: string]: { dist: number, time: number, steps: number } } = {};
   modeList: string[] = []; // Para mantener el orden de aparición
@@ -161,6 +169,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.stopAnimation();
+    if (this.zoomStrategyInterval) clearInterval(this.zoomStrategyInterval);
     if (this.map) this.map.remove();
   }
 
@@ -169,12 +178,22 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     
     this.map = this.L.map('map-animation', {
       zoomControl: false,
-      attributionControl: false
-    }).setView([this.points[0].lat, this.points[0].lng], 16);
+      attributionControl: false,
+      preferCanvas: true
+    }).setView([this.points[0].lat, this.points[0].lng], this.currentActualZoom);
 
     this.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 18
+      maxZoom: 18,
+      keepBuffer: 8,
+      updateWhenIdle: false,
+      updateWhenZooming: false
     }).addTo(this.map);
+
+    // Eventos de Usuario para Auto-Zoom Cooldown
+    this.map.on('zoomstart', (e: any) => this.handleUserMapInteraction(e));
+    this.map.on('dragstart', (e: any) => this.handleUserMapInteraction(e));
+
+    this.startZoomStrategyEngine();
 
     // Ya no creamos una polyline global fija aquí, se creará bajo demanda en update()
     this.currentPolyline = null;
@@ -201,6 +220,65 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     } else {
       this.stopAnimation();
     }
+  }
+
+  private handleUserMapInteraction(e: any) {
+    if (e.originalEvent || (e.sourceTarget && e.sourceTarget === this.map)) {
+       this.autoZoomPaused = true;
+       this.lastInteractionTime = Date.now();
+    }
+  }
+
+  private startZoomStrategyEngine() {
+    if (this.zoomStrategyInterval) clearInterval(this.zoomStrategyInterval);
+    this.zoomStrategyInterval = setInterval(() => {
+        if (!this.isPlaying || !this.map || this.points.length === 0) return;
+
+        // 1. Extraer velocidad teórica del segmento base actual
+        const currentIdx = Math.floor(this.currentIndex);
+        const nextIdx = Math.min(currentIdx + 1, this.points.length - 1);
+        const p1 = this.points[currentIdx];
+        const p2 = this.points[nextIdx];
+        
+        let currentKmh = 0;
+        if (p1 && p2) {
+             const dKm = (p2.distAcum - p1.distAcum) / 1000;
+             const tSec = p2.timeAcum - p1.timeAcum;
+             if (tSec > 0) {
+                 currentKmh = dKm / (tSec / 3600);
+             } else if (dKm > 0) {
+                 currentKmh = (this.currentMode === 'driving' || this.currentMode === 'car') ? 100 : 5;
+             }
+        }
+
+        this.speedHistory.push(currentKmh);
+        if (this.speedHistory.length > 5) this.speedHistory.shift();
+
+        // 2. Control de Cooldown Humano (15s)
+        if (this.autoZoomPaused) {
+            if (Date.now() - this.lastInteractionTime > 15000) {
+                this.autoZoomPaused = false;
+                console.log('✅ [Zoom V2] Cooldown de 15s superado. Reactivando seguimiento dinámico.');
+            } else {
+                return;
+            }
+        }
+
+        // 3. Reglas de Histéresis 5-Segundos y Banda Muerta [35 – 75]
+        if (this.speedHistory.length >= 5) {
+            const allAbove75 = this.speedHistory.every(s => s > 75);
+            const allBelow35 = this.speedHistory.every(s => s < 35);
+            
+            let expectedZoom = this.targetZoom;
+            if (allAbove75) expectedZoom = 12;      // Carretera / Autovía extrema
+            else if (allBelow35) expectedZoom = 16;   // Urbano / Detenidos
+            
+            if (expectedZoom !== this.targetZoom) {
+                this.targetZoom = expectedZoom;
+                console.log(`🔍 [Zoom V2] Cambio Contexto -> Objetivo Zoom ${this.targetZoom} (Vel. media: ${Math.round(currentKmh)} km/h)`);
+            }
+        }
+    }, 1000);
   }
 
   async toggleOsrmFill() {
@@ -292,6 +370,17 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     const safeDt = Math.max(0, Math.min(dt, 0.1));
     const frames = safeDt / (1/60);
 
+    // Motor Zoom Lógico Matemático: Interpolación suave hacia targetZoom para desacoplar de Leaflet
+    if (this.currentActualZoom !== this.targetZoom && !this.autoZoomPaused) {
+       const zoomDiff = this.targetZoom - this.currentActualZoom;
+       const zoomStep = Math.sign(zoomDiff) * safeDt * 1.5; // Transición de 1.5 niveles por segundo
+       if (Math.abs(zoomStep) >= Math.abs(zoomDiff)) {
+           this.currentActualZoom = this.targetZoom;
+       } else {
+           this.currentActualZoom += zoomStep;
+       }
+    }
+
     // Motor: El índice avanza por frames (Fluidez Total)
     const currentSpeed = Number(this.speed) || 2;
     const speedFactor = this.getSpeedFactor(this.currentMode);
@@ -371,7 +460,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       
       // Permitimos libertad a flyTo si estamos en un evento multimedia
       if (!this.pendingEvent && !this.activeEvent) {
-        this.map.panTo(latlng, { animate: false }); 
+         // El setView con {animate: false} une Pan y Zoom Dinámicos en un solo cuadro renderizado sin pelearse
+         this.map.setView(latlng, this.currentActualZoom, { animate: false }); 
       } 
 
       // 2. Tiempo Objetivo (Teórico del GPX)
