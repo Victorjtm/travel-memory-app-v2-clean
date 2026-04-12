@@ -98,9 +98,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   autoFillGaps = false;
   isFillingGaps = false;
 
-  // Zoom Dinámico Inteligente (Prototipo V2)
+  // Zoom Cinematográfico Dinámico (V4)
   private zoomStrategyInterval: any = null;
-  private speedHistory: number[] = [];
+  private smoothedKmh: number = 0; // EMA virtual
   private targetZoom: number = 16;
   private currentActualZoom: number = 16;
   private autoZoomPaused: boolean = false;
@@ -164,7 +164,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     } else {
       await this.initMap();
     }
-    this.togglePlay(); // Empezar automáticamente
+    // this.togglePlay(); // Desactivamos el auto-arranque para permitir configurar OSRM antes
   }
 
   ngOnDestroy() {
@@ -179,7 +179,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.map = this.L.map('map-animation', {
       zoomControl: false,
       attributionControl: false,
-      preferCanvas: true
+      preferCanvas: true,
+      zoomSnap: 0.1, // ✨ V4: Zoom fraccional para suavidad extrema
+      zoomAnimation: true // Se preserva opción nativa
     }).setView([this.points[0].lat, this.points[0].lng], this.currentActualZoom);
 
     this.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -231,54 +233,66 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   private startZoomStrategyEngine() {
     if (this.zoomStrategyInterval) clearInterval(this.zoomStrategyInterval);
+    
+    // Sensor matemático a 4Hz (250ms) para proteger requestAnimationFrame
     this.zoomStrategyInterval = setInterval(() => {
         if (!this.isPlaying || !this.map || this.points.length === 0) return;
 
-        // 1. Extraer velocidad teórica del segmento base actual
-        const currentIdx = Math.floor(this.currentIndex);
-        const nextIdx = Math.min(currentIdx + 1, this.points.length - 1);
-        const p1 = this.points[currentIdx];
-        const p2 = this.points[nextIdx];
-        
-        let currentKmh = 0;
-        if (p1 && p2) {
-             const dKm = (p2.distAcum - p1.distAcum) / 1000;
-             const tSec = p2.timeAcum - p1.timeAcum;
-             if (tSec > 0) {
-                 currentKmh = dKm / (tSec / 3600);
-             } else if (dKm > 0) {
-                 currentKmh = (this.currentMode === 'driving' || this.currentMode === 'car') ? 100 : 5;
-             }
-        }
-
-        this.speedHistory.push(currentKmh);
-        if (this.speedHistory.length > 5) this.speedHistory.shift();
-
-        // 2. Control de Cooldown Humano (15s)
+        // 1. Control de Cooldown Humano (15s)
         if (this.autoZoomPaused) {
             if (Date.now() - this.lastInteractionTime > 15000) {
                 this.autoZoomPaused = false;
-                console.log('✅ [Zoom V2] Cooldown de 15s superado. Reactivando seguimiento dinámico.');
+                console.log('✅ [Zoom V4] Cooldown de 15s superado. Reactivando seguimiento cinemático.');
             } else {
                 return;
             }
         }
 
-        // 3. Reglas de Histéresis 5-Segundos y Banda Muerta [35 – 75]
-        if (this.speedHistory.length >= 5) {
-            const allAbove75 = this.speedHistory.every(s => s > 75);
-            const allBelow35 = this.speedHistory.every(s => s < 35);
-            
-            let expectedZoom = this.targetZoom;
-            if (allAbove75) expectedZoom = 12;      // Carretera / Autovía extrema
-            else if (allBelow35) expectedZoom = 16;   // Urbano / Detenidos
-            
-            if (expectedZoom !== this.targetZoom) {
-                this.targetZoom = expectedZoom;
-                console.log(`🔍 [Zoom V2] Cambio Contexto -> Objetivo Zoom ${this.targetZoom} (Vel. media: ${Math.round(currentKmh)} km/h)`);
-            }
+        // 2. Extraer velocidad cruda del tramo (Raw Speed)
+        const currentIdx = Math.floor(this.currentIndex);
+        const nextIdx = Math.min(currentIdx + 1, this.points.length - 1);
+        const p1 = this.points[currentIdx];
+        const p2 = this.points[nextIdx];
+        
+        let rawKmh = 0;
+        if (p1 && p2) {
+             const dKm = (p2.distAcum - p1.distAcum) / 1000;
+             const tSec = p2.timeAcum - p1.timeAcum;
+             if (tSec > 0) {
+                 rawKmh = dKm / (tSec / 3600);
+             } else if (dKm > 0) {
+                 rawKmh = (this.currentMode === 'driving' || this.currentMode === 'car') ? 100 : 5;
+             }
         }
-    }, 1000);
+
+        // 3. Filtro de Estabilidad Urbana (EMA ~ 2s Inercia)
+        this.smoothedKmh = rawKmh * 0.15 + this.smoothedKmh * 0.85;
+
+        // 4. Ecuación Continua de Mapeo por Contexto
+        let rawTargetZoom = this.targetZoom;
+        
+        if (this.isWalkingMode(this.currentMode)) {
+             // Peatón: [16.5 - 17.5]
+             const t = Math.min(this.smoothedKmh / 10, 1); // 0 a 10 km/h
+             rawTargetZoom = 17.5 - (17.5 - 16.5) * t;
+        } else {
+             // Vehículo
+             if (this.smoothedKmh < 60) {
+                 // Ciudad: [14.0 - 16.5]
+                 const t = this.smoothedKmh / 60; // 0 a 60 km/h -> 0 a 1
+                 rawTargetZoom = 16.5 - (16.5 - 14.0) * t;
+             } else {
+                 // Autovía: [11.5 - 14.0]
+                 const t = Math.min((this.smoothedKmh - 60) / 60, 1); // 60 a 120 km/h -> 0 a 1
+                 rawTargetZoom = 14.0 - (14.0 - 11.5) * t;
+             }
+        }
+
+        // 5. Anti-Oscilación (Micro-Banda Muerta Delta 0.15)
+        if (Math.abs(rawTargetZoom - this.targetZoom) > 0.15) {
+            this.targetZoom = rawTargetZoom;
+        }
+    }, 250);
   }
 
   async toggleOsrmFill() {
@@ -370,14 +384,15 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     const safeDt = Math.max(0, Math.min(dt, 0.1));
     const frames = safeDt / (1/60);
 
-    // Motor Zoom Lógico Matemático: Interpolación suave hacia targetZoom para desacoplar de Leaflet
+    // Motor Zoom V4 Cinemático: Easing LERP constante hacia targetZoom
     if (this.currentActualZoom !== this.targetZoom && !this.autoZoomPaused) {
-       const zoomDiff = this.targetZoom - this.currentActualZoom;
-       const zoomStep = Math.sign(zoomDiff) * safeDt * 1.5; // Transición de 1.5 niveles por segundo
-       if (Math.abs(zoomStep) >= Math.abs(zoomDiff)) {
+       // Transición fluida (Lerp). Ej: un factor bajo para que parezca un dron cayendo o elevándose suavemente
+       const lerpFactor = 1.2 * safeDt; 
+       this.currentActualZoom += (this.targetZoom - this.currentActualZoom) * lerpFactor;
+       
+       // Corrección final anti-cálculo infinito microscópico
+       if (Math.abs(this.targetZoom - this.currentActualZoom) < 0.01) {
            this.currentActualZoom = this.targetZoom;
-       } else {
-           this.currentActualZoom += zoomStep;
        }
     }
 
