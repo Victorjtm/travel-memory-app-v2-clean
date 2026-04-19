@@ -116,6 +116,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   activeEvent: any = null;
   pendingEvent: any = null; // ✨ NUEVA PROPIEDAD para paso pre-multimedia
 
+  // ✨ NUEVO: Master Visual Session
+  visualSessionData: any = null;
+  isHighFidelityMode = false;
+  visualSessionGroup: any = null;
+
   private animationFrameId: number | null = null;
   private lastTimestamp = 0;
 
@@ -151,6 +156,24 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.points = this.animationService.applyTransportSegments(this.points, this.transportSegments);
     this.stats = this.animationService.getStats(this.points);
 
+    // ✨ NUEVO: Intentar descargar visual_session.json si está disponible
+    if (this.actividadActual && this.actividadActual.rutaVisualSession) {
+      try {
+        const url = `${environment.apiUrl}/uploads/${this.actividadActual.rutaVisualSession}`;
+        console.log(`🎨 [GpxAnimationComponent] Descargando visual_session.json desde: ${url}`);
+        const resp = await fetch(url);
+        if (resp.ok) {
+          this.visualSessionData = await resp.json();
+          this.isHighFidelityMode = true;
+          console.log('✅ Modo Alta Fidelidad activado.');
+        } else {
+          console.warn('⚠️ No se pudo descargar visual_session.json. Fallback a Modo Legacy.');
+        }
+      } catch (e) {
+        console.warn('⚠️ Error en fetch de visual_session.json. Fallback a Modo Legacy.', e);
+      }
+    }
+
     // Inicializar primer modo para el HUD y crear la primera polilínea
     if (this.points.length > 0) {
       this.currentMode = this.points[0].mode || 'walking';
@@ -158,9 +181,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       this.modeList.push(this.currentMode);
       this.currentPointTime = this.points[0].time || null; // ✨ INICIALIZAR TIEMPO
       
-      // Creamos la primera polilínea para que se vea desde el inicio
+      // Creamos la primera polilínea para que se vea desde el inicio (Solo si NO estamos en alta fidelidad)
       await this.initMap(); // Aseguramos que el mapa esté listo
-      this.createNewPolyline(this.currentMode, [this.points[0].lat, this.points[0].lng]);
+      if (!this.isHighFidelityMode) {
+        this.createNewPolyline(this.currentMode, [this.points[0].lat, this.points[0].lng]);
+      }
     } else {
       await this.initMap();
     }
@@ -171,6 +196,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.stopAnimation();
     if (this.zoomStrategyInterval) clearInterval(this.zoomStrategyInterval);
     if (this.map) this.map.remove();
+    // Limpieza de evento global
+    document.removeEventListener('click', this.globalPopupClickHandler);
   }
 
   private async initMap() {
@@ -197,8 +224,33 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
     this.startZoomStrategyEngine();
 
+    // ✨ NUEVO: Renderizar Lienzo Estático si estamos en Modo Alta Fidelidad
+    if (this.isHighFidelityMode && this.visualSessionData?.mapState?.layers) {
+      this.visualSessionGroup = this.L.layerGroup().addTo(this.map);
+      this.visualSessionData.mapState.layers.forEach((layer: any) => {
+        if (layer.type === 'polyline') {
+          this.L.polyline(layer.latLngs, layer.options).addTo(this.visualSessionGroup);
+        } else if (layer.type === 'marker') {
+          let icon;
+          if (layer.icon) {
+            icon = this.L.icon(layer.icon);
+          } else if (layer.options?.icon) {
+            icon = this.L.icon(layer.options.icon);
+          }
+          const m = this.L.marker(layer.latLng, { icon: icon || new this.L.Icon.Default() }).addTo(this.visualSessionGroup);
+          if (layer.popup) {
+            m.bindPopup(layer.popup);
+          }
+        }
+      });
+      console.log('✅ Lienzo estático reconstruido desde visual_session.json');
+    }
+
     // Ya no creamos una polyline global fija aquí, se creará bajo demanda en update()
     this.currentPolyline = null;
+
+    // Registrar evento global de popups
+    document.addEventListener('click', this.globalPopupClickHandler);
 
     // Marcador de posición (Icono dinámico de transporte)
     const initialMode = this.currentMode || 'walking';
@@ -415,15 +467,19 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
         if (p.mode !== this.currentMode) {
           this.currentMode = p.mode || 'walking';
-          this.createNewPolyline(this.currentMode, [p.lat, p.lng]);
+          
+          if (!this.isHighFidelityMode) {
+            this.createNewPolyline(this.currentMode, [p.lat, p.lng]);
+          }
+          
           this.updateMarkerIcon(this.currentMode);
           
           if (!this.modeStats[this.currentMode]) {
             this.modeStats[this.currentMode] = { dist: 0, time: 0, steps: 0 };
             this.modeList.push(this.currentMode);
           }
-        } else if (this.currentPolyline) {
-          // Añadimos solo puntos reales a la polilínea
+        } else if (this.currentPolyline && !this.isHighFidelityMode) {
+          // Añadimos solo puntos reales a la polilínea si estamos en modo legacy
           this.currentPolyline.addLatLng([p.lat, p.lng]);
         }
 
@@ -787,6 +843,124 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     if (m.includes('car') || m.includes('coch') || m.includes('driv')) return 1.5; // Reducido de 3.5 a 1.5
     if (m.includes('bus')) return 2.0;
     return 1;
+  }
+
+  // ====================================================================
+  // ✅ FASE 3: INTERACTIVIDAD DE POPUPS Y NAVEGACIÓN INTRAGRUPO
+  // ====================================================================
+
+  private globalPopupClickHandler = (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+
+    // 1. Clic en el área de contenido (abrir medio)
+    const contentArea = target.closest('.popup-content-area') as HTMLElement;
+    if (contentArea) {
+      const photoName = contentArea.getAttribute('data-photo-name');
+      if (photoName && this.multimedia) {
+        const archivo = this.multimedia.find((m: any) => {
+          const nombre = m.nombreArchivo || m.nombre || '';
+          return nombre.includes(photoName) || photoName.includes(nombre);
+        });
+        if (archivo) {
+          console.log('👆 Click interceptado en medio estático:', photoName);
+          e.preventDefault();
+          e.stopPropagation();
+          this.abrirVisorFoto(archivo);
+        } else {
+          console.warn('⚠️ No se encontró el medio en la lista local:', photoName);
+        }
+      }
+      return;
+    }
+
+    // 2. Clic en botones de navegación (prev/next)
+    const actionBtn = target.closest('[data-action]') as HTMLElement;
+    if (actionBtn) {
+      const container = target.closest('[data-group-lat]') as HTMLElement;
+      if (container) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const lat = parseFloat(container.getAttribute('data-group-lat') || '0');
+        const lng = parseFloat(container.getAttribute('data-group-lng') || '0');
+        const currentIndex = parseInt(container.getAttribute('data-current-index') || '0', 10);
+
+        // Agrupar medios por proximidad
+        const groupItems = this.multimedia.filter((m: any) => {
+          let mLat = m.latitud;
+          let mLng = m.longitud;
+          if ((!mLat || !mLng) && m.geolocalizacion) {
+            try {
+              const geo = typeof m.geolocalizacion === 'string' ? JSON.parse(m.geolocalizacion) : m.geolocalizacion;
+              mLat = geo.latitud || geo.latitude;
+              mLng = geo.longitud || geo.longitude;
+            } catch(err) {}
+          }
+          return mLat && mLng && Math.abs(mLat - lat) < 0.0001 && Math.abs(mLng - lng) < 0.0001;
+        });
+
+        const action = actionBtn.getAttribute('data-action');
+        if (action && groupItems.length > 1) {
+          let newIndex = currentIndex;
+          if (action === 'prev') {
+            newIndex = (currentIndex - 1 + groupItems.length) % groupItems.length;
+          } else if (action === 'next') {
+            newIndex = (currentIndex + 1) % groupItems.length;
+          }
+
+          const newHtml = this.createPopupContent(groupItems, newIndex, lat, lng);
+          const leafletPopupContent = target.closest('.leaflet-popup-content') as HTMLElement;
+          if (leafletPopupContent) {
+            leafletPopupContent.innerHTML = newHtml;
+          }
+        }
+      }
+    }
+  };
+
+  private createPopupContent(groupItems: any[], index: number, lat: number, lng: number): string {
+    const item = groupItems[index];
+    const total = groupItems.length;
+    const tipo = item.tipo || 'foto';
+    const photoName = item.nombreArchivo || item.nombre || 'Desconocido';
+    const emoji = tipo === 'video' ? '🎥' : tipo === 'audio' ? '🎵' : '📸';
+    const tipoTexto = tipo.toUpperCase();
+
+    const navControls = total > 1 ? `
+      <div style="display: flex; justify-content: space-between; margin-top: 15px; align-items: center; gap: 10px;">
+        <button class="popup-prev" data-action="prev" style="
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          border: none; border-radius: 8px; padding: 10px 20px; font-size: 18px; cursor: pointer; color: white;
+          box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3); font-weight: bold;
+        ">◀</button>
+        <span style="font-size: 14px; font-weight: bold; color: #333; background: #f5f5f5; padding: 8px 16px; border-radius: 20px;">
+          ${index + 1} / ${total}
+        </span>
+        <button class="popup-next" data-action="next" style="
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          border: none; border-radius: 8px; padding: 10px 20px; font-size: 18px; cursor: pointer; color: white;
+          box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3); font-weight: bold;
+        ">▶</button>
+      </div>
+    ` : '';
+
+    return `
+      <div style="text-align: center; padding: 8px;" data-group-lat="${lat}" data-group-lng="${lng}" data-current-index="${index}">
+        <div class="popup-content-area" data-photo-name="${photoName}" data-photo-type="${tipo}" style="
+          cursor: pointer; padding: 15px; background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+          border-radius: 12px; transition: all 0.2s; border: 2px solid transparent;
+        ">
+          <p style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold; color: #333;">${emoji} ${tipoTexto}</p>
+          <p style="margin: 8px 0; font-size: 10px; word-break: break-all; color: #999; background: white; padding: 6px; border-radius: 6px;">
+            ${photoName}
+          </p>
+          <p style="margin: 12px 0 0 0; font-size: 14px; color: #667eea; font-weight: bold; background: white; padding: 10px; border-radius: 8px;">
+            👆 Toca aquí para ver
+          </p>
+        </div>
+        ${navControls}
+      </div>
+    `;
   }
 }
 

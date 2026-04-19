@@ -430,6 +430,7 @@ db.run(
     rutaMapaCompleto TEXT,
     rutaManifest TEXT,
     rutaEstadisticas TEXT,
+    rutaVisualSession TEXT,
     
     -- Timestamps (se establecen en código Node.js, no con DEFAULT)
     fechaCreacion TEXT DEFAULT NULL,
@@ -680,6 +681,7 @@ db.run(`
     rutaMapaCompleto TEXT,
     rutaManifest TEXT,
     rutaEstadisticas TEXT,
+    rutaVisualSession TEXT,
     
     fechaCreacion TEXT DEFAULT (datetime('now')),
     fechaActualizacion TEXT DEFAULT (datetime('now')),
@@ -2598,6 +2600,8 @@ app.get('/itinerarios/:id', (req, res) => {
 
 // 3️⃣ POST crear un nuevo itinerario
 app.post('/itinerarios', (req, res) => {
+  console.log('📥 [POST /itinerarios] Datos recibidos:', req.body);
+
   const {
     viajePrevistoId,
     fechaInicio,
@@ -2611,20 +2615,39 @@ app.post('/itinerarios', (req, res) => {
     tipoDeViaje
   } = req.body;
 
+  // Validación básica y valores por defecto para campos NOT NULL
+  if (!viajePrevistoId || !fechaInicio || !fechaFin) {
+    console.error('⚠️ [POST /itinerarios] Faltan campos obligatorios');
+    return res.status(400).json({ error: 'viajePrevistoId, fechaInicio y fechaFin son obligatorios' });
+  }
+
   const sql = `INSERT INTO ItinerarioGeneral 
     (viajePrevistoId, fechaInicio, horaInicio, fechaFin, horaFin, duracionDias, destinosPorDia, descripcionGeneral, climaGeneral, tipoDeViaje) 
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-  // Guardamos destinosPorDia como JSON string
-  const destinosJSON = JSON.stringify(destinosPorDia);
+  // Corregido: solo stringify si NO es ya un string
+  const destinosJSON = (typeof destinosPorDia === 'string') ? destinosPorDia : JSON.stringify(destinosPorDia || '');
 
   db.run(
     sql,
-    [viajePrevistoId, fechaInicio, horaInicio, fechaFin, horaFin, duracionDias, destinosJSON, descripcionGeneral, climaGeneral, tipoDeViaje],
+    [
+      viajePrevistoId, 
+      fechaInicio, 
+      horaInicio || '', 
+      fechaFin, 
+      horaFin || '', 
+      duracionDias || 0, 
+      destinosJSON, 
+      descripcionGeneral || '', 
+      climaGeneral || '', 
+      tipoDeViaje || 'urbana'
+    ],
     function (err) {
       if (err) {
+        console.error('❌ [POST /itinerarios] Error SQLite:', err.message);
         return res.status(500).json({ error: err.message });
       }
+      console.log(`✅ [POST /itinerarios] Creado ID: ${this.lastID}`);
       res.status(201).json({ id: this.lastID });
     }
   );
@@ -2633,6 +2656,9 @@ app.post('/itinerarios', (req, res) => {
 // 4️⃣ PUT actualizar un itinerario existente
 app.put('/itinerarios/:id', (req, res) => {
   const { id } = req.params;
+  console.log(`📥 [PUT /itinerarios/${id}] Procesando actualización...`);
+  console.log('📦 Body:', req.body);
+
   const {
     viajePrevistoId,
     fechaInicio,
@@ -2659,15 +2685,38 @@ app.put('/itinerarios/:id', (req, res) => {
     tipoDeViaje = ?
     WHERE id = ?`;
 
-  const destinosJSON = JSON.stringify(destinosPorDia);
+  // Corregido: solo stringify si NO es ya un string
+  const destinosJSON = (typeof destinosPorDia === 'string') ? destinosPorDia : JSON.stringify(destinosPorDia || '');
+
+  const params = [
+    viajePrevistoId, 
+    fechaInicio, 
+    horaInicio || '', 
+    fechaFin, 
+    horaFin || '', 
+    duracionDias || 0, 
+    destinosJSON, 
+    descripcionGeneral || '', 
+    climaGeneral || '', 
+    tipoDeViaje || 'urbana', 
+    id
+  ];
 
   db.run(
     sql,
-    [viajePrevistoId, fechaInicio, horaInicio, fechaFin, horaFin, duracionDias, destinosJSON, descripcionGeneral, climaGeneral, tipoDeViaje, id],
+    params,
     function (err) {
       if (err) {
+        console.error(`❌ [PUT /itinerarios/${id}] Error SQLite:`, err.message);
         return res.status(500).json({ error: err.message });
       }
+      
+      console.log(`✅ [PUT /itinerarios/${id}] Cambios realizados: ${this.changes}`);
+      
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Itinerario no encontrado para actualizar' });
+      }
+      
       res.json({ changes: this.changes });
     }
   );
@@ -6207,6 +6256,7 @@ app.post('/import-tracking', (req, res, next) => {
     let rutaMapaCompleto = null;
     let rutaManifest = null;
     let rutaEstadisticas = null;
+    let rutaVisualSession = null;
 
     let fechaCreacionActividad;
     let fechaActualizacionActividad = new Date().toISOString();
@@ -6271,9 +6321,9 @@ app.post('/import-tracking', (req, res, next) => {
           distanciaKm, distanciaMetros, duracionSegundos, duracionFormateada, 
           velocidadMediaKmh, velocidadMaximaKmh, velocidadMinimaKmh, 
           calorias, pasosEstimados, puntosGPS, perfilTransporte,
-          rutaGpxCompleto, rutaMapaCompleto, rutaManifest, rutaEstadisticas,
+          rutaGpxCompleto, rutaMapaCompleto, rutaManifest, rutaEstadisticas, rutaVisualSession,
           fechaCreacion, fechaActualizacion) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           viajeId,
           itinerarioId,
@@ -6297,6 +6347,7 @@ app.post('/import-tracking', (req, res, next) => {
           rutaMapaCompleto,
           rutaManifest,
           rutaEstadisticas,
+          rutaVisualSession,
           fechaCreacionActividad,
           fechaActualizacionActividad
         ],
@@ -6692,14 +6743,25 @@ app.post('/import-tracking', (req, res, next) => {
       console.log('✅ Estadísticas procesadas (guardado en actividades)');
     }
 
+    // ✨ NUEVO: VISUAL_SESSION.JSON - MODO ALTA FIDELIDAD
+    const visualSessionFile = req.files.find(f => path.basename(decodeURIComponent(f.originalname)) === 'visual_session.json');
+    if (visualSessionFile) {
+      const visualSessionDest = path.join(actividadPath, 'metadata', 'visual_session.json');
+      fs.renameSync(visualSessionFile.path, visualSessionDest);
+      rutaVisualSession = path.relative(uploadsPath, visualSessionDest).replace(/\\/g, '/');
+      console.log('✅ visual_session.json procesado (Modo Alta Fidelidad activado)');
+    } else {
+      console.log('⚠️ visual_session.json no encontrado (Modo Legacy activado)');
+    }
+
     // ACTUALIZAR REFERENCIAS EN ACTIVIDADES
     console.log('\n📝 Actualizando referencias de archivos generales en actividades...');
     await new Promise((resolve, reject) => {
       db.run(
         `UPDATE actividades 
-          SET rutaGpxCompleto = ?, rutaMapaCompleto = ?, rutaManifest = ?, rutaEstadisticas = ?, fechaActualizacion = ?
+          SET rutaGpxCompleto = ?, rutaMapaCompleto = ?, rutaManifest = ?, rutaEstadisticas = ?, rutaVisualSession = ?, fechaActualizacion = ?
           WHERE id = ?`,
-        [rutaGpxCompleto, rutaMapaCompleto, rutaManifest, rutaEstadisticas, new Date().toISOString(), actividadId],
+        [rutaGpxCompleto, rutaMapaCompleto, rutaManifest, rutaEstadisticas, rutaVisualSession, new Date().toISOString(), actividadId],
         (err) => {
           if (err) {
             console.warn('⚠️ Error actualizando rutas:', err.message);
@@ -6710,6 +6772,7 @@ app.post('/import-tracking', (req, res, next) => {
           console.log(`   🗺️ Mapa completo: ${rutaMapaCompleto || 'N/A'}`);
           console.log(`   📋 Manifest: ${rutaManifest || 'N/A'}`);
           console.log(`   📊 Estadísticas: ${rutaEstadisticas || 'N/A'}`);
+          console.log(`   🎨 Visual Session: ${rutaVisualSession || 'N/A'}`);
           resolve();
         }
       );
