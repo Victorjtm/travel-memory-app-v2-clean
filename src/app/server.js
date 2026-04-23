@@ -3458,6 +3458,36 @@ app.get('/actividades/:id/estadisticas', (req, res) => {
   );
 });
 
+// GET Visual Session JSON de una actividad (Modo Alta Fidelidad)
+app.get('/actividades/:id/visual-session', (req, res) => {
+  const id = req.params.id;
+
+  db.get(
+    'SELECT rutaVisualSession FROM actividades WHERE id = ?',
+    [id],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!row || !row.rutaVisualSession) {
+        return res.status(404).json({ error: 'visual_session.json no disponible para esta actividad' });
+      }
+
+      const filePath = path.join(uploadsPath, row.rutaVisualSession);
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'Archivo visual_session.json no existe en disco' });
+      }
+
+      try {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        res.json(data);
+      } catch (parseErr) {
+        console.error('❌ [visual-session] Error parseando JSON:', parseErr.message);
+        res.status(500).json({ error: 'El archivo visual_session.json está corrupto' });
+      }
+    }
+  );
+});
+
 console.log('✅ Endpoints de visualización de archivos registrados correctamente');
 
 

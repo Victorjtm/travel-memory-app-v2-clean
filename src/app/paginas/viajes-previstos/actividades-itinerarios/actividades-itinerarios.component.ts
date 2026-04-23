@@ -42,6 +42,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   mostrarReproductorAnimado = false; // ✨ NUEVA PROPIEDAD
 
   urlMapaDataURL: string | null = null;
+  fotosActividad: any[] = [];
   estadisticasActuales: any = null;
   actividadSeleccionada: number | null = null;
 
@@ -62,7 +63,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   trackSegments: any[] = [];
   turningPoint: any = null;
 
-  // ✅ NUEVAS PROPIEDADES: Estadísticas completas para el panel
+  // ✅ NUEVAS PROPIEDAD: Estadísticas completas para el panel
   estadisticasGPX: {
     distanciaKm?: string;
     distanciaMetros?: number;
@@ -84,6 +85,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     distanciaVueltaMetros?: number;
     tiempoIdaFormateado?: string;
     tiempoVueltaFormateado?: string;
+    altitud?: { min?: number, max?: number, ganancia?: number, perdida?: number };
   } = {
       distanciaKm: '0.00',
       distanciaMetros: 0,
@@ -98,7 +100,8 @@ export class ActividadesItinerariosComponent implements OnInit {
       distanciaIdaMetros: 0,
       distanciaVueltaMetros: 0,
       tiempoIdaFormateado: '00:00:00',
-      tiempoVueltaFormateado: '00:00:00'
+      tiempoVueltaFormateado: '00:00:00',
+      altitud: { min: 0, max: 0, ganancia: 0, perdida: 0 }
     };
 
   // ✨ NUEVAS PROPIEDADES PARA ANIMACIÓN
@@ -107,13 +110,27 @@ export class ActividadesItinerariosComponent implements OnInit {
   desgloseTransporteAnimacion: any[] = [];
   actividadAnimacion: any = null; // ✨ NUEVA PROPIEDAD
 
+  // ✨ MODO ALTA FIDELIDAD (visual_session.json)
+  visualSessionData: any = null;
+  isHighFidelityMode = false;
+  private visualSessionGroup: any = null;
 
-  // ✅ COLORES POR MODO DE TRANSPORTE
+  // ✅ COLORES POR MODO DE TRANSPORTE (Fallback GPX)
   private readonly MODE_COLORS = {
     walking: { outbound: '#059669', return: '#6EE7B7' },
     running: { outbound: '#2563EB', return: '#93C5FD' },
     cycling: { outbound: '#D97706', return: '#FCD34D' },
     driving: { outbound: '#DC2626', return: '#FCA5A5' }
+  };
+
+  // Paleta de colores directa por nombre de modo (idéntica a GpxAnimationComponent)
+  private readonly MODE_COLORS_DIRECT: { [key: string]: string } = {
+    walking: '#4CAF50', walk: '#4CAF50', caminar: '#4CAF50', andando: '#4CAF50',
+    driving: '#F44336', car: '#F44336', coche: '#F44336',
+    cycling: '#FF9800', bicycle: '#FF9800', bici: '#FF9800',
+    running: '#2196F3', correr: '#2196F3',
+    bus: '#9C27B0', autobus: '#9C27B0',
+    transport: '#9E9E9E', transporte: '#9E9E9E'
   };
 
 
@@ -329,16 +346,19 @@ export class ActividadesItinerariosComponent implements OnInit {
     });
   }
 
-  // ✅ MEJORADO: Ver GPX con carga de estadísticas
+  // ✅ MEJORADO: Ver GPX con Alta Fidelidad si existe visual_session.json
   verGPX(actividadId: number): void {
-    console.log('📍 Obteniendo GPX para actividad:', actividadId);
+    console.log('📍 Iniciando Ver GPX para actividad:', actividadId);
 
-    // ✅ PASO 1: Cargar estadísticas primero
+    // Resetear estado de alta fidelidad para esta apertura
+    this.visualSessionData = null;
+    this.isHighFidelityMode = false;
+    this.visualSessionGroup = null;
+    this.actividadSeleccionada = actividadId;
+
+    // ✅ PASO 1: Cargar estadísticas (paralelo con los demás pasos)
     this.actividadService.obtenerEstadisticas(actividadId).subscribe({
       next: (stats) => {
-        console.log('✅ Estadísticas recibidas:', stats);
-
-        // Mapear estadísticas al formato del panel
         this.estadisticasGPX = {
           distanciaKm: stats.distancia?.km || '0.00',
           distanciaMetros: stats.distancia?.metros || 0,
@@ -355,24 +375,49 @@ export class ActividadesItinerariosComponent implements OnInit {
           distanciaIdaMetros: stats.idaVuelta?.ida?.metros || 0,
           distanciaVueltaMetros: stats.idaVuelta?.vuelta?.metros || 0,
           tiempoIdaFormateado: stats.idaVuelta?.ida?.tiempo || '00:00:00',
-          tiempoVueltaFormateado: stats.idaVuelta?.vuelta?.tiempo || '00:00:00'
+          tiempoVueltaFormateado: stats.idaVuelta?.vuelta?.tiempo || '00:00:00',
+          altitud: stats.altitud || { min: null, max: null, ganancia: null, perdida: null }
         };
-
         console.log('✅ Estadísticas mapeadas:', this.estadisticasGPX);
       },
       error: err => console.warn('⚠️ Error cargando estadísticas:', err)
     });
 
-    // ✅ PASO 2: Cargar GPX
+    // ✅ PASO 2: Intentar cargar visual_session.json (Alta Fidelidad)
+    //   → Independientemente del resultado, después cargamos el GPX como base de coordenadas.
+    this.actividadService.obtenerVisualSession(actividadId).subscribe({
+      next: (sessionData) => {
+        if (sessionData?.mapState?.layers && sessionData.mapState.layers.length > 0) {
+          this.visualSessionData = sessionData;
+          this.isHighFidelityMode = true;
+          console.log(`🎨 [Alta Fidelidad] visual_session.json cargado. Capas: ${sessionData.mapState.layers.length}`);
+        } else {
+          console.warn('⚠️ [Alta Fidelidad] JSON sin capas válidas. Activando modo Legacy.');
+        }
+        this.cargarGPXYAbrirModal(actividadId);
+      },
+      error: (err) => {
+        // 404 es esperado si la actividad no tiene sesión visual → fallback limpio
+        const statusCode = err?.status;
+        if (statusCode === 404) {
+          console.log('ℹ️ [Legacy] No hay visual_session.json para esta actividad. Usando GPX.');
+        } else {
+          console.warn('⚠️ [Legacy] Error descargando visual_session.json:', err?.message);
+        }
+        this.isHighFidelityMode = false;
+        this.cargarGPXYAbrirModal(actividadId);
+      }
+    });
+  }
+
+  /** Paso final: leer el GPX, extraer coordenadas de fallback y abrir el modal */
+  private cargarGPXYAbrirModal(actividadId: number): void {
     this.actividadService.obtenerGPX(actividadId).subscribe({
       next: (blob) => {
         const reader = new FileReader();
         reader.onload = (e: any) => {
-          const gpxText = e.target.result;
-          this.parseGPX(gpxText);
-          this.actividadSeleccionada = actividadId;
+          this.parseGPX(e.target.result);
           this.mostrarModalGPXMapa = true;
-
           this.cdr.detectChanges();
           this.ngZone.onStable.pipe(take(1)).subscribe(() => {
             this.inicializarMapaGPX();
@@ -488,91 +533,210 @@ export class ActividadesItinerariosComponent implements OnInit {
     }
 
     console.log('✅ GPX parseado. Puntos encontrados:', this.coordenadasGPX.length);
+
+    // Extraer Waypoints (Punto de Giro / Save Point)
+    const wpts = gpxDoc.getElementsByTagName('wpt');
+    this.turningPoint = null;
+    for (let i = 0; i < wpts.length; i++) {
+      const name = wpts[i].getElementsByTagName('name')[0]?.textContent;
+      // Solo si coincide con el nombre esperado
+      if (name === 'Punto de Giro' || name === 'Punto de Guardado' || name === 'Turn Around') {
+        const lat = parseFloat(wpts[i].getAttribute('lat') || '0');
+        const lon = parseFloat(wpts[i].getAttribute('lon') || '0');
+        this.turningPoint = { lat, lon, name };
+        console.log('🔄 Punto de giro detectado en GPX:', this.turningPoint);
+        break;
+      }
+    }
   }
 
-  // Inicializar mapa Leaflet con satélite y fotos
+  // Inicializar mapa Leaflet — soporta Alta Fidelidad (visual_session.json) y Legacy (GPX)
   inicializarMapaGPX(): void {
     if (this.coordenadasGPX.length === 0) {
       console.warn('⚠️ No hay coordenadas para mostrar');
       return;
     }
 
-    // Importar Leaflet dinámicamente
     import('leaflet').then(L => {
       // Destruir mapa anterior si existe
       if (this.mapaGPX) {
         this.mapaGPX.remove();
+        this.mapaGPX = null;
       }
 
-      // ✨ MEJORADO: Buscar contenedor con validaciones
       const container = document.getElementById('mapa-gpx-container');
       if (!container) {
         console.error('❌ Contenedor del mapa no encontrado');
         return;
       }
-
-      // ✨ IMPORTANTE: Limpiar contenedor antes
       container.innerHTML = '';
 
       try {
         this.mapaGPX = L.map(container, {
           attributionControl: true,
-          zoomControl: true
+          zoomControl: true,
+          preferCanvas: true
         }).setView([this.coordenadasGPX[0][0], this.coordenadasGPX[0][1]], 13);
 
-        // ✨ CAPA DE SATÉLITE (ESRI)
-        L.tileLayer(
+        // --- CAPAS DE TILES ---
+        const satellite = L.tileLayer(
           'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-          {
-            attribution: 'Tiles &copy; Esri',
-            maxZoom: 18
-          }
-        ).addTo(this.mapaGPX);
+          { attribution: 'Tiles &copy; Esri', maxZoom: 18 }
+        );
+        const streets = L.tileLayer(
+          'https://{s}.tile.openstreetmap.org/{z}/{y}/{x}.png',
+          { attribution: '&copy; OpenStreetMap', maxZoom: 19 }
+        );
+        satellite.addTo(this.mapaGPX);
+        L.control.layers({ 'Satélite': satellite, 'Callejero': streets }).addTo(this.mapaGPX);
 
-        // ✅ MEJORADO: Dibujar ruta con polyline roja
-        const routeLine = L.polyline(this.coordenadasGPX, {
-          color: '#FF0000',
-          weight: 4,
-          opacity: 0.85,
-          smoothFactor: 1
-        }).addTo(this.mapaGPX);
+        // ================================================================
+        // MODO ALTA FIDELIDAD: Reconstruir capas desde visual_session.json
+        // ================================================================
+        if (this.isHighFidelityMode && this.visualSessionData?.mapState?.layers) {
+          console.log('🎨 [Alta Fidelidad] Renderizando capas del visual_session.json...');
+          this.visualSessionGroup = L.layerGroup().addTo(this.mapaGPX);
 
-        // ✅ NUEVO: Añadir flechas direccionales cada N puntos
-        this.addDirectionArrows(L, this.coordenadasGPX);
+          this.visualSessionData.mapState.layers.forEach((layer: any) => {
+            try {
+              if (layer.type === 'polyline' && layer.latLngs?.length > 0) {
+                // Reconstruir opciones: preservar color y grosor, pero forzar opacidad correcta
+                const opts = {
+                  color: layer.options?.color || '#4CAF50',
+                  weight: layer.options?.weight || 5,
+                  opacity: layer.options?.opacity ?? 0.9,
+                  lineCap: layer.options?.lineCap || 'round',
+                  lineJoin: layer.options?.lineJoin || 'round'
+                };
+                L.polyline(layer.latLngs, opts).addTo(this.visualSessionGroup);
 
+              } else if (layer.type === 'marker' && layer.latLng) {
+                // Para marcadores de fase (puntos de cambio de transporte)
+                const modeKey = (layer.mode || '').toLowerCase();
+                const color = this.MODE_COLORS_DIRECT[modeKey] || '#4CAF50';
+                const icon = L.divIcon({
+                  className: 'transport-phase-marker',
+                  html: `<div style="
+                    background:${color};
+                    color:white;
+                    border-radius:50%;
+                    width:28px;height:28px;
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:14px;
+                    border:2px solid white;
+                    box-shadow:0 2px 6px rgba(0,0,0,0.4);
+                  ">${layer.icon?.html || '📍'}</div>`,
+                  iconSize: [28, 28],
+                  iconAnchor: [14, 14]
+                });
+                const m = L.marker(layer.latLng, { icon }).addTo(this.visualSessionGroup);
+                if (layer.popup) m.bindPopup(layer.popup);
+              }
+            } catch (layerErr) {
+              console.warn('⚠️ Error renderizando capa:', layerErr);
+            }
+          });
 
-        // Marcador de INICIO (verde)
+          const capasPolyline = this.visualSessionData.mapState.layers.filter((l: any) => l.type === 'polyline');
+          console.log(`✅ [Alta Fidelidad] ${capasPolyline.length} segmentos y ${this.visualSessionData.mapState.layers.length - capasPolyline.length} marcadores renderizados.`);
+
+        } else {
+          // ================================================================
+          // MODO LEGACY (FALLBACK): Polyline única desde coordenadas GPX
+          // ================================================================
+          console.log('🗺️ [Legacy] Renderizando polyline desde GPX crudo.');
+          L.polyline(this.coordenadasGPX, {
+            color: '#FF0000',
+            weight: 4,
+            opacity: 0.85,
+            smoothFactor: 1,
+            dashArray: '5, 10'
+          }).addTo(this.mapaGPX);
+          this.addDirectionArrows(L, this.coordenadasGPX);
+        }
+
+        // ================================================================
+        // CAPAS FIJAS (presentes en AMBOS modos)
+        // ================================================================
+
+        // Marcador de INICIO
         L.circleMarker(this.coordenadasGPX[0], {
-          radius: 8,
-          fillColor: '#00FF00',
-          color: '#000',
+          radius: 9,
+          fillColor: '#00C853',
+          color: '#fff',
           weight: 2,
           opacity: 1,
-          fillOpacity: 0.8
-        }).bindPopup('🟢 Inicio').addTo(this.mapaGPX);
+          fillOpacity: 0.95
+        }).bindPopup('🟢 <strong>Inicio</strong>').addTo(this.mapaGPX);
 
-        // Marcador de FIN (rojo)
+        // Marcador de FIN
         L.circleMarker(this.coordenadasGPX[this.coordenadasGPX.length - 1], {
-          radius: 8,
-          fillColor: '#FF0000',
-          color: '#000',
+          radius: 9,
+          fillColor: '#D50000',
+          color: '#fff',
           weight: 2,
           opacity: 1,
-          fillOpacity: 0.8
-        }).bindPopup('🔴 Fin').addTo(this.mapaGPX);
+          fillOpacity: 0.95
+        }).bindPopup('🔴 <strong>Fin</strong>').addTo(this.mapaGPX);
 
-        // ✨ NUEVO: Añadir marcadores de fotos (como en la APK)
+        // Marcador de Punto de Giro (si existe en el GPX)
+        if (this.turningPoint) {
+          L.marker([this.turningPoint.lat, this.turningPoint.lon], {
+            icon: L.divIcon({
+              className: 'turning-marker',
+              html: '🔄',
+              iconSize: [30, 30],
+              iconAnchor: [15, 15]
+            })
+          }).bindPopup(`<strong>${this.turningPoint.name}</strong>`).addTo(this.mapaGPX);
+        }
+
+        // Marcadores de fotos/vídeos del backend
         this.cargarYAnadirFotos();
 
-        // Ajustar vista a la ruta completa
-        const bounds = L.latLngBounds(this.coordenadasGPX);
-        this.mapaGPX.fitBounds(bounds, { padding: [50, 50] });
+        // Ajustar vista al track completo
+        this.mapaGPX.fitBounds(L.latLngBounds(this.coordenadasGPX), { padding: [50, 50] });
 
-        console.log('✅ Mapa GPX inicializado con satélite ESRI. Puntos:', this.coordenadasGPX.length);
+        const modo = this.isHighFidelityMode ? 'Alta Fidelidad' : 'Legacy';
+        console.log(`✅ Mapa GPX [${modo}] inicializado. Puntos GPX: ${this.coordenadasGPX.length}`);
+
+        setTimeout(() => { if (this.mapaGPX) this.mapaGPX.invalidateSize(); }, 120);
+
       } catch (error) {
         console.error('❌ Error inicializando Leaflet:', error);
       }
     });
+  }
+
+  // Helper para el contenido del popup
+  private crearPopupContent(archivos: any[], numeroSecuencial: number, cantidadArchivos: number, tieneMultiples: boolean): string {
+    const primerArchivo = archivos[0].archivo;
+    let popupContent = `
+        <div class="photo-popup-custom" style="max-width: 300px; font-family: sans-serif;">
+          <div class="photo-popup-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <span style="font-size: 20px;">#${numeroSecuencial}</span>
+            <strong>${tieneMultiples ? `${cantidadArchivos} archivos` : primerArchivo.tipo === 'foto' ? 'Foto' : 'Video'}</strong>
+          </div>
+      `;
+
+    archivos.forEach((item) => {
+      const archivo = item.archivo;
+      const emoji = archivo.tipo === 'foto' ? '📷' : '🎬';
+      popupContent += `
+          <div class="archivo-miniatura" style="padding: 6px; margin: 4px 0; background: #f5f5f5; border-radius: 4px; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 16px;">${emoji}</span>
+            <span style="font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${archivo.nombreArchivo}</span>
+          </div>
+        `;
+    });
+
+    popupContent += `
+          <div class="photo-popup-action" style="margin-top: 10px; text-align: center; color: #666; font-size: 11px;">
+            <span>👆 Haz clic en el marcador para ver</span>
+          </div>
+        </div>
+      `;
+    return popupContent;
   }
 
   // ✨ NUEVO: Cargar fotos y videos desde backend y añadirlas al mapa con agrupación
@@ -585,20 +749,14 @@ export class ActividadesItinerariosComponent implements OnInit {
     const backendUrl = environment.apiUrl;
     const url = `${backendUrl}/archivos?actividadId=${this.actividadSeleccionada}`;
 
-    console.log('🔗 URL de solicitud:', url);
-
     this.http.get<any[]>(url).subscribe({
       next: (archivos: any[]) => {
-        console.log('📷 Archivos obtenidos del backend:', archivos);
-
-        // Filtrar fotos y videos con geolocalización
         const multimedia = archivos.filter((f: any) =>
           (f.tipo === 'foto' || f.tipo === 'video') && f.geolocalizacion
         );
 
-        console.log(`📷 Archivos multimedia con coordenadas GPS: ${multimedia.length}`);
+        this.fotosActividad = multimedia;
 
-        // ✅ PASO 1: Parsear coordenadas y ordenar cronológicamente
         const archivosConCoordenadas = multimedia.map((archivo: any) => {
           try {
             const geoData = typeof archivo.geolocalizacion === 'string'
@@ -618,36 +776,25 @@ export class ActividadesItinerariosComponent implements OnInit {
           return null;
         }).filter(Boolean);
 
-        // Ordenar por timestamp (cronológicamente)
         archivosConCoordenadas.sort((a, b) => {
           const timeA = new Date(a!.timestamp).getTime();
           const timeB = new Date(b!.timestamp).getTime();
           return timeA - timeB;
         });
 
-        console.log(`✅ ${archivosConCoordenadas.length} archivos ordenados cronológicamente`);
-
-        // ✅ PASO 2: Agrupar por ubicación cercana
         const grupos = this.agruparArchivosPorUbicacion(archivosConCoordenadas);
 
-        console.log(`📍 Creados ${grupos.length} grupos de ubicación`);
-
-        // ✅ PASO 3: Crear marcadores para cada grupo
         grupos.forEach((grupo, index) => {
           this.anadirMarcadorGrupo(
             grupo.lat,
             grupo.lng,
             grupo.archivos,
-            index + 1 // Número secuencial (1-indexed)
+            index + 1
           );
         });
-
-        console.log(`✅ Procesados ${multimedia.length} archivos multimedia con GPS`);
       },
       error: err => {
         console.error('❌ Error cargando archivos:', err);
-        console.error('Status:', err.status);
-        console.error('URL intentada:', url);
       }
     });
   }
@@ -658,17 +805,14 @@ export class ActividadesItinerariosComponent implements OnInit {
     const grupos: any[] = [];
 
     archivosConCoordenadas.forEach(item => {
-      // Buscar si ya existe un grupo cercano
       const grupoExistente = grupos.find(g =>
         Math.abs(g.lat - item.lat) < TOLERANCIA_GPS &&
         Math.abs(g.lng - item.lng) < TOLERANCIA_GPS
       );
 
       if (grupoExistente) {
-        // Añadir al grupo existente
         grupoExistente.archivos.push(item);
       } else {
-        // Crear nuevo grupo
         grupos.push({
           lat: item.lat,
           lng: item.lng,
@@ -688,7 +832,6 @@ export class ActividadesItinerariosComponent implements OnInit {
       const cantidadArchivos = archivos.length;
       const tieneMultiples = cantidadArchivos > 1;
 
-      // Determinar icono principal (si hay mezcla, usar el del primer archivo)
       const primerArchivo = archivos[0].archivo;
       const esFoto = primerArchivo.tipo === 'foto';
       const colorPrincipal = esFoto ? '#FF4444' : '#2196F3';
@@ -697,14 +840,10 @@ export class ActividadesItinerariosComponent implements OnInit {
         className: 'photo-marker-custom',
         html: `
         <div class="photo-marker-wrapper">
-          <!-- Círculo de fondo con sombra -->
           <div class="photo-marker-circle">
             <svg width="44" height="44" viewBox="0 0 44 44">
-              <!-- Sombra -->
               <circle cx="22" cy="24" r="18" fill="rgba(0,0,0,0.3)" />
-              <!-- Fondo blanco -->
               <circle cx="22" cy="22" r="18" fill="white" stroke="${colorPrincipal}" stroke-width="3"/>
-              <!-- Icono de cámara o video -->
               <g transform="translate(10, 10)">
                 ${esFoto
             ? `<path d="M12 3L14 6H18C19.1 6 20 6.9 20 8V18C20 19.1 19.1 20 4 18V8C4 6.9 4.9 6 6 6H10L12 3Z" fill="${colorPrincipal}"/>
@@ -716,45 +855,9 @@ export class ActividadesItinerariosComponent implements OnInit {
               </g>
             </svg>
           </div>
-          
-          <!-- Badge con número secuencial (esquina superior izquierda) -->
-          <div class="photo-marker-sequence" style="
-            position: absolute;
-            top: -4px;
-            left: -4px;
-            background: #4CAF50;
-            color: white;
-            border-radius: 50%;
-            width: 18px;
-            height: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 10px;
-            font-weight: bold;
-            border: 2px solid white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          ">${numeroSecuencial}</div>
-          
+          <div class="photo-marker-sequence" style="position: absolute; top: -4px; left: -4px; background: #4CAF50; color: white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${numeroSecuencial}</div>
           ${tieneMultiples ? `
-          <!-- Badge con contador (esquina inferior derecha) -->
-          <div class="photo-marker-count" style="
-            position: absolute;
-            bottom: -4px;
-            right: -4px;
-            background: #FF9800;
-            color: white;
-            border-radius: 50%;
-            width: 18px;
-            height: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 10px;
-            font-weight: bold;
-            border: 2px solid white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          ">${cantidadArchivos}</div>
+          <div class="photo-marker-count" style="position: absolute; bottom: -4px; right: -4px; background: #FF9800; color: white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${cantidadArchivos}</div>
           ` : ''}
         </div>
       `,
@@ -763,50 +866,17 @@ export class ActividadesItinerariosComponent implements OnInit {
         popupAnchor: [0, -44]
       });
 
-      // Crear contenido del popup
-      let popupContent = `
-        <div class="photo-popup-custom" style="max-width: 300px;">
-          <div class="photo-popup-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-            <span style="font-size: 20px;">#${numeroSecuencial}</span>
-            <strong>${tieneMultiples ? `${cantidadArchivos} archivos` : primerArchivo.tipo === 'foto' ? 'Foto' : 'Video'}</strong>
-          </div>
-      `;
-
-      // Añadir miniaturas de cada archivo
-      archivos.forEach((item, idx) => {
-        const archivo = item.archivo;
-        const emoji = archivo.tipo === 'foto' ? '📷' : '🎬';
-        popupContent += `
-          <div class="archivo-miniatura" style="
-            padding: 6px;
-            margin: 4px 0;
-            background: #f5f5f5;
-            border-radius: 4px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: background 0.2s;
-          " onmouseover="this.style.background='#e0e0e0'" onmouseout="this.style.background='#f5f5f5'">
-            <span style="font-size: 16px;">${emoji}</span>
-            <span style="font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${archivo.nombreArchivo}</span>
-          </div>
-        `;
+      const marker = L.marker([lat, lng], { icon: grupoIcon }).addTo(this.mapaGPX!);
+      
+      // ✅ NUEVO: Guardar referencia del marcador en cada archivo para sincronización
+      archivos.forEach(a => {
+        a.archivo.marcadorRef = marker;
       });
 
-      popupContent += `
-          <div class="photo-popup-action" style="margin-top: 10px; text-align: center; color: #666; font-size: 11px;">
-            <span>👆 Haz clic en el marcador para ver</span>
-          </div>
-        </div>
-      `;
+      // Crear el contenido del Popup
+      const popupContent = this.crearPopupContent(archivos, numeroSecuencial, cantidadArchivos, tieneMultiples);
 
-      const marker = L.marker([lat, lng], {
-        icon: grupoIcon,
-        zIndexOffset: 2000
-      })
-        .addTo(this.mapaGPX!)
-        .bindPopup(popupContent, {
+      marker.bindPopup(popupContent, {
           className: 'photo-popup-leaflet',
           maxWidth: 320
         });
@@ -1366,6 +1436,29 @@ export class ActividadesItinerariosComponent implements OnInit {
 
   trackBySegmento(index: number, item: any): number {
     return index;
+  }
+
+  getThumbnailUrl(foto: any): string {
+    const backendUrl = environment.apiUrl;
+    return `${backendUrl}/uploads/${foto.rutaArchivo}`;
+  }
+
+  centrarEnFoto(foto: any): void {
+    if (foto.marcadorRef && this.mapaGPX) {
+      this.mapaGPX.setView(foto.marcadorRef.getLatLng(), 17);
+      foto.marcadorRef.openPopup();
+      
+      // Si el panel está expandido y tapa el marcador, podemos ajustarlo
+      if (this.panelExpanded) {
+        this.togglePanelExpanded();
+      }
+    }
+  }
+
+  getNombreActividad(id: number | null): string {
+    if (!id) return 'Recorrido GPX';
+    const actividad = this.actividades.find(a => a.id === id);
+    return actividad?.nombre || 'Recorrido GPX';
   }
 
 }

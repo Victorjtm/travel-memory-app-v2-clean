@@ -54,4 +54,9 @@ export class ActividadesItinerariosService extends BaseHttpService {
   obtenerEstadisticas(id: number): Observable<any> {
     return this.get(`${this.apiUrl}/${id}/estadisticas`);
   }
+
+  obtenerVisualSession(id: number): Observable<any> {
+    return this.get(`${this.apiUrl}/${id}/visual-session`);
+  }
 }
+

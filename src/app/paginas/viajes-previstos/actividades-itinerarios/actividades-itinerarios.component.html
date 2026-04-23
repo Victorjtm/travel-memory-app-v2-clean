@@ -291,7 +291,7 @@
 
     <!-- Header del modal -->
     <div class="modal-header">
-      <h3>📍 Recorrido GPX</h3>
+      <h3>📍 {{ getNombreActividad(actividadSeleccionada) }}</h3>
       <button class="btn-cerrar" (click)="cerrarModalGPXMapa()">✕</button>
     </div>
 
@@ -299,6 +299,13 @@
     <div class="map-view-container">
       <!-- Mapa Leaflet -->
       <div id="mapa-gpx-container" class="mapa-gpx-interactive"></div>
+
+      <!-- ✅ NUEVO: Carrusel de Miniaturas (Sincronizado) -->
+      <div class="photo-scroller" *ngIf="fotosActividad && fotosActividad.length > 0">
+        <div class="thumbnail-card" *ngFor="let foto of fotosActividad" (click)="centrarEnFoto(foto)">
+          <img [src]="getThumbnailUrl(foto)" loading="lazy" [alt]="foto.nombreArchivo">
+        </div>
+      </div>
 
       <!-- ✅ Panel de Estadísticas Contraíble -->
       <div class="map-info" *ngIf="showStatsPanel" [class.collapsed]="!panelExpanded" [class.expanded]="panelExpanded"
@@ -374,6 +381,8 @@
                 estadisticasGPX.energia?.calorias }} kcal</p>
               <p class="info-text"><strong>V. Media:</strong> {{ estadisticasGPX.velocidad?.media || '0.0' }} km/h</p>
               <p class="info-text"><strong>V. Máxima:</strong> {{ estadisticasGPX.velocidad?.maxima || '0.0' }} km/h</p>
+              <p class="info-text" *ngIf="estadisticasGPX.altitud?.ganancia"><strong>Desnivel (+):</strong> {{ estadisticasGPX.altitud?.ganancia }} m</p>
+              <p class="info-text" *ngIf="estadisticasGPX.altitud?.max"><strong>Altitud Máx:</strong> {{ estadisticasGPX.altitud?.max }} m</p>
               <p class="info-text"><strong>Puntos GPS:</strong> {{ estadisticasGPX.tracking?.puntosGPS || 0 }}</p>
             </div>
 
