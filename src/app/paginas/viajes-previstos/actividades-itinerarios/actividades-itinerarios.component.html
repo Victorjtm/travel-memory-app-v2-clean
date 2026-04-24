@@ -296,139 +296,43 @@
     </div>
 
     <!-- ✅ NUEVO: Contenedor del mapa con vista flexible -->
-    <div class="map-view-container">
+    <div class="map-view-container" [class.panel-open]="showSidePanel">
+      
       <!-- Mapa Leaflet -->
       <div id="mapa-gpx-container" class="mapa-gpx-interactive"></div>
 
-      <!-- ✅ NUEVO: Carrusel de Miniaturas (Sincronizado) -->
-      <div class="photo-scroller" *ngIf="fotosActividad && fotosActividad.length > 0">
-        <div class="thumbnail-card" *ngFor="let foto of fotosActividad" (click)="centrarEnFoto(foto)">
-          <img [src]="getThumbnailUrl(foto)" loading="lazy" [alt]="foto.nombreArchivo">
-        </div>
-      </div>
-
-      <!-- ✅ Panel de Estadísticas Contraíble -->
-      <div class="map-info" *ngIf="showStatsPanel" [class.collapsed]="!panelExpanded" [class.expanded]="panelExpanded"
-        (click)="togglePanelExpanded()">
-        <div class="info-card">
-
-          <!-- Vista Contraída (4 datos principales) -->
-          <div class="stats-main" *ngIf="!panelExpanded">
-
-            <!-- Indicador de transporte -->
-            <div class="transport-indicator" *ngIf="estadisticasGPX.transportePrincipal">
-              <span class="transport-emoji">{{ getTransportEmoji(estadisticasGPX.transportePrincipal.icono || '')
-                }}</span>
-              <span class="transport-name">{{ estadisticasGPX.transportePrincipal.nombre || 'Desconocido' }}</span>
-            </div>
-
-            <!-- Grid 2x2 para los 4 datos principales -->
-            <div class="stats-grid">
-              <!-- Distancia -->
-              <div class="stat-item-large">
-                <div class="stat-label">Distancia</div>
-                <div class="stat-value">{{ estadisticasGPX.distanciaKm || '0.00' }}<span class="stat-unit">km</span>
+      <!-- ✅ NUEVO: Panel Lateral Colapsable -->
+      <div class="side-panel" *ngIf="showSidePanel">
+         <!-- Pestañas -->
+         <div class="side-panel-tabs">
+            <button class="tab-btn" [class.active]="activeSideTab === 'fotos'" (click)="activeSideTab = 'fotos'">📷 Fotos</button>
+            <button class="tab-btn" [class.active]="activeSideTab === 'estadisticas'" (click)="activeSideTab = 'estadisticas'">📊 Estadísticas</button>
+         </div>
+         
+         <!-- Contenido del Panel -->
+         <div class="side-panel-content">
+            
+            <!-- Pestaña FOTOS -->
+            <div *ngIf="activeSideTab === 'fotos'" class="tab-content-fotos">
+              <div class="photo-grid" *ngIf="fotosActividad && fotosActividad.length > 0">
+                <div class="photo-card" *ngFor="let foto of fotosActividad" (click)="centrarEnFoto(foto)">
+                  <img [src]="getThumbnailUrl(foto)" loading="lazy" [alt]="foto.nombreArchivo">
                 </div>
               </div>
-
-              <!-- Tiempo -->
-              <div class="stat-item-large">
-                <div class="stat-label">Tiempo</div>
-                <div class="stat-value">{{ estadisticasGPX.duracion?.formateada || '00:00:00' }}</div>
+              <div *ngIf="!fotosActividad || fotosActividad.length === 0" class="empty-state">
+                No hay fotos para esta actividad.
               </div>
-
-              <!-- Velocidad Media -->
-              <div class="stat-item-large">
-                <div class="stat-label">Vel. Media</div>
-                <div class="stat-value">{{ estadisticasGPX.velocidad?.media || '0.0' }}<span
-                    class="stat-unit">km/h</span></div>
-              </div>
-
-              <!-- Tiempo Pausado -->
-              <div class="stat-item-large" *ngIf="(estadisticasGPX.tiempoPausaSegundos || 0) > 0">
-                <div class="stat-label">Pausado</div>
-                <div class="stat-value">{{ formatDuration((estadisticasGPX.tiempoPausaSegundos || 0) * 1000) }}</div>
+            </div>
+            
+            <!-- Pestaña ESTADÍSTICAS (Previsión Fase 4) -->
+            <div *ngIf="activeSideTab === 'estadisticas'" class="tab-content-estadisticas">
+              <div class="empty-state">
+                <i class="fa fa-bar-chart" style="font-size: 3rem; color: #cbd5e1; margin-bottom: 10px;"></i>
+                <p>Las estadísticas de ruta se mostrarán aquí próximamente.</p>
               </div>
             </div>
 
-            <!-- Indicador visual para expandir -->
-            <div class="expand-hint">
-              <span class="icon">▼</span>
-              <span>Toca para ver más</span>
-            </div>
-
-          </div>
-
-          <!-- Vista Expandida (estadísticas completas) -->
-          <div class="stats-detail" *ngIf="panelExpanded">
-
-            <!-- Título -->
-            <p class="info-title"><strong>📊 Estadísticas Completas</strong></p>
-            <div class="divider"></div>
-
-            <!-- Grid de estadísticas -->
-            <div class="stats-grid">
-              <p class="info-text"><strong>Distancia:</strong> {{ estadisticasGPX.distanciaKm || '0.00' }} km</p>
-              <p class="info-text"><strong>Tiempo:</strong> {{ estadisticasGPX.duracion?.formateada || '00:00:00' }}</p>
-              <p class="info-text" *ngIf="estadisticasGPX.fecha"><strong>Fecha:</strong> {{ estadisticasGPX.fecha }}</p>
-              <p class="info-text" *ngIf="estadisticasGPX.horario?.inicio"><strong>Inicio:</strong> {{
-                estadisticasGPX.horario?.inicio }}</p>
-              <p class="info-text" *ngIf="estadisticasGPX.horario?.fin"><strong>Fin:</strong> {{
-                estadisticasGPX.horario?.fin }}</p>
-              <p class="info-text" *ngIf="(estadisticasGPX.energia?.pasos || 0) > 0"><strong>Pasos:</strong> {{
-                estadisticasGPX.energia?.pasos }}</p>
-              <p class="info-text" *ngIf="(estadisticasGPX.energia?.calorias || 0) > 0"><strong>Calorías:</strong> {{
-                estadisticasGPX.energia?.calorias }} kcal</p>
-              <p class="info-text"><strong>V. Media:</strong> {{ estadisticasGPX.velocidad?.media || '0.0' }} km/h</p>
-              <p class="info-text"><strong>V. Máxima:</strong> {{ estadisticasGPX.velocidad?.maxima || '0.0' }} km/h</p>
-              <p class="info-text" *ngIf="estadisticasGPX.altitud?.ganancia"><strong>Desnivel (+):</strong> {{ estadisticasGPX.altitud?.ganancia }} m</p>
-              <p class="info-text" *ngIf="estadisticasGPX.altitud?.max"><strong>Altitud Máx:</strong> {{ estadisticasGPX.altitud?.max }} m</p>
-              <p class="info-text"><strong>Puntos GPS:</strong> {{ estadisticasGPX.tracking?.puntosGPS || 0 }}</p>
-            </div>
-
-            <!-- Desglose Ida y Vuelta -->
-            <div class="turning-stats" *ngIf="estadisticasGPX.tieneIdaVuelta">
-              <div class="divider"></div>
-              <h3 class="subsection-title">🔄 Desglose Ida y Vuelta</h3>
-              <div class="stats-grid split-stats">
-                <div class="split-column outbound">
-                  <div class="split-header">🔹 IDA</div>
-                  <div class="split-data">
-                    <span class="value">{{ formatDistance(estadisticasGPX.distanciaIdaMetros || 0) }}</span>
-                    <span class="time">{{ estadisticasGPX.tiempoIdaFormateado || '00:00:00' }}</span>
-                  </div>
-                </div>
-                <div class="split-column return">
-                  <div class="split-header">🔸 VUELTA</div>
-                  <div class="split-data">
-                    <span class="value">{{ formatDistance(estadisticasGPX.distanciaVueltaMetros || 0) }}</span>
-                    <span class="time">{{ estadisticasGPX.tiempoVueltaFormateado || '00:00:00' }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Desglose por transporte -->
-            <div class="transport-breakdown"
-              *ngIf="estadisticasGPX.desgloseTransporte && estadisticasGPX.desgloseTransporte.length > 0">
-              <div class="divider"></div>
-              <h3 class="subsection-title">🚶 Desglose por Transporte</h3>
-              <div class="transport-item"
-                *ngFor="let item of estadisticasGPX.desgloseTransporte; trackBy: trackByTransporte">
-                <span>{{ item?.nombre || 'Desconocido' }}: {{ item?.distanciaKm || '0.00' }} km ({{
-                  item?.duracionFormateada || '00:00:00' }})</span>
-              </div>
-            </div>
-
-            <!-- Indicador visual para contraer -->
-            <div class="collapse-hint">
-              <span class="icon">▲</span>
-              <span>Toca para contraer</span>
-            </div>
-
-          </div>
-
-        </div>
+         </div>
       </div>
 
       <!-- ✅ NUEVO: FABs Flotantes -->
@@ -439,9 +343,9 @@
         </button>
 
         <!-- FAB: Toggle panel -->
-        <button class="fab" [class.fab-primary]="showStatsPanel" [class.fab-medium]="!showStatsPanel"
-          (click)="toggleMapView()" title="Toggle panel">
-          <span class="fab-icon">{{ showStatsPanel ? '📊' : '🗺️' }}</span>
+        <button class="fab" [class.fab-primary]="showSidePanel" [class.fab-medium]="!showSidePanel"
+          (click)="toggleSidePanel()" title="Toggle Panel Lateral">
+          <span class="fab-icon">{{ showSidePanel ? '▶️' : '◀️' }}</span>
         </button>
       </div>
 

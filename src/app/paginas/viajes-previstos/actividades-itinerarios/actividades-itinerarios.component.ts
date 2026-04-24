@@ -58,7 +58,8 @@ export class ActividadesItinerariosComponent implements OnInit {
   coordenadasGPX: any[] = [];
 
   // ✅ NUEVAS PROPIEDADES: Panel de estadísticas
-  showStatsPanel = true;
+  showSidePanel = true;
+  activeSideTab: 'fotos' | 'estadisticas' = 'fotos';
   panelExpanded = false;
   trackSegments: any[] = [];
   turningPoint: any = null;
@@ -597,22 +598,81 @@ export class ActividadesItinerariosComponent implements OnInit {
           console.log('🎨 [Alta Fidelidad] Renderizando capas del visual_session.json...');
           this.visualSessionGroup = L.layerGroup().addTo(this.mapaGPX);
 
-          this.visualSessionData.mapState.layers.forEach((layer: any) => {
+          // 1. Ordenar capas: Polilíneas más largas (ruta base) primero, para que los segmentos semánticos 
+          // cortos se dibujen encima y no queden ocultos por la polilínea principal ni su stroke.
+          const capasOrdenadas = [...this.visualSessionData.mapState.layers].sort((a: any, b: any) => {
+            if (a.type === 'polyline' && b.type === 'polyline') {
+              return (b.latLngs?.length || 0) - (a.latLngs?.length || 0);
+            }
+            // Asegurar que los marcadores se dibujen siempre después de las polilíneas
+            if (a.type === 'polyline' && b.type !== 'polyline') return -1;
+            if (a.type !== 'polyline' && b.type === 'polyline') return 1;
+            return 0;
+          });
+
+          capasOrdenadas.forEach((layer: any) => {
             try {
               if (layer.type === 'polyline' && layer.latLngs?.length > 0) {
-                // Reconstruir opciones: preservar color y grosor, pero forzar opacidad correcta
+                // 1. Extraer metadatos semánticos reales del JSON
+                const layerMode = (layer.mode || layer.options?.mode || layer.profileId || '').toLowerCase();
+                const routePhase = (layer.routePhase || layer.options?.routePhase || 'outbound').toLowerCase();
+                const isReturn = routePhase === 'return' || routePhase === 'vuelta';
+                
+                // Determinar el color: prioridad a la semántica (MODE_COLORS) sobre el exportado
+                let semanticColor = layer.options?.color || '#FF0000';
+                if (layerMode && this.MODE_COLORS[layerMode as keyof typeof this.MODE_COLORS]) {
+                  const phaseDict = this.MODE_COLORS[layerMode as keyof typeof this.MODE_COLORS];
+                  semanticColor = phaseDict[routePhase as keyof typeof phaseDict] || phaseDict.outbound;
+                } else if (layerMode && this.MODE_COLORS_DIRECT[layerMode]) {
+                  semanticColor = this.MODE_COLORS_DIRECT[layerMode];
+                }
+
+                // Atenuación para tramos de vuelta
+                const polyOpacity = isReturn ? 0.45 : (layer.options?.opacity ?? 0.9);
+                const bgOpacity = isReturn ? 0.3 : 0.8;
+                const dashArray = isReturn ? '8, 8' : (layer.options?.dashArray || null);
+
+                // 2. Trazado de fondo (stroke blanco) para aislar del fondo satelital
+                const bgOpts = {
+                  color: '#FFFFFF',
+                  weight: (layer.options?.weight || 5) + 4, // 4px más grueso que la principal
+                  opacity: bgOpacity,
+                  lineCap: 'round',
+                  lineJoin: 'round'
+                };
+                L.polyline(layer.latLngs, bgOpts as any).addTo(this.visualSessionGroup);
+
+                // 3. Reconstruir opciones con color semántico
                 const opts = {
-                  color: layer.options?.color || '#4CAF50',
+                  color: semanticColor,
                   weight: layer.options?.weight || 5,
-                  opacity: layer.options?.opacity ?? 0.9,
+                  opacity: polyOpacity,
+                  dashArray: dashArray,
                   lineCap: layer.options?.lineCap || 'round',
                   lineJoin: layer.options?.lineJoin || 'round'
                 };
-                L.polyline(layer.latLngs, opts).addTo(this.visualSessionGroup);
+                L.polyline(layer.latLngs, opts as any).addTo(this.visualSessionGroup);
+                
+                // 4. Añadir triángulos direccionales del color del segmento (fidelidad móvil)
+                this.addDirectionArrows(L, layer.latLngs, semanticColor, polyOpacity);
 
               } else if (layer.type === 'marker' && layer.latLng) {
                 // Para marcadores de fase (puntos de cambio de transporte)
                 const modeKey = (layer.mode || '').toLowerCase();
+                const layerTitle = (layer.options?.title || layer.name || layer.popup || '').toLowerCase();
+                
+                // Interceptar Punto de Giro
+                if (modeKey === 'turning_point' || modeKey === 'turning' || layerTitle.includes('giro') || layerTitle.includes('turn')) {
+                  const turningIcon = L.divIcon({
+                    className: 'turning-marker',
+                    html: '🔄',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 15]
+                  });
+                  L.marker(layer.latLng, { icon: turningIcon }).bindPopup(`<strong>Punto de Giro</strong>`).addTo(this.visualSessionGroup);
+                  return;
+                }
+
                 const color = this.MODE_COLORS_DIRECT[modeKey] || '#4CAF50';
                 const icon = L.divIcon({
                   className: 'transport-phase-marker',
@@ -645,6 +705,16 @@ export class ActividadesItinerariosComponent implements OnInit {
           // MODO LEGACY (FALLBACK): Polyline única desde coordenadas GPX
           // ================================================================
           console.log('🗺️ [Legacy] Renderizando polyline desde GPX crudo.');
+          
+          // 1. Trazado de fondo (stroke blanco) para legibilidad en satélite
+          L.polyline(this.coordenadasGPX, {
+            color: '#FFFFFF',
+            weight: 8, // 4px más grueso
+            opacity: 0.8,
+            smoothFactor: 1
+          }).addTo(this.mapaGPX);
+
+          // 2. Línea principal legacy
           L.polyline(this.coordenadasGPX, {
             color: '#FF0000',
             weight: 4,
@@ -839,32 +909,23 @@ export class ActividadesItinerariosComponent implements OnInit {
       const grupoIcon = L.divIcon({
         className: 'photo-marker-custom',
         html: `
-        <div class="photo-marker-wrapper">
-          <div class="photo-marker-circle">
-            <svg width="44" height="44" viewBox="0 0 44 44">
-              <circle cx="22" cy="24" r="18" fill="rgba(0,0,0,0.3)" />
-              <circle cx="22" cy="22" r="18" fill="white" stroke="${colorPrincipal}" stroke-width="3"/>
-              <g transform="translate(10, 10)">
-                ${esFoto
-            ? `<path d="M12 3L14 6H18C19.1 6 20 6.9 20 8V18C20 19.1 19.1 20 4 18V8C4 6.9 4.9 6 6 6H10L12 3Z" fill="${colorPrincipal}"/>
-                     <circle cx="12" cy="13" r="3.5" fill="white"/>`
-            : `<rect x="4" y="8" width="12" height="9" rx="1" fill="${colorPrincipal}"/>
-                     <path d="M16 10 L20 8 L20 16 L16 14 Z" fill="${colorPrincipal}"/>
-                     <circle cx="10" cy="12.5" r="2" fill="white"/>`
-          }
-              </g>
-            </svg>
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <!-- Pin clásico móvil -->
+          <svg width="44" height="44" viewBox="0 0 44 44" style="filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4)); z-index: 5;">
+            <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="#E53935" />
+            <circle cx="22" cy="16" r="6" fill="white" />
+          </svg>
+          <!-- Badge numérico móvil -->
+          <div style="margin-top: -8px; background: #1E88E5; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.4); z-index: 10; position: relative;">
+            #${numeroSecuencial}
           </div>
-          <div class="photo-marker-sequence" style="position: absolute; top: -4px; left: -4px; background: #4CAF50; color: white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${numeroSecuencial}</div>
-          ${tieneMultiples ? `
-          <div class="photo-marker-count" style="position: absolute; bottom: -4px; right: -4px; background: #FF9800; color: white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${cantidadArchivos}</div>
-          ` : ''}
         </div>
-      `,
-        iconSize: [44, 44],
-        iconAnchor: [22, 44],
-        popupAnchor: [0, -44]
+        `,
+        iconSize: [44, 60],
+        iconAnchor: [22, 60],
+        popupAnchor: [0, -60]
       });
+
 
       const marker = L.marker([lat, lng], { icon: grupoIcon }).addTo(this.mapaGPX!);
       
@@ -1298,9 +1359,16 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   // ✅ NUEVO: Toggle panel de estadísticas
-  toggleMapView(): void {
-    this.showStatsPanel = !this.showStatsPanel;
-    console.log(`🗺️ Panel: ${this.showStatsPanel ? 'VISIBLE' : 'OCULTO'}`);
+  toggleSidePanel(): void {
+    this.showSidePanel = !this.showSidePanel;
+    console.log(`🗺️ Panel lateral: ${this.showSidePanel ? 'VISIBLE' : 'OCULTO'}`);
+    
+    // Invalida el tamaño del mapa poco después para que se adapte al contenedor redimensionado
+    if (this.mapaGPX) {
+      setTimeout(() => {
+        this.mapaGPX.invalidateSize(true);
+      }, 300);
+    }
   }
 
   // ✅ NUEVO: Expandir/contraer panel
@@ -1356,7 +1424,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   // ✅ MEJOR OPCIÓN: Flechas SVG (escalables sin pixelar)
-  private addDirectionArrows(L: any, coordinates: any[], color: string = '#FF0000'): void {
+  private addDirectionArrows(L: any, coordinates: any[], color: string = '#FF0000', opacity: number = 1): void {
     if (!this.mapaGPX || coordinates.length < 2) return;
 
     const totalPoints = coordinates.length;
@@ -1374,16 +1442,13 @@ export class ActividadesItinerariosComponent implements OnInit {
         className: 'direction-arrow-svg',
         html: `
         <svg width="32" height="32" viewBox="0 0 32 32" 
-             style="transform: rotate(${angle}deg); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">
-          <!-- Borde blanco -->
-          <path d="M16 4 L26 26 L16 20 L6 26 Z" 
-                fill="white" 
-                stroke="white" 
-                stroke-width="2"/>
-          <!-- Flecha principal -->
-          <path d="M16 6 L24 24 L16 19 L8 24 Z" 
+             style="transform: rotate(${angle}deg); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); opacity: ${opacity};">
+          <!-- Triángulo simple grande (estilo móvil) -->
+          <path d="M16 2 L28 26 L4 26 Z" 
                 fill="${color}" 
-                stroke="none"/>
+                stroke="white" 
+                stroke-width="3"
+                stroke-linejoin="round"/>
         </svg>
       `,
         iconSize: [32, 32],
