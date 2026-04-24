@@ -156,6 +156,36 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.points = this.animationService.applyTransportSegments(this.points, this.transportSegments);
     this.stats = this.animationService.getStats(this.points);
 
+    // ✨ NUEVO: Intentar descargar estadisticas.json (Fase 3 - Sincronización Canónica)
+    if (this.actividadActual && this.actividadActual.rutaEstadisticas) {
+      try {
+        const url = `${environment.apiUrl}/uploads/${this.actividadActual.rutaEstadisticas}`;
+        console.log(`📊 [GpxAnimationComponent] Descargando estadisticas.json desde: ${url}`);
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const statsData = await resp.json();
+          if (statsData.v === "1.0" && statsData.desglose_transporte) {
+            console.log('✅ [Fase 3] Estadísticas Canónicas detectadas. Pre-poblando HUD.');
+            this.modeList = [];
+            this.modeStats = {};
+            statsData.desglose_transporte.forEach((d: any) => {
+              const modeId = d.tipo || 'walking';
+              this.modeList.push(modeId);
+              this.modeStats[modeId] = {
+                dist: parseFloat(d.distancia_km || 0),
+                time: 0, // El tiempo se sincronizará con la animación
+                steps: Math.round(parseFloat(d.distancia_m || 0) * 1.25)
+              };
+            });
+            // Marcar que tenemos estadísticas reales para evitar incrementos duplicados
+            (this as any).hasCanonicalStats = true;
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ Error cargando estadisticas.json', e);
+      }
+    }
+
     // ✨ NUEVO: Intentar descargar visual_session.json si está disponible
     if (this.actividadActual && this.actividadActual.rutaVisualSession) {
       try {
@@ -488,9 +518,14 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         const t = p.timeAcum - prevP.timeAcum;
         if (this.currentMode && this.modeStats[this.currentMode]) {
           const s = this.modeStats[this.currentMode];
-          s.dist += d;
+
+          // 🛡️ Fase 3: Solo incrementamos si NO tenemos estadísticas reales del móvil
+          if (!(this as any).hasCanonicalStats) {
+            s.dist += d;
+            if (this.isWalkingMode(this.currentMode)) s.steps += d * 1400;
+          }
+
           s.time += t;
-          if (this.isWalkingMode(this.currentMode)) s.steps += d * 1400;
         }
 
         if (p.event) {

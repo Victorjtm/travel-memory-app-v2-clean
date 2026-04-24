@@ -6771,6 +6771,41 @@ app.post('/import-tracking', (req, res, next) => {
       fs.renameSync(statsFile.path, statsDest);
       rutaEstadisticas = path.relative(uploadsPath, statsDest).replace(/\\/g, '/');
       console.log('✅ Estadísticas procesadas (guardado en actividades)');
+
+      // 🚀 Fase 3: Sincronización Canónica (Sobrescribir cálculos del servidor con datos del móvil)
+      try {
+        const statsData = JSON.parse(fs.readFileSync(statsDest, 'utf8'));
+        if (statsData.v === "1.0") {
+          console.log('💎 [Fase 3] Contrato Canónico v1.0 detectado. Sincronizando datos...');
+          await new Promise((resolve, reject) => {
+            db.run(
+              `UPDATE actividades SET 
+                distanciaKm = ?, 
+                distanciaMetros = ?, 
+                duracionSegundos = ?, 
+                duracionFormateada = ?, 
+                velocidadMediaKmh = ?,
+                pasosEstimados = ?,
+                calorias = ?
+              WHERE id = ?`,
+              [
+                statsData.distancia_km,
+                statsData.distancia_m,
+                Math.round(statsData.tiempo_marcha_ms / 1000),
+                statsData.duracion_ui,
+                statsData.velocidad_media_kmh,
+                statsData.pasos_totales,
+                statsData.calorias_kcal,
+                actividadId
+              ],
+              (err) => err ? reject(err) : resolve()
+            );
+          });
+          console.log('✅ [Fase 3] Base de datos actualizada con la Verdad Canónica del móvil');
+        }
+      } catch (err) {
+        console.warn('⚠️ Error en Sincronización Canónica:', err.message);
+      }
     }
 
     // ✨ NUEVO: VISUAL_SESSION.JSON - MODO ALTA FIDELIDAD
