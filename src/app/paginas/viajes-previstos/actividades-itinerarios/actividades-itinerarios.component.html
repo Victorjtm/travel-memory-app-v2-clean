@@ -315,8 +315,17 @@
             <!-- Pestaña FOTOS -->
             <div *ngIf="activeSideTab === 'fotos'" class="tab-content-fotos">
               <div class="photo-grid" *ngIf="fotosActividad && fotosActividad.length > 0">
-                <div class="photo-card" *ngFor="let foto of fotosActividad" (click)="centrarEnFoto(foto)">
-                  <img [src]="getThumbnailUrl(foto)" loading="lazy" [alt]="foto.nombreArchivo">
+                <div class="photo-card" *ngFor="let foto of fotosActividad" (click)="centrarEnFoto(foto)" [class.is-video]="esVideo(foto)">
+                  
+                  <!-- Render condicional Foto vs Video para miniatura visual -->
+                  <img *ngIf="!esVideo(foto)" [src]="getThumbnailUrl(foto)" loading="lazy" [alt]="foto.nombreArchivo">
+                  <video *ngIf="esVideo(foto)" [src]="getThumbnailUrl(foto)" preload="metadata" muted playsinline></video>
+                  
+                  <!-- Badge identificador de vídeo -->
+                  <div class="video-badge" *ngIf="esVideo(foto)">
+                    <i class="fa fa-play-circle"></i>
+                  </div>
+                  
                 </div>
               </div>
               <div *ngIf="!fotosActividad || fotosActividad.length === 0" class="empty-state">
@@ -324,12 +333,107 @@
               </div>
             </div>
             
-            <!-- Pestaña ESTADÍSTICAS (Previsión Fase 4) -->
+            <!-- Pestaña ESTADÍSTICAS (Fase 4) -->
             <div *ngIf="activeSideTab === 'estadisticas'" class="tab-content-estadisticas">
-              <div class="empty-state">
-                <i class="fa fa-bar-chart" style="font-size: 3rem; color: #cbd5e1; margin-bottom: 10px;"></i>
-                <p>Las estadísticas de ruta se mostrarán aquí próximamente.</p>
+              
+              <!-- 1. RESUMEN -->
+              <div class="stats-section">
+                <div class="stats-grid-2">
+                  <div class="stat-card">
+                    <span class="stat-label">Distancia</span>
+                    <span class="stat-value">{{ estadisticasGPX.distanciaKm || '0.00' }} <small>km</small></span>
+                  </div>
+                  <div class="stat-card">
+                    <span class="stat-label">Tiempo</span>
+                    <span class="stat-value">{{ estadisticasGPX.duracion?.formateada || '00:00:00' }}</span>
+                  </div>
+                </div>
               </div>
+
+              <!-- 2. RENDIMIENTO -->
+              <div class="stats-section">
+                <h4 class="section-title">⚡ Rendimiento</h4>
+                <div class="stats-grid-2">
+                  <div class="stat-item">
+                    <span class="label">V. Media</span>
+                    <span class="value">{{ estadisticasGPX.velocidad?.media || '0.0' }} <small>km/h</small></span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="label">V. Máxima</span>
+                    <span class="value">{{ estadisticasGPX.velocidad?.maxima || '0.0' }} <small>km/h</small></span>
+                  </div>
+                  <div class="stat-item" *ngIf="(estadisticasGPX.tiempoPausaSegundos || 0) > 0">
+                    <span class="label">Pausado</span>
+                    <span class="value">{{ formatDuration((estadisticasGPX.tiempoPausaSegundos || 0) * 1000) }}</span>
+                  </div>
+                  <div class="stat-item" *ngIf="estadisticasGPX.tracking?.puntosGPS">
+                    <span class="label">Puntos GPS</span>
+                    <span class="value">{{ estadisticasGPX.tracking?.puntosGPS }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3. ACTIVIDAD FÍSICA -->
+              <div class="stats-section" *ngIf="(estadisticasGPX.energia?.calorias || 0) > 0 || (estadisticasGPX.energia?.pasos || 0) > 0">
+                <h4 class="section-title">🔥 Actividad Física</h4>
+                <div class="stats-grid-2">
+                  <div class="stat-item" *ngIf="(estadisticasGPX.energia?.calorias || 0) > 0">
+                    <span class="label">Calorías</span>
+                    <span class="value">{{ estadisticasGPX.energia?.calorias }} <small>kcal</small></span>
+                  </div>
+                  <div class="stat-item" *ngIf="(estadisticasGPX.energia?.pasos || 0) > 0">
+                    <span class="label">Pasos</span>
+                    <span class="value">{{ estadisticasGPX.energia?.pasos }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 4. ALTIMETRÍA -->
+              <div class="stats-section" *ngIf="estadisticasGPX.altitud?.ganancia || estadisticasGPX.altitud?.max">
+                <h4 class="section-title">⛰️ Altimetría</h4>
+                <div class="stats-grid-2">
+                  <div class="stat-item" *ngIf="estadisticasGPX.altitud?.ganancia">
+                    <span class="label">Desnivel (+)</span>
+                    <span class="value">{{ estadisticasGPX.altitud?.ganancia }} <small>m</small></span>
+                  </div>
+                  <div class="stat-item" *ngIf="estadisticasGPX.altitud?.max">
+                    <span class="label">Altitud Máx</span>
+                    <span class="value">{{ estadisticasGPX.altitud?.max }} <small>m</small></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5. IDA Y VUELTA -->
+              <div class="stats-section" *ngIf="estadisticasGPX.tieneIdaVuelta">
+                <h4 class="section-title">🔄 Ida y Vuelta</h4>
+                <div class="split-stats">
+                  <div class="split-card outbound">
+                    <span class="split-label">IDA</span>
+                    <span class="split-val">{{ formatDistance(estadisticasGPX.distanciaIdaMetros || 0) }}</span>
+                    <span class="split-time">{{ estadisticasGPX.tiempoIdaFormateado || '00:00:00' }}</span>
+                  </div>
+                  <div class="split-card return">
+                    <span class="split-label">VUELTA</span>
+                    <span class="split-val">{{ formatDistance(estadisticasGPX.distanciaVueltaMetros || 0) }}</span>
+                    <span class="split-time">{{ estadisticasGPX.tiempoVueltaFormateado || '00:00:00' }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 6. DESGLOSE POR TRANSPORTE -->
+              <div class="stats-section" *ngIf="estadisticasGPX.desgloseTransporte && estadisticasGPX.desgloseTransporte.length > 0">
+                <h4 class="section-title">🚶 Desglose por Transporte</h4>
+                <div class="transport-list">
+                  <div class="transport-row" *ngFor="let item of estadisticasGPX.desgloseTransporte; trackBy: trackByTransporte">
+                    <div class="transport-name">{{ item?.nombre || 'Desconocido' }}</div>
+                    <div class="transport-data">
+                      <span class="t-dist">{{ item?.distanciaKm || '0.00' }} km</span>
+                      <span class="t-time">{{ item?.duracionFormateada || '00:00:00' }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
          </div>
