@@ -134,6 +134,10 @@ export class ActividadesItinerariosComponent implements OnInit {
     transport: '#9E9E9E', transporte: '#9E9E9E'
   };
 
+  // ✨ CACHÉ DE DIRECCIONES PARA LEAFLET (Fase 4 - Bloque C)
+  private direccionesCache: { [key: string]: string } = {};
+  private nominatimQueue: Promise<any> = Promise.resolve();
+  private readonly NOMINATIM_DELAY = 2000;
 
   constructor(
     private actividadService: ActividadesItinerariosService,
@@ -778,31 +782,67 @@ export class ActividadesItinerariosComponent implements OnInit {
     });
   }
 
-  // Helper para el contenido del popup
+  // Helper para el contenido del popup contextual enriquecido (Fase 4 - Bloque C)
   private crearPopupContent(archivos: any[], numeroSecuencial: number, cantidadArchivos: number, tieneMultiples: boolean): string {
     const primerArchivo = archivos[0].archivo;
+    
     let popupContent = `
-        <div class="photo-popup-custom" style="max-width: 300px; font-family: sans-serif;">
-          <div class="photo-popup-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-            <span style="font-size: 20px;">#${numeroSecuencial}</span>
-            <strong>${tieneMultiples ? `${cantidadArchivos} archivos` : primerArchivo.tipo === 'foto' ? 'Foto' : 'Video'}</strong>
+        <div class="photo-popup-custom" style="max-width: 320px; font-family: sans-serif;">
+          <div class="photo-popup-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 6px; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="background: #3b82f6; color: white; border-radius: 4px; padding: 2px 6px; font-size: 12px; font-weight: bold;">#${numeroSecuencial}</span>
+              <strong style="font-size: 14px; color: #334155;">${tieneMultiples ? `${cantidadArchivos} archivos` : 'Vista Previa'}</strong>
+            </div>
+            <span style="font-size: 10px; color: #64748b;">(Clic en miniatura para ver)</span>
           </div>
+          <div class="photo-popup-body" style="display: flex; flex-direction: column; gap: 12px;">
       `;
 
-    archivos.forEach((item) => {
+    archivos.forEach((item, index) => {
       const archivo = item.archivo;
-      const emoji = archivo.tipo === 'foto' ? '📷' : '🎬';
+      const esVideo = this.esVideo(archivo);
+      const thumbUrl = this.getThumbnailUrl(archivo);
+      
+      const audioTag = archivo.audioAsociado ? `
+        <div style="margin-top: 6px; width: 100%;">
+          <audio controls src="${environment.apiUrl}/uploads/${archivo.audioAsociado}" style="height: 24px; width: 100%;"></audio>
+        </div>
+      ` : '';
+
+      let locationTag = '';
+      if (archivo.geolocalizacion) {
+        if (this.direccionesCache[archivo.geolocalizacion]) {
+          locationTag = `<div style="font-size: 11px; color: #64748b; margin-top: 4px;"><i class="fa fa-map-marker"></i> ${this.direccionesCache[archivo.geolocalizacion]}</div>`;
+        } else {
+          locationTag = `<div id="lugar-popup-${archivo.id}" style="font-size: 11px; color: #64748b; margin-top: 4px;"><i class="fa fa-map-marker"></i> <span class="lugar-texto">📍 Cargando ubicación...</span></div>`;
+        }
+      }
+
+      const dateTag = archivo.fechaCreacion ? `<div style="font-size: 11px; color: #94a3b8; margin-top: 2px;"><i class="fa fa-clock-o"></i> ${new Date(archivo.fechaCreacion).toLocaleString()}</div>` : '';
+      const descTag = archivo.descripcion ? `<div style="font-size: 12px; color: #475569; margin-top: 6px; font-style: italic;">"${archivo.descripcion}"</div>` : '';
+
+      const mediaTag = esVideo 
+        ? `<video src="${thumbUrl}#t=0.1" preload="metadata" muted playsinline style="width: 100px; height: 75px; object-fit: cover; border-radius: 6px; border: 2px solid #e2e8f0; cursor: pointer;" class="clickable-media" data-index="${index}"></video>`
+        : `<img src="${thumbUrl}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 6px; border: 2px solid #e2e8f0; cursor: pointer;" class="clickable-media" data-index="${index}" />`;
+
       popupContent += `
-          <div class="archivo-miniatura" style="padding: 6px; margin: 4px 0; background: #f5f5f5; border-radius: 4px; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 16px;">${emoji}</span>
-            <span style="font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${archivo.nombreArchivo}</span>
+          <div class="archivo-item-popup" style="display: flex; gap: 10px; padding: 6px; background: #f8fafc; border-radius: 8px;">
+            <div style="position: relative; flex-shrink: 0;">
+              ${mediaTag}
+              ${esVideo ? '<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 20px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); pointer-events: none;"><i class="fa fa-play-circle"></i></div>' : ''}
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden;">
+              <strong style="font-size: 12px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${archivo.nombreArchivo}">${archivo.nombreArchivo}</strong>
+              ${locationTag}
+              ${dateTag}
+              ${descTag}
+            </div>
           </div>
+          ${audioTag}
         `;
     });
 
     popupContent += `
-          <div class="photo-popup-action" style="margin-top: 10px; text-align: center; color: #666; font-size: 11px;">
-            <span>👆 Haz clic en el marcador para ver</span>
           </div>
         </div>
       `;
@@ -817,55 +857,90 @@ export class ActividadesItinerariosComponent implements OnInit {
     }
 
     const backendUrl = environment.apiUrl;
-    const url = `${backendUrl}/archivos?actividadId=${this.actividadSeleccionada}`;
+    const urlArchivos = `${backendUrl}/archivos?actividadId=${this.actividadSeleccionada}`;
+    const urlAsociados = `${backendUrl}/archivos-asociados`;
 
-    this.http.get<any[]>(url).subscribe({
+    this.http.get<any[]>(urlArchivos).subscribe({
       next: (archivos: any[]) => {
-        const multimedia = archivos.filter((f: any) =>
-          (f.tipo === 'foto' || f.tipo === 'video') && f.geolocalizacion
-        );
-
-        this.fotosActividad = multimedia;
-
-        const archivosConCoordenadas = multimedia.map((archivo: any) => {
-          try {
-            const geoData = typeof archivo.geolocalizacion === 'string'
-              ? JSON.parse(archivo.geolocalizacion)
-              : archivo.geolocalizacion;
-
-            const lat = geoData.latitud ?? geoData.latitude;
-            const lng = geoData.longitud ?? geoData.longitude;
-            const timestamp = geoData.timestamp || archivo.fechaCreacion;
-
-            if (lat && lng) {
-              return { archivo, lat, lng, timestamp };
-            }
-          } catch (err) {
-            console.warn(`⚠️ Error parseando ${archivo.nombreArchivo}:`, err);
+        // Obtenemos los archivos asociados para extraer el audio (Bloque C)
+        this.http.get<any[]>(urlAsociados).subscribe({
+          next: (asociados: any[]) => {
+            this.procesarArchivosYMarcadores(archivos, asociados);
+          },
+          error: (err) => {
+            console.warn('⚠️ Error al cargar archivos asociados, continuando sin audios', err);
+            this.procesarArchivosYMarcadores(archivos, []);
           }
-          return null;
-        }).filter(Boolean);
-
-        archivosConCoordenadas.sort((a, b) => {
-          const timeA = new Date(a!.timestamp).getTime();
-          const timeB = new Date(b!.timestamp).getTime();
-          return timeA - timeB;
-        });
-
-        const grupos = this.agruparArchivosPorUbicacion(archivosConCoordenadas);
-
-        grupos.forEach((grupo, index) => {
-          this.anadirMarcadorGrupo(
-            grupo.lat,
-            grupo.lng,
-            grupo.archivos,
-            index + 1
-          );
         });
       },
       error: err => {
         console.error('❌ Error cargando archivos:', err);
       }
+    });
+  }
+
+  // Helper para procesar archivos, extraer metadatos anidados y crear marcadores
+  private procesarArchivosYMarcadores(archivos: any[], asociados: any[]): void {
+    const multimedia = archivos.filter((f: any) =>
+      (f.tipo === 'foto' || f.tipo === 'video') && f.geolocalizacion
+    );
+
+    // Mapear audio asociado y raspar lugar del JSON de geolocalizacion (Bloque C)
+    multimedia.forEach(archivo => {
+      // 1. Vincular Audio (Asegurarnos de que sea el de este archivo y de tipo audio)
+      const audioRelacionado = asociados.find(a => a.archivoPrincipalId === archivo.id && a.tipo === 'audio');
+      if (audioRelacionado) {
+        archivo.audioAsociado = audioRelacionado.rutaArchivo;
+      }
+      
+      // 2. Extraer Lugar (Parseo conservador de la ubicación texto)
+      try {
+        const geoData = typeof archivo.geolocalizacion === 'string'
+          ? JSON.parse(archivo.geolocalizacion)
+          : archivo.geolocalizacion;
+          
+        if (!archivo.lugar) {
+          archivo.lugar = geoData.lugar || geoData.direccion || geoData.ubicacion_texto || geoData.locality || null;
+        }
+      } catch (e) { }
+    });
+
+    this.fotosActividad = multimedia;
+
+    const archivosConCoordenadas = multimedia.map((archivo: any) => {
+      try {
+        const geoData = typeof archivo.geolocalizacion === 'string'
+          ? JSON.parse(archivo.geolocalizacion)
+          : archivo.geolocalizacion;
+
+        const lat = geoData.latitud ?? geoData.latitude;
+        const lng = geoData.longitud ?? geoData.longitude;
+        const timestamp = geoData.timestamp || archivo.fechaCreacion;
+
+        if (lat && lng) {
+          return { archivo, lat, lng, timestamp };
+        }
+      } catch (err) {
+        console.warn(`⚠️ Error parseando ${archivo.nombreArchivo}:`, err);
+      }
+      return null;
+    }).filter(Boolean);
+
+    archivosConCoordenadas.sort((a, b) => {
+      const timeA = new Date(a!.timestamp).getTime();
+      const timeB = new Date(b!.timestamp).getTime();
+      return timeA - timeB;
+    });
+
+    const grupos = this.agruparArchivosPorUbicacion(archivosConCoordenadas);
+
+    grupos.forEach((grupo, index) => {
+      this.anadirMarcadorGrupo(
+        grupo.lat,
+        grupo.lng,
+        grupo.archivos,
+        index + 1
+      );
     });
   }
 
@@ -946,18 +1021,46 @@ export class ActividadesItinerariosComponent implements OnInit {
       (marker as any).archivosGrupo = archivos;
       (marker as any).numeroSecuencial = numeroSecuencial;
 
-      // Click para abrir modal o visualizador avanzado
-      marker.on('click', () => {
-        // ✨ MEJORADO: Si hay un solo archivo y es foto, abrir visualizador avanzado directamente
-        if (archivos.length === 1 && archivos[0].archivo.tipo === 'foto') {
-          const item = archivos[0];
-          this.abrirModalMultimedia(item.archivo.rutaArchivo, item.archivo.nombreArchivo, item.archivo.tipo);
-          return;
-        }
+      // ✨ NUEVO: Interacción de Dos Pasos (Bloque D)
+      // Eliminamos el evento click sobre el marcador que forzaba la apertura directa del visor.
+      // Ahora Leaflet abrirá naturalmente el popup enriquecido.
+      // Escuchamos cuando el popup se abre para inyectar el evento click en la miniatura.
+      marker.on('popupopen', (e: any) => {
+        const popupNode = e.popup._contentNode;
+        if (!popupNode) return;
+        
+        const clickables = popupNode.querySelectorAll('.clickable-media');
+        clickables.forEach((el: any) => {
+          el.addEventListener('click', () => {
+            const index = parseInt(el.getAttribute('data-index') || '0', 10);
+            if (tieneMultiples) {
+              // Si hay varios, pasamos al modal de grupo
+              this.ngZone.run(() => this.abrirModalGrupo(archivos, numeroSecuencial));
+            } else {
+              // Si es individual, pasamos al visor individual avanzado
+              const item = archivos[index].archivo;
+              this.ngZone.run(() => this.abrirModalMultimedia(item.rutaArchivo, item.nombreArchivo, item.tipo));
+            }
+          });
+        });
 
-        setTimeout(() => {
-          this.abrirModalGrupo(archivos, numeroSecuencial);
-        }, 100);
+        // ✨ NUEVO: Disparar la geocodificación inversa de Nominatim bajo demanda
+        archivos.forEach((item: any) => {
+          const arch = item.archivo;
+          if (arch.geolocalizacion && !this.direccionesCache[arch.geolocalizacion]) {
+            this.obtenerDireccion(arch.geolocalizacion).then(direccion => {
+              const el = document.getElementById(`lugar-popup-${arch.id}`);
+              if (el) {
+                const textSpan = el.querySelector('.lugar-texto');
+                if (textSpan) {
+                  textSpan.textContent = direccion;
+                } else {
+                  el.innerHTML = `<i class="fa fa-map-marker"></i> ${direccion}`;
+                }
+              }
+            }).catch(err => console.warn('⚠️ Error obteniendo direccion para popup', err));
+          }
+        });
       });
 
       console.log(`✅ Marcador #${numeroSecuencial} añadido: ${cantidadArchivos} archivo(s) en [${lat}, ${lng}]`);
@@ -1508,12 +1611,23 @@ export class ActividadesItinerariosComponent implements OnInit {
     return `${backendUrl}/uploads/${foto.rutaArchivo}`;
   }
 
+  // ✅ NUEVO: Función para determinar si el archivo es un vídeo
+  esVideo(foto: any): boolean {
+    if (foto.tipo === 'video') return true;
+    if (!foto.rutaArchivo) return false;
+    const extension = foto.rutaArchivo.split('.').pop()?.toLowerCase();
+    return ['mp4', 'mov', 'avi', 'webm'].includes(extension);
+  }
+
   centrarEnFoto(foto: any): void {
     if (foto.marcadorRef && this.mapaGPX) {
+      // 1. Centrar el mapa
       this.mapaGPX.setView(foto.marcadorRef.getLatLng(), 17);
+      
+      // 2. Abrir el popup contextual enriquecido (No abrir visor completo aquí)
       foto.marcadorRef.openPopup();
       
-      // Si el panel está expandido y tapa el marcador, podemos ajustarlo
+      // Ajustar panel si es necesario
       if (this.panelExpanded) {
         this.togglePanelExpanded();
       }
@@ -1524,6 +1638,94 @@ export class ActividadesItinerariosComponent implements OnInit {
     if (!id) return 'Recorrido GPX';
     const actividad = this.actividades.find(a => a.id === id);
     return actividad?.nombre || 'Recorrido GPX';
+  }
+  // ✨ NUEVO: Convertir coordenadas a dirección legible bajo demanda usando Nominatim (Fase 4 - Bloque C)
+  private async obtenerDireccion(geolocalizacion: string): Promise<string> {
+    if (!geolocalizacion || geolocalizacion === 'No disponible') {
+      return 'Ubicación no disponible';
+    }
+
+    if (this.direccionesCache[geolocalizacion]) {
+      return this.direccionesCache[geolocalizacion];
+    }
+
+    try {
+      let lat: number, lon: number;
+
+      if (geolocalizacion.includes('{')) {
+        const coords = JSON.parse(geolocalizacion);
+        lat = coords.latitud ?? coords.latitude;
+        lon = coords.longitud ?? coords.longitude;
+      } else if (geolocalizacion.includes(',')) {
+        [lat, lon] = geolocalizacion.split(',').map(parseFloat);
+      } else {
+        return 'Formato inválido';
+      }
+
+      if (isNaN(lat) || isNaN(lon)) return 'Coordenadas inválidas';
+
+      this.nominatimQueue = this.nominatimQueue.then(() =>
+        new Promise(resolve => setTimeout(resolve, this.NOMINATIM_DELAY))
+      );
+
+      await this.nominatimQueue;
+
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      let res;
+      try {
+        res = await fetch(url, {
+          headers: {
+            'User-Agent': 'TravelMemoryApp/1.0',
+            'Accept-Language': 'es'
+          },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        const fallback = `${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
+        this.direccionesCache[geolocalizacion] = fallback;
+        return fallback;
+      }
+
+      if (!res.ok) {
+        const fallback = `${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
+        this.direccionesCache[geolocalizacion] = fallback;
+        return fallback;
+      }
+
+      const data = await res.json();
+      if (!data || data.error) {
+        const fallback = `${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
+        this.direccionesCache[geolocalizacion] = fallback;
+        return fallback;
+      }
+
+      const addr = data.address || {};
+      let direccion =
+        [addr.road, addr.house_number, addr.suburb, addr.city || addr.town || addr.village, addr.state, addr.country]
+          .filter(Boolean)
+          .join(', ');
+
+      if (!direccion && data.display_name) direccion = data.display_name;
+      if (!direccion) direccion = `${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
+
+      this.direccionesCache[geolocalizacion] = direccion;
+      return direccion;
+    } catch (e: any) {
+      console.error('Error obteniendo dirección:', e);
+      try {
+        const coords = JSON.parse(geolocalizacion);
+        const fallback = `${coords.latitud.toFixed(5)}°, ${coords.longitud.toFixed(5)}°`;
+        this.direccionesCache[geolocalizacion] = fallback;
+        return fallback;
+      } catch {
+        return 'Ubicación no disponible';
+      }
+    }
   }
 
 }
