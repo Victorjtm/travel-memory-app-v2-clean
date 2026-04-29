@@ -43,22 +43,21 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private L: any;
 
   readonly MODE_COLORS: { [key: string]: string } = {
-    walking: '#4CAF50',
-    walk: '#4CAF50',
-    caminar: '#4CAF50',
-    andando: '#4CAF50',
-    driving: '#F44336',
-    car: '#F44336',
-    coche: '#F44336',
+    walking: '#059669',
+    driving: '#DC2626',
     cycling: '#FF9800',
-    bicycle: '#FF9800',
-    bici: '#FF9800',
     running: '#2196F3',
-    correr: '#2196F3',
     bus: '#9C27B0',
-    autobus: '#9C27B0',
-    transport: '#9E9E9E',
-    transporte: '#9E9E9E'
+    transport: '#9E9E9E'
+  };
+
+  readonly RETURN_COLORS: { [key: string]: string } = {
+    walking: '#6EE7B7',
+    driving: '#FCA5A5',
+    cycling: '#FFB74D',
+    running: '#64B5F6',
+    bus: '#E1BEE7',
+    transport: '#E0E0E0'
   };
 
   readonly MODE_ICONS: { [key: string]: string } = {
@@ -117,8 +116,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   pendingEvent: any = null; // ✨ NUEVA PROPIEDAD para paso pre-multimedia
 
   // ✨ NUEVO: Master Visual Session
-  visualSessionData: any = null;
-  isHighFidelityMode = false;
+  @Input() visualSessionData: any = null;
+  @Input() isHighFidelityMode = false;
   visualSessionGroup: any = null;
 
   private animationFrameId: number | null = null;
@@ -139,6 +138,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     freezeEpsilon: 0.0001       // Umbral de detección de movimiento del marcador
   };
 
+  // Rastreo de fases para animación dinámica
+  private modeOccurrences: Record<string, number> = {};
+
   constructor(
     private animationService: GpxAnimationService,
     private archivoService: ArchivoService,
@@ -156,52 +158,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.points = this.animationService.applyTransportSegments(this.points, this.transportSegments);
     this.stats = this.animationService.getStats(this.points);
 
-    // ✨ NUEVO: Intentar descargar estadisticas.json (Fase 3 - Sincronización Canónica)
-    if (this.actividadActual && this.actividadActual.rutaEstadisticas) {
-      try {
-        const url = `${environment.apiUrl}/uploads/${this.actividadActual.rutaEstadisticas}`;
-        console.log(`📊 [GpxAnimationComponent] Descargando estadisticas.json desde: ${url}`);
-        const resp = await fetch(url);
-        if (resp.ok) {
-          const statsData = await resp.json();
-          if (statsData.v === "1.0" && statsData.desglose_transporte) {
-            console.log('✅ [Fase 3] Estadísticas Canónicas detectadas. Pre-poblando HUD.');
-            this.modeList = [];
-            this.modeStats = {};
-            statsData.desglose_transporte.forEach((d: any) => {
-              const modeId = d.tipo || 'walking';
-              this.modeList.push(modeId);
-              this.modeStats[modeId] = {
-                dist: parseFloat(d.distancia_km || 0),
-                time: 0, // El tiempo se sincronizará con la animación
-                steps: Math.round(parseFloat(d.distancia_m || 0) * 1.25)
-              };
-            });
-            // Marcar que tenemos estadísticas reales para evitar incrementos duplicados
-            (this as any).hasCanonicalStats = true;
-          }
-        }
-      } catch (e) {
-        console.warn('⚠️ Error cargando estadisticas.json', e);
-      }
-    }
-
-    // ✨ NUEVO: Intentar descargar visual_session.json si está disponible
-    if (this.actividadActual && this.actividadActual.rutaVisualSession) {
-      try {
-        const url = `${environment.apiUrl}/uploads/${this.actividadActual.rutaVisualSession}`;
-        console.log(`🎨 [GpxAnimationComponent] Descargando visual_session.json desde: ${url}`);
-        const resp = await fetch(url);
-        if (resp.ok) {
-          this.visualSessionData = await resp.json();
-          this.isHighFidelityMode = true;
-          console.log('✅ Modo Alta Fidelidad activado.');
-        } else {
-          console.warn('⚠️ No se pudo descargar visual_session.json. Fallback a Modo Legacy.');
-        }
-      } catch (e) {
-        console.warn('⚠️ Error en fetch de visual_session.json. Fallback a Modo Legacy.', e);
-      }
+    // ✨ NUEVO: El componente ya recibe visualSessionData e isHighFidelityMode por @Input()
+    // No hace falta descargarlos de nuevo. Solo inicializamos si vienen datos.
+    if (this.isHighFidelityMode && this.visualSessionData) {
+      console.log('🎨 [GpxAnimationComponent] Iniciando en Modo Alta Fidelidad.');
     }
 
     // Inicializar primer modo para el HUD y crear la primera polilínea
@@ -254,26 +214,37 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
     this.startZoomStrategyEngine();
 
-    // ✨ NUEVO: Renderizar Lienzo Estático si estamos en Modo Alta Fidelidad
+    // ✨ MODIFICADO: Renderizar SOLO marcadores si estamos en Modo Alta Fidelidad
+    // No renderizamos las polilíneas aquí porque el usuario quiere que la ruta "crezca" dinámicamente
     if (this.isHighFidelityMode && this.visualSessionData?.layers) {
       this.visualSessionGroup = this.L.layerGroup().addTo(this.map);
+      
       this.visualSessionData.layers.forEach((layer: any) => {
-        if (layer.type === 'polyline') {
-          this.L.polyline(layer.latLngs, layer.options).addTo(this.visualSessionGroup);
-        } else if (layer.type === 'marker') {
-          let icon;
-          if (layer.icon) {
-            icon = this.L.icon(layer.icon);
-          } else if (layer.options?.icon) {
-            icon = this.L.icon(layer.options.icon);
+        try {
+          if (layer.type === 'marker' && layer.latLng) {
+            let icon;
+            if (layer.icon?.html) {
+              icon = this.L.divIcon({
+                className: layer.icon.className || 'custom-session-marker',
+                html: layer.icon.html,
+                iconSize: layer.icon.iconSize || [30, 49],
+                iconAnchor: layer.icon.iconAnchor || [15, 49],
+                popupAnchor: layer.icon.popupAnchor || [1, -40]
+              });
+            } else if (layer.icon?.iconUrl) {
+              icon = this.L.icon(layer.icon);
+            } else if (layer.options?.icon) {
+              icon = this.L.icon(layer.options.icon);
+            }
+
+            const m = this.L.marker(layer.latLng, { icon: icon || new this.L.Icon.Default() }).addTo(this.visualSessionGroup);
+            if (layer.popup) m.bindPopup(layer.popup);
           }
-          const m = this.L.marker(layer.latLng, { icon: icon || new this.L.Icon.Default() }).addTo(this.visualSessionGroup);
-          if (layer.popup) {
-            m.bindPopup(layer.popup);
-          }
+        } catch (e) {
+          console.warn('⚠️ Error renderizando marcador en animación:', e);
         }
       });
-      console.log('✅ Lienzo estático reconstruido desde visual_session.json');
+      console.log('✅ Marcadores de Alta Fidelidad renderizados. La ruta se dibujará dinámicamente.');
     }
 
     // Ya no creamos una polyline global fija aquí, se creará bajo demanda en update()
@@ -498,18 +469,18 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         if (p.mode !== this.currentMode) {
           this.currentMode = p.mode || 'walking';
           
-          if (!this.isHighFidelityMode) {
-            this.createNewPolyline(this.currentMode, [p.lat, p.lng]);
-          }
-          
+          // Incrementar ocurrencias del modo para detectar vueltas
+          this.modeOccurrences[this.currentMode] = (this.modeOccurrences[this.currentMode] || 0) + 1;
+          const isReturn = this.modeOccurrences[this.currentMode] > 1 && this.currentMode !== 'walking';
+
+          this.createNewPolyline(this.currentMode, [p.lat, p.lng], isReturn);
           this.updateMarkerIcon(this.currentMode);
           
           if (!this.modeStats[this.currentMode]) {
             this.modeStats[this.currentMode] = { dist: 0, time: 0, steps: 0 };
             this.modeList.push(this.currentMode);
           }
-        } else if (this.currentPolyline && !this.isHighFidelityMode) {
-          // Añadimos solo puntos reales a la polilínea si estamos en modo legacy
+        } else if (this.currentPolyline) {
           this.currentPolyline.addLatLng([p.lat, p.lng]);
         }
 
@@ -777,12 +748,15 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     }, 1000);
   }
 
-  private createNewPolyline(mode: string, startLatLng: any) {
-    const color = this.MODE_COLORS[mode] || this.MODE_COLORS['walking'];
+  private createNewPolyline(mode: string, startLatLng: any, isReturn: boolean = false) {
+    const colorMap = isReturn ? this.RETURN_COLORS : this.MODE_COLORS;
+    const color = colorMap[mode] || colorMap['walking'] || '#FF0000';
+    
     this.currentPolyline = this.L.polyline([startLatLng], {
       color: color,
       weight: 6,
-      opacity: 0.9,
+      opacity: isReturn ? 0.45 : 0.9,
+      dashArray: isReturn ? '10, 8' : null,
       lineCap: 'round',
       lineJoin: 'round'
     }).addTo(this.map);
