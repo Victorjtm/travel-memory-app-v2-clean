@@ -255,9 +255,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.startZoomStrategyEngine();
 
     // ✨ NUEVO: Renderizar Lienzo Estático si estamos en Modo Alta Fidelidad
-    if (this.isHighFidelityMode && this.visualSessionData?.mapState?.layers) {
+    if (this.isHighFidelityMode && this.visualSessionData?.layers) {
       this.visualSessionGroup = this.L.layerGroup().addTo(this.map);
-      this.visualSessionData.mapState.layers.forEach((layer: any) => {
+      this.visualSessionData.layers.forEach((layer: any) => {
         if (layer.type === 'polyline') {
           this.L.polyline(layer.latLngs, layer.options).addTo(this.visualSessionGroup);
         } else if (layer.type === 'marker') {

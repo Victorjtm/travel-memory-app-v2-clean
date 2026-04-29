@@ -390,12 +390,17 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     // ✅ PASO 2: Intentar cargar visual_session.json (Alta Fidelidad)
     //   → Independientemente del resultado, después cargamos el GPX como base de coordenadas.
+    //   NOTA: las capas están en la raíz del JSON (sessionData.layers), NO en sessionData.mapState.layers
     this.actividadService.obtenerVisualSession(actividadId).subscribe({
       next: (sessionData) => {
-        if (sessionData?.mapState?.layers && sessionData.mapState.layers.length > 0) {
+        // ✅ FIX: leer layers desde la raíz del JSON, no desde mapState
+        const layers = sessionData?.layers || sessionData?.mapState?.layers;
+        if (layers && layers.length > 0) {
+          // Normalizar: garantizar que siempre accedemos con sessionData.layers
+          sessionData.layers = layers;
           this.visualSessionData = sessionData;
           this.isHighFidelityMode = true;
-          console.log(`🎨 [Alta Fidelidad] visual_session.json cargado. Capas: ${sessionData.mapState.layers.length}`);
+          console.log(`🎨 [Alta Fidelidad] visual_session.json cargado. Capas: ${layers.length}`);
         } else {
           console.warn('⚠️ [Alta Fidelidad] JSON sin capas válidas. Activando modo Legacy.');
         }
@@ -598,17 +603,36 @@ export class ActividadesItinerariosComponent implements OnInit {
         // ================================================================
         // MODO ALTA FIDELIDAD: Reconstruir capas desde visual_session.json
         // ================================================================
-        if (this.isHighFidelityMode && this.visualSessionData?.mapState?.layers) {
+        // ✅ FIX: leer layers desde la raíz normalizada (sessionData.layers)
+        if (this.isHighFidelityMode && this.visualSessionData?.layers) {
           console.log('🎨 [Alta Fidelidad] Renderizando capas del visual_session.json...');
           this.visualSessionGroup = L.layerGroup().addTo(this.mapaGPX);
 
-          // 1. Ordenar capas: Polilíneas más largas (ruta base) primero, para que los segmentos semánticos 
-          // cortos se dibujen encima y no queden ocultos por la polilínea principal ni su stroke.
-          const capasOrdenadas = [...this.visualSessionData.mapState.layers].sort((a: any, b: any) => {
+          // ✅ MEJORA: Detectar retorno basándonos en el color del JSON exportado por la app móvil:
+          //   Verde (#059669) → walking (a pie)
+          //   Rojo (#DC2626)  → driving (coche)
+          // La app exporta primero el tramo de IDA y luego el de VUELTA con el mismo color.
+          // Contamos cuántas polilíneas del mismo color hemos visto para detectar la vuelta.
+          const colorSeenCount: Record<string, number> = {};
+
+          const inferModeFromColor = (color: string): string => {
+            const c = (color || '').toLowerCase();
+            // Verdes → caminar
+            if (c === '#059669' || c === '#4caf50' || c === '#00c853') return 'walking';
+            // Rojos → conducir
+            if (c === '#dc2626' || c === '#f44336' || c === '#d50000') return 'driving';
+            // Naranjas → bici
+            if (c === '#ff9800' || c === '#fb8c00') return 'cycling';
+            // Azules → correr
+            if (c === '#2196f3' || c === '#1565c0') return 'running';
+            return '';
+          };
+
+          // 1. Ordenar capas: Polilíneas más largas (ruta base) primero
+          const capasOrdenadas = [...this.visualSessionData.layers].sort((a: any, b: any) => {
             if (a.type === 'polyline' && b.type === 'polyline') {
               return (b.latLngs?.length || 0) - (a.latLngs?.length || 0);
             }
-            // Asegurar que los marcadores se dibujen siempre después de las polilíneas
             if (a.type === 'polyline' && b.type !== 'polyline') return -1;
             if (a.type !== 'polyline' && b.type === 'polyline') return 1;
             return 0;
@@ -617,36 +641,41 @@ export class ActividadesItinerariosComponent implements OnInit {
           capasOrdenadas.forEach((layer: any) => {
             try {
               if (layer.type === 'polyline' && layer.latLngs?.length > 0) {
-                // 1. Extraer metadatos semánticos reales del JSON
-                const layerMode = (layer.mode || layer.options?.mode || layer.profileId || '').toLowerCase();
-                const routePhase = (layer.routePhase || layer.options?.routePhase || 'outbound').toLowerCase();
-                const isReturn = routePhase === 'return' || routePhase === 'vuelta';
-                
-                // Determinar el color: prioridad a la semántica (MODE_COLORS) sobre el exportado
+                // 1. Extraer metadatos semánticos: primero del JSON, luego inferir por color
+                const exportedColor = (layer.options?.color || '').toLowerCase();
+                const layerMode = (layer.mode || layer.options?.mode || layer.profileId || inferModeFromColor(exportedColor)).toLowerCase();
+                const routePhase = (layer.routePhase || layer.options?.routePhase || '').toLowerCase();
+
+                // ✅ MEJORA: Detectar vuelta contando polilíneas del mismo color
+                colorSeenCount[exportedColor] = (colorSeenCount[exportedColor] || 0) + 1;
+                const isReturn = routePhase === 'return' || routePhase === 'vuelta'
+                  || (colorSeenCount[exportedColor] > 1 && exportedColor !== '#059669'); // 2ª polilínea roja = vuelta
+
+                // 2. Determinar el color: usar el exportado si ya es semántico, si no derivar del modo
                 let semanticColor = layer.options?.color || '#FF0000';
                 if (layerMode && this.MODE_COLORS[layerMode as keyof typeof this.MODE_COLORS]) {
                   const phaseDict = this.MODE_COLORS[layerMode as keyof typeof this.MODE_COLORS];
-                  semanticColor = phaseDict[routePhase as keyof typeof phaseDict] || phaseDict.outbound;
+                  semanticColor = phaseDict[(isReturn ? 'return' : 'outbound') as keyof typeof phaseDict] || phaseDict['outbound'] || semanticColor;
                 } else if (layerMode && this.MODE_COLORS_DIRECT[layerMode]) {
                   semanticColor = this.MODE_COLORS_DIRECT[layerMode];
                 }
 
-                // Atenuación para tramos de vuelta
+                // 3. Atenuación y estilo para tramos de vuelta
                 const polyOpacity = isReturn ? 0.45 : (layer.options?.opacity ?? 0.9);
                 const bgOpacity = isReturn ? 0.3 : 0.8;
-                const dashArray = isReturn ? '8, 8' : (layer.options?.dashArray || null);
+                const dashArray = isReturn ? '10, 8' : (layer.options?.dashArray || null);
 
-                // 2. Trazado de fondo (stroke blanco) para aislar del fondo satelital
+                // 4. Trazado de fondo (stroke blanco) para legibilidad en satélite
                 const bgOpts = {
                   color: '#FFFFFF',
-                  weight: (layer.options?.weight || 5) + 4, // 4px más grueso que la principal
+                  weight: (layer.options?.weight || 5) + 4,
                   opacity: bgOpacity,
                   lineCap: 'round',
                   lineJoin: 'round'
                 };
                 L.polyline(layer.latLngs, bgOpts as any).addTo(this.visualSessionGroup);
 
-                // 3. Reconstruir opciones con color semántico
+                // 5. Polilínea principal con color semántico
                 const opts = {
                   color: semanticColor,
                   weight: layer.options?.weight || 5,
@@ -656,15 +685,17 @@ export class ActividadesItinerariosComponent implements OnInit {
                   lineJoin: layer.options?.lineJoin || 'round'
                 };
                 L.polyline(layer.latLngs, opts as any).addTo(this.visualSessionGroup);
-                
-                // 4. Añadir triángulos direccionales del color del segmento (fidelidad móvil)
+
+                // 6. Flechas direccionales del color del segmento
                 this.addDirectionArrows(L, layer.latLngs, semanticColor, polyOpacity);
 
+                const modeLabel = layerMode || 'desconocido';
+                console.log(`  🛣️ Seg [${modeLabel}] ${isReturn ? '↩ VUELTA' : '→ IDA'} color:${semanticColor} pts:${layer.latLngs.length}`);
+
               } else if (layer.type === 'marker' && layer.latLng) {
-                // Para marcadores de fase (puntos de cambio de transporte)
                 const modeKey = (layer.mode || '').toLowerCase();
                 const layerTitle = (layer.options?.title || layer.name || layer.popup || '').toLowerCase();
-                
+
                 // Interceptar Punto de Giro
                 if (modeKey === 'turning_point' || modeKey === 'turning' || layerTitle.includes('giro') || layerTitle.includes('turn')) {
                   const turningIcon = L.divIcon({
@@ -677,32 +708,41 @@ export class ActividadesItinerariosComponent implements OnInit {
                   return;
                 }
 
-                const color = this.MODE_COLORS_DIRECT[modeKey] || '#4CAF50';
-                const icon = L.divIcon({
-                  className: 'transport-phase-marker',
-                  html: `<div style="
-                    background:${color};
-                    color:white;
-                    border-radius:50%;
-                    width:28px;height:28px;
-                    display:flex;align-items:center;justify-content:center;
-                    font-size:14px;
-                    border:2px solid white;
-                    box-shadow:0 2px 6px rgba(0,0,0,0.4);
-                  ">${layer.icon?.html || '📍'}</div>`,
-                  iconSize: [28, 28],
-                  iconAnchor: [14, 14]
-                });
-                const m = L.marker(layer.latLng, { icon }).addTo(this.visualSessionGroup);
-                if (layer.popup) m.bindPopup(layer.popup);
+                // Renderizar marcadores de foto (con icono HTML personalizado si está disponible)
+                if (layer.icon?.html) {
+                  const customIcon = L.divIcon({
+                    className: layer.icon.className || 'custom-session-marker',
+                    html: layer.icon.html,
+                    iconSize: layer.icon.iconSize || [30, 49],
+                    iconAnchor: layer.icon.iconAnchor || [15, 49],
+                    popupAnchor: layer.icon.popupAnchor || [1, -40]
+                  });
+                  const m = L.marker(layer.latLng, { icon: customIcon }).addTo(this.visualSessionGroup);
+                  if (layer.popup) m.bindPopup(layer.popup, { maxWidth: 260 });
+                } else if (layer.icon?.iconUrl) {
+                  const leafletIcon = L.icon(layer.icon);
+                  const m = L.marker(layer.latLng, { icon: leafletIcon }).addTo(this.visualSessionGroup);
+                  if (layer.popup) m.bindPopup(layer.popup);
+                } else {
+                  const color = this.MODE_COLORS_DIRECT[modeKey] || '#4CAF50';
+                  const icon = L.divIcon({
+                    className: 'transport-phase-marker',
+                    html: `<div style="background:${color};color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);">${layer.icon?.html || '📍'}</div>`,
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                  });
+                  const m = L.marker(layer.latLng, { icon }).addTo(this.visualSessionGroup);
+                  if (layer.popup) m.bindPopup(layer.popup);
+                }
               }
             } catch (layerErr) {
               console.warn('⚠️ Error renderizando capa:', layerErr);
             }
           });
 
-          const capasPolyline = this.visualSessionData.mapState.layers.filter((l: any) => l.type === 'polyline');
-          console.log(`✅ [Alta Fidelidad] ${capasPolyline.length} segmentos y ${this.visualSessionData.mapState.layers.length - capasPolyline.length} marcadores renderizados.`);
+          const capasPolyline = this.visualSessionData.layers.filter((l: any) => l.type === 'polyline' && l.latLngs?.length > 0);
+          const capasMarker = this.visualSessionData.layers.filter((l: any) => l.type === 'marker');
+          console.log(`✅ [Alta Fidelidad] ${capasPolyline.length} segmentos de ruta y ${capasMarker.length} marcadores renderizados.`);
 
         } else {
           // ================================================================
