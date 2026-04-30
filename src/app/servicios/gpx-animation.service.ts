@@ -9,6 +9,13 @@ export interface GpxPoint {
   timeAcum: number; // Tiempo acumulado en segundos
   mode?: string;    // Modo de transporte en este punto (e.g., 'walking', 'driving')
   event?: any;      // Evento multimedia asociado (opcional)
+  
+  // Propiedades de Alta Fidelidad (hf)
+  hfColor?: string;
+  hfOpacity?: number;
+  hfDashArray?: string | null;
+  hfMode?: string;
+  hfPhase?: string;
 }
 
 export interface AnimationStats {
@@ -220,10 +227,13 @@ export class GpxAnimationService {
     });
 
     points.forEach(p => {
-      while (currentSegmentIdx < segmentThresholds.length - 1 && p.distAcum > segmentThresholds[currentSegmentIdx].threshold) {
-        currentSegmentIdx++;
+      const mode = segmentThresholds[currentSegmentIdx].mode;
+      p.mode = mode;
+      
+      // ✨ Si no tiene modo de alta fidelidad, asignamos este como base
+      if (!p.hfMode) {
+        p.hfMode = mode;
       }
-      p.mode = segmentThresholds[currentSegmentIdx].mode;
     });
 
     console.log(`✅ ${points.length} puntos GPX etiquetados con modos de transporte.`);
@@ -324,7 +334,13 @@ export class GpxAnimationService {
         time: newTime,
         mode: p1.mode || 'driving',
         distAcum: 0, // Se recalculará globalmente luego
-        timeAcum: 0
+        timeAcum: 0,
+        // ✨ HERENCIA DE ALTA FIDELIDAD
+        hfColor: p1.hfColor,
+        hfMode: p1.hfMode,
+        hfPhase: p1.hfPhase,
+        hfOpacity: p1.hfOpacity,
+        hfDashArray: p1.hfDashArray
       });
     }
     return newPoints;

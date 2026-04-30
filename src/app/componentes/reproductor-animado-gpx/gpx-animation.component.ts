@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, inject } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DragDropModule } from '@angular/cdk/drag-drop';
@@ -39,6 +39,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private map: any;
   private polylines: any[] = []; // Soporte para múltiples colores
   private currentPolyline: any;
+  private currentBackgroundPolyline: any;
   private marker: any;
   private L: any;
 
@@ -140,6 +141,15 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   // Rastreo de fases para animación dinámica
   private modeOccurrences: Record<string, number> = {};
+  private pendingVisualMarkers: any[] = [];
+  private revealedMarkersCount = 0;
+  
+  private currentHfColor: string = '';
+  private currentHfPhase: string = '';
+  private currentHfMode: string = '';
+  private hfSegments: any[] = []; // ✨ NUEVA ESTRUCTURA DE SEGMENTOS
+  
+  public hasCanonicalStats: boolean = false;
 
   constructor(
     private animationService: GpxAnimationService,
@@ -155,27 +165,46 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
     this.points = this.animationService.parseGpx(this.gpxText);
     this.points = this.animationService.syncMultimedia(this.points, this.multimedia);
-    this.points = this.animationService.applyTransportSegments(this.points, this.transportSegments);
-    this.stats = this.animationService.getStats(this.points);
-
-    // ✨ NUEVO: El componente ya recibe visualSessionData e isHighFidelityMode por @Input()
-    // No hace falta descargarlos de nuevo. Solo inicializamos si vienen datos.
-    if (this.isHighFidelityMode && this.visualSessionData) {
-      console.log('🎨 [GpxAnimationComponent] Iniciando en Modo Alta Fidelidad.');
+    
+    // ✅ CORRECCIÓN ROBUSTA: Asegurar que el tipo de transporte sea el correcto basado en el nombre
+    if (this.transportSegments) {
+      this.transportSegments.forEach((s: any) => {
+        const nombre = (s.nombre || '').toLowerCase();
+        const tipo = (s.tipo || '').toLowerCase();
+        
+        if ((nombre.includes('coche') || nombre.includes('driving') || nombre.includes('car')) && tipo === 'walking') {
+          console.log(`🚗 [Fijando Modo] Corrigiendo segmento ${s.nombre}: walking -> driving`);
+          s.tipo = 'driving';
+        }
+        if (nombre.includes('andando') || nombre.includes('walking') || nombre.includes('caminar')) {
+          s.tipo = 'walking';
+        }
+      });
     }
+
+    this.points = this.animationService.applyTransportSegments(this.points, this.transportSegments);
+    
+    // ✨ NUEVO: Sincronización de Alta Fidelidad (Prioridad sobre estadísticas legacy)
+    if (this.isHighFidelityMode && this.visualSessionData) {
+      this.syncHighFidelityMetadata();
+    }
+
+    this.stats = this.animationService.getStats(this.points);
 
     // Inicializar primer modo para el HUD y crear la primera polilínea
     if (this.points.length > 0) {
-      this.currentMode = this.points[0].mode || 'walking';
+      const p0 = this.points[0];
+      this.currentMode = p0.hfMode || p0.mode || 'walking';
+      this.currentHfColor = p0.hfColor || '';
+      this.currentHfPhase = p0.hfPhase || '';
+
       this.modeStats[this.currentMode] = { dist: 0, time: 0, steps: 0 };
       this.modeList.push(this.currentMode);
-      this.currentPointTime = this.points[0].time || null; // ✨ INICIALIZAR TIEMPO
+      this.currentPointTime = p0.time || null; 
       
-      // Creamos la primera polilínea para que se vea desde el inicio (Solo si NO estamos en alta fidelidad)
-      await this.initMap(); // Aseguramos que el mapa esté listo
-      if (!this.isHighFidelityMode) {
-        this.createNewPolyline(this.currentMode, [this.points[0].lat, this.points[0].lng]);
-      }
+      await this.initMap(); 
+      this.createNewPolyline(this.currentMode, [p0.lat, p0.lng], p0);
+      console.log(`🛣️ Primera polilínea (HF) creada. Color: ${p0.hfColor || 'default'}`);
     } else {
       await this.initMap();
     }
@@ -193,13 +222,16 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private async initMap() {
     this.L = await import('leaflet');
     
+    const initialLat = this.points.length > 0 ? this.points[0].lat : 0;
+    const initialLng = this.points.length > 0 ? this.points[0].lng : 0;
+
     this.map = this.L.map('map-animation', {
       zoomControl: false,
       attributionControl: false,
       preferCanvas: true,
       zoomSnap: 0.1, // ✨ V4: Zoom fraccional para suavidad extrema
       zoomAnimation: true // Se preserva opción nativa
-    }).setView([this.points[0].lat, this.points[0].lng], this.currentActualZoom);
+    }).setView([initialLat, initialLng], this.currentActualZoom);
 
     this.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 18,
@@ -214,37 +246,21 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
     this.startZoomStrategyEngine();
 
-    // ✨ MODIFICADO: Renderizar SOLO marcadores si estamos en Modo Alta Fidelidad
-    // No renderizamos las polilíneas aquí porque el usuario quiere que la ruta "crezca" dinámicamente
+    // ✨ MODIFICADO: Almacenar marcadores para revelarlos progresivamente
     if (this.isHighFidelityMode && this.visualSessionData?.layers) {
       this.visualSessionGroup = this.L.layerGroup().addTo(this.map);
+      this.pendingVisualMarkers = [];
       
       this.visualSessionData.layers.forEach((layer: any) => {
         try {
           if (layer.type === 'marker' && layer.latLng) {
-            let icon;
-            if (layer.icon?.html) {
-              icon = this.L.divIcon({
-                className: layer.icon.className || 'custom-session-marker',
-                html: layer.icon.html,
-                iconSize: layer.icon.iconSize || [30, 49],
-                iconAnchor: layer.icon.iconAnchor || [15, 49],
-                popupAnchor: layer.icon.popupAnchor || [1, -40]
-              });
-            } else if (layer.icon?.iconUrl) {
-              icon = this.L.icon(layer.icon);
-            } else if (layer.options?.icon) {
-              icon = this.L.icon(layer.options.icon);
-            }
-
-            const m = this.L.marker(layer.latLng, { icon: icon || new this.L.Icon.Default() }).addTo(this.visualSessionGroup);
-            if (layer.popup) m.bindPopup(layer.popup);
+            this.pendingVisualMarkers.push(layer);
           }
         } catch (e) {
-          console.warn('⚠️ Error renderizando marcador en animación:', e);
+          console.warn('⚠️ Error preparando marcador:', e);
         }
       });
-      console.log('✅ Marcadores de Alta Fidelidad renderizados. La ruta se dibujará dinámicamente.');
+      console.log(`📦 ${this.pendingVisualMarkers.length} marcadores de Alta Fidelidad preparados para revelado progresivo.`);
     }
 
     // Ya no creamos una polyline global fija aquí, se creará bajo demanda en update()
@@ -257,14 +273,16 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     const initialMode = this.currentMode || 'walking';
     const iconHtml = `<div class="transport-icon-wrapper">${this.getModeIcon(initialMode)}</div>`;
     
-    this.marker = this.L.marker([this.points[0].lat, this.points[0].lng], {
-      icon: this.L.divIcon({
-        className: 'custom-transport-marker',
-        html: iconHtml,
-        iconSize: [40, 40],
-        iconAnchor: [20, 20]
-      })
-    }).addTo(this.map);
+    if (this.points.length > 0) {
+      this.marker = this.L.marker([this.points[0].lat, this.points[0].lng], {
+        icon: this.L.divIcon({
+          className: 'custom-transport-marker',
+          html: iconHtml,
+          iconSize: [40, 40],
+          iconAnchor: [20, 20]
+        })
+      }).addTo(this.map);
+    }
   }
 
   togglePlay() {
@@ -406,7 +424,13 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
                  iconAnchor: [20, 20]
                })
              }).addTo(this.map);
-             this.createNewPolyline(this.currentMode, [this.points[0].lat, this.points[0].lng]);
+             
+             // ✨ RE-SINCRONIZAR ALTA FIDELIDAD TRAS OSRM
+             if (this.isHighFidelityMode) {
+               this.syncHighFidelityMetadata();
+             }
+
+             this.createNewPolyline(this.currentMode, [this.points[0].lat, this.points[0].lng], this.points[0]);
              
              if (wasPlaying) this.togglePlay();
         }
@@ -466,14 +490,40 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         const p = this.points[i];
         const prevP = this.points[i - 1] || this.points[0];
 
-        if (p.mode !== this.currentMode) {
-          this.currentMode = p.mode || 'walking';
-          
-          // Incrementar ocurrencias del modo para detectar vueltas
-          this.modeOccurrences[this.currentMode] = (this.modeOccurrences[this.currentMode] || 0) + 1;
-          const isReturn = this.modeOccurrences[this.currentMode] > 1 && this.currentMode !== 'walking';
+        // Determinamos el metadato del punto (Prioridad: Segmento HF > Propiedades del punto > Fallback)
+        let newMode = p.hfMode || p.mode || 'walking';
+        let newColor = p.hfColor || '';
+        let newPhase = p.hfPhase || '';
+        let newOpacity = p.hfOpacity ?? 0.9;
+        let newDashArray = p.hfDashArray ?? null;
 
-          this.createNewPolyline(this.currentMode, [p.lat, p.lng], isReturn);
+        // Buscar en hfSegments si estamos en modo alta fidelidad
+        if (this.isHighFidelityMode && this.hfSegments.length > 0) {
+          const seg = this.hfSegments.find(s => i >= s.startIndex && i <= s.endIndex);
+          if (seg) {
+            newMode = seg.mode;
+            newColor = seg.color;
+            newPhase = seg.phase;
+            newOpacity = seg.opacity;
+            newDashArray = seg.dashArray;
+          }
+        }
+
+        if (newMode !== this.currentMode || newColor !== this.currentHfColor || newPhase !== this.currentHfPhase) {
+          console.log(`🎨 [Animación Segmentada] Nuevo tramo: ${newMode} | Color: ${newColor} | Fase: ${newPhase}`);
+          this.currentMode = newMode;
+          this.currentHfColor = newColor;
+          this.currentHfPhase = newPhase;
+          
+          const pointContext = {
+            hfColor: newColor,
+            hfMode: newMode,
+            hfPhase: newPhase,
+            hfOpacity: newOpacity,
+            hfDashArray: newDashArray
+          };
+          
+          this.createNewPolyline(this.currentMode, [p.lat, p.lng], pointContext);
           this.updateMarkerIcon(this.currentMode);
           
           if (!this.modeStats[this.currentMode]) {
@@ -482,6 +532,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
           }
         } else if (this.currentPolyline) {
           this.currentPolyline.addLatLng([p.lat, p.lng]);
+          if (this.currentBackgroundPolyline) {
+            this.currentBackgroundPolyline.addLatLng([p.lat, p.lng]);
+          }
         }
 
         // Stats acumuladas (Síncronas con los puntos)
@@ -491,7 +544,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
           const s = this.modeStats[this.currentMode];
 
           // 🛡️ Fase 3: Solo incrementamos si NO tenemos estadísticas reales del móvil
-          if (!(this as any).hasCanonicalStats) {
+          if (!this.hasCanonicalStats) {
             s.dist += d;
             if (this.isWalkingMode(this.currentMode)) s.steps += d * 1400;
           }
@@ -504,6 +557,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
           this.renderCurrentFrame(); // Mueve el marcador e interpola al frame exacto
           this.pauseForEvent(p.event); // Ejecuta el flyTo sin que sea pisado
           return;
+        }
+
+        // ✨ NUEVO: Revelar marcadores visuales cercanos
+        if (this.isHighFidelityMode && this.pendingVisualMarkers.length > 0) {
+           this.revealNearbyMarkers(p.lat, p.lng);
         }
       }
     }
@@ -748,18 +806,190 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     }, 1000);
   }
 
-  private createNewPolyline(mode: string, startLatLng: any, isReturn: boolean = false) {
-    const colorMap = isReturn ? this.RETURN_COLORS : this.MODE_COLORS;
-    const color = colorMap[mode] || colorMap['walking'] || '#FF0000';
+  private revealNearbyMarkers(lat: number, lng: number) {
+    const markersToReveal = this.pendingVisualMarkers.filter(m => {
+      const dist = this.getDistance(lat, lng, m.latLng.lat, m.latLng.lng);
+      return dist < 30; // 30 metros de umbral para aparecer
+    });
+
+    markersToReveal.forEach(layer => {
+      try {
+        let icon;
+        if (layer.icon?.html) {
+          icon = this.L.divIcon({
+            className: layer.icon.className || 'custom-session-marker',
+            html: layer.icon.html,
+            iconSize: layer.icon.iconSize || [30, 49],
+            iconAnchor: layer.icon.iconAnchor || [15, 49],
+            popupAnchor: layer.icon.popupAnchor || [1, -40]
+          });
+        } else if (layer.icon?.iconUrl) {
+          icon = this.L.icon(layer.icon);
+        } else if (layer.options?.icon) {
+          icon = this.L.icon(layer.options.icon);
+        }
+
+        const m = this.L.marker(layer.latLng, { icon: icon || new this.L.Icon.Default() }).addTo(this.visualSessionGroup);
+        if (layer.popup) m.bindPopup(layer.popup);
+        
+        // Animación de entrada
+        const el = m.getElement();
+        if (el) {
+          el.style.opacity = '0';
+          el.style.transition = 'opacity 0.5s ease-out';
+          setTimeout(() => el.style.opacity = '1', 10);
+        }
+
+        // Eliminar de pendientes
+        this.pendingVisualMarkers = this.pendingVisualMarkers.filter(pm => pm !== layer);
+      } catch (e) {
+        console.warn('⚠️ Error revelando marcador:', e);
+      }
+    });
+  }
+
+  private getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const R = 6371e3; // metros
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) *
+      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  }
+
+  private syncHighFidelityMetadata() {
+    if (!this.visualSessionData?.layers || this.points.length === 0) return;
+
+    const polyLayers = this.visualSessionData.layers.filter((l: any) => 
+      l.type === 'polyline' && l.latLngs?.length > 0
+    );
     
-    this.currentPolyline = this.L.polyline([startLatLng], {
-      color: color,
-      weight: 6,
-      opacity: isReturn ? 0.45 : 0.9,
-      dashArray: isReturn ? '10, 8' : null,
+    console.log(`🔄 [Alta Fidelidad] Alineando ${polyLayers.length} capas con ${this.points.length} puntos GPX...`);
+    
+    this.hfSegments = [];
+    let lastFoundIdx = 0;
+
+    polyLayers.forEach((layer: any, layerIdx: number) => {
+      const vStart = layer.latLngs[0];
+      const vEnd = layer.latLngs[layer.latLngs.length - 1];
+      const expectedPts = layer.latLngs.length;
+
+      // 1. Buscar el punto GPX más cercano al INICIO de la capa
+      let startIndex = -1;
+      let minStartDist = 40; // Máximo 40 metros de margen
+      for (let i = lastFoundIdx; i < Math.min(lastFoundIdx + 2000, this.points.length); i++) {
+        const d = this.getDistance(vStart.lat, vStart.lng, this.points[i].lat, this.points[i].lng);
+        if (d < minStartDist) {
+          minStartDist = d;
+          startIndex = i;
+        }
+      }
+
+      if (startIndex === -1) {
+        console.warn(`  ⚠️ Layer ${layerIdx} [${layer.options?.color}]: No se encontró punto de inicio cercano.`);
+        return;
+      }
+
+      // 2. Buscar el punto GPX más cercano al FINAL de la capa (a partir de startIndex)
+      let endIndex = -1;
+      let minEndDist = 50; 
+      // Buscamos en un rango razonable basado en la densidad de puntos
+      const searchLimit = Math.min(startIndex + (expectedPts * 50), this.points.length);
+      for (let i = startIndex; i < searchLimit; i++) {
+        const d = this.getDistance(vEnd.lat, vEnd.lng, this.points[i].lat, this.points[i].lng);
+        if (d < minEndDist) {
+          minEndDist = d;
+          endIndex = i;
+        }
+      }
+
+      // 3. Validación y Creación de Segmento
+      if (endIndex !== -1 && endIndex >= startIndex) {
+        const foundPts = endIndex - startIndex + 1;
+        
+        // Extracción robusta de modo
+        let mode = (layer.mode || layer.options?.mode || layer.profileId || '').toLowerCase();
+        const phase = (layer.routePhase || layer.options?.routePhase || '').toLowerCase();
+        
+        if (!mode) {
+          if (layer.options?.color === '#059669' || layer.options?.color === '#6EE7B7') mode = 'walking';
+          else if (layer.options?.color === '#DC2626' || layer.options?.color === '#FCA5A5') mode = 'driving';
+          else mode = 'walking';
+        }
+        
+        if (mode.includes('walk')) mode = 'walking';
+        else if (mode.includes('car') || mode.includes('drive')) mode = 'driving';
+
+        const seg = {
+          layerIndex: layerIdx,
+          startIndex: startIndex,
+          endIndex: endIndex,
+          color: layer.options?.color,
+          opacity: layer.options?.opacity,
+          dashArray: layer.options?.dashArray,
+          mode: mode || 'walking',
+          phase: phase || 'outbound'
+        };
+
+        this.hfSegments.push(seg);
+        lastFoundIdx = endIndex; // El siguiente tramo debe empezar después de este
+        
+        console.log(`  ✅ Layer ${layerIdx} esperado: ${expectedPts} pts | encontrado: ${foundPts} pts | start: ${startIndex} | end: ${endIndex} | color: ${seg.color} | modo: ${seg.mode}`);
+      } else {
+        console.warn(`  ⚠️ Layer ${layerIdx} no mapeada con confianza suficiente (End no encontrado).`);
+      }
+    });
+
+    console.log(`🏁 [HF Total] ${this.hfSegments.length}/${polyLayers.length} capas mapeadas correctamente.`);
+  }
+
+  private createNewPolyline(mode: string, startLatLng: any, pointContext?: any) {
+    if (!this.map) return;
+
+    // 1. Prioridad: Metadatos de Alta Fidelidad (HF)
+    let color = pointContext?.hfColor;
+    let opacity = pointContext?.hfOpacity;
+    let dashArray = pointContext?.hfDashArray;
+    const isReturn = pointContext?.hfPhase === 'return' || pointContext?.hfPhase === 'vuelta';
+
+    // 2. Fallback: Colores por modo (Legacy)
+    if (!color) {
+      const colorSet = isReturn ? this.RETURN_COLORS : this.MODE_COLORS;
+      color = colorSet[mode] || colorSet['transport'] || '#FF0000';
+    }
+    
+    if (opacity === undefined || opacity === null) {
+      opacity = isReturn ? 0.45 : 0.9;
+    }
+    
+    if (dashArray === undefined || dashArray === null) {
+      dashArray = isReturn ? '10, 8' : null;
+    }
+
+    this.currentBackgroundPolyline = this.L.polyline([startLatLng], {
+      color: '#FFFFFF',
+      weight: 9,
+      opacity: isReturn ? 0.3 : 0.8,
       lineCap: 'round',
       lineJoin: 'round'
     }).addTo(this.map);
+    this.polylines.push(this.currentBackgroundPolyline);
+
+    this.currentPolyline = this.L.polyline([startLatLng], {
+      color: color,
+      weight: 6,
+      opacity: opacity,
+      dashArray: dashArray,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(this.map);
+    
     this.polylines.push(this.currentPolyline);
   }
 
