@@ -282,13 +282,19 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       this.visualSessionData.layers.forEach((layer: any) => {
         try {
           if (layer.type === 'marker' && layer.latLng) {
-            this.pendingVisualMarkers.push(layer);
+            // ❌ FILTRO: No añadir flechas de dirección a la animación
+            const isArrow = layer.icon?.className === 'direction-arrow-svg' || 
+                           (layer.icon?.html && (layer.icon.html.includes('direction-arrow-svg') || layer.icon.html.includes('rotate(')));
+            
+            if (!isArrow) {
+              this.pendingVisualMarkers.push(layer);
+            }
           }
         } catch (e) {
           console.warn('⚠️ Error preparando marcador:', e);
         }
       });
-      console.log(`📦 ${this.pendingVisualMarkers.length} marcadores de Alta Fidelidad preparados para revelado progresivo.`);
+      console.log(`📦 ${this.pendingVisualMarkers.length} marcadores de Alta Fidelidad preparados (flechas filtradas).`);
     }
 
     // Ya no creamos una polyline global fija aquí, se creará bajo demanda en update()
