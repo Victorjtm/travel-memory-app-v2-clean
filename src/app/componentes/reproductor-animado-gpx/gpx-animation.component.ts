@@ -194,17 +194,45 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     // Inicializar primer modo para el HUD y crear la primera polilínea
     if (this.points.length > 0) {
       const p0 = this.points[0];
-      this.currentMode = p0.hfMode || p0.mode || 'walking';
-      this.currentHfColor = p0.hfColor || '';
-      this.currentHfPhase = p0.hfPhase || '';
+      
+      // ✨ PRIORIDAD: Usar el primer segmento HF para el estado inicial si existe
+      const firstSeg = (this.isHighFidelityMode && this.hfSegments.length > 0) ? this.hfSegments[0] : null;
+      
+      if (firstSeg && firstSeg.startIndex <= 5) { // Si el primer segmento empieza cerca del inicio
+        this.currentMode = firstSeg.mode;
+        this.currentHfColor = firstSeg.color;
+        this.currentHfPhase = firstSeg.phase;
+      } else {
+        this.currentMode = p0.hfMode || p0.mode || 'walking';
+        this.currentHfColor = p0.hfColor || '';
+        this.currentHfPhase = p0.hfPhase || '';
+      }
 
-      this.modeStats[this.currentMode] = { dist: 0, time: 0, steps: 0 };
-      this.modeList.push(this.currentMode);
+      if (this.currentMode) {
+        this.modeStats[this.currentMode] = { dist: 0, time: 0, steps: 0 };
+        this.modeList.push(this.currentMode);
+      }
       this.currentPointTime = p0.time || null; 
       
       await this.initMap(); 
-      this.createNewPolyline(this.currentMode, [p0.lat, p0.lng], p0);
-      console.log(`🛣️ Primera polilínea (HF) creada. Color: ${p0.hfColor || 'default'}`);
+      
+      const pointContext = (this.isHighFidelityMode && this.hfSegments.length > 0 && this.hfSegments[0].startIndex <= 10) ? {
+        hfColor: this.hfSegments[0].color,
+        hfMode: this.hfSegments[0].mode,
+        hfPhase: this.hfSegments[0].phase,
+        hfOpacity: this.hfSegments[0].opacity,
+        hfDashArray: this.hfSegments[0].dashArray
+      } : p0;
+
+      // Asegurar que las variables de estado coincidan con el contexto inicial
+      if (pointContext.hfColor) {
+        this.currentMode = pointContext.hfMode || this.currentMode;
+        this.currentHfColor = pointContext.hfColor;
+        this.currentHfPhase = pointContext.hfPhase || '';
+      }
+
+      this.createNewPolyline(this.currentMode || 'walking', [p0.lat, p0.lng], pointContext);
+      console.log(`🛣️ Primera polilínea (HF) creada. Color: ${this.currentHfColor || 'default'}`);
     } else {
       await this.initMap();
     }
@@ -870,20 +898,21 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       l.type === 'polyline' && l.latLngs?.length > 0
     );
     
-    console.log(`🔄 [Alta Fidelidad] Alineando ${polyLayers.length} capas con ${this.points.length} puntos GPX...`);
+    console.log(`🔄 [Alta Fidelidad] Alineando ${polyLayers.length} capas visuales con el GPX...`);
     
     this.hfSegments = [];
-    let lastFoundIdx = 0;
+    let lastEndIdx = 0;
 
     polyLayers.forEach((layer: any, layerIdx: number) => {
       const vStart = layer.latLngs[0];
       const vEnd = layer.latLngs[layer.latLngs.length - 1];
-      const expectedPts = layer.latLngs.length;
+      const expectedLen = layer.latLngs.length;
 
-      // 1. Buscar el punto GPX más cercano al INICIO de la capa
+      // 1. Buscar inicio del tramo (Desde el último final, con margen amplio)
       let startIndex = -1;
-      let minStartDist = 40; // Máximo 40 metros de margen
-      for (let i = lastFoundIdx; i < Math.min(lastFoundIdx + 2000, this.points.length); i++) {
+      let minStartDist = 100; // Margen generoso de 100m
+      
+      for (let i = lastEndIdx; i < Math.min(lastEndIdx + 2000, this.points.length); i++) {
         const d = this.getDistance(vStart.lat, vStart.lng, this.points[i].lat, this.points[i].lng);
         if (d < minStartDist) {
           minStartDist = d;
@@ -892,16 +921,15 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       }
 
       if (startIndex === -1) {
-        console.warn(`  ⚠️ Layer ${layerIdx} [${layer.options?.color}]: No se encontró punto de inicio cercano.`);
+        console.warn(`  ⚠️ Layer ${layerIdx}: Inicio no detectado cerca de idx ${lastEndIdx}.`);
         return;
       }
 
-      // 2. Buscar el punto GPX más cercano al FINAL de la capa (a partir de startIndex)
+      // 2. Buscar fin del tramo (Desde startIndex hasta el final de la ruta)
       let endIndex = -1;
-      let minEndDist = 50; 
-      // Buscamos en un rango razonable basado en la densidad de puntos
-      const searchLimit = Math.min(startIndex + (expectedPts * 50), this.points.length);
-      for (let i = startIndex; i < searchLimit; i++) {
+      let minEndDist = 100;
+      
+      for (let i = startIndex; i < this.points.length; i++) {
         const d = this.getDistance(vEnd.lat, vEnd.lng, this.points[i].lat, this.points[i].lng);
         if (d < minEndDist) {
           minEndDist = d;
@@ -909,44 +937,53 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         }
       }
 
-      // 3. Validación y Creación de Segmento
-      if (endIndex !== -1 && endIndex >= startIndex) {
-        const foundPts = endIndex - startIndex + 1;
-        
-        // Extracción robusta de modo
-        let mode = (layer.mode || layer.options?.mode || layer.profileId || '').toLowerCase();
-        const phase = (layer.routePhase || layer.options?.routePhase || '').toLowerCase();
-        
-        if (!mode) {
-          if (layer.options?.color === '#059669' || layer.options?.color === '#6EE7B7') mode = 'walking';
-          else if (layer.options?.color === '#DC2626' || layer.options?.color === '#FCA5A5') mode = 'driving';
-          else mode = 'walking';
-        }
-        
-        if (mode.includes('walk')) mode = 'walking';
-        else if (mode.includes('car') || mode.includes('drive')) mode = 'driving';
-
-        const seg = {
-          layerIndex: layerIdx,
-          startIndex: startIndex,
-          endIndex: endIndex,
-          color: layer.options?.color,
-          opacity: layer.options?.opacity,
-          dashArray: layer.options?.dashArray,
-          mode: mode || 'walking',
-          phase: phase || 'outbound'
-        };
-
-        this.hfSegments.push(seg);
-        lastFoundIdx = endIndex; // El siguiente tramo debe empezar después de este
-        
-        console.log(`  ✅ Layer ${layerIdx} esperado: ${expectedPts} pts | encontrado: ${foundPts} pts | start: ${startIndex} | end: ${endIndex} | color: ${seg.color} | modo: ${seg.mode}`);
-      } else {
-        console.warn(`  ⚠️ Layer ${layerIdx} no mapeada con confianza suficiente (End no encontrado).`);
+      if (endIndex === -1 || endIndex < startIndex) {
+        console.warn(`  ⚠️ Layer ${layerIdx}: Fin no detectado después de idx ${startIndex}.`);
+        return;
       }
+
+      // 3. Extracción de Metadatos y Creación de Segmento
+      let mode = (layer.mode || layer.options?.mode || layer.profileId || '').toLowerCase();
+      const phase = (layer.routePhase || layer.options?.routePhase || '').toLowerCase();
+      
+      if (!mode) {
+        const color = layer.options?.color;
+        if (color === '#059669' || color === '#6EE7B7') mode = 'walking';
+        else if (color === '#DC2626' || color === '#FCA5A5') mode = 'driving';
+        else mode = 'walking';
+      }
+      
+      if (mode.includes('walk')) mode = 'walking';
+      else if (mode.includes('car') || mode.includes('drive')) mode = 'driving';
+
+      const seg = {
+        startIndex,
+        endIndex,
+        color: layer.options?.color,
+        opacity: layer.options?.opacity ?? 0.9,
+        dashArray: layer.options?.dashArray ?? null,
+        mode,
+        phase
+      };
+
+      // 4. Decorar puntos del rango
+      for (let i = startIndex; i <= endIndex; i++) {
+        const p = this.points[i] as any;
+        p.hfColor = seg.color;
+        p.hfMode = seg.mode;
+        p.hfPhase = seg.phase;
+        p.hfOpacity = seg.opacity;
+        p.hfDashArray = seg.dashArray;
+      }
+
+      this.hfSegments.push(seg);
+      lastEndIdx = endIndex;
+
+      const foundLen = endIndex - startIndex + 1;
+      console.log(`  ✅ Layer ${layerIdx} vinculada: ${foundLen} pts GPX (JSON: ${expectedLen} pts) | Color: ${seg.color} | Modo: ${seg.mode}`);
     });
 
-    console.log(`🏁 [HF Total] ${this.hfSegments.length}/${polyLayers.length} capas mapeadas correctamente.`);
+    console.log(`🏁 [HF Mapeo] Completado: ${this.hfSegments.length}/${polyLayers.length} capas restauradas.`);
   }
 
   private createNewPolyline(mode: string, startLatLng: any, pointContext?: any) {
