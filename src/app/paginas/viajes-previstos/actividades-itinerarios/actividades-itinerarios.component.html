@@ -111,13 +111,30 @@
           <span class="label">Ritmo Máximo:</span>
           <span class="value">{{ estadisticasActuales.ritmo.maximo }} min/km</span>
         </div>
-        <div class="stat-item">
+      </div>
+
+      <!-- 3. ACTIVIDAD FÍSICA (NUEVO) -->
+      <div class="estadistica-grupo" *ngIf="(estadisticasActuales.energia?.calorias > 0) || (estadisticasActuales.energia?.pasos > 0) || (estadisticasActuales.cadencia > 0)">
+        <h4><i class="fa fa-heartbeat"></i> Actividad Física</h4>
+        <div class="stat-item" *ngIf="estadisticasActuales.energia?.calorias > 0">
           <span class="label">Calorías:</span>
           <span class="value">{{ estadisticasActuales.energia.calorias }} kcal</span>
         </div>
+        <div class="stat-item" *ngIf="estadisticasActuales.energia?.pasos > 0">
+          <span class="label">Pasos:</span>
+          <span class="value">{{ estadisticasActuales.energia.pasos }}</span>
+        </div>
+        <div class="stat-item" *ngIf="estadisticasActuales.cadencia > 0">
+          <span class="label">Cadencia:</span>
+          <span class="value">{{ estadisticasActuales.cadencia }} ppm</span>
+        </div>
+        <div class="stat-item" *ngIf="estadisticasActuales.zancada > 0">
+          <span class="label">Zancada:</span>
+          <span class="value">{{ estadisticasActuales.zancada }} cm</span>
+        </div>
       </div>
 
-      <!-- 3. TIEMPOS DETALLADOS -->
+      <!-- 4. TIEMPOS DETALLADOS -->
       <div class="estadistica-grupo" *ngIf="estadisticasActuales.tiempos">
         <h4><i class="fa fa-clock-o"></i> Tiempos</h4>
         <div class="stat-item" *ngIf="estadisticasActuales.tiempos.enMarcha">
@@ -173,7 +190,20 @@
         </div>
       </div>
 
-      <!-- 6. DESGLOSE IDA Y VUELTA (NUEVO - Full Width) -->
+      <!-- 7. MULTIMEDIA (NUEVO) -->
+      <div class="estadistica-grupo" *ngIf="(estadisticasActuales.multimedia?.fotos > 0) || (estadisticasActuales.multimedia?.videos > 0)">
+        <h4><i class="fa fa-camera"></i> Multimedia</h4>
+        <div class="stat-item" *ngIf="estadisticasActuales.multimedia?.fotos > 0">
+          <span class="label">Fotos en Ruta:</span>
+          <span class="value">{{ estadisticasActuales.multimedia.fotos }}</span>
+        </div>
+        <div class="stat-item" *ngIf="estadisticasActuales.multimedia?.videos > 0">
+          <span class="label">Vídeos en Ruta:</span>
+          <span class="value">{{ estadisticasActuales.multimedia.videos }}</span>
+        </div>
+      </div>
+
+      <!-- 8. DESGLOSE IDA Y VUELTA (NUEVO - Full Width) -->
       <div class="estadistica-grupo grupo-full" *ngIf="estadisticasActuales.idaVuelta">
         <h4><i class="fa fa-exchange"></i> Desglose Ida y Vuelta</h4>
         <div class="desglose-grid">
@@ -323,6 +353,11 @@
                   <img *ngIf="!esVideo(foto)" [src]="getThumbnailUrl(foto)" loading="lazy" [alt]="foto.nombreArchivo">
                   <video *ngIf="esVideo(foto)" [src]="getThumbnailUrl(foto)" preload="metadata" muted playsinline></video>
                   
+                  <!-- ✨ FASE 2: Badge Numérico para correspondencia con mapa -->
+                  <div class="number-badge" *ngIf="foto.numeroSecuencial">
+                    #{{ foto.numeroSecuencial }}
+                  </div>
+
                   <!-- Badge identificador de vídeo -->
                   <div class="video-badge" *ngIf="esVideo(foto)">
                     <i class="fa fa-play-circle"></i>
@@ -364,7 +399,19 @@
                     <span class="label">V. Máxima</span>
                     <span class="value">{{ estadisticasGPX.velocidad?.maxima || '0.0' }} <small>km/h</small></span>
                   </div>
-                  <div class="stat-item" *ngIf="(estadisticasGPX.tiempoPausaSegundos || 0) > 0">
+                  <div class="stat-item" *ngIf="estadisticasGPX.tiempos?.enMarcha && estadisticasGPX.tiempos?.enMarcha !== '00:00:00'">
+                    <span class="label">En Marcha</span>
+                    <span class="value">{{ estadisticasGPX.tiempos?.enMarcha }}</span>
+                  </div>
+                  <div class="stat-item" *ngIf="estadisticasGPX.tiempos?.parado && estadisticasGPX.tiempos?.parado !== '00:00:00'">
+                    <span class="label">Parado</span>
+                    <span class="value">{{ estadisticasGPX.tiempos?.parado }}</span>
+                  </div>
+                  <div class="stat-item" *ngIf="estadisticasGPX.tiempos?.pausado && estadisticasGPX.tiempos?.pausado !== '00:00:00'">
+                    <span class="label">Pausado</span>
+                    <span class="value">{{ estadisticasGPX.tiempos?.pausado }}</span>
+                  </div>
+                  <div class="stat-item" *ngIf="!estadisticasGPX.tiempos?.pausado && (estadisticasGPX.tiempoPausaSegundos || 0) > 0">
                     <span class="label">Pausado</span>
                     <span class="value">{{ formatDuration((estadisticasGPX.tiempoPausaSegundos || 0) * 1000) }}</span>
                   </div>
@@ -376,7 +423,7 @@
               </div>
 
               <!-- 3. ACTIVIDAD FÍSICA -->
-              <div class="stats-section" *ngIf="(estadisticasGPX.energia?.calorias || 0) > 0 || (estadisticasGPX.energia?.pasos || 0) > 0">
+              <div class="stats-section" *ngIf="(estadisticasGPX.energia?.calorias || 0) > 0 || (estadisticasGPX.energia?.pasos || 0) > 0 || (estadisticasGPX.cadencia || 0) > 0">
                 <h4 class="section-title">🔥 Actividad Física</h4>
                 <div class="stats-grid-2">
                   <div class="stat-item" *ngIf="(estadisticasGPX.energia?.calorias || 0) > 0">
@@ -386,6 +433,14 @@
                   <div class="stat-item" *ngIf="(estadisticasGPX.energia?.pasos || 0) > 0">
                     <span class="label">Pasos</span>
                     <span class="value">{{ estadisticasGPX.energia?.pasos }}</span>
+                  </div>
+                  <div class="stat-item" *ngIf="(estadisticasGPX.cadencia || 0) > 0">
+                    <span class="label">Cadencia</span>
+                    <span class="value">{{ estadisticasGPX.cadencia }} <small>ppm</small></span>
+                  </div>
+                  <div class="stat-item" *ngIf="(estadisticasGPX.zancada || 0) > 0">
+                    <span class="label">Zancada</span>
+                    <span class="value">{{ estadisticasGPX.zancada }} <small>cm</small></span>
                   </div>
                 </div>
               </div>
@@ -405,7 +460,22 @@
                 </div>
               </div>
 
-              <!-- 5. IDA Y VUELTA -->
+              <!-- 5. MULTIMEDIA -->
+              <div class="stats-section" *ngIf="(estadisticasGPX.multimedia?.fotos || 0) > 0 || (estadisticasGPX.multimedia?.videos || 0) > 0">
+                <h4 class="section-title">📸 Multimedia</h4>
+                <div class="stats-grid-2">
+                  <div class="stat-item" *ngIf="(estadisticasGPX.multimedia?.fotos || 0) > 0">
+                    <span class="label">Fotos</span>
+                    <span class="value">{{ estadisticasGPX.multimedia?.fotos }}</span>
+                  </div>
+                  <div class="stat-item" *ngIf="(estadisticasGPX.multimedia?.videos || 0) > 0">
+                    <span class="label">Vídeos</span>
+                    <span class="value">{{ estadisticasGPX.multimedia?.videos }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 6. IDA Y VUELTA -->
               <div class="stats-section" *ngIf="estadisticasGPX.tieneIdaVuelta">
                 <h4 class="section-title">🔄 Ida y Vuelta</h4>
                 <div class="split-stats">

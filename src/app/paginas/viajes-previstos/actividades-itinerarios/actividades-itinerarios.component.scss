@@ -1004,6 +1004,23 @@ textarea:focus {
         aspect-ratio: 1;
         transition: all 0.2s ease;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        position: relative;
+
+        .number-badge {
+          position: absolute;
+          top: 6px;
+          left: 6px;
+          background: rgba(0, 0, 0, 0.65);
+          color: #ffffff;
+          font-size: 0.85rem;
+          font-weight: bold;
+          padding: 2px 6px;
+          border-radius: 12px;
+          z-index: 5;
+          backdrop-filter: blur(2px);
+          border: 1px solid rgba(255,255,255,0.3);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
 
         &:hover {
           border-color: #3b82f6;

@@ -3377,7 +3377,7 @@ app.get('/actividades/:id/estadisticas', (req, res) => {
         } catch (e) { console.warn('⚠️ Error stats:', e.message); }
       }
 
-      // 3. Fusionar campos faltantes en objeto base
+      // 3. Fusionar campos en objeto base (PRIORIDAD: JSON > DB)
       const sources = [dataExtra.stats, dataExtra.manifest.estadisticas || {}, dataExtra.manifest];
       const getField = (keys) => {
         for (const src of sources) {
@@ -3388,26 +3388,37 @@ app.get('/actividades/:id/estadisticas', (req, res) => {
         return null;
       };
 
-      if (estadisticas.velocidad.media === 0 || !estadisticas.velocidad.media)
-        estadisticas.velocidad.media = parseNum(getField(['velocidadMedia', 'velocidad_media_kmh', 'velocidadMediaKmh', 'v_media', 'velocidad_media', 'avg_speed', 'V. Media', 'avgSpeed']));
+      // ✨ PRIORIDAD JSON: Sobrescribir valores del GPX/DB si el JSON tiene datos oficiales (incluso si es 0)
+      const jsonVelMedia = parseNum(getField(['velocidadMedia', 'velocidad_media_kmh', 'velocidadMediaKmh', 'v_media', 'velocidad_media', 'avg_speed', 'V. Media', 'avgSpeed']));
+      if (jsonVelMedia !== null && !isNaN(jsonVelMedia)) estadisticas.velocidad.media = jsonVelMedia;
 
-      if (estadisticas.velocidad.maxima === 0 || !estadisticas.velocidad.maxima)
-        estadisticas.velocidad.maxima = parseNum(getField(['velocidadMaxima', 'velocidad_maxima_kmh', 'velocidadMaximaKmh', 'v_maxima', 'velocidad_maxima', 'max_speed', 'V. Máxima', 'maxSpeed']));
+      const jsonVelMax = parseNum(getField(['velocidadMaxima', 'velocidad_maxima_kmh', 'velocidadMaximaKmh', 'v_maxima', 'velocidad_maxima', 'max_speed', 'V. Máxima', 'maxSpeed']));
+      if (jsonVelMax !== null && !isNaN(jsonVelMax)) estadisticas.velocidad.maxima = jsonVelMax;
+
+      const jsonCalorias = parseInt(parseNum(getField(['calorias', 'calorias_kcal', 'calories', 'cals', 'kcal', 'Calorías'])));
+      if (jsonCalorias !== null && !isNaN(jsonCalorias)) estadisticas.energia.calorias = jsonCalorias;
+
+      const jsonPasos = parseInt(getField(['pasos', 'pasos_totales', 'pasos_estimados', 'pasosEstimados', 'num_pasos', 'steps', 'Pasos']));
+      if (jsonPasos !== null && !isNaN(jsonPasos)) estadisticas.energia.pasos = jsonPasos;
+
+      const jsonPuntosGPS = parseInt(getField(['puntosGPS', 'numeroPuntos', 'puntos_gps', 'numero_puntos', 'num_puntos', 'log_count', 'points', 'Puntos GPS', 'numLog', 'gps_count', 'logCount']));
+      if (jsonPuntosGPS !== null && !isNaN(jsonPuntosGPS)) estadisticas.tracking.puntosGPS = jsonPuntosGPS;
+
+      const jsonDuracion = getField(['tiempoEmpleado', 'duracion_ui', 'tiempo_total', 'tiempoTotal']);
+      if (jsonDuracion !== null && jsonDuracion !== '') estadisticas.duracion.formateada = jsonDuracion;
+
+      // ✨ EXTRACCIÓN DE DATOS RICOS: Cadencia, zancada y conteo multimedia
+      estadisticas.cadencia = parseInt(getField(['cadencia', 'cadence', 'cadencia_pasos'])) || 0;
+      estadisticas.zancada = parseInt(getField(['zancada', 'stride', 'zancada_cm'])) || 0;
+      estadisticas.multimedia = {
+        fotos: parseInt(getField(['fotos', 'photos'])) || 0,
+        videos: parseInt(getField(['videos', 'videos'])) || 0
+      };
 
       // ✨ SEGURO: Si vMax es 0 pero vMedia > 0, usar vMedia como suelo
       if ((!estadisticas.velocidad.maxima || estadisticas.velocidad.maxima === 0) && estadisticas.velocidad.media > 0) {
         estadisticas.velocidad.maxima = estadisticas.velocidad.media;
         console.log(`⚖️ [FLOOR] Aplicando suelo de velocidad media a máxima: ${estadisticas.velocidad.maxima}`);
-      }
-
-      if (estadisticas.energia.calorias === 0 || !estadisticas.energia.calorias)
-        estadisticas.energia.calorias = parseInt(parseNum(getField(['calorias', 'calories', 'cals', 'kcal', 'Calorías']))) || 0;
-
-      if (estadisticas.energia.pasos === 0 || !estadisticas.energia.pasos)
-        estadisticas.energia.pasos = parseInt(getField(['pasos', 'pasos_estimados', 'pasosEstimados', 'num_pasos', 'steps', 'Pasos'])) || 0;
-
-      if (estadisticas.tracking.puntosGPS === 0 || !estadisticas.tracking.puntosGPS) {
-        estadisticas.tracking.puntosGPS = parseInt(getField(['puntosGPS', 'numeroPuntos', 'puntos_gps', 'numero_puntos', 'num_puntos', 'log_count', 'points', 'Puntos GPS', 'numLog', 'gps_count', 'logCount'])) || 0;
       }
 
       // ✨ FALLBACK: Si sigue siendo 0, intentar contar puntos en el GPX real

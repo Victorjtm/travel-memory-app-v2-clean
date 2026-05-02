@@ -87,6 +87,10 @@ export class ActividadesItinerariosComponent implements OnInit {
     tiempoIdaFormateado?: string;
     tiempoVueltaFormateado?: string;
     altitud?: { min?: number, max?: number, ganancia?: number, perdida?: number };
+    cadencia?: number;
+    zancada?: number;
+    multimedia?: { fotos?: number, videos?: number };
+    tiempos?: { enMarcha?: string, parado?: string, pausado?: string };
   } = {
       distanciaKm: '0.00',
       distanciaMetros: 0,
@@ -102,7 +106,11 @@ export class ActividadesItinerariosComponent implements OnInit {
       distanciaVueltaMetros: 0,
       tiempoIdaFormateado: '00:00:00',
       tiempoVueltaFormateado: '00:00:00',
-      altitud: { min: 0, max: 0, ganancia: 0, perdida: 0 }
+      altitud: { min: 0, max: 0, ganancia: 0, perdida: 0 },
+      cadencia: 0,
+      zancada: 0,
+      multimedia: { fotos: 0, videos: 0 },
+      tiempos: { enMarcha: '00:00:00', parado: '00:00:00', pausado: '00:00:00' }
     };
 
   // ✨ NUEVAS PROPIEDADES PARA ANIMACIÓN
@@ -381,7 +389,11 @@ export class ActividadesItinerariosComponent implements OnInit {
           distanciaVueltaMetros: stats.idaVuelta?.vuelta?.metros || 0,
           tiempoIdaFormateado: stats.idaVuelta?.ida?.tiempo || '00:00:00',
           tiempoVueltaFormateado: stats.idaVuelta?.vuelta?.tiempo || '00:00:00',
-          altitud: stats.altitud || { min: null, max: null, ganancia: null, perdida: null }
+          altitud: stats.altitud || { min: null, max: null, ganancia: null, perdida: null },
+          cadencia: stats.cadencia || 0,
+          zancada: stats.zancada || 0,
+          multimedia: stats.multimedia || { fotos: 0, videos: 0 },
+          tiempos: stats.tiempos || { enMarcha: '00:00:00', parado: '00:00:00', pausado: '00:00:00' }
         };
         console.log('✅ Estadísticas mapeadas:', this.estadisticasGPX);
       },
@@ -457,7 +469,11 @@ export class ActividadesItinerariosComponent implements OnInit {
           transportePrincipal: stats.transportePrincipal || null,
           desgloseTransporte: stats.desgloseTransporte || [],
           fecha: stats.fecha || '',
-          horario: stats.horario || { inicio: '', fin: '' }
+          horario: stats.horario || { inicio: '', fin: '' },
+          cadencia: stats.cadencia || 0,
+          zancada: stats.zancada || 0,
+          multimedia: stats.multimedia || { fotos: 0, videos: 0 },
+          tiempos: stats.tiempos || { enMarcha: '00:00:00', parado: '00:00:00', pausado: '00:00:00' }
         };
 
         // ✅ NUEVO: Intentar cargar visual_session.json antes de lanzar la animación
@@ -947,8 +963,6 @@ export class ActividadesItinerariosComponent implements OnInit {
       } catch (e) { }
     });
 
-    this.fotosActividad = multimedia;
-
     const archivosConCoordenadas = multimedia.map((archivo: any) => {
       try {
         const geoData = typeof archivo.geolocalizacion === 'string'
@@ -969,20 +983,31 @@ export class ActividadesItinerariosComponent implements OnInit {
     }).filter(Boolean);
 
     archivosConCoordenadas.sort((a, b) => {
-      const timeA = new Date(a!.timestamp).getTime();
-      const timeB = new Date(b!.timestamp).getTime();
+      const timeA = new Date(a!.timestamp).getTime() || 0;
+      const timeB = new Date(b!.timestamp).getTime() || 0;
       return timeA - timeB;
     });
 
     const grupos = this.agruparArchivosPorUbicacion(archivosConCoordenadas);
 
+    // ✨ FASE 2: Sincronizar array lineal con los grupos del mapa
+    this.fotosActividad = [];
+
     grupos.forEach((grupo, index) => {
+      const numeroSecuencial = index + 1;
+      
       this.anadirMarcadorGrupo(
         grupo.lat,
         grupo.lng,
         grupo.archivos,
-        index + 1
+        numeroSecuencial
       );
+
+      // Alimentar la galería lateral con el orden y número exacto del mapa
+      grupo.archivos.forEach((item: any) => {
+        item.archivo.numeroSecuencial = numeroSecuencial;
+        this.fotosActividad.push(item.archivo);
+      });
     });
   }
 
@@ -1573,9 +1598,8 @@ export class ActividadesItinerariosComponent implements OnInit {
     if (!this.mapaGPX || coordinates.length < 2) return;
 
     const totalPoints = coordinates.length;
-    const interval = Math.max(Math.floor(totalPoints / 12), 5);
-
-    console.log(`📍 Añadiendo flechas SVG cada ${interval} puntos (total: ${totalPoints})`);
+    // ✨ FASE 1 (Iteración 3): Chevron minimalista, muy sutil
+    const interval = Math.max(Math.floor(totalPoints / 4), 60);
 
     for (let i = interval; i < coordinates.length; i += interval) {
       const prevPoint = coordinates[i - 1];
@@ -1586,18 +1610,26 @@ export class ActividadesItinerariosComponent implements OnInit {
       const arrowIcon = L.divIcon({
         className: 'direction-arrow-svg',
         html: `
-        <svg width="32" height="32" viewBox="0 0 32 32" 
-             style="transform: rotate(${angle}deg); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); opacity: ${opacity};">
-          <!-- Triángulo simple grande (estilo móvil) -->
-          <path d="M16 2 L28 26 L4 26 Z" 
-                fill="${color}" 
+        <svg width="16" height="16" viewBox="0 0 32 32" 
+             style="transform: rotate(${angle}deg); filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3)); opacity: ${opacity * 0.5};">
+          <!-- Fondo/Borde blanco para contraste -->
+          <path d="M 6 24 L 16 8 L 26 24" 
+                fill="none" 
                 stroke="white" 
+                stroke-width="6"
+                stroke-linecap="round"
+                stroke-linejoin="round"/>
+          <!-- Línea de color semántico -->
+          <path d="M 6 24 L 16 8 L 26 24" 
+                fill="none" 
+                stroke="${color}" 
                 stroke-width="3"
+                stroke-linecap="round"
                 stroke-linejoin="round"/>
         </svg>
       `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+        iconSize: [16, 16],
+        iconAnchor: [8, 12]
       });
 
       L.marker(currentPoint, {
