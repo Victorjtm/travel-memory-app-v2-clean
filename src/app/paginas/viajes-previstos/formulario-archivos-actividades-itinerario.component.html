@@ -137,11 +137,13 @@
       </div>
 
       <!-- ===== Botón de submit del formulario ===== -->
+      <!-- FIX DUPLICADOS 2026 — Botón deshabilitado durante subida/guardado + spinner -->
       <button type="submit" 
-              [disabled]="!formArchivos.form.valid || (!modoEdicion && archivosSeleccionados.length === 0)"
+              [disabled]="!formArchivos.form.valid || (!modoEdicion && archivosSeleccionados.length === 0) || subiendoArchivos || guardandoArchivo"
               class="{{ modoEdicion ? 'btn-actualizar' : 'btn-subir' }}">
-        <i class="fa {{ modoEdicion ? 'fa-save' : 'fa-cloud-upload-alt' }}"></i> 
-        {{ modoEdicion ? 'Guardar Cambios' : 'Subir Archivos' }}
+        <mat-spinner *ngIf="subiendoArchivos || guardandoArchivo" diameter="18"></mat-spinner>
+        <i *ngIf="!subiendoArchivos && !guardandoArchivo" class="fa {{ modoEdicion ? 'fa-save' : 'fa-cloud-upload-alt' }}"></i> 
+        {{ subiendoArchivos ? 'Subiendo...' : guardandoArchivo ? 'Guardando...' : modoEdicion ? 'Guardar Cambios' : 'Subir Archivos' }}
       </button>
     </form>
   </div>

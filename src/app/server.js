@@ -531,6 +531,52 @@ db.run(
   }
 );
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FIX DUPLICADOS 2026 — Migración anti-duplicados en tabla archivos
+// Clave de unicidad: (actividadId, nombreArchivo)
+// - Limpia duplicados existentes (conserva el registro más antiguo)
+// - Crea UNIQUE INDEX para prevenir futuros duplicados
+// - NULL actividadId NO se ve afectado (SQLite: NULL != NULL en UNIQUE)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+(async () => {
+  try {
+    // Paso 1: Limpiar duplicados existentes (conservar el registro con menor id por grupo)
+    const dupsExistentes = await dbQuery.all(`
+      SELECT id FROM archivos
+      WHERE actividadId IS NOT NULL
+      AND id NOT IN (
+        SELECT MIN(id) FROM archivos
+        WHERE actividadId IS NOT NULL
+        GROUP BY actividadId, nombreArchivo
+      )
+      AND EXISTS (
+        SELECT 1 FROM archivos a2
+        WHERE a2.actividadId = archivos.actividadId
+        AND a2.nombreArchivo = archivos.nombreArchivo
+        AND a2.id < archivos.id
+      )
+    `);
+
+    if (dupsExistentes.length > 0) {
+      const ids = dupsExistentes.map(d => d.id).join(',');
+      await dbQuery.run(`DELETE FROM archivos WHERE id IN (${ids})`);
+      console.log(`🔄 [FIX DUPLICADOS 2026] ${dupsExistentes.length} registros duplicados eliminados (conservado el más antiguo por grupo).`);
+    } else {
+      console.log('✅ [FIX DUPLICADOS 2026] No se encontraron duplicados existentes.');
+    }
+
+    // Paso 2: Crear índice UNIQUE para prevenir futuros duplicados
+    await dbQuery.run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_archivos_actividad_nombre
+      ON archivos(actividadId, nombreArchivo)
+    `);
+    console.log('✅ [FIX DUPLICADOS 2026] Índice UNIQUE (actividadId, nombreArchivo) creado/verificado.');
+
+  } catch (error) {
+    console.error('❌ [FIX DUPLICADOS 2026] Error en migración anti-duplicados:', error.message);
+  }
+})();
+
 
 // Crear la tabla archivos_asociados (textos y audios asociados a fotos, videos o imágenes)
 db.run(
@@ -2438,8 +2484,11 @@ app.post('/viajes/:id/unificar-itinerarios', async (req, res) => {
 
         // Mover todos los archivos a la nueva actividad, evadiendo duplicados por nombre
         const nombresEnMaestro = new Set();
-        // 1. Ver archivos actuales del maestro (si los hubiera)
-        const actualesMaestro = await dbQuery.all('SELECT nombreArchivo FROM archivos WHERE itinerarioId = ?', [maestroId]);
+        // 1. Ver archivos actuales del maestro (si los hubiera) - FIX: Join con actividades porque archivos no tiene itinerarioId
+        const actualesMaestro = await dbQuery.all(
+          'SELECT a.nombreArchivo FROM archivos a INNER JOIN actividades act ON a.actividadId = act.id WHERE act.itinerarioId = ?', 
+          [maestroId]
+        );
         actualesMaestro.forEach(a => nombresEnMaestro.add(a.nombreArchivo));
 
         for (const archivo of archivos) {
@@ -2515,7 +2564,11 @@ app.post('/viajes/:id/unificar-itinerarios', async (req, res) => {
           const clusterFileIds = cluster.map(f => f.id);
           
           const nombresEnMaestro = new Set();
-          const actualesMaestro = await dbQuery.all('SELECT nombreArchivo FROM archivos WHERE itinerarioId = ?', [maestroId]);
+          // FIX: Join con actividades porque archivos no tiene itinerarioId
+          const actualesMaestro = await dbQuery.all(
+            'SELECT a.nombreArchivo FROM archivos a INNER JOIN actividades act ON a.actividadId = act.id WHERE act.itinerarioId = ?', 
+            [maestroId]
+          );
           actualesMaestro.forEach(a => nombresEnMaestro.add(a.nombreArchivo));
 
           for (const f of cluster) {
@@ -3944,10 +3997,12 @@ app.post('/archivos', async (req, res) => {
   const fechaFinal = fechaCreacion ? new Date(fechaCreacion).toISOString() : new Date().toISOString();
 
   try {
+    // FIX DUPLICADOS 2026 — Inserción idempotente con ON CONFLICT
     const result = await dbQuery.run(
       `INSERT INTO archivos 
       (actividadId, tipo, nombreArchivo, rutaArchivo, descripcion, horaCaptura, version, geolocalizacion, metadatos, fechaCreacion)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(actividadId, nombreArchivo) DO NOTHING`,
       [
         actId, tipo, nombreArchivo, rutaArchivo,
         descripcion || null, horaCaptura || null, version || 1,
@@ -3955,8 +4010,14 @@ app.post('/archivos', async (req, res) => {
       ]
     );
 
-    console.log('✅ Archivo creado con ID:', result.lastID, 'y fechaCreacion:', fechaFinal);
-    res.status(201).json({ id: result.lastID, fechaCreacion: fechaFinal });
+    // FIX DUPLICADOS 2026 — Detectar si fue duplicado
+    if (result.changes === 0) {
+      console.log(`⚠️ [DUPLICADO] Archivo "${nombreArchivo}" ya existe en actividad ${actId}, ignorado.`);
+      res.status(200).json({ id: null, duplicado: true, mensaje: 'Archivo ya existe en esta actividad' });
+    } else {
+      console.log('✅ Archivo creado con ID:', result.lastID, 'y fechaCreacion:', fechaFinal);
+      res.status(201).json({ id: result.lastID, fechaCreacion: fechaFinal });
+    }
   } catch (err) {
     console.error('❌ Error creando archivo:', err);
     res.status(500).json({ error: err.message });
@@ -4120,6 +4181,8 @@ app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
   }
 
   const resultados = [];
+  let insertados = 0;  // FIX DUPLICADOS 2026
+  let duplicados = 0;  // FIX DUPLICADOS 2026
 
   for (const archivo of archivos) {
     try {
@@ -4237,11 +4300,12 @@ app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
       console.log('🐾 Geolocalización que se va a guardar (string JSON con coordenadas):', geolocalizacionFinal);
       console.log('🐾 Metadatos completos que se va a guardar:', JSON.stringify(metadatos).substring(0, 500));
 
-      // ✅ REFACTORIZADO: Usar dbQuery.run (Promesa) para asegurar el await correcto
+      // FIX DUPLICADOS 2026 — Inserción idempotente con ON CONFLICT
       const result = await dbQuery.run(
         `INSERT INTO archivos 
           (actividadId, tipo, nombreArchivo, rutaArchivo, descripcion, horaCaptura, geolocalizacion, metadatos, fechaCreacion) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(actividadId, nombreArchivo) DO NOTHING`,
         [
           actividadFinal,
           tipo || archivo.mimetype.split('/')[0],
@@ -4255,16 +4319,31 @@ app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
         ]
       );
 
-      console.log(`✅ Archivo guardado con ID: ${result.lastID} y actividadId: ${actividadFinal}`);
-      resultados.push({
-        id: result.lastID,
-        nombre: archivo.originalname,
-        estado: 'subido',
-        actividadId: actividadFinal || 0, // Enviar 0 al frontend para consistencia si es null
-        fechaCreacion: fechaCreacionFinal,
-        geolocalizacion: geolocalizacionFinal,
-        metadatos: Object.keys(metadatos).length > 0 ? metadatos : null
-      });
+      // FIX DUPLICADOS 2026 — Detectar duplicado y limpiar archivo huérfano
+      if (result.changes === 0) {
+        console.log(`⚠️ [DUPLICADO] ${archivo.originalname} ya existe en actividad ${actividadFinal}, ignorado.`);
+        // Limpiar archivo físico huérfano (multer ya lo guardó en disco)
+        try { fs.unlinkSync(path.join(uploadsPath, archivo.filename)); } catch (e) { /* ignorar */ }
+        duplicados++;
+        resultados.push({
+          nombre: archivo.originalname,
+          estado: 'duplicado',
+          actividadId: actividadFinal || 0,
+          mensaje: 'Archivo ya existe en esta actividad'
+        });
+      } else {
+        console.log(`✅ Archivo guardado con ID: ${result.lastID} y actividadId: ${actividadFinal}`);
+        insertados++;
+        resultados.push({
+          id: result.lastID,
+          nombre: archivo.originalname,
+          estado: 'subido',
+          actividadId: actividadFinal || 0,
+          fechaCreacion: fechaCreacionFinal,
+          geolocalizacion: geolocalizacionFinal,
+          metadatos: Object.keys(metadatos).length > 0 ? metadatos : null
+        });
+      }
 
     } catch (error) {
       console.error(`❌ Error procesando ${archivo?.originalname}:`, error);
@@ -4276,9 +4355,15 @@ app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
     }
   }
 
-  console.log('\n🏁 Subida completada. Resultados:', resultados.length);
+  // FIX DUPLICADOS 2026 — Respuesta enriquecida con conteo de duplicados
+  console.log(`\n🏁 Subida completada. Insertados: ${insertados}, Duplicados: ${duplicados}, Total procesados: ${resultados.length}`);
   console.log('🔍 Detalle de resultados:', resultados);
-  res.status(201).json(resultados);
+  res.status(201).json({
+    success: true,
+    insertados,
+    duplicados,
+    archivos: resultados
+  });
 });
 
 
@@ -6544,11 +6629,13 @@ app.post('/import-tracking', (req, res, next) => {
         timestampDisplay: media.timestamp_display
       };
 
+      // FIX DUPLICADOS 2026 — ON CONFLICT para import desde móvil
       const archivoId = await new Promise((resolve, reject) => {
         db.run(
           `INSERT INTO archivos 
             (actividadId, tipo, nombreArchivo, rutaArchivo, horaCaptura, geolocalizacion, metadatos, fechaCreacion) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(actividadId, nombreArchivo) DO NOTHING`,
           [
             actividadId,
             dbTipo,

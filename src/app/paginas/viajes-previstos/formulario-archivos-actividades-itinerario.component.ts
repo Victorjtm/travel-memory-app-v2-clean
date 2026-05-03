@@ -1,8 +1,9 @@
-import { Component, OnInit, Inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, Inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
+import { Subscription } from 'rxjs';
 
 // Servicios y modelos
 import { Archivo } from '../../modelos/archivo';
@@ -69,7 +70,7 @@ interface DialogData {
   templateUrl: './formulario-archivos-actividades-itinerario.component.html',
   styleUrls: ['./formulario-archivos-actividades-itinerario.component.scss']
 })
-export class FormularioArchivosComponent implements OnInit {
+export class FormularioArchivosComponent implements OnInit, OnDestroy {
 
   // ═══════════════════════════════════════════════════════════════
   // PROPIEDADES PRINCIPALES
@@ -98,6 +99,9 @@ export class FormularioArchivosComponent implements OnInit {
 
   // Debug
   mostrarDebug: boolean = false;
+
+  // FIX DUPLICADOS 2026 — Suscripción para limpieza en OnDestroy
+  private routeSub?: Subscription;
 
   // IDs de navegación
   viajePrevistoId!: number;
@@ -162,7 +166,8 @@ export class FormularioArchivosComponent implements OnInit {
   ) { }
 
   ngOnInit() {
-    this.route.paramMap.subscribe(params => {
+    // FIX DUPLICADOS 2026 — Almacenar suscripción para cleanup
+    this.routeSub = this.route.paramMap.subscribe(params => {
       this.viajePrevistoId = +params.get('viajePrevistoId')!;
       this.itinerarioId = +params.get('itinerarioId')!;
       this.actividadId = +params.get('actividadId')!;
@@ -177,6 +182,23 @@ export class FormularioArchivosComponent implements OnInit {
         this.cargarArchivos();
       }
     });
+  }
+
+  // FIX DUPLICADOS 2026 — Limpieza de estado y suscripciones al destruir el componente
+  ngOnDestroy(): void {
+    // Cancelar suscripción de ruta
+    if (this.routeSub) {
+      this.routeSub.unsubscribe();
+      this.routeSub = undefined;
+    }
+    // Resetear estado temporal para evitar fugas
+    this.archivosSeleccionados = [];
+    this.archivoNuevoSeleccionado = null;
+    this.archivoOriginal = null;
+    this.subiendoArchivos = false;
+    this.guardandoArchivo = false;
+    this.cargandoArchivo = false;
+    console.log('[FIX DUPLICADOS 2026] Componente destruido, estado limpiado.');
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -523,6 +545,11 @@ export class FormularioArchivosComponent implements OnInit {
 
 
   subirArchivos(): void {
+    // FIX DUPLICADOS 2026 — Guard contra doble submit
+    if (this.subiendoArchivos || this.guardandoArchivo) {
+      console.log('[FIX DUPLICADOS 2026] Doble submit bloqueado en subirArchivos()');
+      return;
+    }
     if (this.modoEdicion) {
       this.actualizarArchivoExistente();
     } else {
@@ -534,6 +561,11 @@ export class FormularioArchivosComponent implements OnInit {
    * Actualiza un archivo existente con nuevos metadatos y/o archivo
    */
   private actualizarArchivoExistente(): void {
+    // FIX DUPLICADOS 2026 — Guard contra doble submit en edición
+    if (this.guardandoArchivo) {
+      console.log('[FIX DUPLICADOS 2026] Doble submit bloqueado en actualizarArchivoExistente()');
+      return;
+    }
     if (!this.archivoEditandoId) {
       console.error('[❌ ERROR] ID de archivo no válido');
       alert('Error: ID de archivo no válido');
@@ -624,6 +656,11 @@ export class FormularioArchivosComponent implements OnInit {
   // ✅ VERSIÓN CORREGIDA - Cambiar el método subirNuevosArchivos()
 
   private async subirNuevosArchivos(): Promise<void> {
+    // FIX DUPLICADOS 2026 — Guard contra doble submit en subida múltiple
+    if (this.subiendoArchivos) {
+      console.log('[FIX DUPLICADOS 2026] Doble submit bloqueado en subirNuevosArchivos()');
+      return;
+    }
     if (this.archivosSeleccionados.length === 0) {
       return;
     }
