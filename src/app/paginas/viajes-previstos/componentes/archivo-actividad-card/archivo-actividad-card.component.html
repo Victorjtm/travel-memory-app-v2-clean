@@ -1,0 +1,76 @@
+<div class="card-container" [class.gallery-mode]="modoGaleria">
+  
+  <div class="preview-section">
+    <app-archivo-thumbnail 
+      [archivo]="archivo" 
+      [fileUrl]="fileUrl" 
+      [compact]="modoGaleria"
+      (clickMedia)="onPreview()">
+    </app-archivo-thumbnail>
+  </div>
+
+  <div class="info-section" *ngIf="!modoGaleria">
+    <h3>{{ archivo.nombreArchivo }}</h3>
+    <div class="meta-data">
+      <p><strong>Tipo:</strong> {{ archivo.tipo }}</p>
+      <p><strong>Descripción:</strong> {{ archivo.descripcion || 'Sin descripción' }}</p>
+      <p><strong>Hora:</strong> {{ archivo.horaCaptura || 'No especificada' }}</p>
+      <p class="ubicacion">
+        <strong>📍 Ubicación:</strong>
+        <span>{{ direccionDisplay }}</span>
+      </p>
+      <p><strong>Creación:</strong> {{ archivo.fechaCreacion | date:'dd/MM/yyyy' }}</p>
+    </div>
+  </div>
+
+  <!-- Título flotante solo en galería para identificar el archivo -->
+  <div class="gallery-title" *ngIf="modoGaleria">
+    <span>{{ archivo.nombreArchivo }}</span>
+  </div>
+
+  <div class="actions-section">
+    <!-- Botones asociados -->
+    <div class="associated-actions">
+      <button class="btn-asociado btn-audio" *ngIf="archivo.tipo === 'audio'"
+              (click)="onPlayAudioPrincipal()" title="Reproducir audio">
+        <i class="fa fa-volume-up"></i>
+      </button>
+
+      <!-- Aquí simplificamos el acceso a asociados para V1 -->
+      <button class="btn-asociado btn-audio" *ngIf="tieneArchivoAsociado('audio')"
+              (click)="onOpenAssociated('audio')" title="Audio asociado">
+        <i class="fa fa-volume-up"></i>
+      </button>
+
+      <button class="btn-asociado btn-gpx" *ngIf="tieneArchivoAsociado('gpx')"
+              (click)="onOpenAssociated('gpx')" title="Ver ruta GPX">
+        <i class="fa fa-map-marked-alt"></i>
+      </button>
+
+      <button class="btn-asociado btn-buscar-audio" *ngIf="!tieneArchivosAsociados() && !modoGaleria"
+              (click)="onSearchAudio()" title="Buscar asociados">
+        <i class="fa fa-folder-open"></i>
+      </button>
+    </div>
+
+    <!-- Separador solo en modo lista -->
+    <span class="separador" *ngIf="!modoGaleria"></span>
+
+    <!-- Botones de gestión -->
+    <div class="management-actions">
+      <button class="btn-descargar" (click)="onDownload()" title="Descargar">
+        <i class="fa fa-download"></i>
+      </button>
+
+      <button class="btn-eliminar" (click)="onDelete()" title="Eliminar">
+        <i class="fa fa-trash"></i>
+      </button>
+
+      <button class="btn-actualizar" [routerLink]="[
+          '/viajes-previstos', viajePrevistoId, 'itinerarios', itinerarioId, 'actividades', actividadId, 'archivos', 'editar', archivo.id
+        ]" title="Editar">
+        <i class="fa fa-edit"></i>
+      </button>
+    </div>
+  </div>
+</div>

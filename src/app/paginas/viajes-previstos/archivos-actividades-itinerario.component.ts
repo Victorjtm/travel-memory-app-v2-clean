@@ -14,6 +14,11 @@ import { HttpClientModule } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import { take } from 'rxjs/operators';
 
+// Nuevos componentes
+import { ArchivoThumbnailComponent } from '../../componentes/compartidos/archivo-thumbnail/archivo-thumbnail.component';
+import { ArchivoActividadCardComponent } from './componentes/archivo-actividad-card/archivo-actividad-card.component';
+
+
 @Component({
   selector: 'app-archivos',
   standalone: true,
@@ -21,7 +26,9 @@ import { take } from 'rxjs/operators';
     CommonModule,
     RouterModule,
     HttpClientModule,
-    FormsModule
+    FormsModule,
+    ArchivoThumbnailComponent,
+    ArchivoActividadCardComponent
   ],
   templateUrl: './archivos-actividades-itinerario.component.html',
   styleUrls: ['./archivos-actividades-itinerario.component.scss'],
@@ -35,6 +42,8 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   archivoSeleccionado: Archivo | null = null;
   urlsArchivos: { [key: number]: string } = {};
   estadoCarga: { [key: number]: 'cargando' | 'listo' | 'error' } = {};
+  modoGaleria = false; // ✨ NUEVA PROPIEDAD PARA VISTA GALERÍA
+
   // ✨ NUEVAS PROPIEDADES PARA GPX INDIVIDUAL
   mostrarModalGPXIndividual = false;
   mapaGPXIndividual: any = null;
@@ -501,6 +510,12 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   trackByArchivoId(index: number, archivo: Archivo): number {
     return archivo.id;
   }
+
+  toggleVista(): void {
+    this.modoGaleria = !this.modoGaleria;
+    this.cdr.detectChanges();
+  }
+
 
   ngOnDestroy(): void {
     Object.values(this.urlsArchivos).forEach(url => {

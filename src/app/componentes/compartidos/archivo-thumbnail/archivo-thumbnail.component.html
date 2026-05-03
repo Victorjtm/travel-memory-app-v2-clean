@@ -1,0 +1,41 @@
+<div class="thumbnail-container" [class.compact]="compact" (click)="onMediaClick()">
+  <!-- Vista previa: Foto/Imagen -->
+  <div *ngIf="archivo.tipo === 'foto' || archivo.tipo === 'imagen'" class="media-wrapper image-preview">
+    <img [src]="fileUrl" 
+         [alt]="archivo.descripcion || 'Imagen'"
+         (error)="onImgError($event)" 
+         class="media-element" 
+         loading="lazy"
+         crossorigin="anonymous">
+  </div>
+
+  <!-- Vista previa: Video -->
+  <div *ngIf="archivo.tipo === 'video'" class="media-wrapper video-preview">
+    <div class="video-overlay" *ngIf="compact">
+      <i class="fa fa-play-circle"></i>
+    </div>
+    <video *ngIf="!compact" controls preload="metadata" class="media-element">
+      <source [src]="fileUrl" [type]="'video/' + getFileExtension(archivo.nombreArchivo)">
+    </video>
+    <!-- Placeholder para modo galería si no queremos cargar el video completo -->
+    <div *ngIf="compact" class="video-placeholder">
+       <i class="fa fa-video"></i>
+    </div>
+  </div>
+
+  <!-- Vista previa: Audio -->
+  <div *ngIf="archivo.tipo === 'audio'" class="media-wrapper audio-preview">
+    <div class="audio-icon">
+      <i class="fa fa-volume-up"></i>
+    </div>
+    <audio *ngIf="!compact" controls preload="metadata" class="media-element">
+      <source [src]="fileUrl" [type]="'audio/' + getFileExtension(archivo.nombreArchivo)">
+    </audio>
+  </div>
+
+  <!-- Vista previa: Otros (Texto, etc) -->
+  <div *ngIf="archivo.tipo !== 'foto' && archivo.tipo !== 'imagen' && archivo.tipo !== 'video' && archivo.tipo !== 'audio'" 
+       class="media-wrapper default-preview">
+    <i class="fa fa-file-alt"></i>
+  </div>
+</div>
