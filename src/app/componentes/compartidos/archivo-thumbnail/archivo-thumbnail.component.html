@@ -5,21 +5,35 @@
          [alt]="archivo.descripcion || 'Imagen'"
          (error)="onImgError($event)" 
          class="media-element" 
-         loading="lazy"
-         crossorigin="anonymous">
+         loading="lazy">
   </div>
 
   <!-- Vista previa: Video -->
   <div *ngIf="archivo.tipo === 'video'" class="media-wrapper video-preview">
-    <div class="video-overlay" *ngIf="compact">
+    <!-- Overlay de Play siempre visible en modo miniatura -->
+    <div class="video-overlay">
       <i class="fa fa-play-circle"></i>
     </div>
+
+    <!-- MODO LISTA: Vídeo real con controles -->
     <video *ngIf="!compact" controls preload="metadata" class="media-element">
       <source [src]="fileUrl" [type]="'video/' + getFileExtension(archivo.nombreArchivo)">
     </video>
-    <!-- Placeholder para modo galería si no queremos cargar el video completo -->
-    <div *ngIf="compact" class="video-placeholder">
-       <i class="fa fa-video"></i>
+
+    <!-- MODO GALERÍA: Imagen de póster real o fallback -->
+    <ng-container *ngIf="compact">
+      <img *ngIf="archivo.urlPoster" 
+           [src]="getServerUrl() + '/uploads/' + archivo.urlPoster" 
+           class="media-element thumb-poster" 
+           alt="Video Thumbnail">
+      
+      <div *ngIf="!archivo.urlPoster" class="video-placeholder">
+        <i class="fa fa-video"></i>
+      </div>
+    </ng-container>
+
+    <div class="type-badge" *ngIf="compact">
+      <i class="fa fa-video"></i>
     </div>
   </div>
 
@@ -31,6 +45,9 @@
     <audio *ngIf="!compact" controls preload="metadata" class="media-element">
       <source [src]="fileUrl" [type]="'audio/' + getFileExtension(archivo.nombreArchivo)">
     </audio>
+    <div class="type-badge" *ngIf="compact">
+      <i class="fa fa-microphone"></i>
+    </div>
   </div>
 
   <!-- Vista previa: Otros (Texto, etc) -->

@@ -9,6 +9,7 @@
     </app-archivo-thumbnail>
   </div>
 
+  <!-- MODO LISTA: Información completa -->
   <div class="info-section" *ngIf="!modoGaleria">
     <h3>{{ archivo.nombreArchivo }}</h3>
     <div class="meta-data">
@@ -23,12 +24,18 @@
     </div>
   </div>
 
-  <!-- Título flotante solo en galería para identificar el archivo -->
-  <div class="gallery-title" *ngIf="modoGaleria">
-    <span>{{ archivo.nombreArchivo }}</span>
+  <!-- MODO GALERÍA: Información minimalista -->
+  <div class="gallery-info" *ngIf="modoGaleria">
+    <div class="gallery-destino">
+      <i class="fa fa-map-marker-alt"></i> {{ direccionDisplay }}
+    </div>
+    <div class="gallery-meta">
+      {{ archivo.fechaCreacion | date:'dd/MM/yyyy' }} · {{ archivo.horaCaptura || '--:--' }}
+    </div>
   </div>
 
-  <div class="actions-section">
+  <!-- ACCIONES: Solo visibles en modo lista -->
+  <div class="actions-section" *ngIf="!modoGaleria">
     <!-- Botones asociados -->
     <div class="associated-actions">
       <button class="btn-asociado btn-audio" *ngIf="archivo.tipo === 'audio'"
@@ -36,7 +43,6 @@
         <i class="fa fa-volume-up"></i>
       </button>
 
-      <!-- Aquí simplificamos el acceso a asociados para V1 -->
       <button class="btn-asociado btn-audio" *ngIf="tieneArchivoAsociado('audio')"
               (click)="onOpenAssociated('audio')" title="Audio asociado">
         <i class="fa fa-volume-up"></i>
@@ -47,14 +53,13 @@
         <i class="fa fa-map-marked-alt"></i>
       </button>
 
-      <button class="btn-asociado btn-buscar-audio" *ngIf="!tieneArchivosAsociados() && !modoGaleria"
+      <button class="btn-asociado btn-buscar-audio" *ngIf="!tieneArchivosAsociados()"
               (click)="onSearchAudio()" title="Buscar asociados">
         <i class="fa fa-folder-open"></i>
       </button>
     </div>
 
-    <!-- Separador solo en modo lista -->
-    <span class="separador" *ngIf="!modoGaleria"></span>
+    <span class="separador"></span>
 
     <!-- Botones de gestión -->
     <div class="management-actions">

@@ -17,6 +17,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const multer = require('multer');
+const { exec } = require('child_process'); // ⬅️ NUEVO: Para ejecutar ffmpeg
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MÓDULO 6: CLIENTE PERPLEXITY
@@ -466,6 +467,7 @@ db.run(
     version INTEGER DEFAULT 1,
     geolocalizacion TEXT,
     metadatos TEXT,
+    urlPoster TEXT,
     FOREIGN KEY (actividadId) REFERENCES actividades(id) ON DELETE CASCADE
   )`,
   (err) => {
@@ -504,9 +506,10 @@ db.run(
               version INTEGER DEFAULT 1,
               geolocalizacion TEXT,
               metadatos TEXT,
+              urlPoster TEXT,
               FOREIGN KEY (actividadId) REFERENCES actividades(id) ON DELETE CASCADE
             );`,
-            'INSERT INTO archivos SELECT * FROM archivos_new;',
+            'INSERT INTO archivos (id, actividadId, tipo, nombreArchivo, rutaArchivo, descripcion, fechaCreacion, fechaActualizacion, horaCaptura, version, geolocalizacion, metadatos) SELECT id, actividadId, tipo, nombreArchivo, rutaArchivo, descripcion, fechaCreacion, fechaActualizacion, horaCaptura, version, geolocalizacion, metadatos FROM archivos_new;',
             'DROP TABLE archivos_new;',
             'COMMIT;',
             'PRAGMA foreign_keys=ON;'
@@ -525,6 +528,18 @@ db.run(
             }
           };
           runMigration();
+        }
+      });
+
+      // ✅ MIGRACIÓN 2026: Añadir urlPoster si no existe
+      db.all("PRAGMA table_info(archivos)", (err, columns) => {
+        if (err) return;
+        if (!columns.some(c => c.name === 'urlPoster')) {
+          console.log("🔄 [MIGRACIÓN] Añadiendo columna urlPoster a la tabla archivos...");
+          db.run("ALTER TABLE archivos ADD COLUMN urlPoster TEXT", (err) => {
+            if (err) console.error("❌ Error añadiendo urlPoster:", err.message);
+            else console.log("✅ Columna urlPoster añadida con éxito.");
+          });
         }
       });
     }
@@ -1724,6 +1739,73 @@ async function getFileMetadata(filePath, fileType) {
     };
   }
 }
+
+/**
+ * ✨ NUEVO: Genera una miniatura de un vídeo usando ffmpeg
+ * Usa el ID del archivo para evitar colisiones.
+ */
+function generarMiniaturaVideo(archivoId, rutaCompleta, callback) {
+  const thumbnailName = `thumb_${archivoId}.jpg`;
+  const folder = path.dirname(rutaCompleta);
+  const outputPath = path.join(folder, thumbnailName);
+  
+  // Comando ffmpeg: extraer 1 frame en el segundo 1
+  // -ss 1 (seek to 1s), -i input, -vframes 1 (output 1 frame), -q:v 2 (calidad alta), -y (sobrescribir)
+  const command = `ffmpeg -ss 1 -i "${rutaCompleta}" -vframes 1 -q:v 2 -y "${outputPath}"`;
+  
+  console.log(`🎬 [FFMPEG] Generando miniatura para ID ${archivoId}...`);
+  
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`❌ [FFMPEG] Error generando miniatura para ID ${archivoId}:`, error.message);
+      return callback(null);
+    }
+    
+    // Calcular ruta relativa a la carpeta uploads para guardar en DB
+    const relativePath = path.relative(uploadsPath, outputPath).replace(/\\/g, '/');
+    console.log(`✅ [FFMPEG] Miniatura creada: ${relativePath}`);
+    callback(relativePath);
+  });
+}
+
+/**
+ * ✨ NUEVO: Endpoint para recibir miniaturas generadas por el cliente
+ * Permite persistir miniaturas sin depender de ffmpeg en el servidor.
+ */
+app.post('/archivos/:id/poster-cliente', bodyParser.json({ limit: '2mb' }), async (req, res) => {
+  const { id } = req.params;
+  const { imageBase64 } = req.body;
+
+  if (!imageBase64) {
+    return res.status(400).json({ error: 'Falta la imagen en base64' });
+  }
+
+  try {
+    // 1. Obtener información del archivo para saber dónde guardarlo
+    const archivo = await dbQuery.get("SELECT rutaArchivo FROM archivos WHERE id = ?", [id]);
+    if (!archivo) return res.status(404).json({ error: 'Archivo no encontrado' });
+
+    // 2. Preparar ruta
+    const videoFolder = path.dirname(path.join(uploadsPath, archivo.rutaArchivo));
+    const thumbnailName = `thumb_${id}.jpg`;
+    const outputPath = path.join(videoFolder, thumbnailName);
+
+    // 3. Guardar imagen
+    const base64Data = imageBase64.replace(/^data:image\/jpeg;base64,/, "");
+    fs.writeFileSync(outputPath, base64Data, 'base64');
+
+    // 4. Actualizar base de datos
+    const relativePath = path.relative(uploadsPath, outputPath).replace(/\\/g, '/');
+    await dbQuery.run("UPDATE archivos SET urlPoster = ? WHERE id = ?", [relativePath, id]);
+
+    console.log(`📸 [Poster-Cliente] Miniatura persistida para ID ${id}: ${relativePath}`);
+    res.json({ success: true, urlPoster: relativePath });
+
+  } catch (error) {
+    console.error(`❌ [Poster-Cliente] Error:`, error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // ========================================
 // ENDPOINT: Información del servidor (para detección automática de IP)
@@ -4333,6 +4415,16 @@ app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
         });
       } else {
         console.log(`✅ Archivo guardado con ID: ${result.lastID} y actividadId: ${actividadFinal}`);
+        
+        // ✨ NUEVO: Si es vídeo, generar miniatura
+        if (tipo === 'video' || archivo.mimetype.startsWith('video/')) {
+          generarMiniaturaVideo(result.lastID, path.join(uploadsPath, archivo.filename), (thumbPath) => {
+            if (thumbPath) {
+              db.run("UPDATE archivos SET urlPoster = ? WHERE id = ?", [thumbPath, result.lastID]);
+            }
+          });
+        }
+
         insertados++;
         resultados.push({
           id: result.lastID,
@@ -7221,6 +7313,48 @@ app.get('/ia/sesiones-activas', (req, res) => {
 
     res.json(sesiones);
   });
+});
+
+/**
+ * 🛠️ ADMIN: Generar miniaturas faltantes (Legacy support)
+ * Procesa vídeos que no tienen urlPoster.
+ */
+app.post('/api/admin/generate-missing-thumbnails', async (req, res) => {
+  try {
+    const videosSinPoster = await dbQuery.all(
+      "SELECT id, rutaArchivo FROM archivos WHERE tipo = 'video' AND (urlPoster IS NULL OR urlPoster = '')"
+    );
+    
+    console.log(`🔄 [Admin] Iniciando generación de ${videosSinPoster.length} miniaturas...`);
+    
+    let procesados = 0;
+    // Procesamos de uno en uno para no saturar el sistema
+    for (const v of videosSinPoster) {
+      const fullPath = path.join(uploadsPath, v.rutaArchivo);
+      if (fs.existsSync(fullPath)) {
+        await new Promise(resolve => {
+          generarMiniaturaVideo(v.id, fullPath, (thumbPath) => {
+            if (thumbPath) {
+              db.run("UPDATE archivos SET urlPoster = ? WHERE id = ?", [thumbPath, v.id], () => {
+                procesados++;
+                resolve();
+              });
+            } else {
+              resolve();
+            }
+          });
+        });
+      }
+    }
+    
+    res.json({ 
+      success: true, 
+      mensaje: `Procesados ${procesados} vídeos de un total de ${videosSinPoster.length}`
+    });
+  } catch (error) {
+    console.error('❌ [Admin] Error en generación masiva:', error.message);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 console.log('🤖 Endpoints de IA configurados');

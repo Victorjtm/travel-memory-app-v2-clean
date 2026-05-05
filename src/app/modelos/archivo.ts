@@ -17,5 +17,6 @@ export interface Archivo {
     metadatos?: string;    
     tipoMime?: string;  
     tamano?: number;
-    archivosAsociados?: ArchivoAsociado[];  // ⬅️ NUEVO
+    urlPoster?: string; // ⬅️ NUEVO: Miniatura del vídeo
+    archivosAsociados?: ArchivoAsociado[];
   }

@@ -11,102 +11,177 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   }
 
-  // MODO LISTA (Default)
+  // Ajuste responsivo global para modo Lista
+  @media (max-width: 768px) {
+    flex-direction: column;
+  }
+
+  // MODO GALERÍA: Estilo Cápsula
   &.gallery-mode {
     flex-direction: column;
     margin-bottom: 0;
     height: 100%;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 
     .preview-section {
       width: 100%;
       height: auto;
     }
 
-    .actions-section {
-      padding: 8px;
-      flex-wrap: wrap;
-      justify-content: center;
-      border-top: 1px solid #eee;
-      gap: 5px;
+    .gallery-info {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: white;
 
-      .management-actions, .associated-actions {
-        gap: 4px;
+      .gallery-destino {
+        font-weight: 600;
+        color: #333;
+        font-size: 0.9rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        i { color: #e74c3c; font-size: 0.8rem; }
       }
-      
-      button {
-        padding: 5px 8px;
-        font-size: 0.8rem;
+
+      .gallery-meta {
+        font-size: 0.75rem;
+        color: #888;
+        display: flex;
+        align-items: center;
       }
     }
   }
 
+  // MODO LISTA: Estilos base y Desktop Optimization
   .preview-section {
+    grid-area: preview;
     width: 250px;
     flex-shrink: 0;
+
+    @media (max-width: 768px) {
+      width: 100%;
+    }
   }
 
   .info-section {
-    flex-grow: 1;
-    padding: 15px;
+    grid-area: info;
+    padding: 20px;
+    min-width: 0; // Evita desbordamiento de flex/grid
     
     h3 {
-      margin: 0 0 10px 0;
-      color: #333;
+      margin: 0 0 12px 0;
+      color: #3f51b5;
+      font-size: 1.15rem;
+      word-break: break-word;
     }
 
     .meta-data {
       p {
-        margin: 4px 0;
-        font-size: 0.9rem;
-        color: #666;
+        margin: 6px 0;
+        font-size: 0.95rem;
+        color: #555;
+        line-height: 1.4;
+
+        strong { color: #333; }
+      }
+
+      .ubicacion {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        margin-top: 8px;
+        color: #1976d2;
       }
     }
   }
 
-  .gallery-title {
-    padding: 5px 10px;
-    font-size: 0.75rem;
-    color: #666;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    background: #f9f9f9;
-  }
-
   .actions-section {
+    grid-area: actions;
     display: flex;
     align-items: center;
-    padding: 10px 15px;
+    padding: 15px 25px;
     background: #fafafa;
-    gap: 10px;
+    gap: 15px;
+    border-left: 1px solid #f0f0f0;
+    justify-content: flex-end;
+
+    @media (max-width: 1200px) {
+      flex-direction: column;
+      justify-content: center;
+      padding: 15px;
+    }
+
+    @media (max-width: 768px) {
+      flex-direction: row;
+      justify-content: space-between;
+      border-left: none;
+      border-top: 1px solid #f0f0f0;
+      width: 100%;
+    }
 
     .management-actions, .associated-actions {
       display: flex;
-      gap: 8px;
+      gap: 10px;
     }
 
     .separador {
       width: 1px;
-      height: 24px;
-      background: #ddd;
+      height: 30px;
+      background: #eee;
+      @media (max-width: 1200px) { display: none; }
     }
 
     button {
       border: none;
-      border-radius: 4px;
-      padding: 8px 12px;
+      border-radius: 6px;
+      padding: 10px 14px;
       cursor: pointer;
       color: white;
-      transition: opacity 0.2s;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
 
       &:hover {
-        opacity: 0.8;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
       }
 
       &.btn-asociado { background: #3498db; }
       &.btn-descargar { background: #27ae60; }
       &.btn-eliminar { background: #e74c3c; }
       &.btn-actualizar { background: #f39c12; }
+    }
+  }
+
+  // 🔥 LAYOUT GRID PARA DESKTOP (LIST MODE)
+  &:not(.gallery-mode) {
+    display: grid;
+    grid-template-columns: 250px 1fr 300px;
+    grid-template-areas: "preview info actions";
+    max-width: 1300px; // Bloqueo de ancho máximo
+    margin-left: auto;
+    margin-right: auto;
+
+    @media (max-width: 1200px) {
+      grid-template-columns: 250px 1fr 150px;
+    }
+
+    @media (max-width: 992px) {
+      grid-template-columns: 200px 1fr 120px;
+    }
+
+    @media (max-width: 768px) {
+      display: flex;
+      flex-direction: column;
+      max-width: 100%;
     }
   }
 }
