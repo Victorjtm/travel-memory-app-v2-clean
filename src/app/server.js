@@ -17,7 +17,10 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const multer = require('multer');
-const { exec } = require('child_process'); // ⬅️ NUEVO: Para ejecutar ffmpeg
+const { exec } = require('child_process'); // ⬅️ NUEVO: Para ejecutar ffmpeg y stt local
+
+// Lock para procesos de transcripción activos (evitar duplicados)
+const procesosTranscripcionActivos = new Set();
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MÓDULO 6: CLIENTE PERPLEXITY
@@ -539,6 +542,18 @@ db.run(
           db.run("ALTER TABLE archivos ADD COLUMN urlPoster TEXT", (err) => {
             if (err) console.error("❌ Error añadiendo urlPoster:", err.message);
             else console.log("✅ Columna urlPoster añadida con éxito.");
+          });
+        }
+      });
+
+      // ✅ MIGRACIÓN 2026: Añadir transcripcion_raw si no existe
+      db.all("PRAGMA table_info(archivos)", (err, columns) => {
+        if (err) return;
+        if (!columns.some(c => c.name === 'transcripcion_raw')) {
+          console.log("🔄 [MIGRACIÓN] Añadiendo columna transcripcion_raw a la tabla archivos...");
+          db.run("ALTER TABLE archivos ADD COLUMN transcripcion_raw TEXT", (err) => {
+            if (err) console.error("❌ Error añadiendo transcripcion_raw:", err.message);
+            else console.log("✅ Columna transcripcion_raw añadida con éxito.");
           });
         }
       });
@@ -1683,6 +1698,160 @@ app.get('/ia/sesiones-activas', async (req, res) => {
   } catch (error) {
     console.error('❌ Error listando sesiones:', error.message);
     res.status(500).json({ error: 'Error al listar sesiones' });
+  }
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 15. TRANSCRIBIR AUDIO (SPEECH-TO-TEXT)
+// POST /archivos/:id/transcribir
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.post('/archivos/:id/transcribir', async (req, res) => {
+  const { id } = req.params;
+  const { force = false } = req.body;
+
+  if (procesosTranscripcionActivos.has(id)) {
+    return res.status(409).json({ error: 'Ya hay una transcripción en curso para este archivo' });
+  }
+
+  try {
+    procesosTranscripcionActivos.add(id);
+
+    // 1. Obtener información del archivo
+    const archivo = await dbQuery.get("SELECT * FROM archivos WHERE id = ?", [id]);
+    if (!archivo) {
+      procesosTranscripcionActivos.delete(id);
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
+
+    // 2. Comprobar si ya tiene transcripción y no se fuerza
+    if (archivo.transcripcion_raw && !force) {
+      procesosTranscripcionActivos.delete(id);
+      return res.json({ 
+        text: archivo.transcripcion_raw, 
+        fromCache: true,
+        message: 'Recuperado de la base de datos' 
+      });
+    }
+
+    // 3. Determinar qué archivo transcribir (principal o asociado)
+    let rutaAudio = '';
+    
+    // Normalizar ruta (quitar uploads/ si existe)
+    const limpiarRuta = (r) => r.replace(/^uploads[\\\/]/, '').replace(/\\/g, '/');
+
+    if (archivo.tipo === 'audio' || archivo.tipo === 'video') {
+      rutaAudio = path.join(uploadsPath, limpiarRuta(archivo.rutaArchivo));
+    } else if (archivo.tipo === 'foto' || archivo.tipo === 'imagen') {
+      const asociado = await dbQuery.get(
+        "SELECT rutaArchivo FROM archivos_asociados WHERE archivoPrincipalId = ? AND tipo = 'audio' LIMIT 1",
+        [id]
+      );
+      if (!asociado) {
+        procesosTranscripcionActivos.delete(id);
+        return res.status(400).json({ error: 'Este archivo no tiene audio asociado para transcribir' });
+      }
+      rutaAudio = path.join(uploadsPath, limpiarRuta(asociado.rutaArchivo));
+    } else {
+      procesosTranscripcionActivos.delete(id);
+      return res.status(400).json({ error: 'El tipo de archivo no es válido para transcripción' });
+    }
+
+    if (!fs.existsSync(rutaAudio)) {
+      console.error(`❌ Archivo no encontrado en: ${rutaAudio}`);
+      procesosTranscripcionActivos.delete(id);
+      return res.status(404).json({ error: 'El archivo de audio no existe físicamente en el servidor' });
+    }
+
+    // 4. Procesar audio (extraer de vídeo o comprimir si es necesario)
+    let rutaProcesada = rutaAudio;
+    let esTemporal = false;
+
+    // Si es vídeo, extraer audio a MP3 temporal
+    if (archivo.tipo === 'video') {
+       const tmpPath = path.join(uploadsPath, `tmp_audio_${id}_${Date.now()}.mp3`);
+       console.log(`🎬 [FFMPEG] Extrayendo audio de vídeo para ID ${id}...`);
+       await new Promise((resolve, reject) => {
+         exec(`ffmpeg -i "${rutaAudio}" -vn -acodec libmp3lame -y "${tmpPath}"`, (err) => {
+           if (err) reject(err);
+           else resolve();
+         });
+       });
+       rutaProcesada = tmpPath;
+       esTemporal = true;
+    }
+
+    // Comprobar tamaño (> 25MB) para Whisper
+    const stats = fs.statSync(rutaProcesada);
+    if (stats.size > 24 * 1024 * 1024) { // Dejamos margen (24MB)
+      const compressedPath = path.join(uploadsPath, `comp_audio_${id}_${Date.now()}.mp3`);
+      console.log(`📉 [FFMPEG] Comprimiendo audio para ID ${id} (${(stats.size / 1024 / 1024).toFixed(2)} MB)...`);
+      await new Promise((resolve, reject) => {
+        exec(`ffmpeg -i "${rutaProcesada}" -b:a 64k -y "${compressedPath}"`, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      if (esTemporal) fs.unlinkSync(rutaProcesada);
+      rutaProcesada = compressedPath;
+      esTemporal = true;
+    }
+
+    // 5. Llamar a Motor Local (faster-whisper)
+    console.log(`🎙️ [IA LOCAL] Transcribiendo con faster-whisper: ${path.basename(rutaProcesada)}...`);
+    
+    const scriptPath = path.join(__dirname, 'backend-services/stt-engine/transcribe_local.py');
+    const model = "small"; 
+    
+    const transcription = await new Promise((resolve, reject) => {
+      // Ejecutar script de python local
+      // Asegurarse de que 'python' esté en el PATH y tenga las dependencias
+      exec(`python "${scriptPath}" "${rutaProcesada}" --model ${model} --lang es`, (err, stdout, stderr) => {
+        if (err) {
+          console.error(`❌ Error en motor STT local: ${stderr}`);
+          reject(new Error(stderr || err.message));
+          return;
+        }
+        try {
+          const result = JSON.parse(stdout);
+          if (result.error) {
+            reject(new Error(result.error));
+          } else {
+            resolve(result);
+          }
+        } catch (e) {
+          reject(new Error(`Error de comunicación con el motor STT: ${stdout}`));
+        }
+      });
+    });
+
+    const text = transcription.text;
+
+    // 6. Guardar en BD
+    await dbQuery.run(
+      "UPDATE archivos SET transcripcion_raw = ?, fechaActualizacion = datetime('now') WHERE id = ?", 
+      [text, id]
+    );
+
+    // 7. Limpiar archivos temporales
+    if (esTemporal && fs.existsSync(rutaProcesada)) {
+      fs.unlinkSync(rutaProcesada);
+    }
+
+    procesosTranscripcionActivos.delete(id);
+    console.log(`✅ [IA] Transcripción completada para ID ${id}`);
+    
+    res.json({ 
+      text, 
+      fromCache: false,
+      message: 'Transcripción generada correctamente'
+    });
+
+  } catch (error) {
+    procesosTranscripcionActivos.delete(id);
+    console.error('❌ [IA] Error en transcripción:', error.message);
+    res.status(500).json({ error: error.message || 'Error al transcribir el audio' });
   }
 });
 
@@ -4135,6 +4304,7 @@ app.put('/archivos/:id/archivo', upload.single('archivo'), async (req, res) => {
   if (metadatos !== undefined) { campos.push('metadatos = ?'); valores.push(metadatos); }
 
   campos.push("fechaActualizacion = datetime('now')");
+  campos.push("transcripcion_raw = NULL"); // Invalidad transcripción si cambia el archivo
   valores.push(id);
 
   try {
@@ -4172,6 +4342,7 @@ app.put('/archivos/:id', async (req, res) => {
   if (fechaCreacion !== undefined) { campos.push('fechaCreacion = ?'); valores.push(fechaCreacion); }
 
   campos.push("fechaActualizacion = datetime('now')");
+  campos.push("transcripcion_raw = NULL"); // Invalidad transcripción en actualización de metadatos
   valores.push(id);
 
   const sql = `UPDATE archivos SET ${campos.join(', ')} WHERE id = ?`;

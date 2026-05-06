@@ -48,6 +48,11 @@
         <i class="fa fa-volume-up"></i>
       </button>
 
+      <button class="btn-asociado btn-transcribir" *ngIf="esTranscribible()"
+              (click)="onTranscribe()" title="Transcribir a texto (IA)">
+        <i class="fa fa-microphone"></i>
+      </button>
+
       <button class="btn-asociado btn-gpx" *ngIf="tieneArchivoAsociado('gpx')"
               (click)="onOpenAssociated('gpx')" title="Ver ruta GPX">
         <i class="fa fa-map-marked-alt"></i>

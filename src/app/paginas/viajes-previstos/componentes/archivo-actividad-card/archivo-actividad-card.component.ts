@@ -28,6 +28,7 @@ export class ArchivoActividadCardComponent {
   @Output() searchAudio = new EventEmitter<Archivo>();
   @Output() openAssociated = new EventEmitter<{archivo: Archivo, tipo: 'audio' | 'texto' | 'mapa_ubicacion' | 'gpx' | 'manifest' | 'estadisticas'}>();
   @Output() playAudioPrincipal = new EventEmitter<Archivo>();
+  @Output() transcribe = new EventEmitter<Archivo>();
 
   onPreview(): void {
     this.preview.emit(this.archivo);
@@ -51,6 +52,16 @@ export class ArchivoActividadCardComponent {
 
   onPlayAudioPrincipal(): void {
     this.playAudioPrincipal.emit(this.archivo);
+  }
+
+  onTranscribe(): void {
+    this.transcribe.emit(this.archivo);
+  }
+
+  esTranscribible(): boolean {
+    return this.archivo.tipo === 'audio' || 
+           this.archivo.tipo === 'video' || 
+           this.tieneArchivoAsociado('audio');
   }
 
   tieneArchivoAsociado(tipo: 'audio' | 'texto' | 'mapa_ubicacion' | 'gpx' | 'manifest' | 'estadisticas'): boolean {

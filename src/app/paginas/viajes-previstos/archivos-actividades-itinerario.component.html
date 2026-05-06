@@ -69,7 +69,8 @@
       (download)="descargarArchivo($event)"
       (searchAudio)="buscarEnAudioPhotoApp($event)"
       (openAssociated)="abrirArchivoAsociado($event.archivo, $event.tipo)"
-      (playAudioPrincipal)="reproducirAudioPrincipal($event)">
+      (playAudioPrincipal)="reproducirAudioPrincipal($event)"
+      (transcribe)="onTranscribe($event)">
     </app-archivo-actividad-card>
 
   </div>
@@ -230,6 +231,29 @@
   <button class="btn-libro" (click)="verEnFormatoLibro()" title="Ver en formato libro/álbum">
     <i class="fas fa-book"></i> Ver en libro
   </button>
+
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <!-- ✍️ MODAL 4: REVISIÓN DE TRANSCRIPCIÓN AI (STT) -->
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <app-transcripcion-modal
+    *ngIf="mostrarModalTranscripcion"
+    [transcription]="transcripcionResult"
+    [currentDescription]="archivoATranscribir?.descripcion || ''"
+    (save)="onSaveTranscripcion($event)"
+    (cancel)="cerrarModalTranscripcion()">
+  </app-transcripcion-modal>
+
+  <!-- 🔄 INDICADOR GLOBAL DE TRANSCRIPCIÓN -->
+  <div class="loading-overlay-stt" *ngIf="estaTranscribiendo">
+    <div class="loading-content">
+      <div class="spinner-stt">
+        <i class="fa fa-microphone"></i>
+      </div>
+      <h3>Transcribiendo audio...</h3>
+      <p>Procesando localmente en el servidor.</p>
+      <small>La primera vez puede tardar más mientras se carga el modelo.</small>
+    </div>
+  </div>
 
 </div>
 <!-- FIN: Contenedor principal -->

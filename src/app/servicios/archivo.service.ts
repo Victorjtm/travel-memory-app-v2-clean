@@ -376,4 +376,11 @@ export class ArchivoService extends BaseHttpService {
     );
   }
 
+  /**
+   * Solicita la transcripción de audio del archivo (o su audio asociado)
+   */
+  transcribirAudio(id: number, force: boolean = false): Observable<{ text: string, fromCache: boolean }> {
+    return this.post<{ text: string, fromCache: boolean }>(`${this.apiUrl}/${id}/transcribir`, { force });
+  }
+
 }

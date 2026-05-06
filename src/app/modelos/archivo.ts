@@ -18,5 +18,6 @@ export interface Archivo {
     tipoMime?: string;  
     tamano?: number;
     urlPoster?: string; // ⬅️ NUEVO: Miniatura del vídeo
+    transcripcion_raw?: string; // ⬅️ NUEVO: Texto original de la IA
     archivosAsociados?: ArchivoAsociado[];
   }

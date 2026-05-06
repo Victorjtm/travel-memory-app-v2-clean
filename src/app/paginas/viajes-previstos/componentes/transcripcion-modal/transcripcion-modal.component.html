@@ -1,0 +1,46 @@
+<div class="modal-overlay" (click)="onCancel()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>✍️ Revisión de Transcripción Local</h3>
+      <button class="close-btn" (click)="onCancel()">&times;</button>
+    </div>
+    
+    <div class="modal-body">
+      <div class="info-section">
+        <p class="hint">
+          <i class="fa fa-shield-alt"></i> Procesado localmente con <strong>faster-whisper</strong>. 
+          Privacidad total: tus datos no han salido de este entorno.
+        </p>
+      </div>
+
+      <div class="editor-section">
+        <label for="transcription-edit">Transcripción:</label>
+        <textarea 
+          id="transcription-edit" 
+          [(ngModel)]="editedText" 
+          rows="10" 
+          placeholder="Escribe aquí la descripción..."
+        ></textarea>
+      </div>
+
+      <div class="actions-tools">
+        <span>Acciones rápidas:</span>
+        <div class="btn-group">
+          <button class="btn-tool" (click)="replace()" [disabled]="!currentDescription">Sobrescribir actual</button>
+          <button class="btn-tool" (click)="append()">Añadir al final</button>
+          <button class="btn-tool" (click)="prepend()">Añadir al inicio</button>
+        </div>
+      </div>
+
+      <div class="original-section" *ngIf="currentDescription">
+        <label>Descripción actual (referencia):</label>
+        <div class="current-text">{{ currentDescription }}</div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)="onCancel()">Cancelar</button>
+      <button class="btn-save" (click)="onSave()">Guardar en Descripción</button>
+    </div>
+  </div>
+</div>

@@ -17,6 +17,7 @@ import { take } from 'rxjs/operators';
 // Nuevos componentes
 import { ArchivoThumbnailComponent } from '../../componentes/compartidos/archivo-thumbnail/archivo-thumbnail.component';
 import { ArchivoActividadCardComponent } from './componentes/archivo-actividad-card/archivo-actividad-card.component';
+import { TranscripcionModalComponent } from './componentes/transcripcion-modal/transcripcion-modal.component';
 
 
 @Component({
@@ -28,7 +29,8 @@ import { ArchivoActividadCardComponent } from './componentes/archivo-actividad-c
     HttpClientModule,
     FormsModule,
     ArchivoThumbnailComponent,
-    ArchivoActividadCardComponent
+    ArchivoActividadCardComponent,
+    TranscripcionModalComponent
   ],
   templateUrl: './archivos-actividades-itinerario.component.html',
   styleUrls: ['./archivos-actividades-itinerario.component.scss'],
@@ -54,6 +56,12 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   archivosEncontradosAudio: ArchivoEncontrado[] = [];
   archivoActualBusqueda: Archivo | null = null;
   nombreBaseBusqueda = '';
+
+  // ✨ PROPIEDADES PARA TRANSCRIPCIÓN
+  mostrarModalTranscripcion = false;
+  transcripcionResult: string = '';
+  archivoATranscribir: Archivo | null = null;
+  estaTranscribiendo = false;
 
   // Cache de direcciones para evitar llamadas repetidas a la API
   direccionesCache: { [key: string]: string } = {};
@@ -718,6 +726,96 @@ export class ArchivosComponent implements OnInit, OnDestroy {
       console.error('Error reproduciendo audio principal:', err);
       alert('No se pudo reproducir el audio, usa el botón para cerrar y prueba manualmente');
     });
+  }
+
+
+  // ============================================
+  // MÉTODOS PARA TRANSCRIPCIÓN (STT)
+  // ============================================
+
+  /**
+   * Inicia el proceso de transcripción para un archivo
+   */
+  onTranscribe(archivo: Archivo): void {
+    if (this.estaTranscribiendo) return;
+
+    this.archivoATranscribir = archivo;
+    
+    // Si ya tiene transcripción, la mostramos en el modal directamente
+    if (archivo.transcripcion_raw) {
+      this.transcripcionResult = archivo.transcripcion_raw;
+      this.mostrarModalTranscripcion = true;
+      this.cdr.markForCheck();
+      return;
+    }
+
+    this.ejecutarTranscripcion(archivo.id);
+  }
+
+  /**
+   * Llama al servicio para obtener la transcripción de la IA
+   */
+  ejecutarTranscripcion(archivoId: number, force: boolean = false): void {
+    this.estaTranscribiendo = true;
+    this.cdr.markForCheck();
+
+    this.archivoService.transcribirAudio(archivoId, force).subscribe({
+      next: (res) => {
+        this.transcripcionResult = res.text;
+        
+        // Actualizar el objeto local con la transcripción raw para futuras consultas
+        if (this.archivoATranscribir && this.archivoATranscribir.id === archivoId) {
+          this.archivoATranscribir.transcripcion_raw = res.text;
+        }
+
+        this.mostrarModalTranscripcion = true;
+        this.estaTranscribiendo = false;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Error en transcripción:', err);
+        const errorMsg = err.error?.error || err.message || 'Error desconocido';
+        alert('Error al transcribir: ' + errorMsg);
+        this.estaTranscribiendo = false;
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  /**
+   * Guarda el texto revisado en la descripción del archivo
+   */
+  onSaveTranscripcion(nuevoTexto: string): void {
+    if (!this.archivoATranscribir) return;
+
+    const id = this.archivoATranscribir.id;
+    this.archivoService.actualizarArchivo(id, { descripcion: nuevoTexto }).subscribe({
+      next: () => {
+        // Actualizar localmente en la lista de archivos
+        const arch = this.archivos.find(a => a.id === id);
+        if (arch) {
+          arch.descripcion = nuevoTexto;
+        }
+        
+        this.cerrarModalTranscripcion();
+        alert('Descripción actualizada correctamente');
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Error al guardar descripción:', err);
+        alert('Error al guardar la descripción');
+      }
+    });
+  }
+
+  /**
+   * Cierra el modal y limpia el estado
+   */
+  cerrarModalTranscripcion(): void {
+    this.mostrarModalTranscripcion = false;
+    this.transcripcionResult = '';
+    this.archivoATranscribir = null;
+    this.cdr.markForCheck();
   }
 
 
