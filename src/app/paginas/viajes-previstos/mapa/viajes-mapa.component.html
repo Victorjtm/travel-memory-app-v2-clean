@@ -1,36 +1,20 @@
-<ion-header [translucent]="true">
-  <ion-toolbar>
-    <ion-buttons slot="start">
-      <ion-back-button defaultHref="/viajes-previstos"></ion-back-button>
-    </ion-buttons>
-    <ion-title>Mapa de Viajes</ion-title>
-    <ion-buttons slot="end">
-      <ion-button (click)="cargarDatos()">
-        <ion-icon slot="icon-only" name="refresh"></ion-icon>
-      </ion-button>
-    </ion-buttons>
-  </ion-toolbar>
-</ion-header>
-
-<ion-content [fullscreen]="true">
-  <div id="mapa-container" class="map-wrapper">
-    <!-- Aquí se inicializará Leaflet en la Fase 3 -->
-    <div *ngIf="loading" class="loader-overlay">
-      <ion-spinner name="crescent"></ion-spinner>
-      <p>Cargando mapa...</p>
+<section class="mapa-wrapper">
+  <header class="toolbar">
+    <h2>Mapa de viajes previstos</h2>
+    <div class="acciones">
+      <button class="btn secundario" (click)="volver()">Volver</button>
+      <button class="btn primario" (click)="migrarUbicaciones()" [disabled]="cargando">
+        Migrar ubicaciones
+      </button>
+      <button class="btn" (click)="cargarViajes()" [disabled]="cargando">
+        Recargar
+      </button>
     </div>
+  </header>
 
-    <div *ngIf="!loading && viajesMapeables.length === 0" class="empty-state">
-      <ion-icon name="map-outline"></ion-icon>
-      <h3>No hay viajes con ubicación</h3>
-      <p>Los viajes aparecerán aquí cuando tengan fotos o un destino definido.</p>
-    </div>
-  </div>
+  <p class="estado" *ngIf="mensaje">{{ mensaje }}</p>
 
-  <!-- FAB para ver viajes sin ubicación (Fase 4) -->
-  <ion-fab vertical="bottom" horizontal="end" slot="fixed" *ngIf="viajesSinUbicacion.length > 0">
-    <ion-fab-button color="warning">
-      <ion-icon name="alert-circle-outline"></ion-icon>
-    </ion-fab-button>
-  </ion-fab>
-</ion-content>
+  <div id="mapa-viajes-previstos" class="mapa"></div>
+
+  <p class="contador">Viajes con ubicación: {{ viajes.length }}</p>
+</section>

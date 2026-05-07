@@ -183,6 +183,10 @@ export class ViajesPrevistosComponent implements OnInit {
     this.router.navigate(['/formulario-viaje-previsto', id]);
   }
 
+  irAMapaViajes(): void {
+    this.router.navigate(['/viajes-previstos/mapa']);
+  }
+
   ejecutarUnificacion() {
     if (!confirm('¿Estás seguro de que quieres unificar los viajes con el mismo destino? Esta acción fusionará itinerarios y eliminará los viajes duplicados.')) {
       return;

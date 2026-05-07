@@ -255,6 +255,15 @@ button i {
   }
 }
 
+.btn-mapa {
+  background-color: #0ea5e9;
+  color: #fff;
+
+  &:hover {
+    background-color: #0284c7;
+  }
+}
+
 .lista-cronologica {
   list-style: none;
   padding: 0;

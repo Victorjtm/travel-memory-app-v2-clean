@@ -21,6 +21,7 @@ import { FormularioArchivosComponent } from './paginas/viajes-previstos/formular
 import { CrudArchivosSinAsignacionComponent } from './paginas/configuracion/crud-archivos-sin-asignacion/crud-archivos-sin-asignacion/crud-archivos-sin-asignacion.component';
 
 import { TestViajesFuturosComponent } from './paginas/test-viajes-futuros/test-viajes-futuros.component';
+import { ViajesMapaComponent } from './paginas/viajes-previstos/mapa/viajes-mapa.component';
 
 // 🆕 NUEVO: Componente de detalle de viaje futuro
 import { ViajeFuturoDetalleComponent } from './componentes/viaje-futuro-detalle/viaje-futuro-detalle.component';
@@ -45,12 +46,7 @@ export const routes: Routes = [
 
   // ⚠️ MANTENER POR COMPATIBILIDAD: Viajes previstos (ruta antigua)
   { path: 'viajes-previstos', component: ViajesPrevistosComponent },
-
-  // ✨ NUEVO: Mapa de viajes previstos
-  {
-    path: 'viajes-previstos/mapa',
-    loadComponent: () => import('./paginas/viajes-previstos/mapa/viajes-mapa.component').then(m => m.ViajesMapaComponent)
-  },
+  { path: 'viajes-previstos/mapa', component: ViajesMapaComponent },
 
   { path: 'formulario-viaje-previsto/:id', component: FormularioViajePrevistoComponent }, // id = número (edición) o 'nuevo' (creación)
 
