@@ -17,6 +17,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const multer = require('multer');
+const axios = require('axios');
 const { exec } = require('child_process'); // ⬅️ NUEVO: Para ejecutar ffmpeg y stt local
 
 // Lock para procesos de transcripción activos (evitar duplicados)
@@ -342,8 +343,36 @@ db.run(`
     console.error('❌ Error al crear tabla viajes:', err.message);
   } else {
     console.log('✅ Tabla viajes verificada/creada');
+    migrarColumnasUbicacionViajes();
   }
 });
+
+function migrarColumnasUbicacionViajes() {
+  db.all(`PRAGMA table_info(viajes)`, [], async (err, rows) => {
+    if (err) {
+      console.error('❌ Error consultando columnas de viajes:', err.message);
+      return;
+    }
+
+    const columnasActuales = new Set((rows || []).map(col => col.name));
+    const columnasObjetivo = [
+      { name: 'lat_representativa', sqlType: 'REAL' },
+      { name: 'lng_representativa', sqlType: 'REAL' },
+      { name: 'metodo_calculo', sqlType: 'TEXT' }
+    ];
+
+    for (const columna of columnasObjetivo) {
+      if (columnasActuales.has(columna.name)) continue;
+
+      try {
+        await dbQuery.run(`ALTER TABLE viajes ADD COLUMN ${columna.name} ${columna.sqlType}`, []);
+        console.log(`✅ Columna migrada en viajes: ${columna.name}`);
+      } catch (migrationError) {
+        console.error(`❌ Error migrando columna ${columna.name}:`, migrationError.message);
+      }
+    }
+  });
+}
 
 // Crear la tabla de "ItinerarioGeneral" (si no existe)
 db.run(
@@ -1728,16 +1757,16 @@ app.post('/archivos/:id/transcribir', async (req, res) => {
     // 2. Comprobar si ya tiene transcripción y no se fuerza
     if (archivo.transcripcion_raw && !force) {
       procesosTranscripcionActivos.delete(id);
-      return res.json({ 
-        text: archivo.transcripcion_raw, 
+      return res.json({
+        text: archivo.transcripcion_raw,
         fromCache: true,
-        message: 'Recuperado de la base de datos' 
+        message: 'Recuperado de la base de datos'
       });
     }
 
     // 3. Determinar qué archivo transcribir (principal o asociado)
     let rutaAudio = '';
-    
+
     // Normalizar ruta (quitar uploads/ si existe)
     const limpiarRuta = (r) => r.replace(/^uploads[\\\/]/, '').replace(/\\/g, '/');
 
@@ -1770,16 +1799,16 @@ app.post('/archivos/:id/transcribir', async (req, res) => {
 
     // Si es vídeo, extraer audio a MP3 temporal
     if (archivo.tipo === 'video') {
-       const tmpPath = path.join(uploadsPath, `tmp_audio_${id}_${Date.now()}.mp3`);
-       console.log(`🎬 [FFMPEG] Extrayendo audio de vídeo para ID ${id}...`);
-       await new Promise((resolve, reject) => {
-         exec(`ffmpeg -i "${rutaAudio}" -vn -acodec libmp3lame -y "${tmpPath}"`, (err) => {
-           if (err) reject(err);
-           else resolve();
-         });
-       });
-       rutaProcesada = tmpPath;
-       esTemporal = true;
+      const tmpPath = path.join(uploadsPath, `tmp_audio_${id}_${Date.now()}.mp3`);
+      console.log(`🎬 [FFMPEG] Extrayendo audio de vídeo para ID ${id}...`);
+      await new Promise((resolve, reject) => {
+        exec(`ffmpeg -i "${rutaAudio}" -vn -acodec libmp3lame -y "${tmpPath}"`, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      rutaProcesada = tmpPath;
+      esTemporal = true;
     }
 
     // Comprobar tamaño (> 25MB) para Whisper
@@ -1800,10 +1829,10 @@ app.post('/archivos/:id/transcribir', async (req, res) => {
 
     // 5. Llamar a Motor Local (faster-whisper)
     console.log(`🎙️ [IA LOCAL] Transcribiendo con faster-whisper: ${path.basename(rutaProcesada)}...`);
-    
+
     const scriptPath = path.join(__dirname, 'backend-services/stt-engine/transcribe_local.py');
-    const model = "small"; 
-    
+    const model = "small";
+
     const transcription = await new Promise((resolve, reject) => {
       // Ejecutar script de python local
       // Asegurarse de que 'python' esté en el PATH y tenga las dependencias
@@ -1830,7 +1859,7 @@ app.post('/archivos/:id/transcribir', async (req, res) => {
 
     // 6. Guardar en BD
     await dbQuery.run(
-      "UPDATE archivos SET transcripcion_raw = ?, fechaActualizacion = datetime('now') WHERE id = ?", 
+      "UPDATE archivos SET transcripcion_raw = ?, fechaActualizacion = datetime('now') WHERE id = ?",
       [text, id]
     );
 
@@ -1841,9 +1870,9 @@ app.post('/archivos/:id/transcribir', async (req, res) => {
 
     procesosTranscripcionActivos.delete(id);
     console.log(`✅ [IA] Transcripción completada para ID ${id}`);
-    
-    res.json({ 
-      text, 
+
+    res.json({
+      text,
       fromCache: false,
       message: 'Transcripción generada correctamente'
     });
@@ -1917,19 +1946,19 @@ function generarMiniaturaVideo(archivoId, rutaCompleta, callback) {
   const thumbnailName = `thumb_${archivoId}.jpg`;
   const folder = path.dirname(rutaCompleta);
   const outputPath = path.join(folder, thumbnailName);
-  
+
   // Comando ffmpeg: extraer 1 frame en el segundo 1
   // -ss 1 (seek to 1s), -i input, -vframes 1 (output 1 frame), -q:v 2 (calidad alta), -y (sobrescribir)
   const command = `ffmpeg -ss 1 -i "${rutaCompleta}" -vframes 1 -q:v 2 -y "${outputPath}"`;
-  
+
   console.log(`🎬 [FFMPEG] Generando miniatura para ID ${archivoId}...`);
-  
+
   exec(command, (error, stdout, stderr) => {
     if (error) {
       console.error(`❌ [FFMPEG] Error generando miniatura para ID ${archivoId}:`, error.message);
       return callback(null);
     }
-    
+
     // Calcular ruta relativa a la carpeta uploads para guardar en DB
     const relativePath = path.relative(uploadsPath, outputPath).replace(/\\/g, '/');
     console.log(`✅ [FFMPEG] Miniatura creada: ${relativePath}`);
@@ -2737,7 +2766,7 @@ app.post('/viajes/:id/unificar-itinerarios', async (req, res) => {
         const nombresEnMaestro = new Set();
         // 1. Ver archivos actuales del maestro (si los hubiera) - FIX: Join con actividades porque archivos no tiene itinerarioId
         const actualesMaestro = await dbQuery.all(
-          'SELECT a.nombreArchivo FROM archivos a INNER JOIN actividades act ON a.actividadId = act.id WHERE act.itinerarioId = ?', 
+          'SELECT a.nombreArchivo FROM archivos a INNER JOIN actividades act ON a.actividadId = act.id WHERE act.itinerarioId = ?',
           [maestroId]
         );
         actualesMaestro.forEach(a => nombresEnMaestro.add(a.nombreArchivo));
@@ -2813,11 +2842,11 @@ app.post('/viajes/:id/unificar-itinerarios', async (req, res) => {
           actividadesCreadas++;
 
           const clusterFileIds = cluster.map(f => f.id);
-          
+
           const nombresEnMaestro = new Set();
           // FIX: Join con actividades porque archivos no tiene itinerarioId
           const actualesMaestro = await dbQuery.all(
-            'SELECT a.nombreArchivo FROM archivos a INNER JOIN actividades act ON a.actividadId = act.id WHERE act.itinerarioId = ?', 
+            'SELECT a.nombreArchivo FROM archivos a INNER JOIN actividades act ON a.actividadId = act.id WHERE act.itinerarioId = ?',
             [maestroId]
           );
           actualesMaestro.forEach(a => nombresEnMaestro.add(a.nombreArchivo));
@@ -2935,15 +2964,15 @@ app.post('/itinerarios', (req, res) => {
   db.run(
     sql,
     [
-      viajePrevistoId, 
-      fechaInicio, 
-      horaInicio || '', 
-      fechaFin, 
-      horaFin || '', 
-      duracionDias || 0, 
-      destinosJSON, 
-      descripcionGeneral || '', 
-      climaGeneral || '', 
+      viajePrevistoId,
+      fechaInicio,
+      horaInicio || '',
+      fechaFin,
+      horaFin || '',
+      duracionDias || 0,
+      destinosJSON,
+      descripcionGeneral || '',
+      climaGeneral || '',
       tipoDeViaje || 'urbana'
     ],
     function (err) {
@@ -2993,16 +3022,16 @@ app.put('/itinerarios/:id', (req, res) => {
   const destinosJSON = (typeof destinosPorDia === 'string') ? destinosPorDia : JSON.stringify(destinosPorDia || '');
 
   const params = [
-    viajePrevistoId, 
-    fechaInicio, 
-    horaInicio || '', 
-    fechaFin, 
-    horaFin || '', 
-    duracionDias || 0, 
-    destinosJSON, 
-    descripcionGeneral || '', 
-    climaGeneral || '', 
-    tipoDeViaje || 'urbana', 
+    viajePrevistoId,
+    fechaInicio,
+    horaInicio || '',
+    fechaFin,
+    horaFin || '',
+    duracionDias || 0,
+    destinosJSON,
+    descripcionGeneral || '',
+    climaGeneral || '',
+    tipoDeViaje || 'urbana',
     id
   ];
 
@@ -3014,13 +3043,13 @@ app.put('/itinerarios/:id', (req, res) => {
         console.error(`❌ [PUT /itinerarios/${id}] Error SQLite:`, err.message);
         return res.status(500).json({ error: err.message });
       }
-      
+
       console.log(`✅ [PUT /itinerarios/${id}] Cambios realizados: ${this.changes}`);
-      
+
       if (this.changes === 0) {
         return res.status(404).json({ error: 'Itinerario no encontrado para actualizar' });
       }
-      
+
       res.json({ changes: this.changes });
     }
   );
@@ -4586,7 +4615,7 @@ app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
         });
       } else {
         console.log(`✅ Archivo guardado con ID: ${result.lastID} y actividadId: ${actividadFinal}`);
-        
+
         // ✨ NUEVO: Si es vídeo, generar miniatura
         if (tipo === 'video' || archivo.mimetype.startsWith('video/')) {
           generarMiniaturaVideo(result.lastID, path.join(uploadsPath, archivo.filename), (thumbPath) => {
@@ -7495,9 +7524,9 @@ app.post('/api/admin/generate-missing-thumbnails', async (req, res) => {
     const videosSinPoster = await dbQuery.all(
       "SELECT id, rutaArchivo FROM archivos WHERE tipo = 'video' AND (urlPoster IS NULL OR urlPoster = '')"
     );
-    
+
     console.log(`🔄 [Admin] Iniciando generación de ${videosSinPoster.length} miniaturas...`);
-    
+
     let procesados = 0;
     // Procesamos de uno en uno para no saturar el sistema
     for (const v of videosSinPoster) {
@@ -7517,9 +7546,9 @@ app.post('/api/admin/generate-missing-thumbnails', async (req, res) => {
         });
       }
     }
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       mensaje: `Procesados ${procesados} vídeos de un total de ${videosSinPoster.length}`
     });
   } catch (error) {
@@ -7536,6 +7565,222 @@ console.log('🤖 Endpoints de IA configurados');
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // ========================================
+// MAPA DE VIAJES PREVISTOS: CÁLCULO DE UBICACIÓN
+// ========================================
+function calcularDistancia(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radio de la Tierra en km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+async function geocodeDestino(destino) {
+  if (!destino || typeof destino !== 'string' || !destino.trim()) {
+    return null;
+  }
+
+  const endpoint = 'https://nominatim.openstreetmap.org/search';
+  const response = await axios.get(endpoint, {
+    params: {
+      q: destino.trim(),
+      format: 'json',
+      limit: 1
+    },
+    timeout: 12000,
+    headers: {
+      'User-Agent': 'travel-memory-app/1.0 (mapa-viajes-previstos)'
+    }
+  });
+
+  if (!Array.isArray(response.data) || response.data.length === 0) {
+    return null;
+  }
+
+  const resultado = response.data[0];
+  return {
+    lat: Number(resultado.lat),
+    lng: Number(resultado.lon),
+    label: resultado.display_name || destino
+  };
+}
+
+function extraerCoordenadasSeguras(valor) {
+  if (!valor) return null;
+
+  let geolocalizacion = valor;
+  if (typeof valor === 'string') {
+    try {
+      geolocalizacion = JSON.parse(valor);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!geolocalizacion || typeof geolocalizacion !== 'object') {
+    return null;
+  }
+
+  const lat = Number(
+    geolocalizacion.lat ??
+    geolocalizacion.latitude ??
+    geolocalizacion.latitud
+  );
+  const lng = Number(
+    geolocalizacion.lng ??
+    geolocalizacion.lon ??
+    geolocalizacion.longitude ??
+    geolocalizacion.longitud
+  );
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  return { lat, lng };
+}
+
+async function calcularYPersistirUbicacion(viajeId) {
+  const viaje = await dbQuery.get(
+    'SELECT id, destino FROM viajes WHERE id = ?',
+    [viajeId]
+  );
+
+  if (!viaje) {
+    return { success: false, status: 404, error: 'Viaje no encontrado' };
+  }
+
+  const archivosConGeo = await dbQuery.all(
+    `SELECT a.geolocalizacion
+     FROM archivos a
+     JOIN actividades ac ON ac.id = a.actividadId
+     WHERE ac.viajePrevistoId = ?
+       AND a.geolocalizacion IS NOT NULL
+       AND TRIM(a.geolocalizacion) != ''`,
+    [viajeId]
+  );
+
+  const puntos = (archivosConGeo || [])
+    .map(r => extraerCoordenadasSeguras(r.geolocalizacion))
+    .filter(Boolean);
+
+  let latRepresentativa = null;
+  let lngRepresentativa = null;
+  let metodoCalculo = null;
+  let distanciaMediaKm = null;
+
+  if (puntos.length > 0) {
+    // Elegimos el punto más "central" minimizando distancia total al resto.
+    let mejorPunto = puntos[0];
+    let mejorCosto = Number.POSITIVE_INFINITY;
+
+    for (const candidato of puntos) {
+      const costo = puntos.reduce(
+        (acum, punto) => acum + calcularDistancia(candidato.lat, candidato.lng, punto.lat, punto.lng),
+        0
+      );
+      if (costo < mejorCosto) {
+        mejorCosto = costo;
+        mejorPunto = candidato;
+      }
+    }
+
+    latRepresentativa = mejorPunto.lat;
+    lngRepresentativa = mejorPunto.lng;
+    metodoCalculo = 'archivos_gps';
+    distanciaMediaKm = puntos.length > 1 ? Number((mejorCosto / (puntos.length - 1)).toFixed(3)) : 0;
+  } else {
+    const geocodificado = await geocodeDestino(viaje.destino);
+    if (geocodificado) {
+      latRepresentativa = geocodificado.lat;
+      lngRepresentativa = geocodificado.lng;
+      metodoCalculo = 'geocoding_destino';
+    }
+  }
+
+  await dbQuery.run(
+    `UPDATE viajes
+     SET lat_representativa = ?, lng_representativa = ?, metodo_calculo = ?
+     WHERE id = ?`,
+    [latRepresentativa, lngRepresentativa, metodoCalculo, viajeId]
+  );
+
+  return {
+    success: true,
+    viajeId: Number(viajeId),
+    lat_representativa: latRepresentativa,
+    lng_representativa: lngRepresentativa,
+    metodo_calculo: metodoCalculo,
+    fuente_puntos: puntos.length,
+    distancia_media_km: distanciaMediaKm
+  };
+}
+
+// Recalcular ubicación representativa para un viaje concreto
+app.post('/viajes/:id/calcular-ubicacion', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const resultado = await calcularYPersistirUbicacion(id);
+
+    if (!resultado.success) {
+      return res.status(resultado.status || 400).json(resultado);
+    }
+
+    res.json(resultado);
+  } catch (error) {
+    console.error('❌ Error en /viajes/:id/calcular-ubicacion:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Error calculando ubicación del viaje',
+      detalle: error.message
+    });
+  }
+});
+
+// Migración masiva de ubicaciones para todos los viajes
+app.post('/api/admin/migrar-viajes-ubicaciones', async (req, res) => {
+  try {
+    const viajes = await dbQuery.all('SELECT id FROM viajes ORDER BY id ASC', []);
+    const resultados = [];
+
+    for (const viaje of viajes) {
+      try {
+        const result = await calcularYPersistirUbicacion(viaje.id);
+        resultados.push(result);
+      } catch (errorViaje) {
+        resultados.push({
+          success: false,
+          viajeId: viaje.id,
+          error: errorViaje.message
+        });
+      }
+    }
+
+    const ok = resultados.filter(r => r.success).length;
+    const fail = resultados.length - ok;
+
+    res.json({
+      success: true,
+      total: resultados.length,
+      actualizados: ok,
+      errores: fail,
+      resultados
+    });
+  } catch (error) {
+    console.error('❌ Error en /api/admin/migrar-viajes-ubicaciones:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Error ejecutando migración de ubicaciones',
+      detalle: error.message
+    });
+  }
+});
+
+// ========================================
 // 🛡️ MANEJADOR GLOBAL DE ERRORES (CORS SAFE)
 // ========================================
 app.use((err, req, res, next) => {
@@ -7550,8 +7795,8 @@ app.use((err, req, res, next) => {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   }
 
-  res.status(500).json({ 
-    error: 'Error interno del servidor', 
+  res.status(500).json({
+    error: 'Error interno del servidor',
     detalles: err.message,
     stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
