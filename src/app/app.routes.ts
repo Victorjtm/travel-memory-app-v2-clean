@@ -47,6 +47,8 @@ export const routes: Routes = [
   // ⚠️ MANTENER POR COMPATIBILIDAD: Viajes previstos (ruta antigua)
   { path: 'viajes-previstos', component: ViajesPrevistosComponent },
   { path: 'viajes-previstos/mapa', component: ViajesMapaComponent },
+  { path: 'viajes-previstos/:id/itinerario', redirectTo: 'itinerarios/:id', pathMatch: 'full' },
+  { path: 'viajes-previstos/:id', redirectTo: 'formulario-viaje-previsto/:id', pathMatch: 'full' },
 
   { path: 'formulario-viaje-previsto/:id', component: FormularioViajePrevistoComponent }, // id = número (edición) o 'nuevo' (creación)
 

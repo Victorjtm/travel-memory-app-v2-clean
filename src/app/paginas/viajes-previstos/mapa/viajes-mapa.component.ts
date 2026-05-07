@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, OnDestroy } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, NgZone, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import * as L from 'leaflet';
@@ -20,7 +20,9 @@ export class ViajesMapaComponent implements AfterViewInit, OnDestroy {
 
   constructor(
     private geoService: GeolocalizacionViajesService,
-    private router: Router
+    private router: Router,
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef
   ) { }
 
   ngAfterViewInit(): void {
@@ -39,6 +41,7 @@ export class ViajesMapaComponent implements AfterViewInit, OnDestroy {
   cargarViajes(): void {
     this.cargando = true;
     this.mensaje = '';
+    this.cdr.detectChanges();
 
     this.geoService.obtenerViajesConUbicacion().subscribe({
       next: (viajes) => {
@@ -48,11 +51,13 @@ export class ViajesMapaComponent implements AfterViewInit, OnDestroy {
         if (!viajes.length) {
           this.mensaje = 'No hay ubicaciones calculadas. Usa "Migrar ubicaciones".';
         }
+        this.cdr.detectChanges();
       },
       error: (error) => {
         console.error('❌ Error cargando viajes con ubicación:', error);
         this.cargando = false;
         this.mensaje = 'No se pudieron cargar las ubicaciones.';
+        this.cdr.detectChanges();
       }
     });
   }
@@ -60,16 +65,19 @@ export class ViajesMapaComponent implements AfterViewInit, OnDestroy {
   migrarUbicaciones(): void {
     this.cargando = true;
     this.mensaje = 'Calculando ubicaciones de viajes...';
+    this.cdr.detectChanges();
 
     this.geoService.migrarUbicacionesViajes().subscribe({
       next: (res) => {
         this.mensaje = `Ubicaciones actualizadas: ${res?.actualizados ?? 0}/${res?.total ?? 0}`;
+        this.cdr.detectChanges();
         this.cargarViajes();
       },
       error: (error) => {
         console.error('❌ Error migrando ubicaciones:', error);
         this.cargando = false;
         this.mensaje = 'Error al migrar ubicaciones.';
+        this.cdr.detectChanges();
       }
     });
   }
@@ -106,11 +114,25 @@ export class ViajesMapaComponent implements AfterViewInit, OnDestroy {
       const lng = viaje.lng_representativa as number;
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-      const marker = L.marker([lat, lng]).bindPopup(`
-        <strong>${viaje.nombre || viaje.destino || `Viaje #${viaje.id}`}</strong><br/>
-        Destino: ${viaje.destino || 'Sin destino'}<br/>
-        Método: ${viaje.metodo_calculo || 'n/d'}
-      `);
+      const popupHtml = this.construirPopupViaje(viaje);
+      const marker = L.marker([lat, lng]).bindPopup(popupHtml, { closeButton: true });
+
+      marker.on('popupopen', () => {
+        const btnItinerario = document.getElementById(`btn-itinerario-${viaje.id}`);
+        const btnDetalle = document.getElementById(`btn-detalle-${viaje.id}`);
+
+        btnItinerario?.addEventListener('click', () => {
+          this.ngZone.run(() => {
+            this.router.navigate([`/viajes-previstos/${viaje.id}/itinerario`]);
+          });
+        });
+
+        btnDetalle?.addEventListener('click', () => {
+          this.ngZone.run(() => {
+            this.router.navigate([`/viajes-previstos/${viaje.id}`]);
+          });
+        });
+      });
 
       marker.addTo(this.markersLayer!);
       bounds.extend([lat, lng]);
@@ -119,5 +141,22 @@ export class ViajesMapaComponent implements AfterViewInit, OnDestroy {
     if (bounds.isValid()) {
       this.mapa.fitBounds(bounds.pad(0.25));
     }
+  }
+
+  private construirPopupViaje(viaje: UbicacionViaje): string {
+    const nombre = viaje.nombre || viaje.destino || `Viaje #${viaje.id}`;
+    const fechaInicio = (viaje as any).fecha_inicio || 'Sin fecha';
+    const fechaFin = (viaje as any).fecha_fin || 'Sin fecha';
+
+    return `
+      <div style="min-width:220px;display:flex;flex-direction:column;gap:8px;">
+        <strong>${nombre}</strong>
+        <span>${fechaInicio} - ${fechaFin}</span>
+        <div style="display:flex;gap:8px;">
+          <button id="btn-itinerario-${viaje.id}" type="button">Ver itinerario</button>
+          <button id="btn-detalle-${viaje.id}" type="button">Ver detalle</button>
+        </div>
+      </div>
+    `;
   }
 }
