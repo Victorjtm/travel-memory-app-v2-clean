@@ -1,0 +1,43 @@
+.map-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #f4f4f4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.loader-overlay {
+  text-align: center;
+  ion-spinner {
+    width: 50px;
+    height: 50px;
+  }
+  p {
+    margin-top: 10px;
+    color: var(--ion-color-medium);
+  }
+}
+
+.empty-state {
+  text-align: center;
+  padding: 20px;
+  color: var(--ion-color-medium);
+  
+  ion-icon {
+    font-size: 64px;
+    margin-bottom: 15px;
+  }
+  
+  h3 {
+    font-weight: bold;
+    color: var(--ion-color-dark);
+  }
+}
+
+#mapa-container {
+  /* Asegura que el contenedor de Leaflet tenga dimensiones */
+  min-height: 100%;
+}

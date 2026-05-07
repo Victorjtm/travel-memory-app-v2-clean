@@ -4,6 +4,9 @@ export interface ViajePrevisto {
     destino: string;
     fechaInicio: string;  // Sigue siendo string tipo ISO
     fechaFin: string;
+    lat_representativa?: number;
+    lng_representativa?: number;
+    metodo_calculo?: 'gps_direct' | 'centroid' | 'first_point' | 'geocoding' | 'none';
   }
 
   export interface Itinerario {
