@@ -87,9 +87,9 @@ export class ViajesPrevistosService extends BaseHttpService {
   }
 
   // Unificar viajes con el mismo destino
-  unificarViajes(): Observable<any> {
-    console.log('[ViajesService] POST unificar viajes');
-    return this.post<any>(`${this.apiUrl}/unificar`, {});
+  unificarViajes(resoluciones: any[] = []): Observable<any> {
+    console.log('[ViajesService] POST unificar viajes', resoluciones.length > 0 ? '(Con resoluciones)' : '');
+    return this.post<any>(`${this.apiUrl}/unificar`, { resoluciones });
   }
 
 }

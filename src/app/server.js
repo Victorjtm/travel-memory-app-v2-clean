@@ -2135,6 +2135,15 @@ app.get('/viajes/:id/rangos-fechas', (req, res) => {
         // Consecutivo: extender el rango actual
         rangoActual.fin = itinerarios[i].fechaInicio;
         rangoActual.dias++;
+      } else if (diffDays === 0) {
+        // ✨ NUEVO: Múltiples itinerarios en la misma fecha
+        // Combinar descripciones y destinos sin romper el rango
+        if (itinerarios[i].descripcionGeneral && rangoActual.descripcion && !rangoActual.descripcion.includes(itinerarios[i].descripcionGeneral)) {
+          rangoActual.descripcion += ' | ' + itinerarios[i].descripcionGeneral;
+        }
+        if (itinerarios[i].destinosPorDia && rangoActual.destinos && !rangoActual.destinos.includes(itinerarios[i].destinosPorDia)) {
+          rangoActual.destinos += ' | ' + itinerarios[i].destinosPorDia;
+        }
       } else {
         // No consecutivo: guardar rango actual y empezar uno nuevo
         rangos.push({ ...rangoActual });
@@ -2309,10 +2318,78 @@ app.delete('/viajes/:id', async (req, res) => {
 });
 
 
+// Función auxiliar para detectar y clasificar conflictos al unificar destinos
+function analizarConflictos(actividadesPorFecha) {
+  let estado = 'OK';
+  const conflictos = {};
+
+  for (const fecha in actividadesPorFecha) {
+    const acts = actividadesPorFecha[fecha];
+    let gpxSets = new Set();
+    let overlapDetected = false;
+    let isDiaCompletoPresent = false;
+    let parciales = [];
+
+    // Recolectar GPX y Día Completo
+    for (const act of acts) {
+      if (act.rutaGpxCompleto) gpxSets.add(act.rutaGpxCompleto);
+      if (act.horaInicio === '00:00' && act.horaFin === '23:59') {
+        isDiaCompletoPresent = true;
+      }
+    }
+    
+    // Detectar solapamientos reales
+    const actsSorted = [...acts].sort((a, b) => a.horaInicio.localeCompare(b.horaInicio));
+    for (let i = 0; i < actsSorted.length - 1; i++) {
+      for (let j = i + 1; j < actsSorted.length; j++) {
+        const actA = actsSorted[i];
+        const actB = actsSorted[j];
+        
+        // Solapamiento: A termina después del inicio de B Y B termina después del inicio de A
+        // Esto cubre horas idénticas o solapamientos parciales
+        if (actA.horaFin > actB.horaInicio && actB.horaFin > actA.horaInicio) {
+           overlapDetected = true;
+           const isA_Full = (actA.horaInicio === '00:00' && actA.horaFin === '23:59');
+           const isB_Full = (actB.horaInicio === '00:00' && actB.horaFin === '23:59');
+           
+           if (isA_Full && !isB_Full) parciales.push(`${actB.horaInicio}-${actB.horaFin}`);
+           if (isB_Full && !isA_Full) parciales.push(`${actA.horaInicio}-${actA.horaFin}`);
+           if (!isA_Full && !isB_Full) parciales.push(`${actA.horaInicio}-${actA.horaFin} y ${actB.horaInicio}-${actB.horaFin}`);
+        }
+      }
+    }
+
+    const isGpxConflict = gpxSets.size > 1;
+
+    // Evaluar reglas del grupo-fecha
+    if (overlapDetected || isGpxConflict) {
+      estado = 'CONFLICTO_RESOLUBLE';
+      const canFuse = isDiaCompletoPresent && !isGpxConflict;
+      
+      conflictos[fecha] = {
+         rangoDiaCompleto: isDiaCompletoPresent ? '00:00-23:59' : 'No hay día completo',
+         rangoParcial: parciales.length > 0 ? parciales.join(', ') : 'No hay solapamiento',
+         detalleGPX: isGpxConflict ? 'Existen GPX distintos' : (gpxSets.size === 1 ? 'Se heredaría el GPX' : 'Ninguno tiene GPX'),
+         opcionesPermitidas: canFuse 
+             ? ['mismo_viaje_itinerarios_separados', 'fusionar_dia_completo'] 
+             : ['mismo_viaje_itinerarios_separados'],
+         motivo: isGpxConflict 
+             ? 'GPX distintos obligan a mantener itinerarios separados.' 
+             : (!isDiaCompletoPresent ? 'No hay un itinerario de día completo para absorber las parciales.' : 'Solapamiento de horarios.')
+      };
+    }
+  }
+  
+  return { estado, conflictos };
+}
+
 // Ruta para unificar viajes por destino
 app.post('/viajes/unificar', async (req, res) => {
   try {
     console.log('🔄 Iniciando unificación de viajes...');
+    
+    // Recibir las resoluciones del usuario
+    const { resoluciones = [] } = req.body || {}; 
 
     // 1. Obtener todos los viajes
     const viajes = await new Promise((resolve, reject) => {
@@ -2332,12 +2409,13 @@ app.post('/viajes/unificar', async (req, res) => {
     const gruposDuplicados = Object.values(grupos).filter(g => g.length > 1);
 
     if (gruposDuplicados.length === 0) {
-      return res.json({ success: true, message: 'No se encontraron viajes para unificar', unificados: 0, errores: [] });
+      return res.json({ success: true, message: 'No se encontraron viajes para unificar', unificados: 0, errores: [], conflictos: [] });
     }
 
     console.log(`📋 Encontrados ${gruposDuplicados.length} grupos de destinos duplicados`);
     let unificadosCount = 0;
     const errores = [];
+    const conflictos = [];
 
     // 4. Procesar cada grupo transaccionalmente (lógica secuencial)
     for (const grupo of gruposDuplicados) {
@@ -2351,7 +2429,7 @@ app.post('/viajes/unificar', async (req, res) => {
       const actividades = await new Promise((resolve, reject) => {
         const placeholders = todosIds.map(() => '?').join(',');
         const query = `
-          SELECT a.id, a.horaInicio, a.horaFin, i.fechaInicio, i.viajePrevistoId 
+          SELECT a.id, a.nombre, a.horaInicio, a.horaFin, a.rutaGpxCompleto, a.rutaMapaCompleto, a.rutaManifest, a.rutaEstadisticas, i.fechaInicio, i.viajePrevistoId 
           FROM actividades a 
           JOIN ItinerarioGeneral i ON a.itinerarioId = i.id 
           WHERE i.viajePrevistoId IN (${placeholders})
@@ -2359,37 +2437,59 @@ app.post('/viajes/unificar', async (req, res) => {
         db.all(query, todosIds, (err, rows) => err ? reject(err) : resolve(rows || []));
       });
 
-      let colisionDetectada = null;
       const actividadesPorFecha = {};
       actividades.forEach(act => {
         if (!actividadesPorFecha[act.fechaInicio]) actividadesPorFecha[act.fechaInicio] = [];
         actividadesPorFecha[act.fechaInicio].push(act);
       });
 
-      for (const fecha in actividadesPorFecha) {
-        // Ordenar por hora de inicio
-        const acts = actividadesPorFecha[fecha].sort((a, b) => a.horaInicio.localeCompare(b.horaInicio));
-        for (let i = 0; i < acts.length - 1; i++) {
-          const actual = acts[i];
-          const siguiente = acts[i + 1];
-          // Verificar solapamiento: StartA < EndB AND EndA > StartB. (Aquí rango [Start, End))
-          // "actual.horaFin > siguiente.horaInicio" es suficiente si están ordenados por Start.
-          if (actual.horaFin > siguiente.horaInicio) {
-            // ✨ FIX: Ignorar si son exactamente el mismo bloque (posible duplicidad)
-            if (actual.horaInicio === siguiente.horaInicio && actual.horaFin === siguiente.horaFin) {
-              continue;
+      // Llamar a la nueva función de análisis
+      const analisis = analizarConflictos(actividadesPorFecha);
+
+      if (analisis.estado === 'CONFLICTO_RESOLUBLE') {
+        const fechasConflictivas = Object.keys(analisis.conflictos);
+        let faltaConfirmacion = false;
+        let rechazado = false;
+
+        // Comprobar si el usuario aportó resolución para todos los conflictos
+        for (const fecha of fechasConflictivas) {
+          const conflicto = analisis.conflictos[fecha];
+          const idResolucion = `${maestro.id}_${fecha}`;
+          const resUsuario = resoluciones.find(r => r.idResolucion === idResolucion);
+          
+          if (!resUsuario) {
+            // ✨ NUEVO: Si la única opción viable es el Modo Seguro, auto-resolverlo sin preguntar
+            if (conflicto.opcionesPermitidas.length === 1 && conflicto.opcionesPermitidas[0] === 'mismo_viaje_itinerarios_separados') {
+              resoluciones.push({ idResolucion, modoUnificacion: 'mismo_viaje_itinerarios_separados', auto: true });
+              console.log(`    -> Auto-resolviendo conflicto de GPX/Solape en ${fecha} a MODO 2 (Itinerarios Separados).`);
+            } else {
+              faltaConfirmacion = true;
+              conflictos.push({
+                idResolucion,
+                grupoId: maestro.id,
+                destino: maestro.destino,
+                fecha: fecha,
+                maestroId: maestro.id,
+                secundariosIds: secundarios.map(s => s.id),
+                ...conflicto
+              });
             }
-            colisionDetectada = `Conflicto el ${fecha} entre ${actual.horaInicio}-${actual.horaFin} y ${siguiente.horaInicio}-${siguiente.horaFin}`;
-            break;
+          } else if (resUsuario.modoUnificacion === 'omitir') {
+             rechazado = true;
           }
         }
-        if (colisionDetectada) break;
-      }
 
-      if (colisionDetectada) {
-        console.warn(`  ⚠️ Unificación abortada para "${maestro.destino}": ${colisionDetectada}`);
-        errores.push({ destino: maestro.destino, error: colisionDetectada });
-        continue;
+        if (rechazado) {
+           console.log(`  🚫 Grupo "${maestro.destino}" abortado porque un conflicto fue omitido por el usuario.`);
+           errores.push({ destino: maestro.destino, error: "Unificación omitida por el usuario." });
+           continue; // Saltar el grupo entero
+        }
+
+        // Si falta alguna confirmación, pausamos este grupo (esperando a que el frontend pregunte)
+        if (faltaConfirmacion) {
+           console.log(`  ⏳ Pausando grupo "${maestro.destino}" por requerir decisión del usuario.`);
+           continue;
+        }
       }
 
       // 4.2 Ejecutar Unificación
@@ -2400,7 +2500,58 @@ app.post('/viajes/unificar', async (req, res) => {
         });
 
         for (const itinSec of itinerariosSec) {
-          // Buscar si el Maestro ya tiene itinerario en esa fecha
+          // Verificar la resolución del usuario para este itinerario (si hubo conflicto)
+          const idResolucion = `${maestro.id}_${itinSec.fechaInicio}`;
+          const resUsuario = resoluciones.find(r => r.idResolucion === idResolucion);
+          const modoUnificacion = resUsuario ? resUsuario.modoUnificacion : null;
+
+          if (modoUnificacion === 'mismo_viaje_itinerarios_separados') {
+             // MODO 2: Mantener separados. Cambiamos el viajePrevistoId al maestro y listo (las rutas físicas se actualizarán al final).
+             console.log(`    -> MODO 2: Trasladando itinerario ${itinSec.fechaInicio} al maestro (Manteniendo independencia)`);
+             
+             // ✨ RENOMBRADO SEGURO DE ACTIVIDADES
+             const actsMaestro = await new Promise((resolve, reject) => {
+               db.all(`SELECT a.* FROM actividades a 
+                       JOIN ItinerarioGeneral i ON a.itinerarioId = i.id 
+                       WHERE i.viajePrevistoId = ? AND i.fechaInicio = ?`, 
+                       [maestro.id, itinSec.fechaInicio], (err, rows) => err ? reject(err) : resolve(rows || []));
+             });
+             
+             const actsSec = await new Promise((resolve, reject) => {
+               db.all('SELECT * FROM actividades WHERE itinerarioId = ?', [itinSec.id], (err, rows) => err ? reject(err) : resolve(rows || []));
+             });
+
+             for (const act of actsSec) {
+                let nuevoNombre = act.nombre;
+                const isNombreVacio = !nuevoNombre || nuevoNombre.trim() === '';
+                
+                if (isNombreVacio) {
+                   nuevoNombre = `${maestro.destino} - ${act.horaInicio} a ${act.horaFin}`;
+                }
+
+                if (nuevoNombre !== act.nombre) {
+                   await new Promise((resolve, reject) => {
+                     db.run('UPDATE actividades SET nombre = ? WHERE id = ?', [nuevoNombre, act.id], err => err ? reject(err) : resolve());
+                   });
+                }
+             }
+
+             // ✨ RENOMBRADO SEGURO DE ITINERARIO
+             const isDescVacia = !itinSec.descripcionGeneral || itinSec.descripcionGeneral.trim() === '';
+             const descFinal = isDescVacia 
+                 ? `Itinerario separado dentro del viaje a ${maestro.destino} para conservar GPX y archivos independientes.` 
+                 : itinSec.descripcionGeneral;
+             
+             await new Promise((resolve, reject) => {
+               db.run('UPDATE ItinerarioGeneral SET viajePrevistoId = ?, descripcionGeneral = ? WHERE id = ?', [maestro.id, descFinal, itinSec.id], err => err ? reject(err) : resolve());
+             });
+             await new Promise((resolve, reject) => {
+               db.run('UPDATE actividades SET viajePrevistoId = ? WHERE itinerarioId = ?', [maestro.id, itinSec.id], err => err ? reject(err) : resolve());
+             });
+             continue; // Skip the rest of the fusion logic for this itinerary
+          }
+
+          // Buscar si el Maestro ya tiene itinerario en esa fecha para Fusión normal o Modo 1
           const itinMaestro = await new Promise((resolve, reject) => {
             db.get(
               'SELECT * FROM ItinerarioGeneral WHERE viajePrevistoId = ? AND fechaInicio = ?',
@@ -2410,7 +2561,7 @@ app.post('/viajes/unificar', async (req, res) => {
           });
 
           if (itinMaestro) {
-            // FUSIONAR
+            // MODO 1 o Normal (FUSIONAR)
             console.log(`    -> Fusionando itinerario ${itinSec.fechaInicio} (ID ${itinSec.id} -> ${itinMaestro.id})`);
             await new Promise((resolve, reject) => {
               db.run(
@@ -2419,61 +2570,80 @@ app.post('/viajes/unificar', async (req, res) => {
                 (err) => err ? reject(err) : resolve()
               );
             });
-            // ✅ ACTUALIZAR RUTA DE ARCHIVOS (si contienen la ID del viaje como carpeta)
-            // Esto es importante si las rutas son relativas como "ID_VIAJE/..."
-            await new Promise((resolve, reject) => {
-              db.run(
-                `UPDATE archivos 
-                 SET rutaArchivo = REPLACE(rutaArchivo, '${viajeSecundario.id}/', '${maestro.id}/') 
-                 WHERE actividadId IN (SELECT id FROM actividades WHERE itinerarioId = ?)`,
-                [itinMaestro.id],
-                (err) => err ? reject(err) : resolve()
-              );
-            });
+            // Las rutas de los archivos y GPX se actualizan de forma global y segura al final del bucle del viajeSecundario.
             // Eliminar itinerario secundario
             await new Promise((resolve, reject) => {
               db.run('DELETE FROM ItinerarioGeneral WHERE id = ?', [itinSec.id], err => err ? reject(err) : resolve());
             });
 
-            // ✨ NUEVO: DEDUPLICAR ACTIVIDADES Y ARCHIVOS EN EL MAESTRO
-            console.log(`    -> Limpiando duplicados en itinerario fusionado...`);
+            // ✨ NUEVO: DEDUPLICAR ACTIVIDADES Y ARCHIVOS EN EL MAESTRO (Y FUSIONAR FORZADOS)
+            console.log(`    -> Limpiando duplicados y fusionando en itinerario maestro...`);
             const actsMaestro = await new Promise((resolve, reject) => {
               db.all('SELECT * FROM actividades WHERE itinerarioId = ? ORDER BY horaInicio ASC', [itinMaestro.id], (err, rows) => err ? reject(err) : resolve(rows || []));
             });
 
-            const actsVistas = {};
-            for (const act of actsMaestro) {
-              const key = `${act.nombre || ''}_${act.horaInicio}_${act.horaFin}`.toLowerCase();
-              if (!actsVistas[key]) {
-                actsVistas[key] = act;
-              } else {
-                const masterAct = actsVistas[key];
-                console.log(`      -> Fusionando actividad duplicada: "${act.nombre}" (ID ${act.id} -> ${masterAct.id})`);
-
-                // Mover archivos evitando duplicados en BD
-                const archivosSec = await new Promise((resolve, reject) => {
-                  db.all('SELECT * FROM archivos WHERE actividadId = ?', [act.id], (err, rows) => err ? reject(err) : resolve(rows || []));
-                });
-
-                for (const f of archivosSec) {
-                  const existe = await new Promise((resolve, reject) => {
-                    db.get('SELECT id FROM archivos WHERE actividadId = ? AND nombreArchivo = ? AND tipo = ?', [masterAct.id, f.nombreArchivo, f.tipo], (err, row) => err ? reject(err) : resolve(row));
-                  });
-                  if (existe) {
-                    await new Promise((resolve, reject) => {
-                      db.run('DELETE FROM archivos WHERE id = ?', [f.id], err => err ? reject(err) : resolve());
-                    });
-                  } else {
-                    await new Promise((resolve, reject) => {
-                      db.run('UPDATE archivos SET actividadId = ? WHERE id = ?', [masterAct.id, f.id], err => err ? reject(err) : resolve());
-                    });
+            // Verificar si hay una actividad 00:00-23:59 a la cual fusionar las parciales
+            const actDiaCompleto = actsMaestro.find(a => a.horaInicio === '00:00' && a.horaFin === '23:59');
+            
+            if (actDiaCompleto) {
+               console.log(`      -> Detectada actividad maestro de día completo. Fusionando parciales en ID ${actDiaCompleto.id}...`);
+               for (const act of actsMaestro) {
+                  if (act.id !== actDiaCompleto.id) {
+                     console.log(`        -> Absorbiendo actividad parcial "${act.nombre}" (ID ${act.id})...`);
+                     // Mover archivos
+                     await new Promise((resolve, reject) => {
+                       db.run('UPDATE archivos SET actividadId = ? WHERE actividadId = ?', [actDiaCompleto.id, act.id], err => err ? reject(err) : resolve());
+                     });
+                     // Heredar GPX si el maestro no tiene pero la parcial sí
+                     if (!actDiaCompleto.rutaGpxCompleto && act.rutaGpxCompleto) {
+                        await new Promise((resolve, reject) => {
+                          db.run('UPDATE actividades SET rutaGpxCompleto = ?, rutaMapaCompleto = ?, rutaManifest = ?, rutaEstadisticas = ? WHERE id = ?',
+                             [act.rutaGpxCompleto, act.rutaMapaCompleto, act.rutaManifest, act.rutaEstadisticas, actDiaCompleto.id], err => err ? reject(err) : resolve());
+                        });
+                        actDiaCompleto.rutaGpxCompleto = act.rutaGpxCompleto; // Actualizar ref en memoria
+                     }
+                     // Eliminar la actividad parcial
+                     await new Promise((resolve, reject) => {
+                       db.run('DELETE FROM actividades WHERE id = ?', [act.id], err => err ? reject(err) : resolve());
+                     });
                   }
-                }
-                // Eliminar actividad secundaria
-                await new Promise((resolve, reject) => {
-                  db.run('DELETE FROM actividades WHERE id = ?', [act.id], err => err ? reject(err) : resolve());
-                });
-              }
+               }
+            } else {
+               // Deduplicación normal exacta
+               const actsVistas = {};
+               for (const act of actsMaestro) {
+                 const key = `${act.nombre || ''}_${act.horaInicio}_${act.horaFin}`.toLowerCase();
+                 if (!actsVistas[key]) {
+                   actsVistas[key] = act;
+                 } else {
+                   const masterAct = actsVistas[key];
+                   console.log(`      -> Fusionando actividad duplicada exacta: "${act.nombre}" (ID ${act.id} -> ${masterAct.id})`);
+   
+                   // Mover archivos evitando duplicados en BD
+                   const archivosSec = await new Promise((resolve, reject) => {
+                     db.all('SELECT * FROM archivos WHERE actividadId = ?', [act.id], (err, rows) => err ? reject(err) : resolve(rows || []));
+                   });
+   
+                   for (const f of archivosSec) {
+                     const existe = await new Promise((resolve, reject) => {
+                       db.get('SELECT id FROM archivos WHERE actividadId = ? AND nombreArchivo = ? AND tipo = ?', [masterAct.id, f.nombreArchivo, f.tipo], (err, row) => err ? reject(err) : resolve(row));
+                     });
+                     if (existe) {
+                       await new Promise((resolve, reject) => {
+                         db.run('DELETE FROM archivos WHERE id = ?', [f.id], err => err ? reject(err) : resolve());
+                       });
+                     } else {
+                       await new Promise((resolve, reject) => {
+                         db.run('UPDATE archivos SET actividadId = ? WHERE id = ?', [masterAct.id, f.id], err => err ? reject(err) : resolve());
+                       });
+                     }
+                   }
+                   // Eliminar actividad secundaria
+                   await new Promise((resolve, reject) => {
+                     db.run('DELETE FROM actividades WHERE id = ?', [act.id], err => err ? reject(err) : resolve());
+                   });
+                 }
+               }
             }
           } else {
             // REASIGNAR
@@ -2492,16 +2662,7 @@ app.post('/viajes/unificar', async (req, res) => {
                 (err) => err ? reject(err) : resolve()
               );
             });
-            // ✅ ACTUALIZAR RUTA DE ARCHIVOS
-            await new Promise((resolve, reject) => {
-              db.run(
-                `UPDATE archivos 
-                 SET rutaArchivo = REPLACE(rutaArchivo, '${viajeSecundario.id}/', '${maestro.id}/') 
-                 WHERE actividadId IN (SELECT id FROM actividades WHERE itinerarioId = ?)`,
-                [itinSec.id],
-                (err) => err ? reject(err) : resolve()
-              );
-            });
+            // Las rutas de los archivos y GPX se actualizan de forma global y segura al final del bucle del viajeSecundario.
           }
         }
 
@@ -2574,16 +2735,20 @@ app.post('/viajes/unificar', async (req, res) => {
           }
         }
 
-        // ✨ NUEVO: ACTUALIZAR RUTAS EN BASE DE DATOS
+        // ✨ NUEVO: ACTUALIZAR RUTAS EN BASE DE DATOS DE FORMA SEGURA CON PARÁMETROS
         console.log(`\n🔄 Actualizando rutas en base de datos...`);
+        
+        const maestroPrefix = `${maestro.id}/`;
+        const secPrefix = `${viajeSecundario.id}/`;
+        const secPattern = `${viajeSecundario.id}/%`;
 
         // Actualizar tabla archivos
         const rutasActualizadas = await new Promise((resolve, reject) => {
           db.run(
             `UPDATE archivos 
-             SET rutaArchivo = REPLACE(rutaArchivo, '${viajeSecundario.id}/', '${maestro.id}/') 
-             WHERE rutaArchivo LIKE '${viajeSecundario.id}/%'`,
-            [],
+             SET rutaArchivo = ? || SUBSTR(rutaArchivo, LENGTH(?) + 1) 
+             WHERE rutaArchivo LIKE ?`,
+            [maestroPrefix, secPrefix, secPattern],
             function (err) {
               if (err) return reject(err);
               console.log(`    ✅ Rutas actualizadas en archivos: ${this.changes} registros`);
@@ -2596,9 +2761,9 @@ app.post('/viajes/unificar', async (req, res) => {
         const rutasAsociadasActualizadas = await new Promise((resolve, reject) => {
           db.run(
             `UPDATE archivos_asociados 
-             SET rutaArchivo = REPLACE(rutaArchivo, '${viajeSecundario.id}/', '${maestro.id}/') 
-             WHERE rutaArchivo LIKE '${viajeSecundario.id}/%'`,
-            [],
+             SET rutaArchivo = ? || SUBSTR(rutaArchivo, LENGTH(?) + 1) 
+             WHERE rutaArchivo LIKE ?`,
+            [maestroPrefix, secPrefix, secPattern],
             function (err) {
               if (err) return reject(err);
               console.log(`    ✅ Rutas actualizadas en archivos_asociados: ${this.changes} registros`);
@@ -2612,12 +2777,24 @@ app.post('/viajes/unificar', async (req, res) => {
           db.run(
             `UPDATE actividades 
              SET 
-               rutaGpxCompleto = REPLACE(rutaGpxCompleto, '${viajeSecundario.id}/', '${maestro.id}/'),
-               rutaMapaCompleto = REPLACE(rutaMapaCompleto, '${viajeSecundario.id}/', '${maestro.id}/'),
-               rutaManifest = REPLACE(rutaManifest, '${viajeSecundario.id}/', '${maestro.id}/'),
-               rutaEstadisticas = REPLACE(rutaEstadisticas, '${viajeSecundario.id}/', '${maestro.id}/')
-             WHERE viajePrevistoId = ?`,
-            [maestro.id],
+               rutaGpxCompleto = CASE WHEN rutaGpxCompleto LIKE ? THEN ? || SUBSTR(rutaGpxCompleto, LENGTH(?) + 1) ELSE rutaGpxCompleto END,
+               rutaMapaCompleto = CASE WHEN rutaMapaCompleto LIKE ? THEN ? || SUBSTR(rutaMapaCompleto, LENGTH(?) + 1) ELSE rutaMapaCompleto END,
+               rutaManifest = CASE WHEN rutaManifest LIKE ? THEN ? || SUBSTR(rutaManifest, LENGTH(?) + 1) ELSE rutaManifest END,
+               rutaEstadisticas = CASE WHEN rutaEstadisticas LIKE ? THEN ? || SUBSTR(rutaEstadisticas, LENGTH(?) + 1) ELSE rutaEstadisticas END
+             WHERE viajePrevistoId = ? AND (
+               rutaGpxCompleto LIKE ? OR 
+               rutaMapaCompleto LIKE ? OR 
+               rutaManifest LIKE ? OR 
+               rutaEstadisticas LIKE ?
+             )`,
+            [
+              secPattern, maestroPrefix, secPrefix,
+              secPattern, maestroPrefix, secPrefix,
+              secPattern, maestroPrefix, secPrefix,
+              secPattern, maestroPrefix, secPrefix,
+              maestro.id,
+              secPattern, secPattern, secPattern, secPattern
+            ],
             function (err) {
               if (err) return reject(err);
               console.log(`    ✅ Rutas actualizadas en actividades: ${this.changes} registros`);
@@ -2671,7 +2848,8 @@ app.post('/viajes/unificar', async (req, res) => {
       success: true,
       unificados: unificadosCount,
       errores: errores,
-      message: `Proceso completado. ${unificadosCount} grupos unificados. ${errores.length} conflictos.`
+      conflictos: conflictos,
+      message: `Proceso completado. ${unificadosCount} grupos unificados. ${conflictos.length} requieren decisión.`
     });
 
   } catch (err) {

@@ -187,25 +187,70 @@ export class ViajesPrevistosComponent implements OnInit {
     this.router.navigate(['/viajes-previstos/mapa']);
   }
 
-  ejecutarUnificacion() {
-    if (!confirm('¿Estás seguro de que quieres unificar los viajes con el mismo destino? Esta acción fusionará itinerarios y eliminará los viajes duplicados.')) {
-      return;
+  ejecutarUnificacion(resoluciones: any[] = []) {
+    if (resoluciones.length === 0) {
+      if (!confirm('¿Estás seguro de que quieres unificar los viajes con el mismo destino? Esta acción reagrupará o fusionará itinerarios.')) {
+        return;
+      }
     }
 
-    console.log('[UNIFICAR] Iniciando proceso...');
+    console.log('[UNIFICAR] Iniciando proceso...', resoluciones.length > 0 ? '(Con resoluciones)' : '');
 
-    this.viajesPrevistosService.unificarViajes().subscribe({
-      next: (res) => {
+    this.viajesPrevistosService.unificarViajes(resoluciones).subscribe({
+      next: async (res) => {
         console.log('[UNIFICAR] Respuesta:', res);
-        if (res.success) {
-          let msg = res.message;
-          if (res.errores && res.errores.length > 0) {
-            msg += '\n\n⚠️ Conflictos no resueltos:\n' + res.errores.map((e: any) => `- ${e.destino}: ${e.error}`).join('\n');
+        
+        if (res.errores && res.errores.length > 0) {
+          alert('⚠️ Errores no resueltos:\n' + res.errores.map((e: any) => `- ${e.destino}: ${e.error}`).join('\n'));
+        }
+
+        // Manejar conflictos con opciones de resolución
+        if (res.conflictos && res.conflictos.length > 0) {
+          const nuevasResoluciones = [...resoluciones];
+
+          for (const conflicto of res.conflictos) {
+            const puedeFusionar = conflicto.opcionesPermitidas.includes('fusionar_dia_completo');
+            let decisionModo = null;
+             
+            if (puedeFusionar) {
+               const msg = `Conflicto en ${conflicto.destino} (${conflicto.fecha}).\nMotivo: ${conflicto.motivo}\n\n¿Deseas MANTENER ITINERARIOS SEPARADOS dentro del mismo viaje (Recomendado)?\n\n[Aceptar] para mantener independientes\n[Cancelar] para ver más opciones`;
+               if (confirm(msg)) {
+                  decisionModo = 'mismo_viaje_itinerarios_separados';
+               } else {
+                  if (confirm(`¿Deseas FUSIONAR agresivamente en un Día Completo?\n(Se absorberán los parciales en el día completo)\n\n[Aceptar] para Fusionar\n[Cancelar] para Omitir destino`)) {
+                     decisionModo = 'fusionar_dia_completo';
+                  }
+               }
+            } else {
+               const msg = `Conflicto en ${conflicto.destino} (${conflicto.fecha}).\nMotivo: ${conflicto.motivo}\n\nSolo se permite MANTENER ITINERARIOS SEPARADOS dentro del mismo viaje.\n\n[Aceptar] para mantener independientes\n[Cancelar] para Omitir destino`;
+               if (confirm(msg)) {
+                  decisionModo = 'mismo_viaje_itinerarios_separados';
+               }
+            }
+             
+            if (decisionModo) {
+               nuevasResoluciones.push({ idResolucion: conflicto.idResolucion, modoUnificacion: decisionModo });
+            } else {
+               nuevasResoluciones.push({ idResolucion: conflicto.idResolucion, modoUnificacion: 'omitir' });
+               alert(`Has omitido la unificación de ${conflicto.destino} (${conflicto.fecha}).`);
+            }
           }
-          alert(msg);
+
+          // Si el usuario aportó nuevas resoluciones, lanzar la segunda fase
+          if (nuevasResoluciones.length > resoluciones.length) {
+            this.ejecutarUnificacion(nuevasResoluciones);
+            return; // Esperar a la segunda llamada
+          }
+        }
+
+        // Si llegamos aquí y hubo éxito general (y ya no hay conflictos pendientes)
+        if (res.success && res.unificados > 0) {
+          alert(res.message);
           this.ngOnInit();
-        } else {
-          alert('Error: ' + res.message);
+        } else if (res.unificados === 0 && (!res.conflictos || res.conflictos.length === 0)) {
+           if (!res.errores || res.errores.length === 0) {
+              alert(res.message);
+           }
         }
       },
       error: (err) => {
