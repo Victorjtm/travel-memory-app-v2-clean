@@ -387,7 +387,7 @@ db.run(
     horaInicio TEXT,
     horaFin TEXT,
     climaGeneral TEXT,
-    tipoDeViaje TEXT CHECK(tipoDeViaje IN ('costa', 'naturaleza', 'rural', 'urbana', 'cultural', 'trabajo')),
+    tipoDeViaje TEXT,
     FOREIGN KEY (viajePrevistoId) REFERENCES viajes(id) ON DELETE CASCADE
   )`,
   (err) => {
@@ -3082,9 +3082,55 @@ app.post('/viajes/:id/unificar-itinerarios', async (req, res) => {
 console.log('Registrando rutas de itinerarios...');
 app.get('/itinerarios', (req, res) => {
   const { viajePrevistoId } = req.query;
-  const sql = viajePrevistoId
-    ? 'SELECT * FROM ItinerarioGeneral WHERE viajePrevistoId = ? ORDER BY fechaInicio DESC'
-    : 'SELECT * FROM ItinerarioGeneral ORDER BY fechaInicio DESC';
+
+  // Ordenación: 1) fecha ASC, 2) hora mínima real de actividades ASC.
+  // La hora se normaliza a HHMM con printf para manejar formatos mixtos
+  // (e.g. '8:07:50', '08:30', '13:20'). Itinerarios sin hora válida
+  // reciben 'zzzz' via COALESCE y quedan al final del mismo día.
+  const sqlConViaje = `
+    SELECT ig.*
+    FROM ItinerarioGeneral ig
+    LEFT JOIN (
+      SELECT
+        itinerarioId,
+        MIN(printf('%02d%02d',
+          CAST(substr(horaInicio, 1, instr(horaInicio, ':') - 1) AS INTEGER),
+          CAST(substr(horaInicio, instr(horaInicio, ':') + 1, 2) AS INTEGER)
+        )) AS hora_min_norm
+      FROM actividades
+      WHERE horaInicio NOT IN ('00:00', '23:59')
+        AND horaInicio IS NOT NULL
+        AND horaInicio != ''
+      GROUP BY itinerarioId
+    ) act ON act.itinerarioId = ig.id
+    WHERE ig.viajePrevistoId = ?
+    ORDER BY
+      substr(ig.fechaInicio, 1, 10) ASC,
+      COALESCE(act.hora_min_norm, 'zzzz') ASC
+  `;
+
+  const sqlSinViaje = `
+    SELECT ig.*
+    FROM ItinerarioGeneral ig
+    LEFT JOIN (
+      SELECT
+        itinerarioId,
+        MIN(printf('%02d%02d',
+          CAST(substr(horaInicio, 1, instr(horaInicio, ':') - 1) AS INTEGER),
+          CAST(substr(horaInicio, instr(horaInicio, ':') + 1, 2) AS INTEGER)
+        )) AS hora_min_norm
+      FROM actividades
+      WHERE horaInicio NOT IN ('00:00', '23:59')
+        AND horaInicio IS NOT NULL
+        AND horaInicio != ''
+      GROUP BY itinerarioId
+    ) act ON act.itinerarioId = ig.id
+    ORDER BY
+      substr(ig.fechaInicio, 1, 10) ASC,
+      COALESCE(act.hora_min_norm, 'zzzz') ASC
+  `;
+
+  const sql = viajePrevistoId ? sqlConViaje : sqlSinViaje;
   const params = viajePrevistoId ? [viajePrevistoId] : [];
 
   db.all(sql, params, (err, rows) => {

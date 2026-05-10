@@ -51,7 +51,7 @@ export interface ItinerarioFuturo {
     horaInicio?: string;
     horaFin?: string;
     climaGeneral?: string;
-    tipoDeViaje?: 'costa' | 'naturaleza' | 'rural' | 'urbana' | 'cultural' | 'trabajo';
+    tipoDeViaje?: string;
     itinerario_real_id?: number;
 }
 

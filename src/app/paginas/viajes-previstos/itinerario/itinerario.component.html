@@ -58,13 +58,11 @@
       <input type="text" id="climaGeneral" [(ngModel)]="itinerarioActualizado.climaGeneral" name="climaGeneral"
         required />
 
-      <label for="tipoDeViaje">Tipo de viaje</label>
-      <select id="tipoDeViaje" [(ngModel)]="itinerarioActualizado.tipoDeViaje" name="tipoDeViaje" required>
-        <option value="costa">Costa</option>
-        <option value="montaña">Montaña</option>
-        <option value="rural">Rural</option>
-        <option value="ciudad">Ciudad</option>
-      </select>
+      <label for="tipoDeViaje">Tipo de actividad</label>
+      <app-tipos-de-actividad 
+        [tipoSeleccionado]="itinerarioActualizado.tipoDeViaje || 'costa'"
+        (tipoSeleccionadoChange)="itinerarioActualizado.tipoDeViaje = $any($event)">
+      </app-tipos-de-actividad>
 
       <button type="submit" class="btn-guardar">Guardar cambios</button>
       <button type="button" class="btn-cancelar" (click)="cancelarActualizacion()">Cancelar</button>

@@ -48,15 +48,11 @@
         </div>
 
 <div>
-            <label><i class="fa fa-suitcase"></i> Tipo de Viaje:</label>
-            <select [(ngModel)]="nuevoItinerario.tipoDeViaje" name="tipoDeViaje" required>
-                <option value="costa">Costa</option>
-                <option value="naturaleza">Naturaleza</option>
-                <option value="rural">Rural</option>
-                <option value="urbana">Urbana</option>
-                <option value="cultural">Cultural</option>
-                <option value="trabajo">Trabajo</option>
-            </select>
+            <label><i class="fa fa-suitcase"></i> Tipo de Actividad:</label>
+            <app-tipos-de-actividad 
+              [tipoSeleccionado]="nuevoItinerario.tipoDeViaje || 'costa'"
+              (tipoSeleccionadoChange)="nuevoItinerario.tipoDeViaje = $any($event)">
+            </app-tipos-de-actividad>
         </div>
 
         <button type="submit" [disabled]="!formItinerario.form.valid"><i class="fa fa-plus-circle"></i> Agregar Itinerario</button>

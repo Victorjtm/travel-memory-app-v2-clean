@@ -1,13 +1,13 @@
 <div class="tipos-container">
-    <label *ngFor="let tipo of tipos" class="tipo-option">
+    <label *ngFor="let tipo of tiposObj" class="tipo-option">
       <input
         type="radio"
         name="tipoDeViaje"
-        [value]="tipo"
+        [value]="tipo.value"
         [(ngModel)]="tipoSeleccionado"
-        (change)="seleccionarTipo(tipo)"
+        (change)="seleccionarTipo(tipo.value)"
       />
-      {{ tipo | titlecase }}
+      {{ tipo.label }}
     </label>
   </div>
   

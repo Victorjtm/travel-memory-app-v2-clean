@@ -24,7 +24,7 @@ export interface ItinerarioFuturo {
     horaInicio?: string | null;
     horaFin?: string | null;
     climaGeneral?: string | null;
-    tipoDeViaje?: 'costa' | 'naturaleza' | 'rural' | 'urbana' | 'cultural' | 'trabajo' | null;
+    tipoDeViaje?: string | null;
     itinerario_real_id?: number | null;
     actividades?: any[]; // Se llenará cuando se obtenga el viaje completo
 }

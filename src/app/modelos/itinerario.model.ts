@@ -9,6 +9,6 @@ export interface Itinerario {
     horaInicio?: string;
     horaFin?: string;
     climaGeneral?: string;
-    tipoDeViaje?: 'costa' | 'naturaleza' | 'rural' | 'urbana' | 'cultural' | 'trabajo'; // Solo esos valores permitidos
+    tipoDeViaje?: string; // Permitir valores dinámicos
   }
   

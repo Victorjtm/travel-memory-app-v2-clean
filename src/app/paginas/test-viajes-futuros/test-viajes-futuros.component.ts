@@ -44,7 +44,7 @@ interface ItinerarioFuturo {
   duracionDias: number;
   destinosPorDia: string;
   descripcionGeneral?: string | null;
-  tipoDeViaje?: 'costa' | 'naturaleza' | 'rural' | 'urbana' | 'cultural' | 'trabajo' | null;
+  tipoDeViaje?: string | null;
   actividades?: any[];
 }
 

@@ -5,6 +5,7 @@ import { ItinerarioService } from '../../../servicios/itinerario.service';
 import { Itinerario } from '../../../modelos/viaje-previsto.model';
 import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
+import { TiposDeActividadComponent } from './tipos-de-actividad/tipos-de-actividad.component';
 
 @Component({
   selector: 'app-itinerarios',
@@ -13,7 +14,8 @@ import { FormsModule } from '@angular/forms';
     CommonModule,
     HttpClientModule,
     FormsModule,
-    RouterModule  // Asegúrate de importar RouterModule aquí
+    RouterModule,  // Asegúrate de importar RouterModule aquí
+    TiposDeActividadComponent
   ],
   templateUrl: './itinerario.component.html',
   styleUrls: ['./itinerario.component.scss']
