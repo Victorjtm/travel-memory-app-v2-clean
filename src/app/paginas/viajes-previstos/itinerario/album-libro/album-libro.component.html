@@ -143,70 +143,8 @@
     </div>
 
 
-    <!-- ========================================= -->
-    <!-- TOOLTIP/MODAL DE INFORMACIÓN COMPLETA -->
-    <!-- ========================================= -->
-    <div class="info-detalle" [class.visible]="mostrarInfoDetalle" [class.modal]="infoDetalleEsModal"
-      (mouseenter)="!infoDetalleEsModal && cancelarOcultarInfo()"
-      (mouseleave)="!infoDetalleEsModal && ocultarInfoDetalle()"
-      *ngIf="mostrarInfoDetalle && paginaActualData && !paginaActualData.esIndice && !paginaActualData.esCartaManuscrita">
 
-      <!-- Overlay para modal (solo móvil) -->
-      <div class="info-overlay" *ngIf="infoDetalleEsModal" (click)="cerrarInfoDetalle()">
-      </div>
 
-      <!-- Contenedor de información -->
-      <div class="info-contenido">
-
-        <!-- Título del modal (solo móvil) -->
-        <div class="info-header" *ngIf="infoDetalleEsModal">
-          <h3>Información del archivo</h3>
-          <button class="close-button" (click)="cerrarInfoDetalle(); $event.stopPropagation()">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-
-        <!-- Lista de información -->
-        <div class="info-lista">
-
-          <!-- 1. UBICACIÓN -->
-          <div class="info-item ubicacion">
-            <div class="info-icon">
-              <i class="fas fa-map-marker-alt"></i>
-            </div>
-            <div class="info-text">
-              <span class="info-label">Ubicación</span>
-              <span class="info-value">{{ getNivelContexto() }}</span>
-            </div>
-          </div>
-
-          <!-- 2. FECHA Y HORA -->
-          <div class="info-item fecha">
-            <div class="info-icon">
-              <i class="fas fa-calendar-alt"></i>
-            </div>
-            <div class="info-text">
-              <span class="info-label">Fecha y hora</span>
-              <span class="info-value">{{ obtenerFechaFormateada(paginaActualData!) }}</span>
-            </div>
-          </div>
-
-          <!-- 3. DESCRIPCIÓN (si existe) -->
-          <div class="info-item descripcion" *ngIf="paginaActualData.descripcion">
-            <div class="info-icon">
-              <i class="fas fa-comment-alt"></i>
-            </div>
-            <div class="info-text">
-              <span class="info-label">Descripción</span>
-              <span class="info-value">{{ paginaActualData.descripcion }}</span>
-            </div>
-          </div>
-
-        </div>
-
-      </div>
-
-    </div>
 
     <!-- ======================================= -->
     <!-- SUB-BLOQUE: PÁGINA ACTUAL -->
@@ -309,6 +247,9 @@
 
               <!-- Texto Fecha/Hora -->
               <span class="fecha-hud-texto">{{ obtenerFechaFormateada(paginaActual) }}</span>
+
+              <!-- ✅ PANEL DE INFO ANCLADO AQUÍ -->
+              <ng-container *ngTemplateOutlet="infoDetalleTemplate"></ng-container>
             </div>
           </div>
 
@@ -498,57 +439,57 @@
     <div class="media-fullscreen-wrapper" [class]="'transition-' + transicionActual">
       <img *ngIf="tipoFullscreen === 'imagen'" [src]="mediaFullscreen" class="media-fullscreen imagen-fullscreen"
         (click)="$event.stopPropagation()" [alt]="paginaActualData?.titulo || 'Imagen en pantalla completa'" />
-    </div>
 
-    <video *ngIf="tipoFullscreen === 'video'" [src]="mediaFullscreen" class="media-fullscreen video-fullscreen" controls
-      autoplay (click)="$event.stopPropagation()"
-      [attr.aria-label]="'Video en pantalla completa: ' + (paginaActualData?.titulo || '')">
-      Tu navegador no soporta el elemento video.
-    </video>
+      <video *ngIf="tipoFullscreen === 'video'" [src]="mediaFullscreen" class="media-fullscreen video-fullscreen" controls
+        autoplay (click)="$event.stopPropagation()"
+        [attr.aria-label]="'Video en pantalla completa: ' + (paginaActualData?.titulo || '')">
+        Tu navegador no soporta el elemento video.
+      </video>
 
-    <iframe *ngIf="tipoFullscreen === 'pdf'" [src]="mediaFullscreen + '#toolbar=0'"
-      class="media-fullscreen pdf-fullscreen" frameborder="0"
-      [attr.title]="'PDF: ' + (paginaActualData?.titulo || 'Documento')" (click)="$event.stopPropagation()">
-    </iframe>
+      <iframe *ngIf="tipoFullscreen === 'pdf'" [src]="mediaFullscreen + '#toolbar=0'"
+        class="media-fullscreen pdf-fullscreen" frameborder="0"
+        [attr.title]="'PDF: ' + (paginaActualData?.titulo || 'Documento')" (click)="$event.stopPropagation()">
+      </iframe>
 
-    <!-- AUDIO EN PANTALLA COMPLETA -->
-    <div *ngIf="tipoFullscreen === 'audio'" class="media-fullscreen audio-fullscreen"
-      (click)="$event.stopPropagation()">
-      <div class="audio-fullscreen-container">
-        <!-- Mapa del audio en fullscreen -->
-        <div class="mapa-fullscreen-wrapper" *ngIf="getUrlMapaAsociado(paginaActualData) as mapaUrl">
-          <img [src]="mapaUrl" [alt]="paginaActualData?.titulo || 'Mapa de ubicación'" class="mapa-audio-full">
-        </div>
+      <!-- AUDIO EN PANTALLA COMPLETA -->
+      <div *ngIf="tipoFullscreen === 'audio'" class="media-fullscreen audio-fullscreen"
+        (click)="$event.stopPropagation()">
+        <div class="audio-fullscreen-container">
+          <!-- Mapa del audio en fullscreen -->
+          <div class="mapa-fullscreen-wrapper" *ngIf="getUrlMapaAsociado(paginaActualData) as mapaUrl">
+            <img [src]="mapaUrl" [alt]="paginaActualData?.titulo || 'Mapa de ubicación'" class="mapa-audio-full">
+          </div>
 
-        <!-- Icono fallback si no hay mapa -->
-        <i class="fas fa-music audio-full-icon" *ngIf="!getUrlMapaAsociado(paginaActualData)"></i>
+          <!-- Icono fallback si no hay mapa -->
+          <i class="fas fa-music audio-full-icon" *ngIf="!getUrlMapaAsociado(paginaActualData)"></i>
 
-        <!-- Reproductor de audio -->
-        <div class="audio-controls-full">
-          <h3>{{ paginaActualData?.titulo }}</h3>
-          <audio [src]="mediaFullscreen" controls autoplay class="audio-full-player" (error)="onMediaError($event)">
-            Tu navegador no soporta el elemento audio.
-          </audio>
+          <!-- Reproductor de audio -->
+          <div class="audio-controls-full">
+            <h3>{{ paginaActualData?.titulo }}</h3>
+            <audio [src]="mediaFullscreen" controls autoplay class="audio-full-player" (error)="onMediaError($event)">
+              Tu navegador no soporta el elemento audio.
+            </audio>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- CARTA MANUSCRITA -->
-    <div *ngIf="tipoFullscreen === 'carta-manuscrita'" class="media-fullscreen carta-manuscrita-fullscreen"
-      (click)="$event.stopPropagation()">
-      <div class="carta-manuscrita-container">
-        <div class="carta-manuscrita">
-          <div class="papel-manuscrito">
-            <div class="contenido-carta">
-              <h2 class="titulo-carta">{{ fullscreenTitulo }}</h2>
-              <div class="fecha-carta" *ngIf="paginaActualData?.fecha">
-                {{ formatearFecha(paginaActualData!.fecha) }}
-              </div>
-              <div class="texto-manuscrito">
-                {{ fullscreenDescripcion }}
-              </div>
-              <div class="firma-carta">
-                <em>— Tu diario de viaje —</em>
+      <!-- CARTA MANUSCRITA -->
+      <div *ngIf="tipoFullscreen === 'carta-manuscrita'" class="media-fullscreen carta-manuscrita-fullscreen"
+        (click)="$event.stopPropagation()">
+        <div class="carta-manuscrita-container">
+          <div class="carta-manuscrita">
+            <div class="papel-manuscrito">
+              <div class="contenido-carta">
+                <h2 class="titulo-carta">{{ fullscreenTitulo }}</h2>
+                <div class="fecha-carta" *ngIf="paginaActualData?.fecha">
+                  {{ formatearFecha(paginaActualData!.fecha) }}
+                </div>
+                <div class="texto-manuscrito">
+                  {{ fullscreenDescripcion }}
+                </div>
+                <div class="firma-carta">
+                  <em>— Tu diario de viaje —</em>
+                </div>
               </div>
             </div>
           </div>
@@ -580,6 +521,9 @@
       <div class="metadata-hud-fullscreen">
         <span class="fecha-hora">{{ obtenerFechaFormateada(paginaActualData!) }}</span>
       </div>
+
+      <!-- ✅ PANEL DE INFO ANCLADO AQUÍ (FULLSCREEN) -->
+      <ng-container *ngTemplateOutlet="infoDetalleTemplate"></ng-container>
     </div>
 
     <!-- ✅ NUEVO: Botones flotantes para archivos asociados en fullscreen -->
@@ -812,3 +756,68 @@
 
   </div>
 </div>
+
+<!-- ✅ DEFINICIÓN DE PLANTILLA PARA EL PANEL DE INFORMACIÓN (GLOBAL EN EL COMPONENTE) -->
+<ng-template #infoDetalleTemplate>
+  <div class="info-detalle" [class.visible]="mostrarInfoDetalle" [class.modal]="infoDetalleEsModal"
+    (mouseenter)="!infoDetalleEsModal && cancelarOcultarInfo()"
+    (mouseleave)="!infoDetalleEsModal && ocultarInfoDetalle()"
+    *ngIf="mostrarInfoDetalle && paginaActualData && !paginaActualData.esIndice && !paginaActualData.esCartaManuscrita">
+
+    <!-- Overlay para modal (solo móvil) -->
+    <div class="info-overlay" *ngIf="infoDetalleEsModal" (click)="cerrarInfoDetalle()">
+    </div>
+
+    <!-- Contenedor de información -->
+    <div class="info-contenido">
+
+      <!-- Título del modal (solo móvil) -->
+      <div class="info-header" *ngIf="infoDetalleEsModal">
+        <h3>Información del archivo</h3>
+        <button class="close-button" (click)="cerrarInfoDetalle(); $event.stopPropagation()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <!-- Lista de información -->
+      <div class="info-lista">
+
+        <!-- 1. UBICACIÓN -->
+        <div class="info-item ubicacion">
+          <div class="info-icon">
+            <i class="fas fa-map-marker-alt"></i>
+          </div>
+          <div class="info-text">
+            <span class="info-label">Ubicación</span>
+            <span class="info-value">{{ getNivelContexto() }}</span>
+          </div>
+        </div>
+
+        <!-- 2. FECHA Y HORA -->
+        <div class="info-item fecha">
+          <div class="info-icon">
+            <i class="fas fa-calendar-alt"></i>
+          </div>
+          <div class="info-text">
+            <span class="info-label">Fecha y hora</span>
+            <span class="info-value">{{ obtenerFechaFormateada(paginaActualData!) }}</span>
+          </div>
+        </div>
+
+        <!-- 3. DESCRIPCIÓN (si existe) -->
+        <div class="info-item descripcion" *ngIf="paginaActualData.descripcion">
+          <div class="info-icon">
+            <i class="fas fa-comment-alt"></i>
+          </div>
+          <div class="info-text">
+            <span class="info-label">Descripción</span>
+            <span class="info-value">{{ paginaActualData.descripcion }}</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+</ng-template>

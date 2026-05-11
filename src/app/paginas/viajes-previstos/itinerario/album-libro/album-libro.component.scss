@@ -757,8 +757,8 @@
   // Contenedor principal del tooltip/modal
   .info-detalle {
     position: absolute;
-    top: 60px;
-    right: 20px;
+    top: 45px; // ✅ Justo debajo del icono (ajustado para el nuevo parent relativo)
+    left: -5px; // ✅ Compensación para alinear el panel con el borde del HUD
     background: rgba(30, 40, 50, 0.98);
     backdrop-filter: none; // ✅ ELIMINAR blur
     -webkit-backdrop-filter: none; // ✅ ELIMINAR blur
@@ -786,7 +786,7 @@
       content: '';
       position: absolute;
       top: -8px;
-      left: 25px;
+      left: 15px; // ✅ Alineado con el centro del icono circular (40px)
 
       width: 0;
       height: 0;
@@ -1612,6 +1612,45 @@
       }
     }
 
+    /* --- HUD de Información en Pantalla Completa --- */
+    .info-wrapper-fullscreen {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 2100;
+      pointer-events: auto;
+    }
+
+    .info-trigger-fullscreen {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 18px;
+
+      &:hover {
+        background: $color-primario;
+        border-color: transparent;
+        transform: scale(1.1);
+      }
+
+      &.active {
+        background: $color-primario;
+        border-color: transparent;
+      }
+    }
+
     /* --- Audio en Pantalla Completa --- */
     .audio-fullscreen {
       width: 100%;
@@ -2158,6 +2197,7 @@
       align-items: center;
       gap: 12px;
       pointer-events: auto;
+      position: relative; // ✅ Anclaje para el panel de info en vista álbum
     }
 
     .info-trigger-icon {
