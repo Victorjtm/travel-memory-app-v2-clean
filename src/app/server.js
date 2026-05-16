@@ -5892,6 +5892,32 @@ app.put('/archivos/actividad/:actividadId/geolocalizacion', (req, res) => {
   });
 });
 
+// ✅ PUT: Actualizar descripción de todas las fotos de una actividad
+app.put('/archivos/actividad/:actividadId/descripcion', (req, res) => {
+  const { actividadId } = req.params;
+  const { descripcion } = req.body;
+
+  if (descripcion === undefined) {
+    return res.status(400).json({ error: 'Falta descripcion en el body' });
+  }
+
+  const sql = `
+      UPDATE archivos
+      SET descripcion = ?, fechaActualizacion = datetime('now')
+      WHERE actividadId = ? AND tipo IN ('foto', 'imagen', 'video')
+    `;
+
+  db.run(sql, [descripcion, actividadId], function (err) {
+    if (err) {
+      console.error('❌ Error actualizando descripción:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+
+    console.log(`✅ Descripción actualizada en ${this.changes} archivo(s) de la actividad ${actividadId}`);
+    res.json({ actualizados: this.changes });
+  });
+});
+
 // 6️⃣ PUT actualizar archivo asociado (archivo físico + metadatos)
 app.put('/archivos-asociados/:id/archivo', upload.single('archivo'), (req, res) => {
   const { id } = req.params;

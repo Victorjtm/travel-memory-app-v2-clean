@@ -68,6 +68,12 @@ export class ArchivoService extends BaseHttpService {
     });
   }
 
+  actualizarDescripcionFotosPorActividad(actividadId: number, descripcion: string): Observable<{ actualizados: number }> {
+    return this.put<{ actualizados: number }>(`${this.apiUrl}/actividad/${actividadId}/descripcion`, {
+      descripcion
+    });
+  }
+
   /**
    * Procesa masivamente todos los archivos para extraer geolocalización EXIF
    */

@@ -179,8 +179,10 @@ export class FormularioArchivosComponent implements OnInit, OnDestroy {
         this.cargarArchivoParaEdicion(+archivoId);
       } else {
         this.modoEdicion = false;
-        this.cargarArchivos();
       }
+      
+      // Siempre cargar la lista para saber si hay más archivos (para propagación)
+      this.cargarArchivos();
     });
   }
 
@@ -267,10 +269,21 @@ export class FormularioArchivosComponent implements OnInit, OnDestroy {
         geoNuevaNorm = geoNueva.trim();
       }
 
-      if (geoNuevaNorm && geoNuevaNorm !== geoAntNorm) {
+      if (geoNuevaNorm && geoNuevaNorm !== geoAntNorm && this.archivos.length > 1) {
         const confirmar = await this.mostrarDialogoConfirmacionUbicacion();
         if (confirmar) {
           await this.aplicarUbicacionATodasLasFotos(this.nuevoArchivo.geolocalizacion!);
+        }
+      }
+
+      // ✨ NUEVO: Propagación de descripción
+      const descAnt = this.archivoOriginal?.descripcion || '';
+      const descNueva = this.nuevoArchivo.descripcion || '';
+
+      if (descNueva && descNueva !== descAnt && this.archivos.length > 1) {
+        const confirmar = await this.mostrarDialogoConfirmacionDescripcion();
+        if (confirmar) {
+          await this.aplicarDescripcionATodasLasFotos(descNueva);
         }
       }
     }
@@ -287,6 +300,23 @@ export class FormularioArchivosComponent implements OnInit, OnDestroy {
       data: {
         titulo: 'Aplicar ubicación',
         mensaje: '¿Quieres aplicar esta ubicación a todas las fotos de esta actividad?',
+        textoAceptar: 'Sí',
+        textoCancelar: 'No'
+      }
+    });
+
+    return dialogRef.afterClosed().toPromise().then(result => !!result);
+  }
+
+  /**
+   * Muestra un diálogo Angular Material para confirmar aplicación masiva de descripción
+   */
+  private mostrarDialogoConfirmacionDescripcion(): Promise<boolean> {
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      width: '350px',
+      data: {
+        titulo: 'Aplicar descripción',
+        mensaje: '¿Quieres aplicar esta descripción a todas las fotos de esta actividad?',
         textoAceptar: 'Sí',
         textoCancelar: 'No'
       }
@@ -374,15 +404,8 @@ export class FormularioArchivosComponent implements OnInit, OnDestroy {
     console.log('[🔄 HORA CAMBIADA]', this.nuevoArchivo.horaCaptura);
   }
 
-  async onUbicacionChange(): Promise<void> {
+  onUbicacionChange(): void {
     console.log('[🔄 UBICACIÓN CAMBIADA]', this.nuevoArchivo.geolocalizacion);
-
-    if (this.modoEdicion && this.nuevoArchivo.geolocalizacion && this.actividadId) {
-      const confirmar = await this.mostrarDialogoConfirmacionUbicacion();
-      if (confirmar) {
-        await this.aplicarUbicacionATodasLasFotos(this.nuevoArchivo.geolocalizacion);
-      }
-    }
   }
 
   private aplicarUbicacionATodasLasFotos(nuevaUbicacion: string): Promise<void> {
@@ -395,6 +418,22 @@ export class FormularioArchivosComponent implements OnInit, OnDestroy {
         error: (err) => {
           console.error('❌ Error al aplicar ubicación:', err);
           alert('No se pudo aplicar la ubicación a todas las fotos.');
+          resolve(); // Seguimos adelante aunque falle
+        }
+      });
+    });
+  }
+
+  private aplicarDescripcionATodasLasFotos(nuevaDescripcion: string): Promise<void> {
+    return new Promise((resolve) => {
+      this.archivoService.actualizarDescripcionFotosPorActividad(this.actividadId, nuevaDescripcion).subscribe({
+        next: (res) => {
+          alert(`✅ Descripción aplicada a ${res.actualizados} foto(s).`);
+          resolve();
+        },
+        error: (err) => {
+          console.error('❌ Error al aplicar descripción:', err);
+          alert('No se pudo aplicar la descripción a todas las fotos.');
           resolve(); // Seguimos adelante aunque falle
         }
       });

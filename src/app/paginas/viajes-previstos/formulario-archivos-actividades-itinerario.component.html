@@ -5,7 +5,7 @@
   <!-- ===== Formulario para agregar/editar archivos ===== -->
   <div class="formulario-subida">
     <h3>{{ modoEdicion ? 'Editar metadatos y archivo' : 'Añadir nuevos archivos' }}</h3>
-    <form (ngSubmit)="subirArchivos()" #formArchivos="ngForm" enctype="multipart/form-data">
+    <form (ngSubmit)="onFormSubmit()" #formArchivos="ngForm" enctype="multipart/form-data">
       
       <!-- ===== Selector de archivos ===== -->
       <div class="campo-formulario">
@@ -37,7 +37,8 @@
       <!-- ===== Descripción del archivo ===== -->
       <div class="campo-formulario">
         <label><i class="fa fa-align-left"></i> Descripción:</label>
-        <textarea [(ngModel)]="nuevoArchivo.descripcion" name="descripcion"></textarea>
+        <textarea [(ngModel)]="nuevoArchivo.descripcion" 
+                  name="descripcion"></textarea>
       </div>
 
       <!-- ===== Hora de captura del archivo ===== -->
@@ -53,7 +54,6 @@
   <input matInput 
          [(ngModel)]="nuevoArchivo.geolocalizacion"
          name="geolocalizacion"
-         (ngModelChange)="onUbicacionChange()"
          placeholder="Coordenadas GPS o seleccionar en mapa">
 </mat-form-field>
   
