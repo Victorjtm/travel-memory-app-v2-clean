@@ -607,6 +607,9 @@
 <!-- ========================================= -->
 <!-- BLOQUE: MODAL DE CONFIGURACIÓN DE VIDEO -->
 <!-- ========================================= -->
+<!-- ========================================= -->
+<!-- BLOQUE: MODAL DE CONFIGURACIÓN DE VIDEO -->
+<!-- ========================================= -->
 <div class="modal-video-overlay" [class.activo]="mostrarConfiguracionVideo" (click)="cerrarDialogoVideo()"
   *ngIf="mostrarConfiguracionVideo">
 
@@ -614,98 +617,71 @@
 
     <!-- Header del modal -->
     <div class="modal-video-header">
-      <h3><i class="fas fa-video"></i> Generar Video del Viaje</h3>
-      <button class="btn-cerrar-modal" (click)="cerrarDialogoVideo()">
+      <h3><i class="fas fa-video"></i> Generar vídeo del viaje</h3>
+      <button class="btn-cerrar-modal" (click)="cerrarDialogoVideo()" [disabled]="generandoVideo">
         <i class="fas fa-times"></i>
       </button>
     </div>
 
     <!-- Contenido del modal -->
     <div class="modal-video-body">
+      
+      <p class="modal-intro">
+        Se creará un vídeo basado en cómo se ve este álbum, listo para descargar y compartir.
+      </p>
 
-      <!-- Información del video -->
-      <div class="info-video">
-        <p><strong>{{ obtenerSoloImagenes().length }}</strong> imágenes serán incluidas en el video</p>
-        <p>Viaje: <strong>{{ infoViaje?.nombre || 'Sin nombre' }}</strong></p>
-      </div>
-
-      <!-- Configuración básica -->
-      <div class="configuracion-seccion">
-        <h4>Configuración Básica</h4>
-
-        <div class="config-item">
-          <label for="duracion-foto">Duración por foto (segundos):</label>
-          <input type="range" id="duracion-foto" min="1" max="8" step="0.5"
-            [(ngModel)]="configuracionVideo.duracionPorFoto">
-          <span class="valor">{{ configuracionVideo.duracionPorFoto }}s</span>
-        </div>
-
-        <div class="config-item">
-          <label for="tipo-transicion">Tipo de transición:</label>
-          <select id="tipo-transicion" [(ngModel)]="configuracionVideo.tipoTransicion">
-            <option value="fade">Fundido</option>
-            <option value="slide">Deslizar</option>
-            <option value="zoom">Zoom</option>
-          </select>
-        </div>
-
-        <div class="config-item">
-          <label for="duracion-transicion">Duración transición (segundos):</label>
-          <input type="range" id="duracion-transicion" min="0.5" max="3" step="0.1"
-            [(ngModel)]="configuracionVideo.duracionTransicion">
-          <span class="valor">{{ configuracionVideo.duracionTransicion }}s</span>
-        </div>
-      </div>
-
-      <!-- Configuración de calidad -->
-      <div class="configuracion-seccion">
-        <h4>Calidad y Resolución</h4>
-
-        <div class="config-item">
-          <label for="resolucion">Resolución:</label>
-          <select id="resolucion" [(ngModel)]="configuracionVideo.resolucion">
-            <option value="480p">480p (854x480) - Básica</option>
-            <option value="720p">720p (1280x720) - HD</option>
-            <option value="1080p">1080p (1920x1080) - Full HD</option>
-          </select>
-        </div>
-
-        <div class="config-item">
-          <label for="calidad">Calidad:</label>
-          <select id="calidad" [(ngModel)]="configuracionVideo.calidad">
-            <option value="baja">Baja (archivo pequeño)</option>
-            <option value="media">Media (recomendada)</option>
-            <option value="alta">Alta (archivo grande)</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Opciones adicionales -->
-      <div class="configuracion-seccion">
-        <h4>Opciones Adicionales</h4>
-
-        <div class="config-checkbox">
-          <input type="checkbox" id="incluir-texto" [(ngModel)]="configuracionVideo.incluirTexto">
-          <label for="incluir-texto">Incluir descripciones y fechas</label>
-        </div>
-
-        <div class="config-checkbox">
-          <input type="checkbox" id="transiciones-aleatorias" [(ngModel)]="configuracionVideo.transicionesAleatorias">
-          <label for="transiciones-aleatorias">
-            Usar transiciones aleatorias
-            <span class="ayuda-tooltip"
-              title="Las fotos se enlazarán con efectos variados (fundido, deslizar, zoom) en lugar de usar siempre el mismo">ⓘ</span>
+      <!-- Opciones Principales (Simples) -->
+      <div class="opciones-principales">
+        
+        <div class="config-checkbox" *ngIf="audioViaje">
+          <input type="checkbox" id="incluir-audio" [(ngModel)]="configuracionExportacion.incluirAudio">
+          <label for="incluir-audio">
+            <i class="fas fa-music"></i> Incluir música del viaje
           </label>
         </div>
+
+        <div class="config-checkbox">
+          <input type="checkbox" id="incluir-texto" [(ngModel)]="configuracionExportacion.incluirTexto">
+          <label for="incluir-texto">
+            <i class="fas fa-calendar-day"></i> Mostrar fecha y hora
+          </label>
+        </div>
+
+        <div class="config-checkbox">
+          <input type="checkbox" id="incluir-descripcion" [(ngModel)]="configuracionExportacion.incluirDescripcion">
+          <label for="incluir-descripcion">
+            <i class="fas fa-comment-alt"></i> Mostrar descripción si existe
+          </label>
+        </div>
+
+        <div class="config-item-select">
+          <label for="calidad-export">Calidad del vídeo:</label>
+          <select id="calidad-export" [(ngModel)]="configuracionExportacion.calidad">
+            <option value="whatsapp">Estándar (ideal para WhatsApp)</option>
+            <option value="alta">Alta calidad (Full HD)</option>
+          </select>
+        </div>
+
       </div>
 
-      <!-- Estimación de duración -->
-      <div class="estimacion-duracion">
-        <p><i class="fas fa-clock"></i>
-          Duración estimada:
-          <strong>{{ (obtenerSoloImagenes().length * (configuracionVideo.duracionPorFoto +
-            configuracionVideo.duracionTransicion) + 3) | number:'1.0-0' }} segundos</strong>
-        </p>
+      <!-- Opciones Avanzadas (Progressive Disclosure) -->
+      <div class="seccion-avanzada">
+        <button class="btn-toggle-avanzado" (click)="toggleOpcionesAvanzadas()">
+          {{ mostrarOpcionesAvanzadas ? 'Ocultar opciones avanzadas' : 'Más opciones' }}
+          <i class="fas" [class.fa-chevron-up]="mostrarOpcionesAvanzadas" [class.fa-chevron-down]="!mostrarOpcionesAvanzadas"></i>
+        </button>
+
+        <div class="opciones-avanzadas-contenido" *ngIf="mostrarOpcionesAvanzadas">
+          <div class="config-checkbox">
+            <input type="checkbox" id="mantener-estilo" [(ngModel)]="configuracionExportacion.mantenerEstiloAlbum">
+            <label for="mantener-estilo">Mantener estilo visual del álbum</label>
+          </div>
+          
+          <div class="aviso-tecnico">
+            <i class="fas fa-info-circle"></i> 
+            El formato final (MP4 o WebM) se seleccionará automáticamente según la compatibilidad de tu navegador.
+          </div>
+        </div>
       </div>
 
     </div>
@@ -718,7 +694,7 @@
       <button class="btn-generar" (click)="generarVideoViaje()" [disabled]="generandoVideo">
         <i class="fas fa-play" *ngIf="!generandoVideo"></i>
         <i class="fas fa-spinner fa-spin" *ngIf="generandoVideo"></i>
-        {{ generandoVideo ? 'Generando...' : 'Generar Video' }}
+        {{ generandoVideo ? 'Generando...' : 'Generar vídeo' }}
       </button>
     </div>
 
@@ -732,6 +708,12 @@
         <div class="barra-relleno" [style.width.%]="progresoVideo.porcentaje"></div>
       </div>
       <p class="mensaje-progreso">{{ progresoVideo.mensaje }}</p>
+      
+      <!-- Aviso de compatibilidad si es necesario -->
+      <div class="aviso-webm" *ngIf="progresoVideo.fase === 'completado' && videoGeneratorService.getExtensionVideo() === 'webm'">
+        <i class="fas fa-exclamation-triangle"></i>
+        Nota: Tu navegador ha generado un archivo .webm. Es posible que algunos dispositivos antiguos necesiten un reproductor compatible.
+      </div>
     </div>
 
   </div>

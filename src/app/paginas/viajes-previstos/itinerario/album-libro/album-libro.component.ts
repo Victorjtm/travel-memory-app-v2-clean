@@ -13,7 +13,8 @@ import { Subject, takeUntil, take } from 'rxjs';  // ✅ AGREGAR 'take'
 import { firstValueFrom } from 'rxjs';
 
 import { GeocodificacionService, UbicacionReversa } from '../../../../servicios/geocodificacion.service';
-import { VideoGeneratorService, ConfiguracionVideo, ProgresoVideo } from '../../../../servicios/video-generator.service';
+import { VideoGeneratorService, ProgresoVideo } from '../../../../servicios/video-generator.service';
+import { EscenaMultimedia, ConfiguracionExportacion } from '../../../../modelos/escena-multimedia';
 
 // ==========================================
 // TIPOS E INTERFACES
@@ -198,7 +199,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     private itinerarioService: ItinerarioService,
     private actividadesItinerariosService: ActividadesItinerariosService,
     private geocodificacionService: GeocodificacionService,
-    private videoGeneratorService: VideoGeneratorService,
+    public videoGeneratorService: VideoGeneratorService,
     private cdr: ChangeDetectorRef,  // ✅ NUEVO
     private ngZone: NgZone  // ✅ NUEVO
   ) { }
@@ -2718,7 +2719,20 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   generandoVideo = false;
   progresoVideo: ProgresoVideo | null = null;
   mostrarConfiguracionVideo = false;
-  configuracionVideo: ConfiguracionVideo = {
+  mostrarOpcionesAvanzadas = false;
+
+  // Nueva configuración simplificada (Progressive Disclosure)
+  configuracionExportacion: ConfiguracionExportacion = {
+    incluirAudio: true,
+    incluirTexto: true,
+    incluirDescripcion: true,
+    calidad: 'whatsapp',
+    mantenerEstiloAlbum: true
+  };
+
+  // Mantener por compatibilidad temporal con el servicio actual si fuera necesario
+  // pero usaremos la nueva lógica
+  configuracionVideo = {
     duracionPorFoto: 3,
     tipoTransicion: 'fade',
     duracionTransicion: 1,
@@ -2726,7 +2740,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     calidad: 'media',
     mostrarDescripciones: true,
     resolucion: '720p',
-    transicionesAleatorias: false // 👈 AÑADIR ESTA LÍNEA
+    transicionesAleatorias: false
   };
 
   // ==========================================
@@ -2751,88 +2765,118 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.progresoVideo = {
         fase: 'cargando',
         porcentaje: 0,
-        mensaje: 'Iniciando generación...'
+        mensaje: 'Preparando secuencia del viaje...'
       };
 
-      // Determinar el contexto actual para la generación del video
-      const contexto = this.determinarContextoVideo();
-
-      // ✨ NUEVO: Asegurar que listaItinerarios esté cargada si es contexto viaje
-      if (contexto === 'paginaPrincipal' && this.listaItinerarios.length === 0) {
-        this.progresoVideo = { fase: 'cargando', porcentaje: 5, mensaje: 'Cargando itinerarios del viaje...' };
-        await this.cargarItinerariosDelViaje(this.contextoViaje!.viajeId);
+      // 1. Construir la secuencia única de escenas basada en el estado actual del álbum
+      const secuencia = this.construirSecuenciaEscenas();
+      
+      if (secuencia.length === 0) {
+        throw new Error('No hay contenido para generar el vídeo');
       }
 
-      const imagenesArchivos = this.obtenerImagenesPorContexto(contexto);
-      console.log(`📹 Generando video desde contexto: ${contexto}`);
+      console.log('🎬 Secuencia de vídeo construida:', secuencia.length, 'escenas');
 
-      // Obtener todos los archivos multimedia según el contexto
-      const archivosMultimedia = this.obtenerArchivosMultimediaPorContexto(contexto);
-
-      if (imagenesArchivos.length === 0) {
-        throw new Error('No hay imágenes para generar el video');
-      }
-
-      console.log(`📸 Total imágenes a procesar: ${imagenesArchivos.length}`);
-
-      // Obtener las cartas manuscritas según el contexto
-      const paginasCartasManuscritas = this.obtenerCartasManuscritasPorContexto(contexto);
-
-      // Obtener itinerarios según el contexto
-      const itinerariosParaVideo = this.obtenerItinerariosPorContexto(contexto);
-
-      console.log('📜 Cartas manuscritas a incluir:', paginasCartasManuscritas);
-      console.log('🗺️ Itinerarios a procesar:', itinerariosParaVideo.length);
-
-      const videoBlob = await this.videoGeneratorService.generarVideoViaje(
-        archivosMultimedia,
-        itinerariosParaVideo,
+      // 2. Ejecutar la generación en el servicio
+      const videoBlob = await this.videoGeneratorService.generarVideoDesdeSecuencia(
+        secuencia,
         this.infoViaje,
-        this.configuracionVideo,
-        paginasCartasManuscritas,
+        this.configuracionExportacion,
         this.audioViaje?.paused === false ? this.audioViaje : null,
         (progreso) => {
           this.progresoVideo = progreso;
         }
       );
 
-      // Descargar el video
+      // 3. Gestionar la descarga según el formato real obtenido
+      const extension = this.videoGeneratorService.getExtensionVideo();
       const url = URL.createObjectURL(videoBlob);
       const a = document.createElement('a');
       a.href = url;
 
-      // Nombre del archivo según contexto
       const nombreBase = this.contextoViaje?.itinerarioId
         ? `itinerario-${this.contextoViaje.itinerarioId}`
         : this.sanitizarNombreArchivo(this.infoViaje?.nombre || 'viaje');
 
-      a.download = `video-${nombreBase}.webm`;
+      a.download = `viaje-${nombreBase}.${extension}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
 
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+      
+      // Feedback final
+      this.progresoVideo = {
+        fase: 'completado',
+        porcentaje: 100,
+        mensaje: '¡Vídeo listo para compartir!'
+      };
 
-      this.cerrarDialogoVideo();
+      setTimeout(() => this.cerrarDialogoVideo(), 2000);
 
     } catch (error) {
-      console.error('❌ Error fatal generando video:', error);
+      console.error('❌ Error generando vídeo:', error);
       this.progresoVideo = {
         fase: 'error',
         porcentaje: 0,
-        mensaje: `Error: ${error instanceof Error ? error.message : 'Error desconocido'}. Revisa la consola para más detalles.`
+        mensaje: `Error: ${error instanceof Error ? error.message : 'Error desconocido'}`
       };
-      // NO quitar el mensaje de error inmediatamente para que el usuario pueda leerlo
       this.generandoVideo = false;
-      return; // Salir sin limpiar progresoVideo inmediatamente
-    } finally {
-      // Solo limpiar si NO hay error, o después de un tiempo si lo hay
-      if (this.progresoVideo?.fase !== 'error') {
-        setTimeout(() => {
-          this.generandoVideo = false;
-          this.progresoVideo = null;
-        }, 3000);
+    }
+  }
+
+  /**
+   * Construye la secuencia de escenas para el vídeo basándose EXACTAMENTE 
+   * en lo que el usuario ve en las páginas del álbum.
+   */
+  private construirSecuenciaEscenas(): EscenaMultimedia[] {
+    // Filtramos el índice si existe al principio
+    return this.paginas
+      .filter(p => !p.esIndice)
+      .map((p, index) => {
+        const fechaHora = this.obtenerFechaHoraSeparadas(p);
+        
+        return {
+          id: p.archivo?.id || `escena-${index}`,
+          tipo: p.esCartaManuscrita ? 'carta' : (p.tipoMedia === 'video' ? 'video' : 'imagen'),
+          url: p.url,
+          duracion: p.tipoMedia === 'video' ? 0 : 4, // 0 para videos (usarán su duración real), 4s para fotos
+          archivo: p.archivo,
+          titulo: p.titulo,
+          descripcion: p.descripcion,
+          fecha: fechaHora.fecha,
+          hora: fechaHora.hora,
+          itinerarioId: p.archivo?.itinerarioId
+        };
+      });
+  }
+
+  private obtenerFechaHoraSeparadas(p: PaginaMedia): { fecha: string, hora: string } {
+    const fechaStr = p.fecha || p.fechaOriginal;
+    if (!fechaStr) return { fecha: '', hora: '' };
+
+    try {
+      const fechaObj = new Date(fechaStr);
+      const fecha = fechaObj.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+
+      let hora = '';
+      if (p.archivo?.horaCaptura) {
+        hora = p.archivo.horaCaptura;
+      } else {
+        hora = fechaObj.toLocaleTimeString('es-ES', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
       }
+
+      return { fecha, hora };
+    } catch {
+      return { fecha: '', hora: '' };
     }
   }
 
@@ -2935,6 +2979,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       // Todos los itinerarios del viaje
       return [...this.listaItinerarios];
     }
+  }
+
+  toggleOpcionesAvanzadas(): void {
+    this.mostrarOpcionesAvanzadas = !this.mostrarOpcionesAvanzadas;
   }
 
   public obtenerSoloImagenes(): Archivo[] {
