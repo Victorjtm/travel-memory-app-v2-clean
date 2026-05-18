@@ -4,6 +4,21 @@ import { environment } from '../../environments/environment';
 import { EscenaMultimedia, ConfiguracionExportacion } from '../modelos/escena-multimedia';
 import html2canvas from 'html2canvas';
 
+// ── Tipos para requestVideoFrameCallback (aún no en todas las versiones de lib.dom.d.ts) ──
+interface VideoFrameCallbackMetadata {
+  expectedDisplayTime: DOMHighResTimeStamp;
+  height: number;
+  mediaTime: number;
+  presentationTime: DOMHighResTimeStamp;
+  presentedFrames: number;
+  processingDuration?: number;
+  width: number;
+}
+interface HTMLVideoElementWithRVFC extends HTMLVideoElement {
+  requestVideoFrameCallback(callback: (now: DOMHighResTimeStamp, metadata: VideoFrameCallbackMetadata) => void): number;
+  cancelVideoFrameCallback(handle: number): void;
+}
+
 export interface ConfiguracionVideo {
   duracionPorFoto: number;
   tipoTransicion: 'fade' | 'slide' | 'zoom';
@@ -56,7 +71,33 @@ export interface ProgresoVideo {
       
       onProgress?.({ fase: 'cargando', porcentaje: 0, mensaje: 'Cargando recursos multimedia...' });
 
-      // 2. Cargar recursos (imágenes y metadatos de video)
+      // 2. PREPARAR AUDIO MIXER MAESTRO (Movido antes de cargar recursos)
+      let audioCtx: AudioContext | null = null;
+      let masterDest: MediaStreamAudioDestinationNode | null = null;
+      let localSilencer: GainNode | null = null;
+      let audioViajeExportacion: HTMLAudioElement | null = null;
+
+      try {
+        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        console.log('🎵 [Mixer] Estado inicial de audioCtx:', audioCtx.state);
+        
+        // Asegurar que el contexto no esté suspendido
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+          console.log('🎵 [Mixer] Estado tras resume():', audioCtx.state);
+        }
+        
+        masterDest = audioCtx.createMediaStreamDestination();
+        
+        // Silenciar los altavoces locales para que el usuario no oiga el ruido mientras exporta
+        localSilencer = audioCtx.createGain();
+        localSilencer.gain.value = 0;
+        localSilencer.connect(audioCtx.destination);
+      } catch (e) {
+        console.error('❌ [Mixer] Fallo creando AudioContext maestro:', e);
+      }
+
+      // 3. Cargar recursos (imágenes y metadatos de video)
       const escenasCargadas = await this.cargarRecursosSecuencia(secuencia, (progreso) => {
         onProgress?.({
           fase: 'cargando',
@@ -65,44 +106,80 @@ export interface ProgresoVideo {
         });
       });
 
-      // 3. Preparar grabación y AUDIO (Bug 3)
+      // 4. PREPARAR GRABACIÓN Y CONECTAR FUENTES AL MIXER
       const fps = 30;
       const mimeType = this.detectarMejorCodec();
       console.log('🎬 Iniciando grabación con codec:', mimeType);
 
-      let audioStream: MediaStream | null = null;
-      let audioCtx: AudioContext | null = null;
-
-      if (configuracion.incluirAudio && audioViaje) {
+      // 4.a Conectar Audio del Viaje
+      if (configuracion.incluirAudio && audioViaje && audioViaje.src && audioCtx && masterDest && localSilencer) {
         try {
-          // Pattern Bug 3: muted = false antes de capturar, pero silenciado por GainNode
-          audioViaje.muted = false;
-          audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const source = audioCtx.createMediaElementSource(audioViaje);
+          audioViajeExportacion = new Audio(audioViaje.src);
+          audioViajeExportacion.crossOrigin = 'anonymous';
+          audioViajeExportacion.loop = true;
+
+          const source = audioCtx.createMediaElementSource(audioViajeExportacion);
           
-          const silencer = audioCtx.createGain();
-          silencer.gain.value = 0;
-          source.connect(silencer);
-          silencer.connect(audioCtx.destination); // Silencio para altavoces
-          
-          const dest = audioCtx.createMediaStreamDestination();
-          source.connect(dest); // Audio real para el recorder
-          audioStream = dest.stream;
-          
-          audioViaje.currentTime = 0;
-          await audioViaje.play();
+          // Silenciador local
+          source.connect(localSilencer);
+
+          // Mixer maestro
+          const viajeGain = audioCtx.createGain();
+          viajeGain.gain.value = 1.0;
+          source.connect(viajeGain);
+          viajeGain.connect(masterDest);
+
+          console.log(`🎵 [Mixer] Audio de viaje conectado al masterDest.`);
         } catch (e) {
-          console.warn('⚠️ No se pudo inicializar audio en tiempo real:', e);
+          console.error('❌ [Mixer] Error inicializando audio de viaje:', e);
         }
+      } else {
+        console.log('🎵 [Mixer] Exportación sin música de viaje por decisión del usuario o faltan recursos.');
       }
 
+      // 4.b Conectar Audio de Clips de Vídeo
+      if (audioCtx && masterDest && localSilencer) {
+        const videosConectados = new Set<HTMLVideoElement>();
+        
+        escenasCargadas.forEach(escena => {
+          if (escena.tipo === 'video' && escena.data?.video) {
+            const video = escena.data.video as HTMLVideoElement;
+            if (!videosConectados.has(video)) {
+              try {
+                // IMPORTANTE: Quitar el muted para que fluya la señal de audio real a la Web Audio API
+                video.muted = false;
+                
+                const source = audioCtx.createMediaElementSource(video);
+                
+                // Conectar al mixer maestro
+                const clipGain = audioCtx.createGain();
+                clipGain.gain.value = 1.0; // Mantiene el volumen original del clip
+                source.connect(clipGain);
+                clipGain.connect(masterDest);
+                
+                // Silenciar para el usuario local
+                source.connect(localSilencer);
+                
+                videosConectados.add(video);
+                console.log(`🎵 [Clip Audio] Fuente de audio creada y conectada al masterDest para el vídeo: ${escena.archivo?.nombreArchivo}`);
+              } catch (e) {
+                console.error(`❌ [Clip Audio] Error conectando video ${escena.archivo?.nombreArchivo}:`, e);
+              }
+            }
+          }
+        });
+      }
+
+      // 5. CONSTRUIR STREAM FINAL
       const canvasStream = this.canvas.captureStream(fps);
       const combinedTracks = [...canvasStream.getVideoTracks()];
-      if (audioStream) {
-        combinedTracks.push(...audioStream.getAudioTracks());
+      if (masterDest) {
+        combinedTracks.push(...masterDest.stream.getAudioTracks());
       }
 
       this.stream = new MediaStream(combinedTracks);
+      console.log('🎬 [Stream Final] Tracks en final stream:', this.stream.getTracks().map(t => `${t.kind} - readyState: ${t.readyState}`));
+
       this.mediaRecorder = new MediaRecorder(this.stream, {
         mimeType: mimeType,
         videoBitsPerSecond: configuracion.calidad === 'alta' ? 5000000 : 2500000
@@ -113,11 +190,23 @@ export interface ProgresoVideo {
         if (e.data.size > 0) this.chunks.push(e.data);
       };
 
-      // 4. Generar Timeline y Loop de Render (Bug 1 & 2)
+      // 4. Generar Timeline y Loop de Render
       const timeline = this.construirTimeline(escenasCargadas, infoViaje);
       const totalDuration = timeline.length > 0 ? timeline[timeline.length - 1].end : 0;
 
       this.mediaRecorder.start(100);
+      const conAudio = combinedTracks.some(t => t.kind === 'audio');
+      console.log(conAudio ? '🎵 [MediaRecorder] iniciado CON audio track' : '🎵 [MediaRecorder] iniciado SIN audio track');
+
+      // Iniciar música en el elemento clonado justo después del recorder para que fluya hacia el Master Dest
+      if (audioViajeExportacion) {
+        try {
+          await audioViajeExportacion.play();
+          console.log('🎵 [Mixer] audioViajeExportacion.play() ejecutado con éxito');
+        } catch (e) {
+          console.error('❌ [Mixer] No se pudo iniciar el audio clonado automáticamente:', e);
+        }
+      }
 
       await this.ejecutarLoopRender(timeline, totalDuration, configuracion, (pct) => {
         onProgress?.({
@@ -128,9 +217,23 @@ export interface ProgresoVideo {
       });
 
       this.mediaRecorder.stop();
-      if (audioViaje) audioViaje.pause();
+      if (audioViajeExportacion) {
+        audioViajeExportacion.pause();
+        audioViajeExportacion.src = "";
+      }
       if (audioCtx) audioCtx.close();
       this.stream.getTracks().forEach(t => t.stop());
+
+      // ✨ LIMPIEZA DE RECURSOS (Crucial para evitar que sigan cargando en segundo plano)
+      escenasCargadas.forEach(escena => {
+        if (escena.data?.video) {
+          const v = escena.data.video;
+          v.pause();
+          v.src = "";
+          v.load();
+          v.remove();
+        }
+      });
 
       // 5. Esperar el blob final
       return await new Promise<Blob>((resolve) => {
@@ -149,21 +252,40 @@ export interface ProgresoVideo {
   private async cargarRecursosSecuencia(secuencia: EscenaMultimedia[], onProgress: (p: number) => void): Promise<any[]> {
     const total = secuencia.length;
     const resultado = [];
+    // ✨ CACHE LOCAL: Evita cargar el mismo vídeo 100 veces si se repite en el álbum
+    const cacheRecursos = new Map<string, any>();
 
     for (let i = 0; i < total; i++) {
       const escena = secuencia[i];
+      if (!escena.archivo) {
+        resultado.push(escena);
+        continue;
+      }
+
+      const cacheKey = `${escena.tipo}_${escena.archivo.id || escena.archivo.rutaArchivo}`;
+
       try {
-        if (escena.tipo === 'imagen') {
-          const img = await this.cargarImagen(escena.archivo!);
-          resultado.push({ ...escena, data: { imagen: img } });
-        } else if (escena.tipo === 'video') {
-          const vidData = await this.procesarVideo(escena.archivo!);
-          resultado.push({ ...escena, data: vidData });
+        if (cacheRecursos.has(cacheKey)) {
+          // Reutilizar recurso ya cargado
+          resultado.push({ ...escena, data: cacheRecursos.get(cacheKey) });
         } else {
-          resultado.push(escena);
+          let data;
+          if (escena.tipo === 'imagen') {
+            const img = await this.cargarImagen(escena.archivo);
+            data = { imagen: img };
+          } else if (escena.tipo === 'video') {
+            const vidData = await this.procesarVideo(escena.archivo);
+            data = vidData;
+          } else {
+            resultado.push(escena);
+            continue;
+          }
+          cacheRecursos.set(cacheKey, data);
+          resultado.push({ ...escena, data });
         }
       } catch (e) {
-        console.warn(`⚠️ Error cargando escena ${i}:`, e);
+        console.warn(`⚠️ Error cargando recurso de escena ${i} (${escena.tipo}):`, e);
+        resultado.push(escena);
       }
       onProgress(((i + 1) / total) * 100);
     }
@@ -208,25 +330,62 @@ export interface ProgresoVideo {
     return timeline;
   }
 
-  private async ejecutarLoopRender(
-    timeline: any[], 
-    totalDuration: number, 
-    config: ConfiguracionExportacion, 
+  // ─────────────────────────────────────────────────────────────────────────
+  // LOOP DE RENDER — FASE 1-4: completamente síncrono, sin seeks correctivos,
+  // con protección de readyState y soporte opcional de rVFC.
+  // ─────────────────────────────────────────────────────────────────────────
+  private ejecutarLoopRender(
+    timeline: any[],
+    totalDuration: number,
+    config: ConfiguracionExportacion,
     onProgress: (pct: number) => void
   ): Promise<void> {
     const startTime = performance.now();
     let ultimoEscenaIndex = -1;
-    
+
+    // ── Flags de estado para vídeos (permiten quitar await del loop) ──
+    let videoArranacando = false;   // play() disparado, esperando datos
+    let ultimoFrameValido: ImageData | null = null; // fallback visual
+    // rVFC: ID de cancelación cuando se usa requestVideoFrameCallback
+    let rVFCHandle: number | null = null;
+
+    console.log('🎬 renderFrame síncrono activo');
+
     return new Promise((resolve) => {
-      const loop = async () => {
+      // ── Función de pintado de vídeo, llamada desde rAF O desde rVFC ──
+      const dibujarFrameVideo = (video: HTMLVideoElement, escena: any, config: ConfiguracionExportacion): void => {
+        // FASE 3 — Protección por readyState antes de cualquier drawImage
+        if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+          // No hay frame decodificado listo. Mantener frame válido anterior si existe.
+          if (ultimoFrameValido) {
+            this.ctx.putImageData(ultimoFrameValido, 0, 0);
+          }
+          // Si no hay ninguno, dejar el fondo negro ya pintado por el bucle.
+          return;
+        }
+        console.log(`🎬 Frame de vídeo dibujado, readyState=${video.readyState}`);
+        this.dibujarVideoCentrado(video);
+        if (config.incluirTexto) this.dibujarTextoImagen(escena.archivo);
+        // Guardar snapshot del frame válido para el fallback
+        try {
+          ultimoFrameValido = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+        } catch { /* CORS u otro error — ignorar el snapshot */ }
+      };
+
+      // ── Loop principal — FASE 1: sin ningún await ──
+      const renderFrame = () => {              // ← ya NO es async
         const now = performance.now();
         const elapsed = (now - startTime) / 1000;
 
         if (elapsed >= totalDuration) {
-          // Pausar cualquier video que pudiera estar activo al final
-          if (ultimoEscenaIndex >= 0 && timeline[ultimoEscenaIndex]?.tipo === 'video') {
-            const video = timeline[ultimoEscenaIndex].data.video;
-            if (video) video.pause();
+          // Detener vídeo activo si lo hay
+          const escenaFinal = timeline[ultimoEscenaIndex];
+          if (escenaFinal?.tipo === 'video') escenaFinal.data?.video?.pause();
+          // Cancelar rVFC si estaba activo
+          if (rVFCHandle !== null) {
+            const videoActivo = timeline[ultimoEscenaIndex]?.data?.video as HTMLVideoElement | undefined;
+            videoActivo?.cancelVideoFrameCallback?.(rVFCHandle);
+            rVFCHandle = null;
           }
           resolve();
           return;
@@ -236,73 +395,143 @@ export interface ProgresoVideo {
         this.ctx.fillStyle = '#000';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // 2. Buscar escena actual
+        // 2. Buscar escena actual por tiempo
         const escenaIndex = timeline.findIndex(e => elapsed >= e.start && elapsed < e.end);
-        
-        // ✨ NUEVO: Gestionar cambio de escena para liberar recursos de video
+
+        // 3. Cambio de escena ── FASE 2: play() fire-and-forget, sin await ──
         if (escenaIndex !== ultimoEscenaIndex) {
-          if (ultimoEscenaIndex >= 0) {
-            const escenaAnterior = timeline[ultimoEscenaIndex];
-            if (escenaAnterior.tipo === 'video' && escenaAnterior.data?.video) {
-              console.log(`⏹️ Finalizando clip de video: ${escenaAnterior.archivo?.nombreArchivo}`);
-              escenaAnterior.data.video.pause();
-            }
+          // Cancelar rVFC de la escena anterior
+          if (rVFCHandle !== null) {
+            const videoAnterior = timeline[ultimoEscenaIndex]?.data?.video as HTMLVideoElement | undefined;
+            videoAnterior?.cancelVideoFrameCallback?.(rVFCHandle);
+            rVFCHandle = null;
           }
+
+          // Pausar vídeo anterior
+          const escenaAnterior = timeline[ultimoEscenaIndex];
+          if (escenaAnterior?.tipo === 'video') {
+            escenaAnterior.data?.video?.pause();
+            console.log(`🎵 [Clip Audio] Audio del clip finalizado: ${escenaAnterior.archivo?.nombreArchivo || 'desconocido'}`);
+          }
+
           ultimoEscenaIndex = escenaIndex;
+          videoArranacando = false;
+          ultimoFrameValido = null; // resetear fallback visual para esta escena
+
+          const escenaActual = timeline[escenaIndex];
+          if (escenaActual?.tipo === 'video' && escenaActual.data?.video) {
+            const video = escenaActual.data.video as HTMLVideoElement;
+            video.currentTime = 0;
+            video.playbackRate = 1;
+            videoArranacando = true;
+
+            console.log(`🎬 Escena de vídeo iniciada sin bloquear loop: ${escenaActual.archivo?.nombreArchivo || ''}`);
+
+            // ── FASE 5 opcional: requestVideoFrameCallback ──
+            if (typeof video.requestVideoFrameCallback === 'function') {
+              console.log('🎬 requestVideoFrameCallback activo');
+              const rVFCLoop = (_now: DOMHighResTimeStamp, _meta: VideoFrameCallbackMetadata) => {
+                // Dibujar frame real del vídeo cuando el decodificador lo tiene listo
+                this.ctx.fillStyle = '#000';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                dibujarFrameVideo(video, escenaActual, config);
+                // Continuar solo si la escena sigue activa
+                const nowSec = (performance.now() - startTime) / 1000;
+                if (nowSec < escenaActual.end) {
+                  rVFCHandle = video.requestVideoFrameCallback!(rVFCLoop);
+                } else {
+                  rVFCHandle = null;
+                }
+              };
+              rVFCHandle = video.requestVideoFrameCallback(rVFCLoop);
+            }
+
+            // play() fire-and-forget — no bloquea el loop bajo ninguna circunstancia
+            video.play().then(() => {
+              console.log(`🎵 [Clip Audio] Audio del clip iniciado: ${escenaActual.archivo?.nombreArchivo || 'desconocido'}`);
+              videoArranacando = false;
+            }).catch((e) => {
+              console.warn(`⚠️ video.play() rechazado para clip ${escenaActual.archivo?.nombreArchivo}:`, e);
+              videoArranacando = false;
+            });
+          }
         }
 
+        // 4. Renderizar frame actual
         const escena = timeline[escenaIndex];
-
         if (escena) {
           const elapsedInScene = elapsed - escena.start;
-          
-          // Renderizar escena base
-          await this.renderizarFrameEscena(escena, elapsedInScene, config);
+          // Pintar síncronamente — FASE 1: sin await
+          this.renderizarFrameEscenaSync(escena, elapsedInScene, config, dibujarFrameVideo);
 
-          // 3. Aplicar transición sutil (Cross-fade de 0.5s al final de cada escena)
+          // Transición cross-fade de 0.5s al final (solo para imágenes/títulos, no vídeo)
           const transTime = 0.5;
           const timeLeft = escena.end - elapsed;
-          
           if (timeLeft < transTime && escenaIndex < timeline.length - 1) {
             const nextEscena = timeline[escenaIndex + 1];
-            const alpha = (transTime - timeLeft) / transTime;
-            
-            this.ctx.save();
-            this.ctx.globalAlpha = alpha;
-            await this.renderizarFrameEscena(nextEscena, 0, config);
-            this.ctx.restore();
+            // No hacer cross-fade si la siguiente escena es vídeo (evita artefactos)
+            if (nextEscena?.tipo !== 'video') {
+              const alpha = (transTime - timeLeft) / transTime;
+              this.ctx.save();
+              this.ctx.globalAlpha = alpha;
+              this.renderizarFrameEscenaSync(nextEscena, 0, config, dibujarFrameVideo);
+              this.ctx.restore();
+            }
           }
         }
 
         onProgress((elapsed / totalDuration) * 100);
-        requestAnimationFrame(loop);
+        requestAnimationFrame(renderFrame); // siguiente tick — siempre síncrono
       };
-      requestAnimationFrame(loop);
+
+      requestAnimationFrame(renderFrame);
     });
   }
 
-  private async renderizarFrameEscena(escena: any, elapsed: number, config: ConfiguracionExportacion): Promise<void> {
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render de un frame concreto — FASE 1: síncrono (no async, sin await)
+  // ─────────────────────────────────────────────────────────────────────────
+  private renderizarFrameEscenaSync(
+    escena: any,
+    elapsed: number,
+    config: ConfiguracionExportacion,
+    dibujarFrameVideo: (v: HTMLVideoElement, e: any, c: ConfiguracionExportacion) => void
+  ): void {
     const progreso = Math.min(elapsed / escena.duracion, 1);
 
     if (escena.tipo === 'titulo') {
       this.renderizarTituloFrame(escena.data, progreso);
+
     } else if (escena.tipo === 'carta') {
       this.renderizarCartaFrame(escena, progreso);
+
     } else if (escena.tipo === 'video') {
-      const video = escena.data.video;
+      const video = escena.data?.video as HTMLVideoElement | undefined;
       if (video) {
-        // Bug 2: Sincronización exacta de tiempo
-        // Solo actualizamos currentTime si hay una diferencia significativa para evitar parpadeos
-        if (Math.abs(video.currentTime - elapsed) > 0.1) {
-          video.currentTime = elapsed;
-        }
-        this.dibujarVideoCentrado(video);
-        if (config.incluirTexto) this.dibujarTextoImagen(escena.archivo);
+        // FASE 2: sin video.currentTime = elapsed (no seeks correctivos)
+        // El vídeo avanza solo con play() + playbackRate=1
+        // FASE 4: rVFC pinta directamente; rAF solo pinta si rVFC no está activo
+        // Si rVFC está activo, el pintado ya lo hace el callback de rVFC — aquí no pintamos
+        // (el flag rVFCHandle no es accesible aquí por diseño; dibujarFrameVideo hace la guarda)
+        dibujarFrameVideo(video, escena, config);
       }
+
     } else if (escena.tipo === 'imagen') {
       this.dibujarImagenCentrada(escena.data.imagen);
       if (config.incluirTexto) this.dibujarTextoImagen(escena.archivo);
     }
+  }
+
+  // Mantener método async original como deprecated-wrapper para compatibilidad
+  // con cualquier llamada externa pendiente (no se usa en el loop principal).
+  /** @deprecated Usar renderizarFrameEscenaSync */
+  private async renderizarFrameEscena(escena: any, elapsed: number, config: ConfiguracionExportacion): Promise<void> {
+    this.renderizarFrameEscenaSync(escena, elapsed, config, (video, esc, cfg) => {
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        this.dibujarVideoCentrado(video);
+        if (cfg.incluirTexto) this.dibujarTextoImagen(esc.archivo);
+      }
+    });
   }
 
   private renderizarTituloFrame(titulo: string, progreso: number): void {
@@ -408,8 +637,14 @@ private procesarVideo(archivo: Archivo): Promise<{archivo: Archivo, video: HTMLV
     };
     
     const url = this.obtenerUrlArchivo(archivo);
-    console.log(`🎥 Cargando video desde:`, url);
-    video.src = url;
+    
+    // ✨ RECORTE TEMPORAL REAL (Media Fragments)
+    // Añadimos el fragmento de tiempo al src para que el navegador sepa que solo nos interesan los primeros N segundos.
+    // Esto evita que el pipeline de red intente descargar los 198s completos del vídeo original.
+    const urlConTrim = `${url}#t=0,${this.MAX_VIDEO_DURATION_SECONDS}`;
+    
+    console.log(`🎥 Cargando segmento de video (0-${this.MAX_VIDEO_DURATION_SECONDS}s) desde:`, urlConTrim);
+    video.src = urlConTrim;
   });
 }
 
