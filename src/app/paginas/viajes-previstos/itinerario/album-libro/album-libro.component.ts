@@ -2778,11 +2778,21 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       console.log('🎬 Secuencia de vídeo construida:', secuencia.length, 'escenas');
 
       // 2. Ejecutar la generación en el servicio
+      // ✅ Decisión EXPLÍCITA del usuario: usar el checkbox del modal, no el estado paused del audio
+      const incluirMusica = !!(this.configuracionExportacion.incluirAudio && this.audioViaje);
+      const audioParaExportacion = incluirMusica ? this.audioViaje! : null;
+      console.log('🎵 Opción de exportación: incluir música =', incluirMusica);
+      if (incluirMusica) {
+        console.log('🎵 Audio del viaje enviado al generador');
+      } else {
+        console.log('🎵 Exportación sin música por decisión del usuario');
+      }
+
       const videoBlob = await this.videoGeneratorService.generarVideoDesdeSecuencia(
         secuencia,
         this.infoViaje,
         this.configuracionExportacion,
-        this.audioViaje?.paused === false ? this.audioViaje : null,
+        audioParaExportacion,
         (progreso) => {
           this.progresoVideo = progreso;
         }
