@@ -748,4 +748,37 @@
       color: #333;
     }
   }
+
+  .btn-recenter-floating {
+    position: absolute;
+    bottom: 90px; /* Separación por encima de la barra de controles inferiores */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: rgba(30, 41, 59, 0.85); /* Fondo premium slate translúcido */
+    backdrop-filter: blur(8px); /* Efecto cristalino */
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 10px 22px;
+    border-radius: 30px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:hover {
+      background: rgba(30, 41, 59, 0.95);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.45);
+      transform: translateX(-50%) scale(1.05);
+    }
+
+    &:active {
+      transform: translateX(-50%) scale(0.95);
+    }
+  }
 }

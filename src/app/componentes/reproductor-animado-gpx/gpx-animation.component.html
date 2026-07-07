@@ -63,8 +63,15 @@
       </label>
     </div>
 
-    <button class="btn-cerrar" (click)="cerrar()">✕</button>
   </div>
+
+  <!-- Botón Flotante de Recentrado (Modo Cámara Libre) -->
+  <button class="btn-recenter-floating" 
+          *ngIf="cameraMode === 'FREE'" 
+          (click)="recenterCamera()" 
+          @fadeInOut>
+    🎯 Volver al recorrido
+  </button>
 
   <!-- Diálogo Pre-Multimedia interactivo (Paso previo) -->
   <div class="pre-multimedia-prompt" *ngIf="pendingEvent" @fadeInOut>

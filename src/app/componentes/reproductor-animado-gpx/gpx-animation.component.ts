@@ -105,6 +105,13 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private currentActualZoom: number = 16;
   private autoZoomPaused: boolean = false;
   private lastInteractionTime: number = 0;
+  
+  public cameraMode: 'TRACKING' | 'FREE' = 'TRACKING';
+  private lastCameraUpdateTime = 0;
+  private lastZoomUpdateTime = 0;
+  private readonly CAMERA_THROTTLE_MS = 150;  // 150ms para paneo
+  private readonly ZOOM_THROTTLE_MS = 1000;   // 1 segundo para zoom
+  private userSelectedZoom = 16;              // Almacena el zoom manual seleccionado
 
   // Estadísticas por modo
   modeStats: { [key: string]: { dist: number, time: number, steps: number } } = {};
@@ -268,9 +275,23 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       updateWhenZooming: false
     }).addTo(this.map);
 
-    // Eventos de Usuario para Auto-Zoom Cooldown
-    this.map.on('zoomstart', (e: any) => this.handleUserMapInteraction(e));
-    this.map.on('dragstart', (e: any) => this.handleUserMapInteraction(e));
+    // Eventos de Usuario para Auto-Zoom Cooldown y Modo de Cámara
+    this.map.on('zoomstart', (e: any) => {
+      this.handleUserMapInteraction(e);
+      this.setCameraModeFree();
+    });
+    this.map.on('dragstart', (e: any) => {
+      this.handleUserMapInteraction(e);
+      this.setCameraModeFree();
+    });
+    this.map.on('zoomend', () => {
+      if (this.map) {
+        const zoom = this.map.getZoom();
+        this.userSelectedZoom = zoom;
+        this.currentActualZoom = zoom;
+        this.targetZoom = zoom;
+      }
+    });
 
     this.startZoomStrategyEngine();
 
@@ -627,9 +648,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
       this.marker.setLatLng(latlng);
       
-      // Permitimos libertad a flyTo si estamos en un evento multimedia
-      if (!this.pendingEvent && !this.activeEvent) {
-         // El setView con {animate: false} une Pan y Zoom Dinámicos en un solo cuadro renderizado sin pelearse
+      // Permitimos libertad a flyTo si estamos en un evento multimedia y condicionamos al modo TRACKING
+      if (!this.pendingEvent && !this.activeEvent && this.cameraMode === 'TRACKING') {
+         // El setView con {animate: false} une Pan y Zoom Dinámicos en un solo cuadro renderizado sin pelearse (Temporal para Fase 1)
          this.map.setView(latlng, this.currentActualZoom, { animate: false }); 
       } 
 
@@ -1243,6 +1264,31 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         ${navControls}
       </div>
     `;
+  }
+
+  private setCameraModeFree() {
+    if (this.cameraMode !== 'FREE') {
+      this.cameraMode = 'FREE';
+      this.autoZoomPaused = true;
+      this.cdr.detectChanges(); // Renderiza el botón flotante
+    }
+  }
+
+  public recenterCamera() {
+    if (!this.map || !this.marker) return;
+    
+    this.cameraMode = 'TRACKING';
+    this.autoZoomPaused = false;
+    
+    const markerLatLng = this.marker.getLatLng();
+    
+    // Retorno suave y controlado
+    this.map.flyTo(markerLatLng, this.userSelectedZoom, {
+      animate: true,
+      duration: 0.8
+    });
+    
+    this.cdr.detectChanges();
   }
 }
 
