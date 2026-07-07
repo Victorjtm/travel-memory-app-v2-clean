@@ -670,11 +670,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
       this.marker.setLatLng(latlng);
       
-      // Permitimos libertad a flyTo si estamos en un evento multimedia y condicionamos al modo TRACKING
+      // Fase 2: Seguimiento de cámara throttled con Safe Zone - ya no se llama setView cada frame
       if (!this.pendingEvent && !this.activeEvent && this.cameraMode === 'TRACKING') {
-         // El setView con {animate: false} une Pan y Zoom Dinámicos en un solo cuadro renderizado sin pelearse (Temporal para Fase 1)
-         this.map.setView(latlng, this.currentActualZoom, { animate: false }); 
-      } 
+        this.updateCameraTracking(latlng as [number, number]);
+      }
 
       // 2. Tiempo Objetivo (Teórico del GPX)
       const targetTimeSeg = p1.timeAcum + (p2.timeAcum - p1.timeAcum) * alpha;
@@ -1316,6 +1315,41 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     });
     
     this.cdr.detectChanges();
+  }
+
+  /**
+   * FASE 2: Seguimiento de cámara throttled con Safe Zone proporcional.
+   * Solo mueve el mapa si el marcador sale del 50% central del viewport.
+   * Se ejecuta como máximo cada CAMERA_THROTTLE_MS (150ms).
+   */
+  private updateCameraTracking(markerLatLng: [number, number]) {
+    const now = performance.now();
+    if (now - this.lastCameraUpdateTime < this.CAMERA_THROTTLE_MS) return;
+
+    if (!this.map) return;
+
+    const container = this.map.getContainer();
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+
+    // Safe Zone: 50% central del viewport (25% de margen en cada lado)
+    const SAFE_ZONE_RATIO = 0.25;
+    const marginX = containerWidth * SAFE_ZONE_RATIO;
+    const marginY = containerHeight * SAFE_ZONE_RATIO;
+
+    // Convertir posición del marcador a píxeles en pantalla
+    const markerPoint = this.map.latLngToContainerPoint(markerLatLng);
+
+    const outOfSafeZone =
+      markerPoint.x < marginX ||
+      markerPoint.x > containerWidth - marginX ||
+      markerPoint.y < marginY ||
+      markerPoint.y > containerHeight - marginY;
+
+    if (outOfSafeZone) {
+      this.map.panTo(markerLatLng, { animate: true, duration: 0.3, easeLinearity: 1 });
+      this.lastCameraUpdateTime = now;
+    }
   }
 
   private addLatLngsToCurrentPolylines(coords: [number, number][]) {
