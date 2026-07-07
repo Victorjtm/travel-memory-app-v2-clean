@@ -112,6 +112,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private readonly CAMERA_THROTTLE_MS = 150;  // 150ms para paneo
   private readonly ZOOM_THROTTLE_MS = 1000;   // 1 segundo para zoom
   private userSelectedZoom = 16;              // Almacena el zoom manual seleccionado
+  private lastUiUpdateTime = 0;
+  private readonly UI_THROTTLE_MS = 100;      // 100ms para refresco de UI (10Hz)
 
   // Estadísticas por modo
   modeStats: { [key: string]: { dist: number, time: number, steps: number } } = {};
@@ -541,6 +543,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
     // Si cruzamos puntos reales, gestionar modos y estadísticas
     if (newIdx > prevIdx) {
+      const startTime = performance.now();
+      const coordsBatch: [number, number][] = [];
+
       for (let i = prevIdx + 1; i <= newIdx; i++) {
         const p = this.points[i];
         const prevP = this.points[i - 1] || this.points[0];
@@ -565,6 +570,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         }
 
         if (newMode !== this.currentMode || newColor !== this.currentHfColor || newPhase !== this.currentHfPhase) {
+          // Volcar puntos acumulados en la polilínea actual antes de cambiar de modo
+          if (coordsBatch.length > 0) {
+            this.addLatLngsToCurrentPolylines(coordsBatch);
+            coordsBatch.length = 0; // Limpiar array
+          }
+
           console.log(`🎨 [Animación Segmentada] Nuevo tramo: ${newMode} | Color: ${newColor} | Fase: ${newPhase}`);
           this.currentMode = newMode;
           this.currentHfColor = newColor;
@@ -585,32 +596,32 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
             this.modeStats[this.currentMode] = { dist: 0, time: 0, steps: 0 };
             this.modeList.push(this.currentMode);
           }
-        } else if (this.currentPolyline) {
-          this.currentPolyline.addLatLng([p.lat, p.lng]);
-          if (this.currentBackgroundPolyline) {
-            this.currentBackgroundPolyline.addLatLng([p.lat, p.lng]);
-          }
+        } else {
+          // Acumular coordenadas para inyección en batch
+          coordsBatch.push([p.lat, p.lng]);
         }
 
-        // Stats acumuladas (Síncronas con los puntos)
+        // Stats acumuladas
         const d = (p.distAcum - prevP.distAcum) / 1000;
         const t = p.timeAcum - prevP.timeAcum;
         if (this.currentMode && this.modeStats[this.currentMode]) {
           const s = this.modeStats[this.currentMode];
-
-          // 🛡️ Fase 3: Solo incrementamos si NO tenemos estadísticas reales del móvil
           if (!this.hasCanonicalStats) {
             s.dist += d;
             if (this.isWalkingMode(this.currentMode)) s.steps += d * 1400;
           }
-
           s.time += t;
         }
 
         if (p.event) {
+          // Si hay puntos pendientes antes del evento, inyectarlos
+          if (coordsBatch.length > 0) {
+            this.addLatLngsToCurrentPolylines(coordsBatch);
+            coordsBatch.length = 0;
+          }
           this.currentIndex = i; 
-          this.renderCurrentFrame(); // Mueve el marcador e interpola al frame exacto
-          this.pauseForEvent(p.event); // Ejecuta el flyTo sin que sea pisado
+          this.renderCurrentFrame();
+          this.pauseForEvent(p.event);
           return;
         }
 
@@ -618,6 +629,17 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         if (this.isHighFidelityMode && this.pendingVisualMarkers.length > 0) {
            this.revealNearbyMarkers(p.lat, p.lng);
         }
+      }
+
+      // Volcar puntos restantes al finalizar el frame
+      if (coordsBatch.length > 0) {
+        this.addLatLngsToCurrentPolylines(coordsBatch);
+      }
+
+      // Telemetría de rendimiento
+      const frameDuration = performance.now() - startTime;
+      if (frameDuration > 10) {
+        console.warn(`⚠️ [Rendimiento GPX] Procesamiento lento: ${frameDuration.toFixed(1)}ms | Puntos: ${newIdx - prevIdx} | Zoom: ${this.map?.getZoom()}`);
       }
     }
 
@@ -695,7 +717,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       this.lastKnownIndex = this.currentIndex;
     }
 
-    this.cdr.detectChanges();
+    // Optimización de Angular: refrescar UI con throttle (10Hz) o inmediatamente si la simulación está pausada
+    const uiNow = performance.now();
+    if (uiNow - this.lastUiUpdateTime > this.UI_THROTTLE_MS || !this.isPlaying) {
+      this.lastUiUpdateTime = uiNow;
+      this.cdr.detectChanges();
+    }
   }
 
   /**
@@ -1289,6 +1316,22 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     });
     
     this.cdr.detectChanges();
+  }
+
+  private addLatLngsToCurrentPolylines(coords: [number, number][]) {
+    if (!this.map || coords.length === 0) return;
+    
+    if (this.currentPolyline) {
+      const latlngs = this.currentPolyline.getLatLngs() as any[];
+      coords.forEach(c => latlngs.push(this.L.latLng(c[0], c[1])));
+      this.currentPolyline.redraw();
+    }
+    
+    if (this.currentBackgroundPolyline) {
+      const bgLatLngs = this.currentBackgroundPolyline.getLatLngs() as any[];
+      coords.forEach(c => bgLatLngs.push(this.L.latLng(c[0], c[1])));
+      this.currentBackgroundPolyline.redraw();
+    }
   }
 }
 
