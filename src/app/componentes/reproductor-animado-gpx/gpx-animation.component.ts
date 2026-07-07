@@ -114,6 +114,14 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private userSelectedZoom = 16;              // Almacena el zoom manual seleccionado
   private lastUiUpdateTime = 0;
   private readonly UI_THROTTLE_MS = 100;      // 100ms para refresco de UI (10Hz)
+  // Snapshot del estado de cámara guardado justo antes de entrar en un evento multimedia
+  private preEventSnapshot: {
+    zoom: number;
+    center: [number, number];
+    cameraMode: 'TRACKING' | 'FREE';
+    targetZoom: number;
+    userSelectedZoom: number;
+  } | null = null;
 
   // Estadísticas por modo
   modeStats: { [key: string]: { dist: number, time: number, steps: number } } = {};
@@ -790,7 +798,19 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private async pauseForEvent(event: any) {
     this.isPlaying = false;
     this.stopAnimation();
-    
+
+    // Guardar snapshot completa del estado de cámara ANTES del flyTo al evento
+    if (this.map) {
+      const center = this.map.getCenter();
+      this.preEventSnapshot = {
+        zoom: this.currentActualZoom,
+        center: [center.lat, center.lng],
+        cameraMode: this.cameraMode,
+        targetZoom: this.targetZoom,
+        userSelectedZoom: this.userSelectedZoom,
+      };
+    }
+
     // Zoom máximo interactivo (nivel 18) - Acercarse a la ubicación
     const currentPoint = this.points[Math.floor(this.currentIndex)];
     if (currentPoint && this.map) {
@@ -860,22 +880,58 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   resumeFromEvent() {
     this.activeEvent = null;
-    
-    // Retornamos la perspectiva del mapa al zoom "Tracking" habitual (usualmente 16, mismo de initMap)
-    if (this.map) {
+
+    if (this.map && this.preEventSnapshot) {
+      const snap = this.preEventSnapshot;
+      this.preEventSnapshot = null; // Limpiar antes del setView para que la guarda funcione
+
+      // 1. Restaurar variables internas ANTES de tocar el mapa
+      //    (evita que zoomend/moveend del setView las sobreescriba con valores del evento)
+      this.currentActualZoom = snap.zoom;
+      this.targetZoom = snap.targetZoom;
+      this.userSelectedZoom = snap.userSelectedZoom;
+      this.cameraMode = snap.cameraMode;
+      this.autoZoomPaused = snap.cameraMode === 'FREE';
+
+      // 2. Función de reanudación con guarda anti-doble-disparo
+      const resumePlayback = () => {
+        if (!this.isPlaying) {
+          this.isPlaying = true;
+          this.lastTimestamp = performance.now();
+          this.animate();
+          this.cdr.detectChanges();
+        }
+      };
+
+      // 3. Mecanismo principal: reanudar al terminar la animación del mapa (evento real)
+      this.map.once('moveend', resumePlayback);
+
+      // 4. Fallback de seguridad: si moveend no llega en 1500ms, cancelar listener y reanudar
+      setTimeout(() => {
+        this.map.off('moveend', resumePlayback);
+        resumePlayback();
+      }, 1500);
+
+      // 5. Disparar setView — esto provocará el moveend cuando termine la animación
+      this.map.setView(snap.center, snap.zoom, { animate: true, duration: 0.8 });
+
+    } else if (this.map) {
+      // Fallback defensivo: no hay snapshot (no debería ocurrir en condiciones normales)
       const currentPoint = this.points[Math.floor(this.currentIndex)];
       if (currentPoint) {
-         this.map.flyTo([currentPoint.lat, currentPoint.lng], 16, { animate: true, duration: 1.0 });
+        this.map.setView(
+          [currentPoint.lat, currentPoint.lng],
+          this.userSelectedZoom || 16,
+          { animate: true, duration: 0.8 }
+        );
       }
+      setTimeout(() => {
+        this.isPlaying = true;
+        this.lastTimestamp = performance.now();
+        this.animate();
+        this.cdr.detectChanges();
+      }, 900);
     }
-    
-    // Devolvemos el control transcurridos unos milisegundos para que asimile el zoomOut
-    setTimeout(() => {
-      this.isPlaying = true;
-      this.lastTimestamp = performance.now();
-      this.animate();
-      this.cdr.detectChanges();
-    }, 1000);
   }
 
   private revealNearbyMarkers(lat: number, lng: number) {
