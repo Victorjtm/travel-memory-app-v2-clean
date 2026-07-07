@@ -518,17 +518,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     const safeDt = Math.max(0, Math.min(dt, 0.1));
     const frames = safeDt / (1/60);
 
-    // Motor Zoom V4 Cinemático: Easing LERP constante hacia targetZoom
-    if (this.currentActualZoom !== this.targetZoom && !this.autoZoomPaused) {
-       // Transición fluida (Lerp). Ej: un factor bajo para que parezca un dron cayendo o elevándose suavemente
-       const lerpFactor = 1.2 * safeDt; 
-       this.currentActualZoom += (this.targetZoom - this.currentActualZoom) * lerpFactor;
-       
-       // Corrección final anti-cálculo infinito microscópico
-       if (Math.abs(this.targetZoom - this.currentActualZoom) < 0.01) {
-           this.currentActualZoom = this.targetZoom;
-       }
-    }
+    // Fase 3: El zoom ya no se interpola frame a frame (LERP eliminado).
+    // El zoom discreto se gestiona en updateCameraTracking() con throttle de 1000ms.
 
     // Motor: El índice avanza por frames (Fluidez Total)
     const currentSpeed = Number(this.speed) || 2;
@@ -1318,9 +1309,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * FASE 2: Seguimiento de cámara throttled con Safe Zone proporcional.
-   * Solo mueve el mapa si el marcador sale del 50% central del viewport.
-   * Se ejecuta como máximo cada CAMERA_THROTTLE_MS (150ms).
+   * FASE 2+3: Seguimiento de cámara throttled con Safe Zone proporcional y zoom discreto coordinado.
+   * - Paneo: solo si el marcador sale del 50% central del viewport (25% margen). Throttle: 150ms.
+   * - Zoom: solo si el target difiere en >= 1 nivel entero y han pasado 1000ms. Pasos enteros.
+   * - Operación coordinada: setView si pan+zoom coinciden, panTo si solo pan, setZoom si solo zoom.
    */
   private updateCameraTracking(markerLatLng: [number, number]) {
     const now = performance.now();
@@ -1346,10 +1338,36 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       markerPoint.y < marginY ||
       markerPoint.y > containerHeight - marginY;
 
-    if (outOfSafeZone) {
+    // Zoom discreto: solo si han pasado ZOOM_THROTTLE_MS y el target difiere en >= 1 nivel entero
+    let needsZoom = false;
+    let discreteZoom = this.currentActualZoom;
+    if (!this.autoZoomPaused && (now - this.lastZoomUpdateTime > this.ZOOM_THROTTLE_MS)) {
+      const roundedTarget = Math.round(this.targetZoom);
+      if (Math.abs(roundedTarget - this.currentActualZoom) >= 1) {
+        discreteZoom = roundedTarget;
+        needsZoom = true;
+      }
+    }
+
+    // Operación coordinada: evitar dos llamadas separadas en el mismo tick
+    if (outOfSafeZone && needsZoom) {
+      // Pan + Zoom en una sola operación
+      this.map.setView(markerLatLng, discreteZoom, { animate: true, duration: 0.4 });
+      this.currentActualZoom = discreteZoom;
+      this.lastZoomUpdateTime = now;
+      this.lastCameraUpdateTime = now;
+    } else if (outOfSafeZone) {
+      // Solo Pan
       this.map.panTo(markerLatLng, { animate: true, duration: 0.3, easeLinearity: 1 });
       this.lastCameraUpdateTime = now;
+    } else if (needsZoom) {
+      // Solo Zoom (marcador sigue dentro de la safe zone)
+      this.map.setZoom(discreteZoom, { animate: true });
+      this.currentActualZoom = discreteZoom;
+      this.lastZoomUpdateTime = now;
+      this.lastCameraUpdateTime = now;
     }
+    // Si ninguna condición aplica: no hacer nada (cero operaciones, cero CPU de Leaflet)
   }
 
   private addLatLngsToCurrentPolylines(coords: [number, number][]) {
