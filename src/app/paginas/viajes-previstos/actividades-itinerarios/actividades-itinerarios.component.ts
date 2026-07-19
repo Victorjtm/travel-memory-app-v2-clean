@@ -631,91 +631,8 @@ export class ActividadesItinerariosComponent implements OnInit {
           console.log('🎨 [Alta Fidelidad] Renderizando capas del visual_session.json...');
           this.visualSessionGroup = L.layerGroup().addTo(this.mapaGPX);
 
-          // ✅ MEJORA: Detectar retorno basándonos en el color del JSON exportado por la app móvil:
-          //   Verde (#059669) → walking (a pie)
-          //   Rojo (#DC2626)  → driving (coche)
-          // La app exporta primero el tramo de IDA y luego el de VUELTA con el mismo color.
-          // Contamos cuántas polilíneas del mismo color hemos visto para detectar la vuelta.
-          const colorSeenCount: Record<string, number> = {};
-
-          const inferModeFromColor = (color: string): string => {
-            const c = (color || '').toLowerCase();
-            // Verdes → caminar
-            if (c === '#059669' || c === '#4caf50' || c === '#00c853') return 'walking';
-            // Rojos → conducir
-            if (c === '#dc2626' || c === '#f44336' || c === '#d50000') return 'driving';
-            // Naranjas → bici
-            if (c === '#ff9800' || c === '#fb8c00') return 'cycling';
-            // Azules → correr
-            if (c === '#2196f3' || c === '#1565c0') return 'running';
-            return '';
-          };
-
-          // 1. Ordenar capas: Polilíneas más largas (ruta base) primero
-          const capasOrdenadas = [...this.visualSessionData.layers].sort((a: any, b: any) => {
-            if (a.type === 'polyline' && b.type === 'polyline') {
-              return (b.latLngs?.length || 0) - (a.latLngs?.length || 0);
-            }
-            if (a.type === 'polyline' && b.type !== 'polyline') return -1;
-            if (a.type !== 'polyline' && b.type === 'polyline') return 1;
-            return 0;
-          });
-
           capasOrdenadas.forEach((layer: any) => {
             try {
-              if (layer.type === 'polyline' && layer.latLngs?.length > 0) {
-                // 1. Extraer metadatos semánticos: primero del JSON, luego inferir por color
-                const exportedColor = (layer.options?.color || '').toLowerCase();
-                const layerMode = (layer.mode || layer.options?.mode || layer.profileId || inferModeFromColor(exportedColor)).toLowerCase();
-                const routePhase = (layer.routePhase || layer.options?.routePhase || '').toLowerCase();
-
-                // ✅ MEJORA: Detectar vuelta contando polilíneas del mismo color
-                colorSeenCount[exportedColor] = (colorSeenCount[exportedColor] || 0) + 1;
-                const isReturn = routePhase === 'return' || routePhase === 'vuelta'
-                  || (colorSeenCount[exportedColor] > 1 && exportedColor !== '#059669'); // 2ª polilínea roja = vuelta
-
-                // 2. Determinar el color: usar el exportado si ya es semántico, si no derivar del modo
-                let semanticColor = layer.options?.color || '#FF0000';
-                if (layerMode && this.MODE_COLORS[layerMode as keyof typeof this.MODE_COLORS]) {
-                  const phaseDict = this.MODE_COLORS[layerMode as keyof typeof this.MODE_COLORS];
-                  semanticColor = phaseDict[(isReturn ? 'return' : 'outbound') as keyof typeof phaseDict] || phaseDict['outbound'] || semanticColor;
-                } else if (layerMode && this.MODE_COLORS_DIRECT[layerMode]) {
-                  semanticColor = this.MODE_COLORS_DIRECT[layerMode];
-                }
-
-                // 3. Atenuación y estilo para tramos de vuelta
-                const polyOpacity = isReturn ? 0.45 : (layer.options?.opacity ?? 0.9);
-                const bgOpacity = isReturn ? 0.3 : 0.8;
-                const dashArray = isReturn ? '10, 8' : (layer.options?.dashArray || null);
-
-                // 4. Trazado de fondo (stroke blanco) para legibilidad en satélite
-                const bgOpts = {
-                  color: '#FFFFFF',
-                  weight: (layer.options?.weight || 5) + 4,
-                  opacity: bgOpacity,
-                  lineCap: 'round',
-                  lineJoin: 'round'
-                };
-                L.polyline(layer.latLngs, bgOpts as any).addTo(this.visualSessionGroup);
-
-                // 5. Polilínea principal con color semántico
-                const opts = {
-                  color: semanticColor,
-                  weight: layer.options?.weight || 5,
-                  opacity: polyOpacity,
-                  dashArray: dashArray,
-                  lineCap: layer.options?.lineCap || 'round',
-                  lineJoin: layer.options?.lineJoin || 'round'
-                };
-                L.polyline(layer.latLngs, opts as any).addTo(this.visualSessionGroup);
-
-                // 6. Flechas direccionales del color del segmento
-                this.addDirectionArrows(L, layer.latLngs, semanticColor, polyOpacity);
-
-                const modeLabel = layerMode || 'desconocido';
-                console.log(`  🛣️ Seg [${modeLabel}] ${isReturn ? '↩ VUELTA' : '→ IDA'} color:${semanticColor} pts:${layer.latLngs.length}`);
-
-              } else if (layer.type === 'marker' && layer.latLng) {
                 const modeKey = (layer.mode || '').toLowerCase();
                 const layerTitle = (layer.options?.title || layer.name || layer.popup || '').toLowerCase();
 
@@ -763,34 +680,63 @@ export class ActividadesItinerariosComponent implements OnInit {
             }
           });
 
-          const capasPolyline = this.visualSessionData.layers.filter((l: any) => l.type === 'polyline' && l.latLngs?.length > 0);
           const capasMarker = this.visualSessionData.layers.filter((l: any) => l.type === 'marker');
-          console.log(`✅ [Alta Fidelidad] ${capasPolyline.length} segmentos de ruta y ${capasMarker.length} marcadores renderizados.`);
+          console.log(`✅ [Alta Fidelidad] ${capasMarker.length} marcadores estáticos renderizados.`);
 
-        } else {
-          // ================================================================
-          // MODO LEGACY (FALLBACK): Polyline única desde coordenadas GPX
-          // ================================================================
-          console.log('🗺️ [Legacy] Renderizando polyline desde GPX crudo.');
-          
-          // 1. Trazado de fondo (stroke blanco) para legibilidad en satélite
-          L.polyline(this.coordenadasGPX, {
-            color: '#FFFFFF',
-            weight: 8, // 4px más grueso
-            opacity: 0.8,
-            smoothFactor: 1
-          }).addTo(this.mapaGPX);
-
-          // 2. Línea principal legacy
-          L.polyline(this.coordenadasGPX, {
-            color: '#FF0000',
-            weight: 4,
-            opacity: 0.85,
-            smoothFactor: 1,
-            dashArray: '5, 10'
-          }).addTo(this.mapaGPX);
-          this.addDirectionArrows(L, this.coordenadasGPX);
         }
+
+        // ================================================================
+        // RENDERIZADO CANÓNICO DE RUTA (Común a Alta Fidelidad y Legacy)
+        // ================================================================
+        console.log('🗺️ Renderizando polyline canónica desde gpxPoints (' + this.gpxPoints.length + ' pts).');
+        
+        let currentSegment: any[] = [];
+        let currentMode = this.gpxPoints[0]?.mode || 'Urbana';
+
+        const flushSegment = () => {
+          if (currentSegment.length > 1) {
+            const latlngs = currentSegment.map(p => [p.lat, p.lng] as L.LatLngExpression);
+            let color = '#3b82f6'; // default
+            if (this.MODE_COLORS_DIRECT[currentMode.toLowerCase()]) {
+              color = this.MODE_COLORS_DIRECT[currentMode.toLowerCase()];
+            } else {
+              // fallback map
+              const normalized = currentMode.toLowerCase();
+              if (normalized === 'urbana' || normalized === 'walking') color = '#3b82f6';
+              else if (normalized === 'sendero' || normalized === 'hiking') color = '#10b981';
+              else if (normalized === 'ciclismo' || normalized === 'cycling') color = '#f59e0b';
+              else if (normalized === 'conducción' || normalized === 'driving') color = '#ef4444';
+            }
+
+            // Trazado de fondo (stroke blanco)
+            L.polyline(latlngs, {
+              color: '#FFFFFF', weight: 8, opacity: 0.8, smoothFactor: 1
+            }).addTo(this.mapaGPX);
+
+            // Trazado principal
+            L.polyline(latlngs, {
+              color, weight: 5, opacity: 0.9, smoothFactor: 1
+            }).addTo(this.mapaGPX);
+            
+            this.addDirectionArrows(L, latlngs, color, 0.8);
+          }
+        };
+
+        for (let i = 0; i < this.gpxPoints.length; i++) {
+          const p = this.gpxPoints[i];
+          const ptMode = p.mode || 'Urbana';
+          
+          if (ptMode !== currentMode) {
+            currentSegment.push(p); // Conectar
+            flushSegment();
+            currentSegment = [p];
+            currentMode = ptMode;
+          } else {
+            currentSegment.push(p);
+          }
+        }
+        flushSegment();
+
 
         // ================================================================
         // CAPAS FIJAS (presentes en AMBOS modos)
@@ -1966,6 +1912,74 @@ export class ActividadesItinerariosComponent implements OnInit {
       error: (err) => {
         console.error('❌ Error guardando segment insert:', err);
         alert('❌ Error guardando el tramo insertado. Revisa la consola.');
+      }
+    });
+  }
+
+  onOverrideModeRequest(event: { points: { lat: number; lng: number; time?: string; mode?: string }[] }): void {
+    if (!this.actividadEditorId || !event.points || event.points.length < 2) return;
+
+    console.log('🔄 Guardando Override de Modo de Transporte:', event.points.length, 'puntos');
+
+    // Mapear al formato de persistencia plano
+    const payload = event.points.map(p => ({
+      lat: p.lat,
+      lng: p.lng,
+      time: p.time, // Ya viene en ISO string desde el componente hijo
+      mode: p.mode
+    }));
+
+    // Guardar como 'user-override' para que replaySegments lo procese como un reemplazo de atributos
+    this.trackEditorService.createSegment(this.actividadEditorId, payload, 'user-override').subscribe({
+      next: (resp) => {
+        console.log('✅ Segment override guardado con id:', resp.id, 'order:', resp.segmentOrder);
+
+        // Refrescar track desde backend para aplicar
+        this.trackEditorService.getSegments(this.actividadEditorId!).subscribe({
+          next: (segments) => {
+            if (segments && segments.length > 0) {
+              this.gpxPointsEditor = this.trackEditorService.replaySegments(segments);
+              this.cdr.detectChanges();
+            }
+          }
+        });
+      },
+      error: (err) => {
+        console.error('❌ Error guardando segment override:', err);
+        alert('❌ Error guardando el cambio de transporte. Revisa la consola.');
+      }
+    });
+  }
+
+  onDeleteRequest(event: { anchorA: any; anchorB: any }): void {
+    if (!this.actividadEditorId || !event.anchorA || !event.anchorB) return;
+
+    console.log('🔄 Guardando Delete de Tramo:', event.anchorA, event.anchorB);
+
+    // Mapear al formato de persistencia plano: sólo guardamos las dos anclas
+    const payload = [
+      { lat: event.anchorA.lat, lng: event.anchorA.lng, time: event.anchorA.time },
+      { lat: event.anchorB.lat, lng: event.anchorB.lng, time: event.anchorB.time }
+    ];
+
+    // Guardar como 'user-delete'
+    this.trackEditorService.createSegment(this.actividadEditorId, payload, 'user-delete').subscribe({
+      next: (resp) => {
+        console.log('✅ Segment delete guardado con id:', resp.id, 'order:', resp.segmentOrder);
+
+        // Refrescar track desde backend para aplicar
+        this.trackEditorService.getSegments(this.actividadEditorId!).subscribe({
+          next: (segments) => {
+            if (segments && segments.length > 0) {
+              this.gpxPointsEditor = this.trackEditorService.replaySegments(segments);
+              this.cdr.detectChanges();
+            }
+          }
+        });
+      },
+      error: (err) => {
+        console.error('❌ Error guardando segment delete:', err);
+        alert('❌ Error guardando el borrado del tramo. Revisa la consola.');
       }
     });
   }
