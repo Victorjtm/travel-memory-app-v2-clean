@@ -466,21 +466,14 @@ export class TrackEditorService {
       this.getSegments(actividadId).subscribe({
         next: (segments) => {
           if (segments && segments.length > 0) {
-            // Reconstruir desde segments
-            let resolvedSegments: GpxPoint[][] = segments.map(seg => 
-              seg.points.map((p: any) => ({
-                ...p,
-                time: p.time ? new Date(p.time) : undefined
-              }))
-            );
+            // Ejecutar el motor de replay en memoria
+            const accumulatedPoints = this.replaySegments(segments);
+
+            // Ya tenemos el track totalmente resuelto
+            // Para asegurar la robustez, el acumulado es inherentemente continuo
+            const resolvedSegments: GpxPoint[][] = [accumulatedPoints];
             
-            // Si piden flatten, unimos todos los segmentos en uno solo
-            if (flatten) {
-              const flattenedPoints = resolvedSegments.reduce((acc, curr) => acc.concat(curr), []);
-              resolvedSegments = [flattenedPoints];
-            }
-            
-            // Generar XML (multiSegment es false si hemos hecho flatten, así queda en un solo <trkseg>)
+            // Generar XML
             const gpxXml = this.pointsToGpxXml(resolvedSegments, { multiSegment: !flatten });
             subscriber.next(gpxXml);
             subscriber.complete();
@@ -503,5 +496,95 @@ export class TrackEditorService {
         error: err => subscriber.error(err)
       });
     });
+  }
+
+  /**
+   * Motor puro de Event Sourcing (Replay).
+   * Procesa secuencialmente los segmentos aplicando appends e inserts
+   * de forma inmutable sobre un estado acumulado.
+   */
+  public replaySegments(segments: any[]): GpxPoint[] {
+    let accumulatedPoints: GpxPoint[] = [];
+
+    // Invariante de Replay: procesamos secuencialmente
+    for (const seg of segments) {
+      const segPoints: GpxPoint[] = seg.points.map((p: any) => ({
+        ...p,
+        time: p.time ? new Date(p.time) : undefined
+      }));
+
+      if (!segPoints || segPoints.length === 0) continue;
+
+      if (seg.source === 'original' || seg.source === 'user-append') {
+        accumulatedPoints.push(...segPoints);
+      } else if (seg.source === 'user-insert') {
+        const anchorA = segPoints[0];
+        const anchorB = segPoints[segPoints.length - 1];
+
+        // Firma de ancla: time + lat + lng
+        const isMatch = (p1: GpxPoint, p2: GpxPoint) => {
+          return p1.lat === p2.lat && 
+                 p1.lng === p2.lng && 
+                 p1.time?.getTime() === p2.time?.getTime();
+        };
+
+        const idxA = accumulatedPoints.findIndex(p => isMatch(p, anchorA));
+        const idxB = accumulatedPoints.findIndex(p => isMatch(p, anchorB));
+
+        if (idxA === -1 || idxB === -1) {
+          console.warn(`[TrackEditor] Anclas no encontradas para insert (A: ${idxA}, B: ${idxB}). Saltando segmento de insert.`);
+          continue;
+        }
+
+        if (idxB <= idxA) {
+          console.warn(`[TrackEditor] Índice de ancla B (${idxB}) <= A (${idxA}). Saltando segmento de insert.`);
+          continue;
+        }
+
+        // Interpolación temporal para los nuevos puntos intermedios
+        this.interpolateTimeBetweenAnchors(anchorA, anchorB, segPoints);
+
+        // Splice destructivo EN MEMORIA: reemplazamos todo lo que hay entre A y B inclusive, por el nuevo segmento
+        const insertLength = (idxB - idxA) + 1;
+        accumulatedPoints.splice(idxA, insertLength, ...segPoints);
+      }
+    }
+
+    return accumulatedPoints;
+  }
+
+  /**
+   * Interpola el tiempo de los puntos intermedios proporcionalmente a la distancia recorrida.
+   * Modifica el array newPoints in-place.
+   */
+  public interpolateTimeBetweenAnchors(anchorA: GpxPoint, anchorB: GpxPoint, newPoints: GpxPoint[]): void {
+    if (!anchorA.time || !anchorB.time) {
+      console.warn('[TrackEditor] Anclas sin tiempo. No se puede interpolar temporalmente.');
+      return;
+    }
+
+    const tA = (anchorA.time instanceof Date ? anchorA.time : new Date(anchorA.time)).getTime();
+    const tB = (anchorB.time instanceof Date ? anchorB.time : new Date(anchorB.time)).getTime();
+    
+    if (tB <= tA) {
+      console.warn('[TrackEditor] Tiempo B <= Tiempo A. Interpolación inválida.');
+      return;
+    }
+
+    const totalTimeDelta = tB - tA;
+    let totalDistance = 0;
+    const distances: number[] = [0];
+
+    for (let i = 1; i < newPoints.length; i++) {
+      const d = this.getDistance(newPoints[i-1].lat, newPoints[i-1].lng, newPoints[i].lat, newPoints[i].lng);
+      totalDistance += d;
+      distances.push(totalDistance);
+    }
+
+    for (let i = 1; i < newPoints.length - 1; i++) {
+      const ratio = totalDistance > 0 ? distances[i] / totalDistance : i / (newPoints.length - 1);
+      const interpolatedTime = new Date(tA + totalTimeDelta * ratio);
+      newPoints[i].time = interpolatedTime;
+    }
   }
 }

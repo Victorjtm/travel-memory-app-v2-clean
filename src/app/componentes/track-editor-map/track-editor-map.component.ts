@@ -25,6 +25,9 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     newMode?: string,
     injectedGeometry?: { lat: number, lng: number }[]
   }>();
+  @Output() insertRequest = new EventEmitter<{
+    points: { lat: number; lng: number; time?: string }[]
+  }>();
   @Output() appendRequest = new EventEmitter<{
     points: { lat: number; lng: number }[]
   }>();
@@ -40,7 +43,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   anchorA: TrackAnchor | null = null;
   anchorB: TrackAnchor | null = null;
 
-  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' = 'SELECTING';
+  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' | 'IDLE' | 'SELECTING_A' | 'SELECTING_B' | 'DRAWING_INSERT' | 'PREVIEW_INSERT' = 'SELECTING';
   
   private syntheticLine: L.Polyline | null = null;
   private syntheticVertices: L.Marker[] = [];
@@ -249,22 +252,26 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       return;
     }
 
-    // Modo append: clics añaden vértices al final
     if (this.editorState === 'APPENDING') {
       this.addAppendVertex(e.latlng);
       return;
     }
 
+    if (this.editorState === 'DRAWING_INSERT') {
+      this.addInsertVertex(e.latlng);
+      return;
+    }
+
+    if (this.editorState === 'IDLE' || this.editorState === 'PREVIEW_INSERT') return;
+
     const clickLayerPoint = this.map.latLngToLayerPoint(e.latlng);
     let closestIdx = -1;
     let minPixelDist = Infinity;
 
-    // Búsqueda lineal contra el dataset crudo completo O(N)
     for (let i = 0; i < this.gpxPoints.length; i++) {
       const p = this.gpxPoints[i];
       const pLatLng = L.latLng(p.lat, p.lng);
       
-      // Proyectamos a píxeles para calcular tolerancia visual independiente del zoom
       const pLayerPoint = this.map.latLngToLayerPoint(pLatLng);
       const dist = clickLayerPoint.distanceTo(pLayerPoint);
 
@@ -274,11 +281,16 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
     }
 
-    // Tolerancia generosa para móviles: 30 píxeles
     const SNAP_TOLERANCE_PX = 30;
 
     if (minPixelDist <= SNAP_TOLERANCE_PX) {
-      this.setAnchor(closestIdx);
+      if (this.editorState === 'SELECTING_A') {
+        this.setInsertAnchorA(closestIdx);
+      } else if (this.editorState === 'SELECTING_B') {
+        this.setInsertAnchorB(closestIdx);
+      } else if (this.editorState === 'SELECTING') {
+        this.setAnchor(closestIdx);
+      }
     } else {
       console.log('Clic demasiado lejos del trazado GPX.');
     }
@@ -462,6 +474,155 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
     this.syntheticVertices.forEach((m: L.Marker) => m.remove());
     this.syntheticVertices = [];
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // MODO INSERT (Fase 2.1.b)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  insertAnchorA: TrackAnchor | null = null;
+  insertAnchorB: TrackAnchor | null = null;
+  private insertMarkerA: L.CircleMarker | null = null;
+  private insertMarkerB: L.CircleMarker | null = null;
+  private insertLine: L.Polyline | null = null;
+  private insertVertices: L.Marker[] = [];
+  insertPoints: { lat: number; lng: number }[] = [];
+
+  startInsertMode() {
+    if (!this.map || this.gpxPoints.length === 0) return;
+    this.clearSelection();
+    this.cleanupAppendMode();
+    this.cleanupGeometryMode();
+    this.cleanupInsertMode();
+    this.editorState = 'SELECTING_A';
+  }
+
+  cancelInsertMode() {
+    this.cleanupInsertMode();
+    this.editorState = 'SELECTING';
+  }
+
+  private cleanupInsertMode() {
+    this.insertAnchorA = null;
+    this.insertAnchorB = null;
+    if (this.insertMarkerA) { this.insertMarkerA.remove(); this.insertMarkerA = null; }
+    if (this.insertMarkerB) { this.insertMarkerB.remove(); this.insertMarkerB = null; }
+    if (this.insertLine) { this.insertLine.remove(); this.insertLine = null; }
+    this.insertVertices.forEach(m => m.remove());
+    this.insertVertices = [];
+    this.insertPoints = [];
+    
+    if (this.polylinesGroup) {
+      this.polylinesGroup.setStyle({ opacity: 1 });
+    }
+  }
+
+  private setInsertAnchorA(index: number) {
+    if (!this.map) return;
+    const p = this.gpxPoints[index];
+    this.insertAnchorA = { index, time: p.time ? new Date(p.time).toISOString() : undefined, lat: p.lat, lng: p.lng };
+    
+    this.insertMarkerA = L.circleMarker([p.lat, p.lng], {
+      color: 'white', fillColor: '#22c55e', fillOpacity: 1, radius: 8, weight: 2
+    }).addTo(this.map).bindTooltip('Inicio Insert (A)', { permanent: true, direction: 'right' }).openTooltip();
+
+    this.editorState = 'SELECTING_B';
+  }
+
+  private setInsertAnchorB(index: number) {
+    if (!this.map || !this.insertAnchorA) return;
+    
+    if (index <= this.insertAnchorA.index!) {
+      console.warn('El ancla B debe ser posterior al ancla A.');
+      return; 
+    }
+
+    const p = this.gpxPoints[index];
+    this.insertAnchorB = { index, time: p.time ? new Date(p.time).toISOString() : undefined, lat: p.lat, lng: p.lng };
+    
+    this.insertMarkerB = L.circleMarker([p.lat, p.lng], {
+      color: 'white', fillColor: '#ef4444', fillOpacity: 1, radius: 8, weight: 2
+    }).addTo(this.map).bindTooltip('Fin Insert (B)', { permanent: true, direction: 'right' }).openTooltip();
+
+    this.transitionToDrawingInsert();
+  }
+
+  private transitionToDrawingInsert() {
+    if (!this.map || !this.insertAnchorA || !this.insertAnchorB) return;
+    
+    this.editorState = 'DRAWING_INSERT';
+
+    if (this.polylinesGroup) {
+      // Atenuamos temporalmente las líneas base para enfocar en el tramo insertado
+      this.polylinesGroup.setStyle({ opacity: 0.3 });
+    }
+
+    const ptA = L.latLng(this.insertAnchorA.lat, this.insertAnchorA.lng);
+    const ptB = L.latLng(this.insertAnchorB.lat, this.insertAnchorB.lng);
+
+    this.insertLine = L.polyline([ptA, ptB], {
+      color: '#8b5cf6', // Violeta
+      weight: 5,
+      dashArray: '10, 10'
+    }).addTo(this.map);
+  }
+
+  private addInsertVertex(latlng: L.LatLng) {
+    if (!this.map || !this.insertLine) return;
+
+    this.insertPoints.push({ lat: latlng.lat, lng: latlng.lng });
+
+    const marker = L.marker(latlng, {
+      draggable: true,
+      icon: L.divIcon({
+        className: 'insert-vertex-icon',
+        html: '<div style="width: 12px; height: 12px; background: #8b5cf6; border: 2px solid white; border-radius: 50%;"></div>',
+        iconSize: [12, 12],
+        iconAnchor: [6, 6]
+      })
+    }).addTo(this.map);
+
+    marker.on('drag', () => this.updateInsertLine());
+    marker.on('contextmenu', () => this.removeInsertVertex(marker));
+
+    this.insertVertices.push(marker);
+    this.updateInsertLine();
+  }
+
+  private removeInsertVertex(marker: L.Marker) {
+    if (!this.map) return;
+    const idx = this.insertVertices.indexOf(marker);
+    if (idx !== -1) {
+      this.insertVertices.splice(idx, 1);
+      this.insertPoints.splice(idx, 1);
+    }
+    marker.remove();
+    this.updateInsertLine();
+  }
+
+  private updateInsertLine() {
+    if (!this.insertLine || !this.insertAnchorA || !this.insertAnchorB) return;
+    const ptA = L.latLng(this.insertAnchorA.lat, this.insertAnchorA.lng);
+    const ptB = L.latLng(this.insertAnchorB.lat, this.insertAnchorB.lng);
+    const intermediateLatLngs = this.insertVertices.map(m => m.getLatLng());
+    this.insertLine.setLatLngs([ptA, ...intermediateLatLngs, ptB]);
+  }
+
+  saveInsert() {
+    if (!this.insertAnchorA || !this.insertAnchorB || this.insertPoints.length === 0) return;
+
+    const fullPointsArray = [
+      { lat: this.insertAnchorA.lat, lng: this.insertAnchorA.lng, time: this.insertAnchorA.time },
+      ...this.insertPoints,
+      { lat: this.insertAnchorB.lat, lng: this.insertAnchorB.lng, time: this.insertAnchorB.time }
+    ];
+
+    this.insertRequest.emit({
+      points: fullPointsArray
+    });
+
+    this.cleanupInsertMode();
+    this.editorState = 'SELECTING';
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

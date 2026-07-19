@@ -24,12 +24,14 @@
     </button>
 
     <!-- Botón flotante para Append (visible cuando NO hay anclas seleccionadas y estamos en SELECTING) -->
-    <button
-      class="btn-append-float"
-      *ngIf="editorState === 'SELECTING' && !anchorA && !anchorB"
-      (click)="startAppendMode()">
-      ➕ Prolongar recorrido
-    </button>
+    <div class="floating-tools" *ngIf="editorState === 'SELECTING' && !anchorA && !anchorB">
+      <button class="btn-append-float" (click)="startAppendMode()">
+        ➕ Prolongar recorrido
+      </button>
+      <button class="btn-insert-float" (click)="startInsertMode()" style="background: #8b5cf6; margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        ✏️ Insertar Tramo
+      </button>
+    </div>
   </div>
 
   <!-- Panel de operaciones de selección (flotante o en el lateral según diseño) -->
@@ -142,6 +144,54 @@
       <div class="cancel-wrapper">
         <button class="btn-secondary" (click)="cancelAppend()">✖ Cancelar</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Panel de Insert (Fase 2.1.b) -->
+  <div class="editor-sidebar insert-mode" *ngIf="editorState === 'SELECTING_A' || editorState === 'SELECTING_B' || editorState === 'DRAWING_INSERT' || editorState === 'PREVIEW_INSERT'">
+    <div class="sidebar-header" style="background: #8b5cf6;">
+      <h3>Insertar Tramo</h3>
+      <p class="subtitle" *ngIf="editorState === 'SELECTING_A'">Paso 1: Haz clic en la ruta para seleccionar Inicio (A)</p>
+      <p class="subtitle" *ngIf="editorState === 'SELECTING_B'">Paso 2: Haz clic en la ruta para seleccionar Fin (B)</p>
+      <p class="subtitle" *ngIf="editorState === 'DRAWING_INSERT'">Paso 3: Dibuja la nueva trayectoria</p>
+      <p class="subtitle" *ngIf="editorState === 'PREVIEW_INSERT'">Previsualización de Inserción</p>
+    </div>
+
+    <div class="anchors-status" style="margin-top: 15px;">
+      <div class="anchor-item" [class.active]="insertAnchorA">
+        <span class="dot green"></span>
+        <div class="info">
+          <strong>Punto A</strong>
+          <span *ngIf="insertAnchorA">{{ insertAnchorA.time | date:'HH:mm:ss' }}</span>
+          <span *ngIf="!insertAnchorA">Esperando clic...</span>
+        </div>
+      </div>
+      
+      <div class="anchor-line"></div>
+
+      <div class="anchor-item" [class.active]="insertAnchorB">
+        <span class="dot red"></span>
+        <div class="info">
+          <strong>Punto B</strong>
+          <span *ngIf="insertAnchorB">{{ insertAnchorB.time | date:'HH:mm:ss' }}</span>
+          <span *ngIf="!insertAnchorB">Esperando clic...</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="actions-panel" style="flex: 1;" *ngIf="editorState === 'DRAWING_INSERT' || editorState === 'PREVIEW_INSERT'">
+      <div class="action-group">
+        <p class="append-info">
+          <strong>{{ insertPoints.length }}</strong> vértice{{ insertPoints.length !== 1 ? 's' : '' }} insertado{{ insertPoints.length !== 1 ? 's' : '' }}
+        </p>
+        <p class="warning-text" *ngIf="editorState === 'DRAWING_INSERT'">Haz clic en el mapa para añadir vértices. Arrastra los puntos violeta para ajustar.</p>
+        <button class="btn-primary" style="background: #8b5cf6; border-color: #8b5cf6; color: white;" (click)="saveInsert()" *ngIf="editorState === 'DRAWING_INSERT'" [disabled]="insertPoints.length === 0">
+          Guardar Tramo
+        </button>
+      </div>
+    </div>
+    <div class="cancel-wrapper" style="margin-top: auto; padding: 15px;">
+      <button class="btn-secondary" (click)="cancelInsertMode()">✖ Cancelar</button>
     </div>
   </div>
 </div>

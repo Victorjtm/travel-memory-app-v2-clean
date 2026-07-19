@@ -274,12 +274,17 @@ button {
 }
 
 /* BOTÓN FLOTANTE APPEND */
-.btn-append-float {
+.floating-tools {
   position: absolute;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1000;
+  display: flex;
+  gap: 12px;
+}
+
+.btn-append-float {
   padding: 10px 20px;
   background: #0d9488;
   color: white;

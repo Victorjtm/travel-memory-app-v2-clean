@@ -1824,16 +1824,8 @@ export class ActividadesItinerariosComponent implements OnInit {
         this.trackEditorService.getSegments(actividadId).subscribe({
           next: (segments) => {
             if (segments && segments.length > 0) {
-              // Ya existe migración, construir track componiendo segmentos
-              let allPoints: GpxPoint[] = [];
-              segments.forEach(seg => {
-                const segPts = seg.points.map((p: any) => ({
-                  ...p,
-                  time: p.time ? new Date(p.time) : undefined
-                }));
-                allPoints = allPoints.concat(segPts);
-              });
-              this.gpxPointsEditor = allPoints;
+              // Ya existe migración, construir track componiendo segmentos con Event Sourcing
+              this.gpxPointsEditor = this.trackEditorService.replaySegments(segments);
               this.mostrarEditorTrack = true;
               this.cdr.detectChanges();
             } else {
@@ -1925,6 +1917,55 @@ export class ActividadesItinerariosComponent implements OnInit {
       error: (err) => {
         console.error('❌ Error guardando segment append:', err);
         alert('❌ Error guardando el tramo. Revisa la consola.');
+      }
+    });
+  }
+
+  onInsertRequest(event: { points: { lat: number; lng: number; time?: string }[] }): void {
+    if (!this.actividadEditorId || !event.points || event.points.length < 2) return;
+
+    console.log('📍 Guardando Insert:', event.points.length, 'puntos');
+
+    // 1. Convertir a formato GpxPoint para interpolar en cliente antes de persistir
+    const gpxPoints = event.points.map(p => ({
+      ...p,
+      time: p.time ? new Date(p.time) : undefined
+    })) as any[];
+
+    // 2. Interpolar
+    const anchorA = gpxPoints[0];
+    const anchorB = gpxPoints[gpxPoints.length - 1];
+    
+    // Asegurarnos de que A y B tengan fechas validas
+    if (anchorA.time && anchorB.time) {
+      this.trackEditorService.interpolateTimeBetweenAnchors(anchorA, anchorB, gpxPoints);
+    }
+
+    // 3. Volver a serializar a formato plano JSON con los timestamps ISO
+    const payload = gpxPoints.map(p => ({
+      lat: p.lat,
+      lng: p.lng,
+      time: p.time ? p.time.toISOString() : undefined
+    }));
+
+    // 4. Guardar
+    this.trackEditorService.createSegment(this.actividadEditorId, payload, 'user-insert').subscribe({
+      next: (resp) => {
+        console.log('✅ Segment insert guardado con id:', resp.id, 'order:', resp.segmentOrder);
+
+        // 5. Refrescar track desde backend para re-aplicar el replay completo
+        this.trackEditorService.getSegments(this.actividadEditorId!).subscribe({
+          next: (segments) => {
+            if (segments && segments.length > 0) {
+              this.gpxPointsEditor = this.trackEditorService.replaySegments(segments);
+              this.cdr.detectChanges();
+            }
+          }
+        });
+      },
+      error: (err) => {
+        console.error('❌ Error guardando segment insert:', err);
+        alert('❌ Error guardando el tramo insertado. Revisa la consola.');
       }
     });
   }
