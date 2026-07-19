@@ -6,11 +6,14 @@ import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { take } from 'rxjs/operators';
 import { GpxAnimationComponent } from '../../../componentes/reproductor-animado-gpx/gpx-animation.component';
+import { TrackEditorMapComponent } from '../../../componentes/track-editor-map/track-editor-map.component';
+import { TrackEditorService } from '../../../servicios/track-editor.service';
+import { TrackEdit } from '../../../modelos/track-edit.model';
 
 import { Actividad } from '../../../modelos/actividad.model';
 import { ActividadesItinerariosService } from '../../../servicios/actividades-itinerarios.service';
 import { environment } from '../../../../environments/environment';
-import { GpxAnimationService } from '../../../servicios/gpx-animation.service';
+import { GpxAnimationService, GpxPoint } from '../../../servicios/gpx-animation.service';
 import { VideoGeneratorService, ConfiguracionVideo, ProgresoVideo } from '../../../servicios/video-generator.service';
 import { ArchivoService } from '../../../servicios/archivo.service';
 import { firstValueFrom } from 'rxjs';
@@ -23,7 +26,8 @@ import { firstValueFrom } from 'rxjs';
     HttpClientModule,
     FormsModule,
     RouterModule,
-    GpxAnimationComponent
+    GpxAnimationComponent,
+    TrackEditorMapComponent
   ],
   templateUrl: './actividades-itinerarios.component.html',
   styleUrls: ['./actividades-itinerarios.component.scss']
@@ -119,6 +123,12 @@ export class ActividadesItinerariosComponent implements OnInit {
   desgloseTransporteAnimacion: any[] = [];
   actividadAnimacion: any = null; // ✨ NUEVA PROPIEDAD
 
+  // ? ESTADOS PARA TRACK EDITOR (Fase 1 y 2)
+  mostrarEditorTrack = false;
+  gpxPointsEditor: GpxPoint[] = [];
+  editsEditor: TrackEdit[] = [];
+  actividadEditorId: number | null = null;
+
   // ✨ MODO ALTA FIDELIDAD (visual_session.json)
   visualSessionData: any = null;
   isHighFidelityMode = false;
@@ -156,7 +166,8 @@ export class ActividadesItinerariosComponent implements OnInit {
     private http: HttpClient,
     private gpxAnimationService: GpxAnimationService,
     private videoGeneratorService: VideoGeneratorService,
-    private archivoService: ArchivoService
+    private archivoService: ArchivoService,
+    private trackEditorService: TrackEditorService
   ) { }
 
   ngOnInit(): void {
@@ -222,16 +233,13 @@ export class ActividadesItinerariosComponent implements OnInit {
         mensaje: 'Preparando datos para el vídeo...'
       };
 
-      // 1. Obtener GPX y parsear
-      this.progresoVideo.mensaje = 'Descargando ruta GPX...';
-      const blobGpx = await firstValueFrom(this.actividadService.obtenerGPX(this.actividadVideoSeleccionada.id));
-      const gpxContent = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e: any) => resolve(e.target.result);
-        reader.onerror = reject;
-        reader.readAsText(blobGpx);
-      });
-      if (!gpxContent) throw new Error('No se pudo encontrar o descargar el archivo GPX asociado a esta actividad.');
+      // 1. Obtener GPX y parsear (usando pipeline canónico con flatten)
+      this.progresoVideo.mensaje = 'Resolviendo ruta GPX canónica...';
+      const gpxContent = await firstValueFrom(
+        this.trackEditorService.resolveCanonicalGpxXml(this.actividadVideoSeleccionada.id, { flattenSegments: true })
+      );
+
+      if (!gpxContent) throw new Error('No se pudo encontrar o resolver la ruta GPX asociada a esta actividad.');
 
       let points = this.gpxAnimationService.parseGpx(gpxContent);
       
@@ -434,18 +442,14 @@ export class ActividadesItinerariosComponent implements OnInit {
 
   /** Paso final: leer el GPX, extraer coordenadas de fallback y abrir el modal */
   private cargarGPXYAbrirModal(actividadId: number): void {
-    this.actividadService.obtenerGPX(actividadId).subscribe({
-      next: (blob) => {
-        const reader = new FileReader();
-        reader.onload = (e: any) => {
-          this.parseGPX(e.target.result);
-          this.mostrarModalGPXMapa = true;
-          this.cdr.detectChanges();
-          this.ngZone.onStable.pipe(take(1)).subscribe(() => {
-            this.inicializarMapaGPX();
-          });
-        };
-        reader.readAsText(blob);
+    this.trackEditorService.resolveCanonicalGpxXml(actividadId, { flattenSegments: true }).subscribe({
+      next: (gpxText) => {
+        this.parseGPX(gpxText);
+        this.mostrarModalGPXMapa = true;
+        this.cdr.detectChanges();
+        this.ngZone.onStable.pipe(take(1)).subscribe(() => {
+          this.inicializarMapaGPX();
+        });
       },
       error: err => console.error('❌ Error obteniendo GPX:', err)
     });
@@ -514,19 +518,15 @@ export class ActividadesItinerariosComponent implements OnInit {
           (f.tipo === 'foto' || f.tipo === 'video' || f.tipo === 'audio') && f.geolocalizacion
         );
 
-        this.actividadService.obtenerGPX(actividadId).subscribe({
-          next: (blob) => {
-            const reader = new FileReader();
-            reader.onload = (e: any) => {
-              this.gpxTextAnimacion = e.target.result;
-              this.desgloseTransporteAnimacion = this.estadisticasGPX?.desgloseTransporte || [];
-              this.actividadAnimacion = this.actividades.find(a => a.id === actividadId);
-              
-              console.log('🎬 Lanzando reproductor animado con', this.desgloseTransporteAnimacion.length, 'segmentos');
-              this.mostrarReproductorAnimado = true;
-              this.cdr.detectChanges();
-            };
-            reader.readAsText(blob);
+        this.trackEditorService.resolveCanonicalGpxXml(actividadId, { flattenSegments: true }).subscribe({
+          next: (gpxText) => {
+            this.gpxTextAnimacion = gpxText;
+            this.desgloseTransporteAnimacion = this.estadisticasGPX?.desgloseTransporte || [];
+            this.actividadAnimacion = this.actividades.find(a => a.id === actividadId);
+            
+            console.log('🎬 Lanzando reproductor animado con', this.desgloseTransporteAnimacion.length, 'segmentos');
+            this.mostrarReproductorAnimado = true;
+            this.cdr.detectChanges();
           },
           error: err => console.error('❌ Error obteniendo GPX para animación:', err)
         });
@@ -544,37 +544,42 @@ export class ActividadesItinerariosComponent implements OnInit {
 
   // Parsear GPX y extraer coordenadas
   parseGPX(gpxText: string): void {
-    const parser = new DOMParser();
-    const gpxDoc = parser.parseFromString(gpxText, 'text/xml');
+    try {
+      const parser = new DOMParser();
+      const gpxDoc = parser.parseFromString(gpxText, 'text/xml');
 
-    // Extraer puntos de ruta (trkpt)
-    const trkpts = gpxDoc.getElementsByTagName('trkpt');
-    this.coordenadasGPX = [];
+      // Extraer puntos de ruta (trkpt)
+      const trkpts = gpxDoc.getElementsByTagName('trkpt');
+      this.coordenadasGPX = [];
 
-    for (let i = 0; i < trkpts.length; i++) {
-      const lat = parseFloat(trkpts[i].getAttribute('lat') || '0');
-      const lon = parseFloat(trkpts[i].getAttribute('lon') || '0');
+      for (let i = 0; i < trkpts.length; i++) {
+        const lat = parseFloat(trkpts[i].getAttribute('lat') || '0');
+        const lon = parseFloat(trkpts[i].getAttribute('lon') || '0');
 
-      if (lat !== 0 && lon !== 0) {
-        this.coordenadasGPX.push([lat, lon]);
+        if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
+          this.coordenadasGPX.push([lat, lon]);
+        }
       }
-    }
 
-    console.log('✅ GPX parseado. Puntos encontrados:', this.coordenadasGPX.length);
+      console.log('✅ GPX parseado. Coordenadas válidas extraídas:', this.coordenadasGPX.length);
 
-    // Extraer Waypoints (Punto de Giro / Save Point)
-    const wpts = gpxDoc.getElementsByTagName('wpt');
-    this.turningPoint = null;
-    for (let i = 0; i < wpts.length; i++) {
-      const name = wpts[i].getElementsByTagName('name')[0]?.textContent;
-      // Solo si coincide con el nombre esperado
-      if (name === 'Punto de Giro' || name === 'Punto de Guardado' || name === 'Turn Around') {
-        const lat = parseFloat(wpts[i].getAttribute('lat') || '0');
-        const lon = parseFloat(wpts[i].getAttribute('lon') || '0');
-        this.turningPoint = { lat, lon, name };
-        console.log('🔄 Punto de giro detectado en GPX:', this.turningPoint);
-        break;
+      // Extraer Waypoints (Punto de Giro / Save Point)
+      const wpts = gpxDoc.getElementsByTagName('wpt');
+      this.turningPoint = null;
+      for (let i = 0; i < wpts.length; i++) {
+        const name = wpts[i].getElementsByTagName('name')[0]?.textContent;
+        // Solo si coincide con el nombre esperado
+        if (name === 'Punto de Giro' || name === 'Punto de Guardado' || name === 'Turn Around') {
+          const lat = parseFloat(wpts[i].getAttribute('lat') || '0');
+          const lon = parseFloat(wpts[i].getAttribute('lon') || '0');
+          this.turningPoint = { lat, lon, name };
+          console.log('🔄 Punto de giro detectado en GPX:', this.turningPoint);
+          break;
+        }
       }
+    } catch (e) {
+      console.error('❌ Excepción atrapada en parseGPX:', e);
+      this.coordenadasGPX = [];
     }
   }
 
@@ -1800,6 +1805,128 @@ export class ActividadesItinerariosComponent implements OnInit {
         return 'Ubicación no disponible';
       }
     }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ✏️ EDITOR DE RECORRIDO GPX (Fase 1 y 2.1)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  abrirEditorTrack(actividadId: number): void {
+    console.log('✏️ Abriendo editor de recorrido para actividad:', actividadId);
+    this.actividadEditorId = actividadId;
+
+    // 1. Cargar edits existentes
+    this.trackEditorService.getTrackEdits(actividadId).subscribe({
+      next: (edits) => {
+        this.editsEditor = edits || [];
+        
+        // 2. Cargar Segmentos (Fase 2.1.a)
+        this.trackEditorService.getSegments(actividadId).subscribe({
+          next: (segments) => {
+            if (segments && segments.length > 0) {
+              // Ya existe migración, construir track componiendo segmentos
+              let allPoints: GpxPoint[] = [];
+              segments.forEach(seg => {
+                const segPts = seg.points.map((p: any) => ({
+                  ...p,
+                  time: p.time ? new Date(p.time) : undefined
+                }));
+                allPoints = allPoints.concat(segPts);
+              });
+              this.gpxPointsEditor = allPoints;
+              this.mostrarEditorTrack = true;
+              this.cdr.detectChanges();
+            } else {
+              // No hay segmentos, migrar desde GPX legacy
+              this.actividadService.obtenerGPX(actividadId).subscribe({
+                next: (blob) => {
+                  const reader = new FileReader();
+                  reader.onload = (e: any) => {
+                    this.gpxPointsEditor = this.gpxAnimationService.parseGpx(e.target.result);
+                    
+                    // Guardar el track base como el segmento original idempotentemente
+                    this.trackEditorService.createSegment(actividadId, this.gpxPointsEditor, 'original').subscribe({
+                      next: () => console.log('✅ GPX base migrado exitosamente a segments (source: original)'),
+                      error: err => console.error('❌ Error migrando GPX base a segments:', err)
+                    });
+
+                    this.mostrarEditorTrack = true;
+                    this.cdr.detectChanges();
+                  };
+                  reader.readAsText(blob);
+                },
+                error: err => console.error('❌ Error cargando GPX para editor:', err)
+              });
+            }
+          },
+          error: err => console.error('❌ Error cargando segments para editor:', err)
+        });
+      },
+      error: err => {
+        console.error('❌ Error cargando TrackEdits para editor:', err);
+        this.editsEditor = [];
+      }
+    });
+  }
+
+  cerrarEditorTrack(): void {
+    this.mostrarEditorTrack = false;
+    this.gpxPointsEditor = [];
+    this.editsEditor = [];
+    this.actividadEditorId = null;
+    this.cdr.detectChanges();
+  }
+
+  onTrackEditRequest(event: any): void {
+    if (!this.actividadEditorId) return;
+
+    console.log('✏️ Guardando edición:', event);
+
+    const edit: TrackEdit = {
+      actividadId: this.actividadEditorId,
+      action: event.action,
+      startAnchor: event.startAnchor,
+      endAnchor: event.endAnchor,
+      newMode: event.newMode,
+      injectedGeometry: event.injectedGeometry
+    };
+
+    this.trackEditorService.createTrackEdit(edit).subscribe({
+      next: (savedEdit) => {
+        console.log('✅ Edición guardada con ID:', savedEdit.id);
+        this.editsEditor = [...this.editsEditor, savedEdit];
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('❌ Error guardando edición:', err);
+        alert('❌ Error guardando la edición. Revisa la consola.');
+      }
+    });
+  }
+
+  onAppendRequest(event: { points: { lat: number; lng: number }[] }): void {
+    if (!this.actividadEditorId || !event.points || event.points.length === 0) return;
+
+    console.log('➕ Guardando Append:', event.points.length, 'puntos');
+
+    this.trackEditorService.createSegment(this.actividadEditorId, event.points, 'user-append').subscribe({
+      next: (resp) => {
+        console.log('✅ Segment append guardado con id:', resp.id, 'order:', resp.segmentOrder);
+
+        // Calcular timestamps monotónicos y concatenar al array local
+        const appendedGpxPoints = this.trackEditorService.applyAppendWithTimestamps(
+          this.gpxPointsEditor,
+          event.points
+        );
+
+        this.gpxPointsEditor = [...this.gpxPointsEditor, ...appendedGpxPoints];
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('❌ Error guardando segment append:', err);
+        alert('❌ Error guardando el tramo. Revisa la consola.');
+      }
+    });
   }
 
 }

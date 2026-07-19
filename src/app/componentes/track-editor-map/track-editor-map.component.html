@@ -1,0 +1,147 @@
+<div class="editor-layout">
+  <div class="map-wrapper">
+    <div #mapContainer class="map-container"></div>
+    
+    <!-- Leyenda Visual (Fase 1.1 + 2.1.a) -->
+    <div class="map-legend">
+      <div class="legend-item">
+        <span class="line original"></span> Original
+      </div>
+      <div class="legend-item">
+        <span class="line deleted"></span> Borrado
+      </div>
+      <div class="legend-item">
+        <span class="line overriden"></span> Modo Cambiado
+      </div>
+      <div class="legend-item">
+        <span class="line appended"></span> Tramo Añadido
+      </div>
+    </div>
+
+    <!-- Top left floating controls to close editor -->
+    <button class="btn-close-editor" (click)="close.emit()">
+      ⬅ Volver
+    </button>
+
+    <!-- Botón flotante para Append (visible cuando NO hay anclas seleccionadas y estamos en SELECTING) -->
+    <button
+      class="btn-append-float"
+      *ngIf="editorState === 'SELECTING' && !anchorA && !anchorB"
+      (click)="startAppendMode()">
+      ➕ Prolongar recorrido
+    </button>
+  </div>
+
+  <!-- Panel de operaciones de selección (flotante o en el lateral según diseño) -->
+  <div class="editor-sidebar" *ngIf="anchorA && editorState === 'SELECTING'">
+    <div class="sidebar-header">
+      <h3>Modo Edición</h3>
+      <p class="subtitle">Selecciona el tramo en el mapa</p>
+    </div>
+
+    <div class="anchors-status">
+      <div class="anchor-item" [class.active]="anchorA">
+        <span class="dot green"></span>
+        <div class="info">
+          <strong>Punto A</strong>
+          <span *ngIf="anchorA">{{ anchorA.time | date:'HH:mm:ss' }}</span>
+          <span *ngIf="!anchorA">Haz clic en la ruta</span>
+        </div>
+      </div>
+      
+      <div class="anchor-line"></div>
+
+      <div class="anchor-item" [class.active]="anchorB">
+        <span class="dot red"></span>
+        <div class="info">
+          <strong>Punto B</strong>
+          <span *ngIf="anchorB">{{ anchorB.time | date:'HH:mm:ss' }}</span>
+          <span *ngIf="!anchorB">Haz clic en la ruta</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions-panel" *ngIf="anchorA && anchorB">
+      <div class="action-group">
+        <h4>Cambiar Modo de Transporte</h4>
+        <div class="vehicle-selector">
+          <label *ngFor="let veh of vehicleModes" class="vehicle-option" [class.selected]="selectedMode === veh.id">
+            <input type="radio" name="vehicleMode" [value]="veh.id" [(ngModel)]="selectedMode">
+            <span class="icon">{{ veh.icon }}</span>
+            <span class="name">{{ veh.name }}</span>
+          </label>
+        </div>
+        <button class="btn-primary" (click)="onOverrideMode()">
+          ✏️ Aplicar Cambio
+        </button>
+      </div>
+
+      <hr>
+
+      <div class="action-group">
+        <h4>Reemplazar Geometría</h4>
+        <p class="warning-text">Sustituye la ruta original por un trazado manual.</p>
+        <button class="btn-action" (click)="startReplaceGeometry()">
+          🗺️ Dibujar Ruta
+        </button>
+      </div>
+
+      <hr>
+
+      <div class="action-group">
+        <h4>Borrar Tramo</h4>
+        <p class="warning-text">El tramo seleccionado se ocultará de la animación.</p>
+        <button class="btn-danger" (click)="onDeleteSegment()">
+          🗑️ Eliminar Tramo
+        </button>
+      </div>
+
+      <div class="cancel-wrapper">
+        <button class="btn-secondary" (click)="clearSelection()">Cancelar Selección</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel de Edición de Geometría (Reemplazo) -->
+  <div class="editor-sidebar editing-geometry-mode" *ngIf="editorState === 'EDITING_GEOMETRY'">
+    <div class="sidebar-header" style="background: #ec4899;">
+      <h3>Dibujando Ruta</h3>
+      <p class="subtitle">Haz clic en el mapa para añadir vértices.</p>
+    </div>
+    
+    <div class="actions-panel" style="flex: 1;">
+      <div class="action-group">
+        <p class="warning-text">Arrastra los puntos rosas para ajustar la línea. Haz clic derecho en uno para borrarlo.</p>
+        <button class="btn-primary" style="background: #ec4899;" (click)="saveGeometry()">
+          💾 Guardar Geometría
+        </button>
+      </div>
+      <div class="cancel-wrapper">
+        <button class="btn-secondary" (click)="cancelGeometry()">✖ Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel de Append (Fase 2.1.a) -->
+  <div class="editor-sidebar append-mode" *ngIf="editorState === 'APPENDING'">
+    <div class="sidebar-header" style="background: #0d9488;">
+      <h3>Prolongar Recorrido</h3>
+      <p class="subtitle">Haz clic en el mapa para añadir puntos al final del track.</p>
+    </div>
+    
+    <div class="actions-panel" style="flex: 1;">
+      <div class="action-group">
+        <p class="append-info">
+          <strong>{{ appendPoints.length }}</strong> punto{{ appendPoints.length !== 1 ? 's' : '' }} añadido{{ appendPoints.length !== 1 ? 's' : '' }}
+        </p>
+        <p class="warning-text">Arrastra los puntos teal para ajustar. Clic derecho para eliminar uno.</p>
+        <button class="btn-primary btn-append" (click)="saveAppend()" [disabled]="appendPoints.length === 0">
+          💾 Guardar Prolongación
+        </button>
+      </div>
+      <div class="cancel-wrapper">
+        <button class="btn-secondary" (click)="cancelAppend()">✖ Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>

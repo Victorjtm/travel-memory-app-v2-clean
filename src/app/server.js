@@ -853,9 +853,98 @@ db.run('CREATE INDEX IF NOT EXISTS idx_log_migraciones_viaje_futuro ON log_migra
   else console.log('✅ Índice idx_log_migraciones_viaje_futuro creado');
 });
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 5. TABLA: track_edits (para ediciones no destructivas de GPX)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS track_edits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actividadId INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    startAnchor_json TEXT NOT NULL,
+    endAnchor_json TEXT NOT NULL,
+    config_json TEXT,
+    syntheticPoints_json TEXT,
+    injectedGeometry_json TEXT,
+    createdAt TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (actividadId) REFERENCES actividades(id) ON DELETE CASCADE
+  )
+`, (err) => {
+  if (err) {
+    console.error('❌ Error al crear tabla track_edits:', err.message);
+  } else {
+    console.log('✅ Tabla track_edits creada o ya existe');
+    
+    // Migración silenciosa por si se creó sin injectedGeometry_json
+    db.run("ALTER TABLE track_edits ADD COLUMN injectedGeometry_json TEXT", (alterErr) => {
+      // Ignoramos el error si ya existe
+    });
+    
+    // VALIDACIÓN ESTRICTA DE ESQUEMA PARA FASE 1
+    db.all("PRAGMA table_info(track_edits)", (err, columns) => {
+      if (err) {
+        console.error('❌ Error verificando esquema de track_edits:', err.message);
+        return;
+      }
+      
+      const expectedColumns = [
+        'id', 'actividadId', 'action', 'startAnchor_json', 
+        'endAnchor_json', 'config_json', 'syntheticPoints_json', 'injectedGeometry_json', 'createdAt'
+      ];
+      
+      const actualColumns = columns.map(c => c.name);
+      const missingColumns = expectedColumns.filter(c => !actualColumns.includes(c));
+      const extraColumns = actualColumns.filter(c => !expectedColumns.includes(c));
+      
+      if (missingColumns.length > 0 || extraColumns.length > 0) {
+        console.error('❌ DESVIACIÓN DE ESQUEMA DETECTADA EN track_edits!');
+        // Ignore injectedGeometry_json as extra column if it's missing just for now, or just log
+        if (missingColumns.length > 0) {
+          // If only injectedGeometry_json is missing, it's being added by the ALTER TABLE
+          if (missingColumns.length === 1 && missingColumns[0] === 'injectedGeometry_json') {
+            console.log('  - Columna injectedGeometry_json en proceso de migración automática.');
+          } else {
+            console.error('  - Columnas faltantes:', missingColumns.join(', '));
+          }
+        }
+        if (extraColumns.length > 0) console.error('  - Columnas sobrantes:', extraColumns.join(', '));
+      } else {
+        console.log('✅ Esquema de track_edits verificado correctamente (Fase 1).');
+      }
+    });
+  }
+});
+
 db.run('CREATE INDEX IF NOT EXISTS idx_log_migraciones_fecha ON log_migraciones(fecha_migracion)', (err) => {
   if (err) console.error('❌ Error creando índice idx_log_migraciones_fecha:', err.message);
   else console.log('✅ Índice idx_log_migraciones_fecha creado');
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 6. TABLA: segments (Fase 2.1.a — segmentos de track para append)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS segments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actividadId INTEGER NOT NULL,
+    source TEXT NOT NULL DEFAULT 'original',
+    segmentOrder INTEGER NOT NULL DEFAULT 0,
+    points_json TEXT NOT NULL,
+    createdAt TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (actividadId) REFERENCES actividades(id) ON DELETE CASCADE
+  )
+`, (err) => {
+  if (err) {
+    console.error('❌ Error al crear tabla segments:', err.message);
+  } else {
+    console.log('✅ Tabla segments creada o ya existe');
+    // Índice compuesto para consulta rápida por actividad + orden
+    db.run('CREATE INDEX IF NOT EXISTS idx_segments_actividad_order ON segments(actividadId, segmentOrder)', (idxErr) => {
+      if (idxErr) console.error('❌ Error creando índice idx_segments_actividad_order:', idxErr.message);
+    });
+  }
 });
 
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -8028,6 +8117,153 @@ app.post('/api/admin/migrar-viajes-ubicaciones', async (req, res) => {
       detalle: error.message
     });
   }
+});
+
+// ========================================
+// ENDPOINTS TRACK EDITS (EDICIÓN GPX NO DESTRUCTIVA)
+// ========================================
+
+// 1. Obtener edits de una actividad
+app.get('/api/actividades/:id/track-edits', (req, res) => {
+  const { id } = req.params;
+  const sql = 'SELECT * FROM track_edits WHERE actividadId = ? ORDER BY createdAt ASC';
+  db.all(sql, [id], (err, rows) => {
+    if (err) {
+      console.error('❌ Error obteniendo track_edits:', err.message);
+      return res.status(500).json({ error: 'Error obteniendo track_edits' });
+    }
+    
+    // Parse JSON fields
+    const parsedRows = rows.map(row => ({
+      ...row,
+      startAnchor: JSON.parse(row.startAnchor_json),
+      endAnchor: JSON.parse(row.endAnchor_json),
+      newMode: row.config_json ? JSON.parse(row.config_json).newMode : undefined,
+      estimatedSpeedKmh: row.config_json ? JSON.parse(row.config_json).estimatedSpeedKmh : undefined,
+      syntheticPoints: row.syntheticPoints_json ? JSON.parse(row.syntheticPoints_json) : undefined,
+      injectedGeometry: row.injectedGeometry_json ? JSON.parse(row.injectedGeometry_json) : undefined
+    }));
+    
+    res.json(parsedRows);
+  });
+});
+
+// 2. Crear un track edit
+app.post('/api/track-edits', (req, res) => {
+  const { actividadId, action, startAnchor, endAnchor, newMode, estimatedSpeedKmh, syntheticPoints, injectedGeometry } = req.body;
+  
+  if (!actividadId || !action || !startAnchor || !endAnchor) {
+    return res.status(400).json({ error: 'Faltan campos obligatorios' });
+  }
+
+  const startAnchor_json = JSON.stringify(startAnchor);
+  const endAnchor_json = JSON.stringify(endAnchor);
+  const config_json = JSON.stringify({ newMode, estimatedSpeedKmh });
+  const syntheticPoints_json = syntheticPoints ? JSON.stringify(syntheticPoints) : null;
+  const injectedGeometry_json = injectedGeometry ? JSON.stringify(injectedGeometry) : null;
+
+  const sql = `
+    INSERT INTO track_edits (actividadId, action, startAnchor_json, endAnchor_json, config_json, syntheticPoints_json, injectedGeometry_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `;
+  
+  db.run(sql, [actividadId, action, startAnchor_json, endAnchor_json, config_json, syntheticPoints_json, injectedGeometry_json], function(err) {
+    if (err) {
+      console.error('❌ Error guardando track_edit:', err.message);
+      return res.status(500).json({ error: 'Error guardando track_edit' });
+    }
+    res.json({ id: this.lastID, message: 'Track edit creado correctamente' });
+  });
+});
+
+// 3. Eliminar un track edit
+app.delete('/api/track-edits/:id', (req, res) => {
+  const { id } = req.params;
+  const sql = 'DELETE FROM track_edits WHERE id = ?';
+  db.run(sql, [id], function(err) {
+    if (err) {
+      console.error('❌ Error eliminando track_edit:', err.message);
+      return res.status(500).json({ error: 'Error eliminando track_edit' });
+    }
+    res.json({ success: true, deleted: this.changes });
+  });
+});
+
+// ========================================
+// ENDPOINTS SEGMENTS (Fase 2.1.a — Append al final)
+// ========================================
+
+// 1. Obtener segmentos de una actividad (ordenados por segmentOrder)
+app.get('/api/actividades/:id/segments', (req, res) => {
+  const { id } = req.params;
+  const sql = 'SELECT * FROM segments WHERE actividadId = ? ORDER BY segmentOrder ASC';
+  db.all(sql, [id], (err, rows) => {
+    if (err) {
+      console.error('❌ Error obteniendo segments:', err.message);
+      return res.status(500).json({ error: 'Error obteniendo segments' });
+    }
+
+    const parsedRows = (rows || []).map(row => ({
+      id: row.id,
+      actividadId: row.actividadId,
+      source: row.source,
+      segmentOrder: row.segmentOrder,
+      points: JSON.parse(row.points_json || '[]'),
+      createdAt: row.createdAt
+    }));
+
+    res.json(parsedRows);
+  });
+});
+
+// 2. Crear un segmento (append al final)
+app.post('/api/actividades/:id/segments', (req, res) => {
+  const actividadId = parseInt(req.params.id, 10);
+  const { source, points } = req.body;
+
+  if (!actividadId || !points || !Array.isArray(points) || points.length === 0) {
+    return res.status(400).json({ error: 'Faltan campos obligatorios (actividadId, points[])' });
+  }
+
+  const segSource = source || 'user-append';
+
+  // Obtener el mayor segmentOrder actual para esta actividad e incrementar
+  db.get('SELECT MAX(segmentOrder) as maxOrder FROM segments WHERE actividadId = ?', [actividadId], (err, row) => {
+    if (err) {
+      console.error('❌ Error consultando segmentOrder máximo:', err.message);
+      return res.status(500).json({ error: 'Error interno' });
+    }
+
+    const nextOrder = (row && row.maxOrder !== null) ? row.maxOrder + 1 : 0;
+    const points_json = JSON.stringify(points);
+
+    const sql = `
+      INSERT INTO segments (actividadId, source, segmentOrder, points_json)
+      VALUES (?, ?, ?, ?)
+    `;
+
+    db.run(sql, [actividadId, segSource, nextOrder, points_json], function(insertErr) {
+      if (insertErr) {
+        console.error('❌ Error guardando segment:', insertErr.message);
+        return res.status(500).json({ error: 'Error guardando segment' });
+      }
+      console.log(`✅ Segment creado: id=${this.lastID}, actividad=${actividadId}, order=${nextOrder}, source=${segSource}, puntos=${points.length}`);
+      res.json({ id: this.lastID, segmentOrder: nextOrder, message: 'Segment creado correctamente' });
+    });
+  });
+});
+
+// 3. Eliminar un segmento por ID
+app.delete('/api/segments/:id', (req, res) => {
+  const { id } = req.params;
+  const sql = 'DELETE FROM segments WHERE id = ?';
+  db.run(sql, [id], function(err) {
+    if (err) {
+      console.error('❌ Error eliminando segment:', err.message);
+      return res.status(500).json({ error: 'Error eliminando segment' });
+    }
+    res.json({ success: true, deleted: this.changes });
+  });
 });
 
 // ========================================

@@ -34,6 +34,9 @@
       <button class="btn-animacion" (click)="animarGPX(actividad.id)">
         <i class="fa fa-play-circle"></i> Animación
       </button>
+      <button class="btn-editor-track" (click)="abrirEditorTrack(actividad.id)">
+        <i class="fa fa-pencil"></i> Editar Recorrido
+      </button>
       <button class="btn-gpx" (click)="abrirConfiguracionVideo(actividad)" title="Exportar Vídeo GPX" [disabled]="generandoVideo">
         <i class="fa fa-video-camera"></i> Crear Vídeo
       </button>
@@ -527,4 +530,15 @@
 
     </div>
   </div>
+</div>
+
+<!-- ✏️ EDITOR DE RECORRIDO GPX (Fase 1) -->
+<div class="editor-overlay" *ngIf="mostrarEditorTrack">
+  <app-track-editor-map
+    [gpxPoints]="gpxPointsEditor"
+    [trackEdits]="editsEditor"
+    (editRequest)="onTrackEditRequest($event)"
+    (appendRequest)="onAppendRequest($event)"
+    (close)="cerrarEditorTrack()">
+  </app-track-editor-map>
 </div>
