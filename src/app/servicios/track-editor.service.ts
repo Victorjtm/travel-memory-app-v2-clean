@@ -43,7 +43,7 @@ export class TrackEditorService {
    * Obtiene los segmentos de una actividad, ordenados por segmentOrder.
    */
   getSegments(actividadId: number): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/api/actividades/${actividadId}/segments`);
+    return this.http.get<any[]>(`${this.baseUrl}/api/actividades/${actividadId}/segments?t=${Date.now()}`);
   }
 
   /**
@@ -443,6 +443,11 @@ export class TrackEditorService {
           const timeStr = p.time instanceof Date ? p.time.toISOString() : p.time;
           xml += `        <time>${timeStr}</time>\n`;
         }
+        if (p.mode) {
+          xml += `        <extensions>\n`;
+          xml += `          <transportMode>${p.mode}</transportMode>\n`;
+          xml += `        </extensions>\n`;
+        }
         xml += '      </trkpt>\n';
       }
       xml += '    </trkseg>\n';
@@ -515,38 +520,65 @@ export class TrackEditorService {
 
       if (!segPoints || segPoints.length === 0) continue;
 
+      // Firma de ancla: time + lat + lng
+      const isMatch = (p1: GpxPoint, p2: GpxPoint) => {
+        return p1.lat === p2.lat && 
+               p1.lng === p2.lng && 
+               p1.time?.getTime() === p2.time?.getTime();
+      };
+
       if (seg.source === 'original' || seg.source === 'user-append') {
         accumulatedPoints.push(...segPoints);
-      } else if (seg.source === 'user-insert') {
+      } else if (seg.source === 'user-insert' || seg.source === 'user-override') {
         const anchorA = segPoints[0];
         const anchorB = segPoints[segPoints.length - 1];
-
-        // Firma de ancla: time + lat + lng
-        const isMatch = (p1: GpxPoint, p2: GpxPoint) => {
-          return p1.lat === p2.lat && 
-                 p1.lng === p2.lng && 
-                 p1.time?.getTime() === p2.time?.getTime();
-        };
 
         const idxA = accumulatedPoints.findIndex(p => isMatch(p, anchorA));
         const idxB = accumulatedPoints.findIndex(p => isMatch(p, anchorB));
 
         if (idxA === -1 || idxB === -1) {
-          console.warn(`[TrackEditor] Anclas no encontradas para insert (A: ${idxA}, B: ${idxB}). Saltando segmento de insert.`);
+          console.warn(`[TrackEditor] Anclas no encontradas para ${seg.source} (A: ${idxA}, B: ${idxB}). Saltando.`);
           continue;
         }
 
-        if (idxB <= idxA) {
-          console.warn(`[TrackEditor] Índice de ancla B (${idxB}) <= A (${idxA}). Saltando segmento de insert.`);
+        let actualA = idxA;
+        let actualB = idxB;
+        if (idxB < idxA) {
+          actualA = idxB;
+          actualB = idxA;
+        }
+
+        // Fase 2.1.b / Fase 2.2: Splicing inyectando el tramo intermedio
+        accumulatedPoints.splice(actualA, (actualB - actualA) + 1, ...segPoints);
+        // user-override mantiene los timestamps originales.
+        if (seg.source === 'user-insert') {
+          this.interpolateTimeBetweenAnchors(anchorA, anchorB, segPoints);
+        }
+      } else if (seg.source === 'user-delete') {
+        const anchorA = segPoints[0];
+        const anchorB = segPoints[1];
+
+        const idxA = accumulatedPoints.findIndex(p => isMatch(p, anchorA));
+        const idxB = accumulatedPoints.findIndex(p => isMatch(p, anchorB));
+
+        if (idxA === -1 || idxB === -1) {
+          console.warn(`[TrackEditor] Anclas no encontradas para user-delete (A: ${idxA}, B: ${idxB}). Saltando.`);
           continue;
         }
 
-        // Interpolación temporal para los nuevos puntos intermedios
-        this.interpolateTimeBetweenAnchors(anchorA, anchorB, segPoints);
-
-        // Splice destructivo EN MEMORIA: reemplazamos todo lo que hay entre A y B inclusive, por el nuevo segmento
-        const insertLength = (idxB - idxA) + 1;
-        accumulatedPoints.splice(idxA, insertLength, ...segPoints);
+        // Fase 2.4: Delete
+        // Semántica: eliminamos estrictamente el contenido INTERMEDIO, conservando A y B
+        let actualA = idxA;
+        let actualB = idxB;
+        if (idxB < idxA) {
+          actualA = idxB;
+          actualB = idxA;
+        }
+        
+        const deleteLength = (actualB - actualA) - 1;
+        if (deleteLength > 0) {
+          accumulatedPoints.splice(actualA + 1, deleteLength);
+        }
       }
     }
 
