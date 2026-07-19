@@ -27,7 +27,14 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     injectedGeometry?: { lat: number, lng: number }[]
   }>();
   @Output() insertRequest = new EventEmitter<{
-    points: { lat: number; lng: number; time?: string }[]
+    points: { lat: number; lng: number; time?: string; mode?: string }[]
+  }>();
+  @Output() overrideModeRequest = new EventEmitter<{
+    points: { lat: number; lng: number; time?: string; mode?: string }[]
+  }>();
+  @Output() deleteRequest = new EventEmitter<{
+    anchorA: TrackAnchor;
+    anchorB: TrackAnchor;
   }>();
   @Output() appendRequest = new EventEmitter<{
     points: { lat: number; lng: number }[]
@@ -146,7 +153,6 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // el isDeleted se mantenga y prevalezca visualmente.
     const overrides = this.trackEdits.filter(e => e.action === 'override_mode');
     const deletes = this.trackEdits.filter(e => e.action === 'delete_segment');
-    const replaces = this.trackEdits.filter(e => e.action === 'replace_geometry');
 
     const applyEditToVisuals = (edit: TrackEdit) => {
       const startIdx = this.trackEditorService.resolveAnchor(edit.startAnchor, this.gpxPoints);
@@ -161,12 +167,6 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
              visualPoints[i].visualMode = edit.newMode;
           } else if (edit.action === 'delete_segment') {
              visualPoints[i].isDeleted = true;
-          } else if (edit.action === 'replace_geometry') {
-             // El tramo original lo marcamos como borrado (fantasma)
-             // Y luego dibujaremos la geometría inyectada por encima
-             if (i > min && i < max) {
-               visualPoints[i].isDeleted = true;
-             }
           }
         }
       }
@@ -174,7 +174,6 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     overrides.forEach(applyEditToVisuals);
     deletes.forEach(applyEditToVisuals);
-    replaces.forEach(applyEditToVisuals);
 
     // 3. Agrupar puntos contiguos que comparten el mismo estado visual
     let currentSegment: any[] = [];
@@ -223,32 +222,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
     flushSegment(); // Último segmento
 
-    // 4. Dibujar geometrías inyectadas (reemplazos)
-    replaces.forEach(edit => {
-      if (!edit.injectedGeometry || edit.injectedGeometry.length === 0) return;
-      
-      const startIdx = this.trackEditorService.resolveAnchor(edit.startAnchor, this.gpxPoints);
-      const endIdx = this.trackEditorService.resolveAnchor(edit.endAnchor, this.gpxPoints);
-      if (startIdx === -1 || endIdx === -1) return;
-
-      const min = Math.min(startIdx, endIdx);
-      const max = Math.max(startIdx, endIdx);
-      
-      const ptA = this.gpxPoints[min];
-      const ptB = this.gpxPoints[max];
-
-      const latlngs: L.LatLngExpression[] = [
-        [ptA.lat, ptA.lng],
-        ...edit.injectedGeometry.map(pt => [pt.lat, pt.lng] as L.LatLngExpression),
-        [ptB.lat, ptB.lng]
-      ];
-
-      L.polyline(latlngs, {
-        color: '#ec4899', // Fucsia para diferenciar el tramo sintético
-        weight: 5,
-        opacity: 1
-      }).addTo(this.polylinesGroup!);
-    });
+    // 4. Se ha eliminado el pintado manual heredado de replaces
   }
 
   private handleMapClick(e: L.LeafletMouseEvent) {
@@ -367,21 +341,36 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
   onDeleteSegment() {
     if (!this.anchorA || !this.anchorB) return;
-    this.editRequest.emit({
-      action: 'delete_segment',
-      startAnchor: this.anchorA,
-      endAnchor: this.anchorB
+    this.deleteRequest.emit({
+      anchorA: this.anchorA,
+      anchorB: this.anchorB
     });
+    this.cleanupGeometryMode(); // Limpiar la selección de la interfaz visual
   }
 
   onOverrideMode() {
     if (!this.anchorA || !this.anchorB) return;
-    this.editRequest.emit({
-      action: 'override_mode',
-      startAnchor: this.anchorA,
-      endAnchor: this.anchorB,
-      newMode: this.selectedMode
-    });
+
+    // Extraer los puntos del track original entre A y B inclusive
+    const startIndex = this.anchorA.index!;
+    const endIndex = this.anchorB.index!;
+    
+    if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex) {
+      console.warn('Índices inválidos para override mode');
+      return;
+    }
+
+    const overriddenPoints = this.gpxPoints.slice(startIndex, endIndex + 1).map(p => ({
+      lat: p.lat,
+      lng: p.lng,
+      time: p.time ? new Date(p.time).toISOString() : undefined,
+      mode: this.selectedMode
+    }));
+
+    this.overrideModeRequest.emit({ points: overriddenPoints });
+
+    // Limpiar selección
+    this.cleanupGeometryMode();
   }
 
   // --- MODO GEOMETRÍA SINTÉTICA ---
@@ -450,17 +439,18 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   saveGeometry() {
     if (!this.anchorA || !this.anchorB) return;
 
-    const injectedGeometry = this.syntheticVertices.map((m: L.Marker) => ({
+    const manualPoints = this.syntheticVertices.map((m: L.Marker) => ({
       lat: m.getLatLng().lat,
       lng: m.getLatLng().lng
     }));
 
-    this.editRequest.emit({
-      action: 'replace_geometry',
-      startAnchor: this.anchorA,
-      endAnchor: this.anchorB,
-      injectedGeometry: injectedGeometry
-    });
+    const pointsToInsert = [
+      { lat: this.anchorA.lat, lng: this.anchorA.lng, time: (this.anchorA as any).time?.toISOString?.() || (this.anchorA as any).time },
+      ...manualPoints,
+      { lat: this.anchorB.lat, lng: this.anchorB.lng, time: (this.anchorB as any).time?.toISOString?.() || (this.anchorB as any).time }
+    ];
+
+    this.insertRequest.emit({ points: pointsToInsert });
 
     this.cleanupGeometryMode();
   }
@@ -620,17 +610,19 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.insertLine.setLatLngs([ptA, ...intermediateLatLngs, ptB]);
   }
 
-  saveInsert() {
+  saveInsert(mode?: string) {
     if (!this.insertAnchorA || !this.insertAnchorB || this.insertPoints.length === 0) return;
 
+    const appliedMode = mode || this.selectedMode;
+
     const fullPointsArray = [
-      { lat: this.insertAnchorA.lat, lng: this.insertAnchorA.lng, time: this.insertAnchorA.time },
-      ...this.insertPoints,
-      { lat: this.insertAnchorB.lat, lng: this.insertAnchorB.lng, time: this.insertAnchorB.time }
+      { lat: this.insertAnchorA.lat, lng: this.insertAnchorA.lng, time: this.insertAnchorA.time, mode: appliedMode },
+      ...this.insertPoints.map(p => ({ ...p, mode: appliedMode })),
+      { lat: this.insertAnchorB.lat, lng: this.insertAnchorB.lng, time: this.insertAnchorB.time, mode: appliedMode }
     ];
 
     this.insertRequest.emit({
-      points: fullPointsArray
+      points: fullPointsArray as any
     });
 
     this.cleanupInsertMode();
@@ -707,20 +699,22 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
   /** El usuario acepta la ruta propuesta: delega al pipeline de insert */
   acceptAssistedRoute() {
-    if (!this.routingResult || !this.insertAnchorA || !this.insertAnchorB) return;
-    if (this.routingResult.points.length < 2) return;
+    if (!this.routingResult) return;
+    
+    const profile = this.routingProfile!;
 
-    // Extraer solo los puntos intermedios (sin A y B, que saveInsert ya los añade)
-    const intermediatePoints = this.routingResult.points.slice(1, -1);
-    this.insertPoints = intermediatePoints;
+    // Convertir el resultado a puntos de inserción internos
+    // Omitimos el primero y el último porque saveInsert() ya reinyecta insertAnchorA y insertAnchorB
+    const innerPoints = this.routingResult.points.slice(1, -1).map(p => ({
+      lat: p.lat,
+      lng: p.lng
+    }));
 
-    // Limpiar preview visual
+    this.insertPoints = innerPoints;
+    
+    // Pasamos el mode global al saveInsert
+    this.saveInsert(profile);
     this.clearRoutePreview();
-    this.routingResult = null;
-    this.routingError = null;
-
-    // Delegar al pipeline de insert existente
-    this.saveInsert();
   }
 
   /** El usuario rechaza la ruta propuesta: vuelve al Panel de Decisión */

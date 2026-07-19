@@ -212,64 +212,7 @@ export class TrackEditorService {
             }
           }
         }
-        else if (edit.action === 'replace_geometry') {
-          // Mantener min y max (A y B), sustituir todo lo de en medio
-          const ptA = currentPoints[min];
-          const ptB = currentPoints[max];
-          
-          const injected = edit.injectedGeometry || [];
-          const syntheticGpxPoints: GpxPoint[] = [];
 
-          if (injected.length > 0) {
-            // 1. Calcular distancia total de la nueva ruta
-            let totalDist = 0;
-            const dists: number[] = [];
-            let prevLat = ptA.lat;
-            let prevLng = ptA.lng;
-            
-            for (let i = 0; i < injected.length; i++) {
-              const d = this.getDistance(prevLat, prevLng, injected[i].lat, injected[i].lng);
-              totalDist += d;
-              dists.push(totalDist);
-              prevLat = injected[i].lat;
-              prevLng = injected[i].lng;
-            }
-            // Distancia del último vértice inyectado hasta B
-            totalDist += this.getDistance(prevLat, prevLng, ptB.lat, ptB.lng);
-
-            // 2. Parámetros de interpolación temporal y altimétrica
-            const tA = ptA.time ? ptA.time.getTime() : 0;
-            const tB = ptB.time ? ptB.time.getTime() : tA;
-            const deltaT = Math.max(0, tB - tA); // Protegemos monotonicidad
-
-            const zA = ptA.ele || 0;
-            const zB = ptB.ele || 0;
-            const deltaZ = zB - zA;
-
-            const baseMode = edit.newMode || ptA.mode || 'Urbana';
-
-            // 3. Inyectar vértices
-            for (let i = 0; i < injected.length; i++) {
-              const fraction = totalDist > 0 ? dists[i] / totalDist : 0;
-              syntheticGpxPoints.push({
-                lat: injected[i].lat,
-                lng: injected[i].lng,
-                ele: zA + (deltaZ * fraction),
-                time: tA > 0 ? new Date(tA + (deltaT * fraction)) : undefined,
-                mode: baseMode,
-                hfMode: baseMode,
-                distAcum: 0,
-                timeAcum: 0,
-                // Etiquetado sintético (Fase 2)
-                _isSynthetic: true,
-                _sourceEditId: edit.id
-              } as unknown as GpxPoint);
-            }
-          }
-
-          // Splice: Empezamos en min + 1, borramos los elementos intermedios, e insertamos los nuevos
-          currentPoints.splice(min + 1, max - min - 1, ...syntheticGpxPoints);
-        }
       }
     });
 
