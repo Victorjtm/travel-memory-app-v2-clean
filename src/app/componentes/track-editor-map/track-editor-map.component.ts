@@ -5,6 +5,7 @@ import * as L from 'leaflet';
 import { GpxPoint } from '../../servicios/gpx-animation.service';
 import { TrackAnchor, EditAction, TrackEdit } from '../../modelos/track-edit.model';
 import { TrackEditorService } from '../../servicios/track-editor.service';
+import { RoutingService, RoutingResult } from '../../servicios/routing.service';
 
 @Component({
   selector: 'app-track-editor-map',
@@ -43,7 +44,13 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   anchorA: TrackAnchor | null = null;
   anchorB: TrackAnchor | null = null;
 
-  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' | 'IDLE' | 'SELECTING_A' | 'SELECTING_B' | 'DRAWING_INSERT' | 'PREVIEW_INSERT' = 'SELECTING';
+  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' | 'IDLE' | 'SELECTING_A' | 'SELECTING_B' | 'SELECTING_MODE' | 'DRAWING_INSERT' | 'PREVIEW_INSERT' | 'CALCULATING_ROUTE' | 'PREVIEW_ROUTE' = 'SELECTING';
+
+  // --- Routing asistido (Fase 2.2) ---
+  routingProfile: string = 'driving';
+  routingResult: RoutingResult | null = null;
+  routingError: string | null = null;
+  private routePreviewLine: L.Polyline | null = null;
   
   private syntheticLine: L.Polyline | null = null;
   private syntheticVertices: L.Marker[] = [];
@@ -78,7 +85,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     original: '#4f46e5' // Indigo
   };
 
-  constructor(private trackEditorService: TrackEditorService) {}
+  constructor(private trackEditorService: TrackEditorService, private routingService: RoutingService) {}
 
   ngOnInit() {}
 
@@ -512,6 +519,11 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.insertVertices = [];
     this.insertPoints = [];
     
+    // Limpiar estado de routing asistido
+    this.clearRoutePreview();
+    this.routingResult = null;
+    this.routingError = null;
+
     if (this.polylinesGroup) {
       this.polylinesGroup.setStyle({ opacity: 1 });
     }
@@ -544,7 +556,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       color: 'white', fillColor: '#ef4444', fillOpacity: 1, radius: 8, weight: 2
     }).addTo(this.map).bindTooltip('Fin Insert (B)', { permanent: true, direction: 'right' }).openTooltip();
 
-    this.transitionToDrawingInsert();
+    this.editorState = 'SELECTING_MODE';
   }
 
   private transitionToDrawingInsert() {
@@ -623,6 +635,120 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     this.cleanupInsertMode();
     this.editorState = 'SELECTING';
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ROUTING ASISTIDO (Fase 2.2)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /** Perfiles de routing soportados por OSRM */
+  routingProfiles = [
+    { id: 'driving', name: 'Coche', icon: '🚗' },
+    { id: 'walking', name: 'A pie', icon: '🚶' },
+    { id: 'cycling', name: 'Bici', icon: '🚲' }
+  ];
+
+  /** Transición desde el Panel de Decisión al dibujo manual */
+  chooseManualDraw() {
+    this.transitionToDrawingInsert();
+  }
+
+  /** Solicita ruta asistida al servicio OSRM */
+  async requestAssistedRoute(profile: string) {
+    if (!this.insertAnchorA || !this.insertAnchorB) return;
+    if (this.routingService.isRequestInFlight) return; // mutex
+
+    this.routingProfile = profile;
+    this.routingError = null;
+    this.routingResult = null;
+    this.editorState = 'CALCULATING_ROUTE';
+
+    const result = await this.routingService.getRoute(
+      this.insertAnchorA.lat, this.insertAnchorA.lng,
+      this.insertAnchorB.lat, this.insertAnchorB.lng,
+      profile
+    );
+
+    if (!result || result.points.length < 2) {
+      this.routingError = 'No se pudo calcular la ruta. Puedes intentarlo de nuevo o dibujar manualmente.';
+      this.editorState = 'SELECTING_MODE';
+      return;
+    }
+
+    this.routingResult = result;
+    this.showRoutePreview(result.points);
+    this.editorState = 'PREVIEW_ROUTE';
+  }
+
+  /** Muestra la ruta propuesta en el mapa */
+  private showRoutePreview(points: { lat: number; lng: number }[]) {
+    if (!this.map) return;
+    this.clearRoutePreview();
+
+    if (this.polylinesGroup) {
+      this.polylinesGroup.setStyle({ opacity: 0.3 });
+    }
+
+    const latLngs = points.map(p => L.latLng(p.lat, p.lng));
+    this.routePreviewLine = L.polyline(latLngs, {
+      color: '#f59e0b', // Amarillo para distinguir de manual (violeta)
+      weight: 5,
+      opacity: 0.9
+    }).addTo(this.map);
+  }
+
+  /** Limpia la preview de ruta del mapa */
+  private clearRoutePreview() {
+    if (this.routePreviewLine) {
+      this.routePreviewLine.remove();
+      this.routePreviewLine = null;
+    }
+  }
+
+  /** El usuario acepta la ruta propuesta: delega al pipeline de insert */
+  acceptAssistedRoute() {
+    if (!this.routingResult || !this.insertAnchorA || !this.insertAnchorB) return;
+    if (this.routingResult.points.length < 2) return;
+
+    // Extraer solo los puntos intermedios (sin A y B, que saveInsert ya los añade)
+    const intermediatePoints = this.routingResult.points.slice(1, -1);
+    this.insertPoints = intermediatePoints;
+
+    // Limpiar preview visual
+    this.clearRoutePreview();
+    this.routingResult = null;
+    this.routingError = null;
+
+    // Delegar al pipeline de insert existente
+    this.saveInsert();
+  }
+
+  /** El usuario rechaza la ruta propuesta: vuelve al Panel de Decisión */
+  rejectAssistedRoute() {
+    this.clearRoutePreview();
+    this.routingResult = null;
+    this.routingError = null;
+
+    if (this.polylinesGroup) {
+      this.polylinesGroup.setStyle({ opacity: 1 });
+    }
+
+    this.editorState = 'SELECTING_MODE';
+  }
+
+  /** Formatea distancia para la UI */
+  formatDistance(meters: number): string {
+    return meters >= 1000
+      ? (meters / 1000).toFixed(1) + ' km'
+      : Math.round(meters) + ' m';
+  }
+
+  /** Formatea duración para la UI */
+  formatDuration(seconds: number): string {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}h ${m}min`;
+    return `${m} min`;
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

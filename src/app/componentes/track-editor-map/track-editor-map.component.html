@@ -147,14 +147,16 @@
     </div>
   </div>
 
-  <!-- Panel de Insert (Fase 2.1.b) -->
-  <div class="editor-sidebar insert-mode" *ngIf="editorState === 'SELECTING_A' || editorState === 'SELECTING_B' || editorState === 'DRAWING_INSERT' || editorState === 'PREVIEW_INSERT'">
+  <!-- Panel de Insert (Fase 2.1.b + 2.2 Routing Asistido) -->
+  <div class="editor-sidebar insert-mode" *ngIf="editorState === 'SELECTING_A' || editorState === 'SELECTING_B' || editorState === 'SELECTING_MODE' || editorState === 'DRAWING_INSERT' || editorState === 'PREVIEW_INSERT' || editorState === 'CALCULATING_ROUTE' || editorState === 'PREVIEW_ROUTE'">
     <div class="sidebar-header" style="background: #8b5cf6;">
       <h3>Insertar Tramo</h3>
       <p class="subtitle" *ngIf="editorState === 'SELECTING_A'">Paso 1: Haz clic en la ruta para seleccionar Inicio (A)</p>
       <p class="subtitle" *ngIf="editorState === 'SELECTING_B'">Paso 2: Haz clic en la ruta para seleccionar Fin (B)</p>
-      <p class="subtitle" *ngIf="editorState === 'DRAWING_INSERT'">Paso 3: Dibuja la nueva trayectoria</p>
-      <p class="subtitle" *ngIf="editorState === 'PREVIEW_INSERT'">Previsualización de Inserción</p>
+      <p class="subtitle" *ngIf="editorState === 'SELECTING_MODE'">Paso 3: Elige cómo crear el tramo</p>
+      <p class="subtitle" *ngIf="editorState === 'DRAWING_INSERT'">Dibuja la nueva trayectoria</p>
+      <p class="subtitle" *ngIf="editorState === 'CALCULATING_ROUTE'">Calculando ruta...</p>
+      <p class="subtitle" *ngIf="editorState === 'PREVIEW_ROUTE'">Ruta propuesta</p>
     </div>
 
     <div class="anchors-status" style="margin-top: 15px;">
@@ -178,7 +180,66 @@
         </div>
       </div>
     </div>
-    
+
+    <!-- ═══ PANEL DE DECISIÓN (Fase 2.2) ═══ -->
+    <div class="actions-panel" style="flex: 1;" *ngIf="editorState === 'SELECTING_MODE'">
+      <div class="action-group">
+        <h4 style="margin-bottom: 12px;">🗺️ Ruta Asistida</h4>
+        <p class="warning-text">Selecciona un perfil y se calculará la ruta automáticamente.</p>
+        <div class="vehicle-selector" style="margin-bottom: 12px;">
+          <label *ngFor="let rp of routingProfiles" class="vehicle-option" [class.selected]="routingProfile === rp.id">
+            <input type="radio" name="routingProfile" [value]="rp.id" [(ngModel)]="routingProfile">
+            <span class="icon">{{ rp.icon }}</span>
+            <span class="name">{{ rp.name }}</span>
+          </label>
+        </div>
+        <button class="btn-primary" style="background: #f59e0b; border-color: #f59e0b; color: #1a1a2e; font-weight: 700;" (click)="requestAssistedRoute(routingProfile)">
+          🧭 Calcular Ruta
+        </button>
+      </div>
+
+      <hr style="border-color: #e2e8f0; margin: 16px 0;">
+
+      <div class="action-group">
+        <h4 style="margin-bottom: 8px;">✏️ Dibujo Manual</h4>
+        <p class="warning-text">Dibuja el trazado punto a punto sobre el mapa.</p>
+        <button class="btn-action" style="background: #8b5cf6; color: white;" (click)="chooseManualDraw()">
+          🖊️ Dibujar Manualmente
+        </button>
+      </div>
+
+      <div *ngIf="routingError" class="routing-error" style="margin-top: 12px; padding: 10px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; color: #991b1b; font-size: 13px;">
+        ⚠️ {{ routingError }}
+      </div>
+    </div>
+
+    <!-- ═══ SPINNER DE CÁLCULO ═══ -->
+    <div class="actions-panel" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;" *ngIf="editorState === 'CALCULATING_ROUTE'">
+      <div style="width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: #8b5cf6; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+      <p style="margin-top: 16px; color: #64748b; font-size: 14px;">Consultando OSRM...</p>
+    </div>
+
+    <!-- ═══ PREVIEW DE RUTA ASISTIDA ═══ -->
+    <div class="actions-panel" style="flex: 1;" *ngIf="editorState === 'PREVIEW_ROUTE'">
+      <div class="action-group">
+        <div *ngIf="routingResult" style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+          <p style="margin: 0 0 6px; font-weight: 600; color: #166534;">Ruta calculada</p>
+          <p style="margin: 0; font-size: 13px; color: #15803d;">
+            📏 {{ formatDistance(routingResult.distanceMeters) }} &nbsp;·&nbsp;
+            ⏱️ {{ formatDuration(routingResult.durationSeconds) }} &nbsp;·&nbsp;
+            📍 {{ routingResult.points.length }} puntos
+          </p>
+        </div>
+        <button class="btn-primary" style="background: #22c55e; border-color: #22c55e; color: white; font-weight: 700; width: 100%; margin-bottom: 8px;" (click)="acceptAssistedRoute()">
+          ✅ Guardar Ruta Propuesta
+        </button>
+        <button class="btn-secondary" style="width: 100%;" (click)="rejectAssistedRoute()">
+          ↩️ Descartar y Volver
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ PANEL DE DIBUJO MANUAL ═══ -->
     <div class="actions-panel" style="flex: 1;" *ngIf="editorState === 'DRAWING_INSERT' || editorState === 'PREVIEW_INSERT'">
       <div class="action-group">
         <p class="append-info">
@@ -186,10 +247,11 @@
         </p>
         <p class="warning-text" *ngIf="editorState === 'DRAWING_INSERT'">Haz clic en el mapa para añadir vértices. Arrastra los puntos violeta para ajustar.</p>
         <button class="btn-primary" style="background: #8b5cf6; border-color: #8b5cf6; color: white;" (click)="saveInsert()" *ngIf="editorState === 'DRAWING_INSERT'" [disabled]="insertPoints.length === 0">
-          Guardar Tramo
+          💾 Guardar Tramo
         </button>
       </div>
     </div>
+
     <div class="cancel-wrapper" style="margin-top: auto; padding: 15px;">
       <button class="btn-secondary" (click)="cancelInsertMode()">✖ Cancelar</button>
     </div>
