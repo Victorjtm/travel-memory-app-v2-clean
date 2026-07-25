@@ -848,7 +848,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.transitionToDrawingInsert();
   }
 
-  /** Solicita ruta asistida al servicio OSRM o genera línea recta si no es OSRM */
+  /** Solicita ruta asistida al servicio (OSRM, SeaRoute, etc.) */
   async requestAssistedRoute(profile: string) {
     if (!this.insertAnchorA || !this.insertAnchorB) return;
     if (this.routingService.isRequestInFlight) return; // mutex
@@ -858,29 +858,6 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.routingError = null;
     this.routingResult = null;
     this.editorState = 'CALCULATING_ROUTE';
-
-    const profileConfig = this.routingProfiles.find(p => p.id === profile);
-    
-    if (profileConfig && !profileConfig.isOsrm) {
-      // Modos sin soporte OSRM (tren, barco, avión) se trazan como línea recta directa
-      // usando la fórmula de distancia Haversine del TrackEditorService
-      const dist = this.trackEditorService.getDistance(
-        this.insertAnchorA.lat, this.insertAnchorA.lng, 
-        this.insertAnchorB.lat, this.insertAnchorB.lng
-      );
-      this.routingResult = {
-        points: [
-          { lat: this.insertAnchorA.lat, lng: this.insertAnchorA.lng },
-          { lat: this.insertAnchorB.lat, lng: this.insertAnchorB.lng }
-        ],
-        distanceMeters: dist,
-        durationSeconds: 0,
-        profile: profile
-      };
-      this.showRoutePreview(this.routingResult.points);
-      this.editorState = 'PREVIEW_ROUTE';
-      return;
-    }
 
     const result = await this.routingService.getRoute(
       this.insertAnchorA.lat, this.insertAnchorA.lng,
