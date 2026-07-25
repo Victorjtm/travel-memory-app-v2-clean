@@ -617,7 +617,7 @@ export class ActividadesItinerariosComponent implements OnInit {
           { attribution: 'Tiles &copy; Esri', maxZoom: 18 }
         );
         const streets = L.tileLayer(
-          'https://{s}.tile.openstreetmap.org/{z}/{y}/{x}.png',
+          'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
           { attribution: '&copy; OpenStreetMap', maxZoom: 19 }
         );
         
