@@ -1950,3 +1950,11 @@ textarea:focus {
   z-index: 9999;
   background: white;
 }
+::ng-deep .capas-medio-izq {
+  position: fixed !important;
+  top: 50% !important;
+  left: 10px !important;
+  transform: translateY(-50%) !important;
+  z-index: 1000 !important;
+  margin: 0 !important;
+}

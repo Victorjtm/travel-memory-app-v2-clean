@@ -1,4 +1,4 @@
-﻿import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
@@ -611,11 +611,30 @@ export class ActividadesItinerariosComponent implements OnInit {
           preferCanvas: true
         }).setView([this.coordenadasGPX[0][0], this.coordenadasGPX[0][1]], 13);
 
-        // --- CAPA DE SATÃ‰LITE (ESRI) ---
-        L.tileLayer(
+        // --- CAPAS BASE (SATÉLITE Y MAPA) ---
+        const satellite = L.tileLayer(
           'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
           { attribution: 'Tiles &copy; Esri', maxZoom: 18 }
+        );
+        const streets = L.tileLayer(
+          'https://{s}.tile.openstreetmap.org/{z}/{y}/{x}.png',
+          { attribution: '&copy; OpenStreetMap', maxZoom: 19 }
+        );
+        
+        satellite.addTo(this.mapaGPX); // Capa por defecto
+
+        // Control de capas
+        const layersControl = L.control.layers(
+          { 'Satélite': satellite, 'Mapa': streets },
+          {},
+          { position: 'topleft' }
         ).addTo(this.mapaGPX);
+
+        // Mover el control de capas a la mitad izquierda de la pantalla
+        const layersContainer = layersControl.getContainer();
+        if (layersContainer) {
+          layersContainer.classList.add('capas-medio-izq');
+        }
 
         // Dibujar ruta con polyline roja robusta
         L.polyline(this.coordenadasGPX, {
