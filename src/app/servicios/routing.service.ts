@@ -22,7 +22,7 @@ export class RoutingService {
 
   private readonly OSRM_BASE = 'https://router.project-osrm.org/route/v1';
 
-  private readonly SUPPORTED_PROFILES = ['driving', 'walking', 'cycling'];
+  private readonly SUPPORTED_PROFILES = ['driving', 'walking', 'cycling', 'bus'];
 
   /** Mutex: true mientras hay una petición en vuelo. */
   private _requestInFlight = false;
@@ -59,7 +59,8 @@ export class RoutingService {
 
     // ── Construir URL ─────────────────────────────────────────
     // OSRM espera coordenadas en formato lng,lat (GeoJSON order).
-    const url = `${this.OSRM_BASE}/${profile}/${startLng},${startLat};${endLng},${endLat}`
+    const osrmProfile = profile === 'bus' ? 'driving' : profile;
+    const url = `${this.OSRM_BASE}/${osrmProfile}/${startLng},${startLat};${endLng},${endLat}`
       + `?overview=full&geometries=geojson`;
 
     this._requestInFlight = true;

@@ -832,11 +832,15 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   // ROUTING ASISTIDO (Fase 2.2)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  /** Perfiles de routing soportados por OSRM */
+  /** Perfiles de routing soportados (OSRM o Directos) */
   routingProfiles = [
-    { id: 'driving', name: 'Coche', icon: '🚗' },
-    { id: 'walking', name: 'A pie', icon: '🚶' },
-    { id: 'cycling', name: 'Bici', icon: '🚲' }
+    { id: 'driving', name: 'Coche', icon: '🚗', isOsrm: true },
+    { id: 'walking', name: 'A pie', icon: '🚶', isOsrm: true },
+    { id: 'cycling', name: 'Bici', icon: '🚲', isOsrm: true },
+    { id: 'bus', name: 'Autobús', icon: '🚌', isOsrm: true },
+    { id: 'train', name: 'Tren', icon: '🚂', isOsrm: false },
+    { id: 'boat', name: 'Barco', icon: '🚢', isOsrm: false },
+    { id: 'plane', name: 'Avión', icon: '✈️', isOsrm: false }
   ];
 
   /** Transición desde el Panel de Decisión al dibujo manual */
@@ -844,15 +848,39 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.transitionToDrawingInsert();
   }
 
-  /** Solicita ruta asistida al servicio OSRM */
+  /** Solicita ruta asistida al servicio OSRM o genera línea recta si no es OSRM */
   async requestAssistedRoute(profile: string) {
     if (!this.insertAnchorA || !this.insertAnchorB) return;
     if (this.routingService.isRequestInFlight) return; // mutex
 
     this.routingProfile = profile;
+    this.selectedMode = profile; // Asegurar que el modo coincide para el guardado
     this.routingError = null;
     this.routingResult = null;
     this.editorState = 'CALCULATING_ROUTE';
+
+    const profileConfig = this.routingProfiles.find(p => p.id === profile);
+    
+    if (profileConfig && !profileConfig.isOsrm) {
+      // Modos sin soporte OSRM (tren, barco, avión) se trazan como línea recta directa
+      // usando la fórmula de distancia Haversine del TrackEditorService
+      const dist = this.trackEditorService.getDistance(
+        this.insertAnchorA.lat, this.insertAnchorA.lng, 
+        this.insertAnchorB.lat, this.insertAnchorB.lng
+      );
+      this.routingResult = {
+        points: [
+          { lat: this.insertAnchorA.lat, lng: this.insertAnchorA.lng },
+          { lat: this.insertAnchorB.lat, lng: this.insertAnchorB.lng }
+        ],
+        distanceMeters: dist,
+        durationSeconds: 0,
+        profile: profile
+      };
+      this.showRoutePreview(this.routingResult.points);
+      this.editorState = 'PREVIEW_ROUTE';
+      return;
+    }
 
     const result = await this.routingService.getRoute(
       this.insertAnchorA.lat, this.insertAnchorA.lng,
