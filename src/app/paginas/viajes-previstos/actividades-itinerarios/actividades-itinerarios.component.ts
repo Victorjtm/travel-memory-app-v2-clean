@@ -47,6 +47,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
   urlMapaDataURL: string | null = null;
   fotosActividad: any[] = [];
+  gruposEditor: any[] = []; // NUEVO: Grupos de medios para pasar al editor
   estadisticasActuales: any = null;
   actividadSeleccionada: number | null = null;
 
@@ -827,6 +828,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     });
 
     const grupos = this.agruparArchivosPorUbicacion(archivosConCoordenadas);
+    this.gruposEditor = grupos; // Almacenar para pasar al editor
 
     // Ã¢Å“Â¨ FASE 2: Sincronizar array lineal con los grupos del mapa
     this.fotosActividad = [];
@@ -909,7 +911,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
       const marker = L.marker([lat, lng], { icon: grupoIcon }).addTo(this.mapaGPX!);
       
-      // Ã¢Å“â€¦ NUEVO: Guardar referencia del marcador en cada archivo para sincronizaciÃƒÂ³n
+      // Ã¢Å“â€¦ NUEVO: Guardar referencia del marcador en cada archivo para sincronizaciÃ³n
       archivos.forEach(a => {
         a.archivo.marcadorRef = marker;
       });
@@ -1002,7 +1004,7 @@ export class ActividadesItinerariosComponent implements OnInit {
                   el.innerHTML = `<i class="fa fa-map-marker"></i> ${direccion}`;
                 }
               }
-            }).catch(err => console.warn('Ã¢Å¡Â Ã¯Â¸Â Error obteniendo direccion para popup', err));
+            }).catch(err => console.warn('Ã¢Å¡Â Ã¯Â¸Â  Error obteniendo direccion para popup', err));
           }
         });
       });
@@ -1013,13 +1015,13 @@ export class ActividadesItinerariosComponent implements OnInit {
 
   // Ã¢Å“Â¨ NUEVO: Abrir modal con foto o video
   private abrirModalMultimedia(rutaArchivo: string, nombre: string, tipo: string): void {
-    console.log('Ã°Å¸â€Â Abriendo archivo:', nombre, 'Tipo:', tipo);
-    console.log('Ã°Å¸â€œÂ rutaArchivo:', rutaArchivo);
+    console.log('Ã°Å¸â€ Â  Abriendo archivo:', nombre, 'Tipo:', tipo);
+    console.log('Ã°Å¸â€œÂ  rutaArchivo:', rutaArchivo);
 
     const backendUrl = environment.apiUrl;
     const urlArchivo = `${backendUrl}/uploads/${rutaArchivo}`;
 
-    console.log('Ã°Å¸â€“Â¼Ã¯Â¸Â URL final del archivo:', urlArchivo);
+    console.log('Ã°Å¸â€“Â¼Ã¯Â¸Â  URL final del archivo:', urlArchivo);
 
     const modal = document.createElement('div');
     modal.className = 'modal-foto-individual';
@@ -1080,7 +1082,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       `;
 
       imagen.onerror = () => {
-        console.error('Ã¢ÂÅ’ Error cargando imagen desde:', urlArchivo);
+        console.error('Ã¢Â Å’ Error cargando imagen desde:', urlArchivo);
         imagen.alt = 'Error al cargar la imagen';
         imagen.style.background = '#ff6b6b';
       };
@@ -1101,7 +1103,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       `;
 
       video.onerror = () => {
-        console.error('Ã¢ÂÅ’ Error cargando video desde:', urlArchivo);
+        console.error('Ã¢Â Å’ Error cargando video desde:', urlArchivo);
         video.style.background = '#ff6b6b';
       };
 
@@ -1139,7 +1141,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     // Ã¢Å“Â¨ NUEVO BOTÃƒâ€œN: VER EN LISTA DE ARCHIVOS
     const btnVerArchivo = document.createElement('button');
-    btnVerArchivo.textContent = 'Ã°Å¸â€œÂ Ver en Archivos';
+    btnVerArchivo.textContent = 'Ã°Å¸â€œÂ  Ver en Archivos';
     btnVerArchivo.style.cssText = `
     background: #2196F3;
     color: white;
@@ -1152,7 +1154,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   `;
 
     btnVerArchivo.addEventListener('click', () => {
-      console.log('Ã°Å¸â€â€” Navegando a archivos...');
+      console.log('Ã°Å¸â€ â€” Navegando a archivos...');
       modal.remove();
 
       // Navegar a la pÃƒÂ¡gina de archivos
@@ -1188,7 +1190,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
   // Ã¢Å“â€¦ NUEVO: Abrir modal con grupo de archivos (carrusel)
   private abrirModalGrupo(archivos: any[], numeroSecuencial: number): void {
-    console.log(`Ã°Å¸â€Â Abriendo grupo #${numeroSecuencial} con ${archivos.length} archivo(s)`);
+    console.log(`Ã°Å¸â€ Â  Abriendo grupo #${numeroSecuencial} con ${archivos.length} archivo(s)`);
 
     const backendUrl = environment.apiUrl;
     let indiceActual = 0;
@@ -1283,7 +1285,7 @@ export class ActividadesItinerariosComponent implements OnInit {
             font-size: 14px;
             ${indiceActual === 0 ? 'opacity: 0.5; cursor: not-allowed;' : ''}
           " ${indiceActual === 0 ? 'disabled' : ''}>
-            Ã¢â€ Â Anterior
+            Ã¢â€ Â  Anterior
           </button>
           
           <span style="color: #666; font-size: 14px; white-space: nowrap;">
@@ -1356,7 +1358,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
   // Ver Mapa PNG - Muestra en modal
   verMapa(actividadId: number): void {
-    console.log('Ã°Å¸â€”ÂºÃ¯Â¸Â Obteniendo mapa para actividad:', actividadId);
+    console.log('Ã°Å¸â€”ÂºÃ¯Â¸Â  Obteniendo mapa para actividad:', actividadId);
     this.actividadSeleccionada = actividadId;
     this.actividadService.obtenerMapa(actividadId).subscribe({
       next: (blob) => {
@@ -1368,7 +1370,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         };
         reader.readAsDataURL(blob);
       },
-      error: err => console.error('Ã¢ÂÅ’ Error obteniendo mapa:', err)
+      error: err => console.error('Ã¢Â Å’ Error obteniendo mapa:', err)
     });
   }
 
@@ -1382,7 +1384,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         this.mostrarModalEstadisticas = true;
         console.log('Ã¢Å“â€¦ EstadÃƒÂ­sticas cargadas:', datos);
       },
-      error: err => console.error('Ã¢ÂÅ’ Error obteniendo estadÃƒÂ­sticas:', err)
+      error: err => console.error('Ã¢Â Å’ Error obteniendo estadÃƒÂ­sticas:', err)
     });
   }
 
@@ -1408,7 +1410,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   // Ã¢Å“â€¦ NUEVO: Toggle panel de estadÃƒÂ­sticas
   toggleSidePanel(): void {
     this.showSidePanel = !this.showSidePanel;
-    console.log(`Ã°Å¸â€”ÂºÃ¯Â¸Â Panel lateral: ${this.showSidePanel ? 'VISIBLE' : 'OCULTO'}`);
+    console.log(`Ã°Å¸â€”ÂºÃ¯Â¸Â  Panel lateral: ${this.showSidePanel ? 'VISIBLE' : 'OCULTO'}`);
     
     // Invalida el tamaÃƒÂ±o del mapa poco despuÃƒÂ©s para que se adapte al contenedor redimensionado
     if (this.mapaGPX) {
@@ -1421,13 +1423,13 @@ export class ActividadesItinerariosComponent implements OnInit {
   // Ã¢Å“â€¦ NUEVO: Expandir/contraer panel
   togglePanelExpanded(): void {
     this.panelExpanded = !this.panelExpanded;
-    console.log(`Ã°Å¸â€œÅ  Panel: ${this.panelExpanded ? 'EXPANDIDO' : 'CONTRAÃƒÂDO'}`);
+    console.log(`Ã°Å¸â€œÅ  Panel: ${this.panelExpanded ? 'EXPANDIDO' : 'CONTRAÃƒÂ DO'}`);
   }
 
   // Ã¢Å“â€¦ NUEVO: Ajustar vista del mapa al track completo
   fitMapToTrack(): void {
     if (!this.mapaGPX || this.coordenadasGPX.length === 0) {
-      console.warn('Ã¢Å¡Â Ã¯Â¸Â No hay mapa o coordenadas disponibles');
+      console.warn('Ã¢Å¡Â Ã¯Â¸Â  No hay mapa o coordenadas disponibles');
       return;
     }
 
@@ -1442,11 +1444,11 @@ export class ActividadesItinerariosComponent implements OnInit {
   getTransportEmoji(iconName: string): string {
     const emojiMap: { [key: string]: string } = {
       'walk': 'Ã°Å¸Å¡Â¶',
-      'fitness': 'Ã°Å¸ÂÆ’',
+      'fitness': 'Ã°Å¸Â Æ’',
       'bicycle': 'Ã°Å¸Å¡Â´',
       'car': 'Ã°Å¸Å¡â€”'
     };
-    return emojiMap[iconName] || 'Ã°Å¸â€œÂ';
+    return emojiMap[iconName] || 'Ã°Å¸â€œÂ ';
   }
 
   // Ã¢Å“â€¦ NUEVO: Formatear distancia
@@ -1692,12 +1694,12 @@ export class ActividadesItinerariosComponent implements OnInit {
     }
   }
 
-  // Ã¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€Â
-  // Ã¢Å“ÂÃ¯Â¸Â EDITOR DE RECORRIDO GPX (Fase 1 y 2.1)
-  // Ã¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€Â
+  // Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â 
+  // Ã¢Å“Â Ã¯Â¸Â  EDITOR DE RECORRIDO GPX (Fase 1 y 2.1)
+  // Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â Ã¢â€ Â 
 
   abrirEditorTrack(actividadId: number): void {
-    console.log('Ã¢Å“ÂÃ¯Â¸Â Abriendo editor de recorrido para actividad:', actividadId);
+    console.log('✏️ Abriendo editor de recorrido para actividad:', actividadId);
     this.actividadEditorId = actividadId;
 
     // 1. Cargar edits existentes

@@ -19,6 +19,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
   @Input() gpxPoints: GpxPoint[] = [];
   @Input() trackEdits: TrackEdit[] = [];
+  @Input() mediaGroups: { lat: number, lng: number }[] = [];
   @Output() editRequest = new EventEmitter<{
     action: EditAction, 
     startAnchor: TrackAnchor, 
@@ -280,6 +281,24 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     });
     const lastPoint = this.gpxPoints[this.gpxPoints.length - 1];
     L.marker([lastPoint.lat, lastPoint.lng], { icon: finIcon, interactive: false }).addTo(this.polylinesGroup!);
+
+    // Marcadores de Fotos (solo visuales, idénticos a ver-gpx)
+    if (this.mediaGroups && this.mediaGroups.length > 0) {
+      this.mediaGroups.forEach((grupo, index) => {
+        const numeroSecuencial = index + 1;
+        const grupoIcon = L.divIcon({
+          className: 'custom-media-marker-editor',
+          html: `
+            <div style="background-color: #2196F3; color: white; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5); font-family: sans-serif; font-size: 12px; pointer-events: none;">
+              #${numeroSecuencial}
+            </div>
+          `,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13]
+        });
+        L.marker([grupo.lat, grupo.lng], { icon: grupoIcon, interactive: false, keyboard: false }).addTo(this.polylinesGroup!);
+      });
+    }
 
     // 4. Se ha eliminado el pintado manual heredado de replaces
   }
