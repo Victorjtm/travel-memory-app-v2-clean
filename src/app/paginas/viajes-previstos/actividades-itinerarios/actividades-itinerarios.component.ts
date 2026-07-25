@@ -915,9 +915,67 @@ export class ActividadesItinerariosComponent implements OnInit {
       });
 
       // Crear el contenido del Popup
-      const popupContent = this.crearPopupContent(archivos, numeroSecuencial, cantidadArchivos, tieneMultiples);
+      const popupHTML = this.crearPopupContent(archivos, numeroSecuencial, cantidadArchivos, tieneMultiples);
+      const popupDiv = document.createElement('div');
+      popupDiv.innerHTML = popupHTML;
 
-      marker.bindPopup(popupContent, {
+      // Lógica de Zoom (redimensión) con rueda del ratón (Requiere clic previo para activar)
+      const customPopup = popupDiv.querySelector('.photo-popup-custom') as HTMLElement;
+      if (customPopup) {
+        let currentWidth = parseInt(customPopup.style.width || '320', 10);
+        let isFocused = false;
+
+        // Detectar clic en el fondo para activar el modo zoom
+        customPopup.addEventListener('click', (event: MouseEvent) => {
+          const target = event.target as HTMLElement;
+          // Si no han hecho clic en una miniatura ni en la cabecera
+          if (!target.closest('.clickable-media') && !target.closest('.leaflet-popup-close-button')) {
+            isFocused = true;
+            // Feedback visual de que el popup está activo
+            customPopup.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.5)';
+            customPopup.style.transition = 'box-shadow 0.3s ease';
+          }
+        });
+
+        customPopup.addEventListener('wheel', (event: WheelEvent) => {
+          // Solo hacemos zoom si el popup ha sido "enfocado" y no presionan Shift
+          if (isFocused && !event.shiftKey) {
+            event.preventDefault(); // Evitar scroll vertical
+            const zoomIn = event.deltaY < 0;
+            currentWidth += zoomIn ? 60 : -60;
+            currentWidth = Math.max(250, Math.min(800, currentWidth));
+            customPopup.style.width = currentWidth + 'px';
+            
+            // También forzamos el ancho del contenedor padre de Leaflet
+            const leafletContent = customPopup.closest('.leaflet-popup-content') as HTMLElement;
+            if (leafletContent) {
+              leafletContent.style.width = currentWidth + 'px';
+            }
+            
+            // Forzar a Leaflet a recalcular la posición
+            const popup = marker.getPopup();
+            if (popup) setTimeout(() => popup.update(), 10);
+          }
+        }, { passive: false });
+      }
+
+      const clickables = popupDiv.querySelectorAll('.clickable-media');
+      clickables.forEach((el: any) => {
+        el.addEventListener('click', (event: MouseEvent) => {
+          const index = parseInt(el.getAttribute('data-index') || '0', 10);
+          
+          if (event.shiftKey || !tieneMultiples) {
+            // Si presionan SHIFT o solo hay una foto, abrir directamente
+            const item = archivos[index].archivo;
+            this.ngZone.run(() => this.abrirModalMultimedia(item.rutaArchivo, item.nombreArchivo, item.tipo));
+          } else {
+            // Comportamiento normal: modal de grupo
+            this.ngZone.run(() => this.abrirModalGrupo(archivos, numeroSecuencial));
+          }
+        });
+      });
+
+      marker.bindPopup(popupDiv, {
           autoPan: false,
           className: 'photo-popup-leaflet',
           minWidth: 250,
@@ -928,61 +986,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       (marker as any).archivosGrupo = archivos;
       (marker as any).numeroSecuencial = numeroSecuencial;
 
-      // Ã¢Å“Â¨ NUEVO: InteracciÃƒÂ³n de Dos Pasos (Bloque D)
-      // Eliminamos el evento click sobre el marcador que forzaba la apertura directa del visor.
-      // Ahora Leaflet abrirÃƒÂ¡ naturalmente el popup enriquecido.
-      // Escuchamos cuando el popup se abre para inyectar el evento click en la miniatura.
       marker.on('popupopen', (e: any) => {
-        const popupNode = e.popup._contentNode;
-        if (!popupNode) return;
-        
-        // Lógica de Zoom (redimensión) con rueda del ratón (Requiere clic previo para activar)
-        const customPopup = popupNode.querySelector('.photo-popup-custom');
-        if (customPopup) {
-          let currentWidth = parseInt(customPopup.style.width || '320', 10);
-          let isFocused = false;
-
-          // Detectar clic en el fondo para activar el modo zoom
-          customPopup.addEventListener('click', (event: MouseEvent) => {
-            const target = event.target as HTMLElement;
-            // Si no han hecho clic en una miniatura ni en la cabecera
-            if (!target.closest('.clickable-media') && !target.closest('.leaflet-popup-close-button')) {
-              isFocused = true;
-              // Feedback visual de que el popup está activo
-              customPopup.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.5)';
-              customPopup.style.transition = 'box-shadow 0.3s ease';
-            }
-          });
-
-          customPopup.addEventListener('wheel', (event: WheelEvent) => {
-            // Solo hacemos zoom si el popup ha sido "enfocado" y no presionan Shift
-            if (isFocused && !event.shiftKey) {
-              event.preventDefault(); // Evitar scroll vertical
-              const zoomIn = event.deltaY < 0;
-              currentWidth += zoomIn ? 60 : -60;
-              currentWidth = Math.max(250, Math.min(800, currentWidth));
-              customPopup.style.width = currentWidth + 'px';
-              
-              // Forzar a Leaflet a recalcular la posición
-              setTimeout(() => e.popup.update(), 10);
-            }
-          }, { passive: false });
-        }
-
-        const clickables = popupNode.querySelectorAll('.clickable-media');
-        clickables.forEach((el: any) => {
-          el.addEventListener('click', () => {
-            const index = parseInt(el.getAttribute('data-index') || '0', 10);
-            if (tieneMultiples) {
-              // Si hay varios, pasamos al modal de grupo
-              this.ngZone.run(() => this.abrirModalGrupo(archivos, numeroSecuencial));
-            } else {
-              // Si es individual, pasamos al visor individual avanzado
-              const item = archivos[index].archivo;
-              this.ngZone.run(() => this.abrirModalMultimedia(item.rutaArchivo, item.nombreArchivo, item.tipo));
-            }
-          });
-        });
 
         // Ã¢Å“Â¨ NUEVO: Disparar la geocodificaciÃƒÂ³n inversa de Nominatim bajo demanda
         archivos.forEach((item: any) => {
