@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
+﻿import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
@@ -38,37 +38,37 @@ export class ActividadesItinerariosComponent implements OnInit {
   viajePrevistoId!: number;
   itinerarioId!: number;
 
-  // âœ¨ PROPIEDADES PARA MODALES
+  // Ã¢Å“Â¨ PROPIEDADES PARA MODALES
   mostrarModalGPX = false;
   mostrarModalMapa = false;
   mostrarModalEstadisticas = false;
   mostrarModalGPXMapa = false;
-  mostrarReproductorAnimado = false; // âœ¨ NUEVA PROPIEDAD
+  mostrarReproductorAnimado = false; // Ã¢Å“Â¨ NUEVA PROPIEDAD
 
   urlMapaDataURL: string | null = null;
   fotosActividad: any[] = [];
   estadisticasActuales: any = null;
   actividadSeleccionada: number | null = null;
 
-  // âœ¨ ESTADOS PARA CONFIGURACION DE VIDEO GPX
+  // Ã¢Å“Â¨ ESTADOS PARA CONFIGURACION DE VIDEO GPX
   generandoVideo = false;
   progresoVideo: ProgresoVideo | null = null;
   mostrarConfiguracionVideo = false;
   configuracionVideo: ConfiguracionVideo | null = null;
   actividadVideoSeleccionada: any = null;
 
-  // âœ¨ PROPIEDADES PARA MAPA GPX
+  // Ã¢Å“Â¨ PROPIEDADES PARA MAPA GPX
   mapaGPX: any = null;
   coordenadasGPX: any[] = [];
 
-  // âœ… NUEVAS PROPIEDADES: Panel de estadÃ­sticas
+  // Ã¢Å“â€¦ NUEVAS PROPIEDADES: Panel de estadÃƒÂ­sticas
   showSidePanel = true;
   activeSideTab: 'fotos' | 'estadisticas' = 'fotos';
   panelExpanded = false;
   trackSegments: any[] = [];
   turningPoint: any = null;
 
-  // âœ… NUEVAS PROPIEDAD: EstadÃ­sticas completas para el panel
+  // Ã¢Å“â€¦ NUEVAS PROPIEDAD: EstadÃƒÂ­sticas completas para el panel
   estadisticasGPX: {
     distanciaKm?: string;
     distanciaMetros?: number;
@@ -117,11 +117,11 @@ export class ActividadesItinerariosComponent implements OnInit {
       tiempos: { enMarcha: '00:00:00', parado: '00:00:00', pausado: '00:00:00' }
     };
 
-  // âœ¨ NUEVAS PROPIEDADES PARA ANIMACIÃ“N
+  // Ã¢Å“Â¨ NUEVAS PROPIEDADES PARA ANIMACIÃƒâ€œN
   gpxTextAnimacion: string = '';
   multimediaAnimacion: any[] = [];
   desgloseTransporteAnimacion: any[] = [];
-  actividadAnimacion: any = null; // âœ¨ NUEVA PROPIEDAD
+  actividadAnimacion: any = null; // Ã¢Å“Â¨ NUEVA PROPIEDAD
 
   // ? ESTADOS PARA TRACK EDITOR (Fase 1 y 2)
   mostrarEditorTrack = false;
@@ -129,12 +129,12 @@ export class ActividadesItinerariosComponent implements OnInit {
   editsEditor: TrackEdit[] = [];
   actividadEditorId: number | null = null;
 
-  // âœ¨ MODO ALTA FIDELIDAD (visual_session.json)
+  // Ã¢Å“Â¨ MODO ALTA FIDELIDAD (visual_session.json)
   visualSessionData: any = null;
   isHighFidelityMode = false;
   private visualSessionGroup: any = null;
 
-  // âœ… COLORES POR MODO DE TRANSPORTE (Fallback GPX)
+  // Ã¢Å“â€¦ COLORES POR MODO DE TRANSPORTE (Fallback GPX)
   private readonly MODE_COLORS = {
     walking: { outbound: '#059669', return: '#6EE7B7' },
     running: { outbound: '#2563EB', return: '#93C5FD' },
@@ -142,7 +142,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     driving: { outbound: '#DC2626', return: '#FCA5A5' }
   };
 
-  // Paleta de colores directa por nombre de modo (idÃ©ntica a GpxAnimationComponent)
+  // Paleta de colores directa por nombre de modo (idÃƒÂ©ntica a GpxAnimationComponent)
   private readonly MODE_COLORS_DIRECT: { [key: string]: string } = {
     walking: '#4CAF50', walk: '#4CAF50', caminar: '#4CAF50', andando: '#4CAF50',
     driving: '#F44336', car: '#F44336', coche: '#F44336',
@@ -152,7 +152,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     transport: '#9E9E9E', transporte: '#9E9E9E'
   };
 
-  // âœ¨ CACHÃ‰ DE DIRECCIONES PARA LEAFLET (Fase 4 - Bloque C)
+  // Ã¢Å“Â¨ CACHÃƒâ€° DE DIRECCIONES PARA LEAFLET (Fase 4 - Bloque C)
   private direccionesCache: { [key: string]: string } = {};
   private nominatimQueue: Promise<any> = Promise.resolve();
   private readonly NOMINATIM_DELAY = 2000;
@@ -190,14 +190,14 @@ export class ActividadesItinerariosComponent implements OnInit {
         next: actividades => {
           console.log('Actividades cargadas:', actividades);
           this.actividades = actividades;
-          console.log('NÃºmero de actividades:', this.actividades.length);
+          console.log('NÃƒÂºmero de actividades:', this.actividades.length);
         },
         error: err => console.error('Error cargando actividades:', err)
       });
   }
 
   // ==========================================
-  // âœ¨ CONFIGURACIÃ“N Y GENERACIÃ“N DE VÃDEO GPX
+  // Ã¢Å“Â¨ CONFIGURACIÃƒâ€œN Y GENERACIÃƒâ€œN DE VÃƒÂDEO GPX
   // ==========================================
 
   abrirConfiguracionVideo(actividad: any): void {
@@ -230,11 +230,11 @@ export class ActividadesItinerariosComponent implements OnInit {
       this.progresoVideo = {
         fase: 'cargando',
         porcentaje: 0,
-        mensaje: 'Preparando datos para el vÃ­deo...'
+        mensaje: 'Preparando datos para el vÃƒÂ­deo...'
       };
 
-      // 1. Obtener GPX y parsear (usando pipeline canÃ³nico con flatten)
-      this.progresoVideo.mensaje = 'Resolviendo ruta GPX canÃ³nica...';
+      // 1. Obtener GPX y parsear (usando pipeline canÃƒÂ³nico con flatten)
+      this.progresoVideo.mensaje = 'Resolviendo ruta GPX canÃƒÂ³nica...';
       const gpxContent = await firstValueFrom(
         this.trackEditorService.resolveCanonicalGpxXml(this.actividadVideoSeleccionada.id, { flattenSegments: true })
       );
@@ -244,7 +244,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       let points = this.gpxAnimationService.parseGpx(gpxContent);
       
       // 2. Asociar multimedia y audios perdidos
-      this.progresoVideo.mensaje = 'Sincronizando fotos, vÃ­deos y audios...';
+      this.progresoVideo.mensaje = 'Sincronizando fotos, vÃƒÂ­deos y audios...';
       const archivoUrl = `${environment.apiUrl}/archivos?actividadId=${this.actividadVideoSeleccionada.id}`;
       const archivosAsociados = await firstValueFrom(this.http.get<any[]>(archivoUrl));
       
@@ -296,8 +296,8 @@ export class ActividadesItinerariosComponent implements OnInit {
       this.cerrarConfiguracionVideo();
       
     } catch (error) {
-      console.error('Error generando vÃ­deo:', error);
-      alert('Error al generar el vÃ­deo: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+      console.error('Error generando vÃƒÂ­deo:', error);
+      alert('Error al generar el vÃƒÂ­deo: ' + (error instanceof Error ? error.message : 'Error desconocido'));
     } finally {
       this.generandoVideo = false;
       this.progresoVideo = null;
@@ -316,9 +316,9 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   actualizarActividad(actividad: Actividad): void {
-    console.log('ðŸ”„ Navegando al formulario de ediciÃ³n para actividad:', actividad.id);
+    console.log('Ã°Å¸â€â€ž Navegando al formulario de ediciÃƒÂ³n para actividad:', actividad.id);
 
-    // Navegar al formulario de ediciÃ³n con todos los parÃ¡metros necesarios
+    // Navegar al formulario de ediciÃƒÂ³n con todos los parÃƒÂ¡metros necesarios
     this.router.navigate([
       '/formulario-actividad',
       this.viajePrevistoId,
@@ -327,12 +327,12 @@ export class ActividadesItinerariosComponent implements OnInit {
       actividad.id
     ]).then(success => {
       if (success) {
-        console.log('âœ… NavegaciÃ³n exitosa');
+        console.log('Ã¢Å“â€¦ NavegaciÃƒÂ³n exitosa');
       } else {
-        console.error('âŒ Error en la navegaciÃ³n');
+        console.error('Ã¢ÂÅ’ Error en la navegaciÃƒÂ³n');
       }
     }).catch(err => {
-      console.error('âŒ Error navegando:', err);
+      console.error('Ã¢ÂÅ’ Error navegando:', err);
     });
   }
 
@@ -363,13 +363,13 @@ export class ActividadesItinerariosComponent implements OnInit {
     console.log('Navegando a URL:', url.join('/'));
 
     this.router.navigate(url).catch(err => {
-      console.error('Error en navegaciÃ³n:', err);
+      console.error('Error en navegaciÃƒÂ³n:', err);
     });
   }
 
-  // âœ… MEJORADO: Ver GPX con Alta Fidelidad si existe visual_session.json
+  // Ã¢Å“â€¦ MEJORADO: Ver GPX con Alta Fidelidad si existe visual_session.json
   verGPX(actividadId: number): void {
-    console.log('ðŸ“ Iniciando Ver GPX para actividad:', actividadId);
+    console.log('Ã°Å¸â€œÂ Iniciando Ver GPX para actividad:', actividadId);
 
     // Resetear estado de alta fidelidad para esta apertura
     this.visualSessionData = null;
@@ -377,7 +377,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     this.visualSessionGroup = null;
     this.actividadSeleccionada = actividadId;
 
-    // âœ… PASO 1: Cargar estadÃ­sticas (paralelo con los demÃ¡s pasos)
+    // Ã¢Å“â€¦ PASO 1: Cargar estadÃƒÂ­sticas (paralelo con los demÃƒÂ¡s pasos)
     this.actividadService.obtenerEstadisticas(actividadId).subscribe({
       next: (stats) => {
         this.estadisticasGPX = {
@@ -403,36 +403,36 @@ export class ActividadesItinerariosComponent implements OnInit {
           multimedia: stats.multimedia || { fotos: 0, videos: 0 },
           tiempos: stats.tiempos || { enMarcha: '00:00:00', parado: '00:00:00', pausado: '00:00:00' }
         };
-        console.log('âœ… EstadÃ­sticas mapeadas:', this.estadisticasGPX);
+        console.log('Ã¢Å“â€¦ EstadÃƒÂ­sticas mapeadas:', this.estadisticasGPX);
       },
-      error: err => console.warn('âš ï¸ Error cargando estadÃ­sticas:', err)
+      error: err => console.warn('Ã¢Å¡Â Ã¯Â¸Â Error cargando estadÃƒÂ­sticas:', err)
     });
 
-    // âœ… PASO 2: Intentar cargar visual_session.json (Alta Fidelidad)
-    //   â†’ Independientemente del resultado, despuÃ©s cargamos el GPX como base de coordenadas.
-    //   NOTA: las capas estÃ¡n en la raÃ­z del JSON (sessionData.layers), NO en sessionData.mapState.layers
+    // Ã¢Å“â€¦ PASO 2: Intentar cargar visual_session.json (Alta Fidelidad)
+    //   Ã¢â€ â€™ Independientemente del resultado, despuÃƒÂ©s cargamos el GPX como base de coordenadas.
+    //   NOTA: las capas estÃƒÂ¡n en la raÃƒÂ­z del JSON (sessionData.layers), NO en sessionData.mapState.layers
     this.actividadService.obtenerVisualSession(actividadId).subscribe({
       next: (sessionData) => {
-        // âœ… FIX: leer layers desde la raÃ­z del JSON, no desde mapState
+        // Ã¢Å“â€¦ FIX: leer layers desde la raÃƒÂ­z del JSON, no desde mapState
         const layers = sessionData?.layers || sessionData?.mapState?.layers;
         if (layers && layers.length > 0) {
           // Normalizar: garantizar que siempre accedemos con sessionData.layers
           sessionData.layers = layers;
           this.visualSessionData = sessionData;
           this.isHighFidelityMode = true;
-          console.log(`ðŸŽ¨ [Alta Fidelidad] visual_session.json cargado. Capas: ${layers.length}`);
+          console.log(`Ã°Å¸Å½Â¨ [Alta Fidelidad] visual_session.json cargado. Capas: ${layers.length}`);
         } else {
-          console.warn('âš ï¸ [Alta Fidelidad] JSON sin capas vÃ¡lidas. Activando modo Legacy.');
+          console.warn('Ã¢Å¡Â Ã¯Â¸Â [Alta Fidelidad] JSON sin capas vÃƒÂ¡lidas. Activando modo Legacy.');
         }
         this.cargarGPXYAbrirModal(actividadId);
       },
       error: (err) => {
-        // 404 es esperado si la actividad no tiene sesiÃ³n visual â†’ fallback limpio
+        // 404 es esperado si la actividad no tiene sesiÃƒÂ³n visual Ã¢â€ â€™ fallback limpio
         const statusCode = err?.status;
         if (statusCode === 404) {
-          console.log('â„¹ï¸ [Legacy] No hay visual_session.json para esta actividad. Usando GPX.');
+          console.log('Ã¢â€žÂ¹Ã¯Â¸Â [Legacy] No hay visual_session.json para esta actividad. Usando GPX.');
         } else {
-          console.warn('âš ï¸ [Legacy] Error descargando visual_session.json:', err?.message);
+          console.warn('Ã¢Å¡Â Ã¯Â¸Â [Legacy] Error descargando visual_session.json:', err?.message);
         }
         this.isHighFidelityMode = false;
         this.cargarGPXYAbrirModal(actividadId);
@@ -451,18 +451,18 @@ export class ActividadesItinerariosComponent implements OnInit {
           this.inicializarMapaGPX();
         });
       },
-      error: err => console.error('âŒ Error obteniendo GPX:', err)
+      error: err => console.error('Ã¢ÂÅ’ Error obteniendo GPX:', err)
     });
   }
 
-  // âœ… NUEVO: Animar GPX con multimedia (MEJORADO: Carga estadÃ­sticas primero)
+  // Ã¢Å“â€¦ NUEVO: Animar GPX con multimedia (MEJORADO: Carga estadÃƒÂ­sticas primero)
   animarGPX(actividadId: number): void {
-    console.log('ðŸŽ¬ Iniciando proceso de animaciÃ³n para actividad:', actividadId);
+    console.log('Ã°Å¸Å½Â¬ Iniciando proceso de animaciÃƒÂ³n para actividad:', actividadId);
 
-    // 1. PASO 1: Asegurar que tengamos las estadÃ­sticas para los segmentos de transporte
+    // 1. PASO 1: Asegurar que tengamos las estadÃƒÂ­sticas para los segmentos de transporte
     this.actividadService.obtenerEstadisticas(actividadId).subscribe({
       next: (stats) => {
-        console.log('ðŸ“Š EstadÃ­sticas cargadas para animaciÃ³n:', stats);
+        console.log('Ã°Å¸â€œÅ  EstadÃƒÂ­sticas cargadas para animaciÃƒÂ³n:', stats);
         this.estadisticasGPX = {
           distanciaKm: stats.distancia?.km || '0.00',
           distanciaMetros: stats.distancia?.metros || 0,
@@ -480,7 +480,7 @@ export class ActividadesItinerariosComponent implements OnInit {
           tiempos: stats.tiempos || { enMarcha: '00:00:00', parado: '00:00:00', pausado: '00:00:00' }
         };
 
-        // âœ… NUEVO: Intentar cargar visual_session.json antes de lanzar la animaciÃ³n
+        // Ã¢Å“â€¦ NUEVO: Intentar cargar visual_session.json antes de lanzar la animaciÃƒÂ³n
         this.actividadService.obtenerVisualSession(actividadId).subscribe({
           next: (sessionData) => {
             const layers = sessionData?.layers || sessionData?.mapState?.layers;
@@ -488,7 +488,7 @@ export class ActividadesItinerariosComponent implements OnInit {
               sessionData.layers = layers;
               this.visualSessionData = sessionData;
               this.isHighFidelityMode = true;
-              console.log('ðŸŽ¨ [AnimaciÃ³n] Modo Alta Fidelidad activado.');
+              console.log('Ã°Å¸Å½Â¨ [AnimaciÃƒÂ³n] Modo Alta Fidelidad activado.');
             }
             this.continuarCargaAnimacion(actividadId);
           },
@@ -500,14 +500,14 @@ export class ActividadesItinerariosComponent implements OnInit {
         });
       },
       error: (err) => {
-        console.error('âŒ Error cargando estadÃ­sticas para animaciÃ³n:', err);
+        console.error('Ã¢ÂÅ’ Error cargando estadÃƒÂ­sticas para animaciÃƒÂ³n:', err);
         this.desgloseTransporteAnimacion = [];
         this.continuarCargaAnimacion(actividadId);
       }
     });
   }
 
-  /** Paso 2 y 3 de la animaciÃ³n: Multimedia y GPX */
+  /** Paso 2 y 3 de la animaciÃƒÂ³n: Multimedia y GPX */
   private continuarCargaAnimacion(actividadId: number): void {
     const backendUrl = environment.apiUrl;
     const urlFiles = `${backendUrl}/archivos?actividadId=${actividadId}`;
@@ -524,14 +524,14 @@ export class ActividadesItinerariosComponent implements OnInit {
             this.desgloseTransporteAnimacion = this.estadisticasGPX?.desgloseTransporte || [];
             this.actividadAnimacion = this.actividades.find(a => a.id === actividadId);
             
-            console.log('ðŸŽ¬ Lanzando reproductor animado con', this.desgloseTransporteAnimacion.length, 'segmentos');
+            console.log('Ã°Å¸Å½Â¬ Lanzando reproductor animado con', this.desgloseTransporteAnimacion.length, 'segmentos');
             this.mostrarReproductorAnimado = true;
             this.cdr.detectChanges();
           },
-          error: err => console.error('âŒ Error obteniendo GPX para animaciÃ³n:', err)
+          error: err => console.error('Ã¢ÂÅ’ Error obteniendo GPX para animaciÃƒÂ³n:', err)
         });
       },
-      error: err => console.error('âŒ Error obteniendo multimedia para animaciÃ³n:', err)
+      error: err => console.error('Ã¢ÂÅ’ Error obteniendo multimedia para animaciÃƒÂ³n:', err)
     });
   }
 
@@ -561,7 +561,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         }
       }
 
-      console.log('âœ… GPX parseado. Coordenadas vÃ¡lidas extraÃ­das:', this.coordenadasGPX.length);
+      console.log('Ã¢Å“â€¦ GPX parseado. Coordenadas vÃƒÂ¡lidas extraÃƒÂ­das:', this.coordenadasGPX.length);
 
       // Extraer Waypoints (Punto de Giro / Save Point)
       const wpts = gpxDoc.getElementsByTagName('wpt');
@@ -573,20 +573,20 @@ export class ActividadesItinerariosComponent implements OnInit {
           const lat = parseFloat(wpts[i].getAttribute('lat') || '0');
           const lon = parseFloat(wpts[i].getAttribute('lon') || '0');
           this.turningPoint = { lat, lon, name };
-          console.log('ðŸ”„ Punto de giro detectado en GPX:', this.turningPoint);
+          console.log('Ã°Å¸â€â€ž Punto de giro detectado en GPX:', this.turningPoint);
           break;
         }
       }
     } catch (e) {
-      console.error('âŒ ExcepciÃ³n atrapada en parseGPX:', e);
+      console.error('Ã¢ÂÅ’ ExcepciÃƒÂ³n atrapada en parseGPX:', e);
       this.coordenadasGPX = [];
     }
   }
 
-  // Inicializar mapa Leaflet con satélite y fotos
+  // Inicializar mapa Leaflet con satÃ©lite y fotos
   inicializarMapaGPX(): void {
     if (this.coordenadasGPX.length === 0) {
-      console.warn('⚠️ No hay coordenadas para mostrar');
+      console.warn('âš ï¸ No hay coordenadas para mostrar');
       return;
     }
 
@@ -599,7 +599,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
       const container = document.getElementById('mapa-gpx-container');
       if (!container) {
-        console.error('❌ Contenedor del mapa no encontrado');
+        console.error('âŒ Contenedor del mapa no encontrado');
         return;
       }
       container.innerHTML = '';
@@ -611,7 +611,7 @@ export class ActividadesItinerariosComponent implements OnInit {
           preferCanvas: true
         }).setView([this.coordenadasGPX[0][0], this.coordenadasGPX[0][1]], 13);
 
-        // --- CAPA DE SATÉLITE (ESRI) ---
+        // --- CAPA DE SATÃ‰LITE (ESRI) ---
         L.tileLayer(
           'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
           { attribution: 'Tiles &copy; Esri', maxZoom: 18 }
@@ -634,7 +634,7 @@ export class ActividadesItinerariosComponent implements OnInit {
           iconSize: [14, 14],
           iconAnchor: [7, 7]
         });
-        L.marker(this.coordenadasGPX[0], { icon: inicioIcon }).bindPopup('🏁 Inicio').addTo(this.mapaGPX);
+        L.marker(this.coordenadasGPX[0], { icon: inicioIcon }).bindPopup('ðŸ Inicio').addTo(this.mapaGPX);
 
         // Marcador de FIN (rojo)
         const finIcon = L.divIcon({
@@ -643,9 +643,9 @@ export class ActividadesItinerariosComponent implements OnInit {
           iconSize: [14, 14],
           iconAnchor: [7, 7]
         });
-        L.marker(this.coordenadasGPX[this.coordenadasGPX.length - 1], { icon: finIcon }).bindPopup('🏁 Fin').addTo(this.mapaGPX);
+        L.marker(this.coordenadasGPX[this.coordenadasGPX.length - 1], { icon: finIcon }).bindPopup('ðŸ Fin').addTo(this.mapaGPX);
 
-        // Marcadores de fotos/vídeos (Popups enriquecidos desde Phase 2.6)
+        // Marcadores de fotos/vÃ­deos (Popups enriquecidos desde Phase 2.6)
         this.cargarYAnadirFotos();
 
         const bounds = L.latLngBounds(this.coordenadasGPX);
@@ -654,7 +654,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         setTimeout(() => { if (this.mapaGPX) this.mapaGPX.invalidateSize(); }, 120);
 
       } catch (error) {
-        console.error('❌ Error inicializando Leaflet:', error);
+        console.error('âŒ Error inicializando Leaflet:', error);
       }
     });
   }
@@ -691,7 +691,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         if (this.direccionesCache[archivo.geolocalizacion]) {
           locationTag = `<div style="font-size: 11px; color: #64748b; margin-top: 4px;"><i class="fa fa-map-marker"></i> ${this.direccionesCache[archivo.geolocalizacion]}</div>`;
         } else {
-          locationTag = `<div id="lugar-popup-${archivo.id}" style="font-size: 11px; color: #64748b; margin-top: 4px;"><i class="fa fa-map-marker"></i> <span class="lugar-texto">ðŸ“ Cargando ubicaciÃ³n...</span></div>`;
+          locationTag = `<div id="lugar-popup-${archivo.id}" style="font-size: 11px; color: #64748b; margin-top: 4px;"><i class="fa fa-map-marker"></i> <span class="lugar-texto">Ã°Å¸â€œÂ Cargando ubicaciÃƒÂ³n...</span></div>`;
         }
       }
 
@@ -726,10 +726,10 @@ export class ActividadesItinerariosComponent implements OnInit {
     return popupContent;
   }
 
-  // âœ¨ NUEVO: Cargar fotos y videos desde backend y aÃ±adirlas al mapa con agrupaciÃ³n
+  // Ã¢Å“Â¨ NUEVO: Cargar fotos y videos desde backend y aÃƒÂ±adirlas al mapa con agrupaciÃƒÂ³n
   private cargarYAnadirFotos(): void {
     if (!this.mapaGPX || !this.actividadSeleccionada) {
-      console.warn('âš ï¸ Mapa o ID de actividad no disponible');
+      console.warn('Ã¢Å¡Â Ã¯Â¸Â Mapa o ID de actividad no disponible');
       return;
     }
 
@@ -745,13 +745,13 @@ export class ActividadesItinerariosComponent implements OnInit {
             this.procesarArchivosYMarcadores(archivos, asociados);
           },
           error: (err) => {
-            console.warn('âš ï¸ Error al cargar archivos asociados, continuando sin audios', err);
+            console.warn('Ã¢Å¡Â Ã¯Â¸Â Error al cargar archivos asociados, continuando sin audios', err);
             this.procesarArchivosYMarcadores(archivos, []);
           }
         });
       },
       error: err => {
-        console.error('âŒ Error cargando archivos:', err);
+        console.error('Ã¢ÂÅ’ Error cargando archivos:', err);
       }
     });
   }
@@ -770,7 +770,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         archivo.audioAsociado = audioRelacionado.rutaArchivo;
       }
       
-      // 2. Extraer Lugar (Parseo conservador de la ubicaciÃ³n texto)
+      // 2. Extraer Lugar (Parseo conservador de la ubicaciÃƒÂ³n texto)
       try {
         const geoData = typeof archivo.geolocalizacion === 'string'
           ? JSON.parse(archivo.geolocalizacion)
@@ -796,7 +796,7 @@ export class ActividadesItinerariosComponent implements OnInit {
           return { archivo, lat, lng, timestamp };
         }
       } catch (err) {
-        console.warn(`âš ï¸ Error parseando ${archivo.nombreArchivo}:`, err);
+        console.warn(`Ã¢Å¡Â Ã¯Â¸Â Error parseando ${archivo.nombreArchivo}:`, err);
       }
       return null;
     }).filter(Boolean);
@@ -809,7 +809,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     const grupos = this.agruparArchivosPorUbicacion(archivosConCoordenadas);
 
-    // âœ¨ FASE 2: Sincronizar array lineal con los grupos del mapa
+    // Ã¢Å“Â¨ FASE 2: Sincronizar array lineal con los grupos del mapa
     this.fotosActividad = [];
 
     grupos.forEach((grupo, index) => {
@@ -822,7 +822,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         numeroSecuencial
       );
 
-      // Alimentar la galerÃ­a lateral con el orden y nÃºmero exacto del mapa
+      // Alimentar la galerÃƒÂ­a lateral con el orden y nÃƒÂºmero exacto del mapa
       grupo.archivos.forEach((item: any) => {
         item.archivo.numeroSecuencial = numeroSecuencial;
         this.fotosActividad.push(item.archivo);
@@ -830,7 +830,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     });
   }
 
-  // âœ… NUEVO: Agrupar archivos por coordenadas cercanas
+  // Ã¢Å“â€¦ NUEVO: Agrupar archivos por coordenadas cercanas
   private agruparArchivosPorUbicacion(archivosConCoordenadas: any[]): any[] {
     const TOLERANCIA_GPS = 0.0001; // ~10 metros
     const grupos: any[] = [];
@@ -855,7 +855,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     return grupos;
   }
 
-  // âœ… NUEVO: AÃ±adir marcador de grupo con contador y nÃºmero secuencial
+  // Ã¢Å“â€¦ NUEVO: AÃƒÂ±adir marcador de grupo con contador y nÃƒÂºmero secuencial
   private anadirMarcadorGrupo(lat: number, lng: number, archivos: any[], numeroSecuencial: number): void {
     if (!this.mapaGPX) return;
 
@@ -871,12 +871,12 @@ export class ActividadesItinerariosComponent implements OnInit {
         className: 'photo-marker-custom',
         html: `
         <div style="display: flex; flex-direction: column; align-items: center;">
-          <!-- Pin clÃ¡sico mÃ³vil -->
+          <!-- Pin clÃƒÂ¡sico mÃƒÂ³vil -->
           <svg width="44" height="44" viewBox="0 0 44 44" style="filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4)); z-index: 5;">
             <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="#E53935" />
             <circle cx="22" cy="16" r="6" fill="white" />
           </svg>
-          <!-- Badge numÃ©rico mÃ³vil -->
+          <!-- Badge numÃƒÂ©rico mÃƒÂ³vil -->
           <div style="margin-top: -8px; background: #1E88E5; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.4); z-index: 10; position: relative;">
             #${numeroSecuencial}
           </div>
@@ -890,7 +890,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
       const marker = L.marker([lat, lng], { icon: grupoIcon }).addTo(this.mapaGPX!);
       
-      // âœ… NUEVO: Guardar referencia del marcador en cada archivo para sincronizaciÃ³n
+      // Ã¢Å“â€¦ NUEVO: Guardar referencia del marcador en cada archivo para sincronizaciÃƒÂ³n
       archivos.forEach(a => {
         a.archivo.marcadorRef = marker;
       });
@@ -907,9 +907,9 @@ export class ActividadesItinerariosComponent implements OnInit {
       (marker as any).archivosGrupo = archivos;
       (marker as any).numeroSecuencial = numeroSecuencial;
 
-      // âœ¨ NUEVO: InteracciÃ³n de Dos Pasos (Bloque D)
+      // Ã¢Å“Â¨ NUEVO: InteracciÃƒÂ³n de Dos Pasos (Bloque D)
       // Eliminamos el evento click sobre el marcador que forzaba la apertura directa del visor.
-      // Ahora Leaflet abrirÃ¡ naturalmente el popup enriquecido.
+      // Ahora Leaflet abrirÃƒÂ¡ naturalmente el popup enriquecido.
       // Escuchamos cuando el popup se abre para inyectar el evento click en la miniatura.
       marker.on('popupopen', (e: any) => {
         const popupNode = e.popup._contentNode;
@@ -930,7 +930,7 @@ export class ActividadesItinerariosComponent implements OnInit {
           });
         });
 
-        // âœ¨ NUEVO: Disparar la geocodificaciÃ³n inversa de Nominatim bajo demanda
+        // Ã¢Å“Â¨ NUEVO: Disparar la geocodificaciÃƒÂ³n inversa de Nominatim bajo demanda
         archivos.forEach((item: any) => {
           const arch = item.archivo;
           if (arch.geolocalizacion && !this.direccionesCache[arch.geolocalizacion]) {
@@ -944,24 +944,24 @@ export class ActividadesItinerariosComponent implements OnInit {
                   el.innerHTML = `<i class="fa fa-map-marker"></i> ${direccion}`;
                 }
               }
-            }).catch(err => console.warn('âš ï¸ Error obteniendo direccion para popup', err));
+            }).catch(err => console.warn('Ã¢Å¡Â Ã¯Â¸Â Error obteniendo direccion para popup', err));
           }
         });
       });
 
-      console.log(`âœ… Marcador #${numeroSecuencial} aÃ±adido: ${cantidadArchivos} archivo(s) en [${lat}, ${lng}]`);
+      console.log(`Ã¢Å“â€¦ Marcador #${numeroSecuencial} aÃƒÂ±adido: ${cantidadArchivos} archivo(s) en [${lat}, ${lng}]`);
     });
   }
 
-  // âœ¨ NUEVO: Abrir modal con foto o video
+  // Ã¢Å“Â¨ NUEVO: Abrir modal con foto o video
   private abrirModalMultimedia(rutaArchivo: string, nombre: string, tipo: string): void {
-    console.log('ðŸ” Abriendo archivo:', nombre, 'Tipo:', tipo);
-    console.log('ðŸ“ rutaArchivo:', rutaArchivo);
+    console.log('Ã°Å¸â€Â Abriendo archivo:', nombre, 'Tipo:', tipo);
+    console.log('Ã°Å¸â€œÂ rutaArchivo:', rutaArchivo);
 
     const backendUrl = environment.apiUrl;
     const urlArchivo = `${backendUrl}/uploads/${rutaArchivo}`;
 
-    console.log('ðŸ–¼ï¸ URL final del archivo:', urlArchivo);
+    console.log('Ã°Å¸â€“Â¼Ã¯Â¸Â URL final del archivo:', urlArchivo);
 
     const modal = document.createElement('div');
     modal.className = 'modal-foto-individual';
@@ -990,18 +990,18 @@ export class ActividadesItinerariosComponent implements OnInit {
   `;
 
     const esFoto = tipo === 'foto';
-    const emoji = esFoto ? 'ðŸ“·' : 'ðŸŽ¬';
+    const emoji = esFoto ? 'Ã°Å¸â€œÂ·' : 'Ã°Å¸Å½Â¬';
     const etiqueta = esFoto ? 'Foto' : 'Video';
 
     const titulo = document.createElement('h3');
     titulo.textContent = `${emoji} ${etiqueta}`;
     titulo.style.cssText = 'margin: 0 0 10px 0; color: #333;';
 
-    // âœ… CREAR ELEMENTO SEGÃšN EL TIPO
+    // Ã¢Å“â€¦ CREAR ELEMENTO SEGÃƒÅ¡N EL TIPO
     let mediaElement: HTMLImageElement | HTMLVideoElement;
 
     if (esFoto) {
-      // âœ¨ MEJORADO: Usar el visualizador avanzado en nueva ventana
+      // Ã¢Å“Â¨ MEJORADO: Usar el visualizador avanzado en nueva ventana
       const backendUrl = environment.apiUrl;
       const urlArchivo = `${backendUrl}/uploads/${rutaArchivo}`;
       const fullUrl = `${window.location.origin}/visualizador-foto?url=${encodeURIComponent(urlArchivo)}&descripcion=${encodeURIComponent(nombre)}`;
@@ -1009,7 +1009,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       window.open(fullUrl, '_blank', 'noopener,noreferrer');
       return;
 
-      // CÃ³digo antiguo para fallback o por si falla la ventana
+      // CÃƒÂ³digo antiguo para fallback o por si falla la ventana
       const imagen = document.createElement('img');
       imagen.src = urlArchivo;
       imagen.style.cssText = `
@@ -1022,7 +1022,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       `;
 
       imagen.onerror = () => {
-        console.error('âŒ Error cargando imagen desde:', urlArchivo);
+        console.error('Ã¢ÂÅ’ Error cargando imagen desde:', urlArchivo);
         imagen.alt = 'Error al cargar la imagen';
         imagen.style.background = '#ff6b6b';
       };
@@ -1043,7 +1043,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       `;
 
       video.onerror = () => {
-        console.error('âŒ Error cargando video desde:', urlArchivo);
+        console.error('Ã¢ÂÅ’ Error cargando video desde:', urlArchivo);
         video.style.background = '#ff6b6b';
       };
 
@@ -1054,7 +1054,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     nombreEl.textContent = nombre;
     nombreEl.style.cssText = 'font-size: 12px; color: #999; margin: 10px 0;';
 
-    // âœ¨ CONTENEDOR DE BOTONES
+    // Ã¢Å“Â¨ CONTENEDOR DE BOTONES
     const btnContainer = document.createElement('div');
     btnContainer.style.cssText = `
     display: flex;
@@ -1079,9 +1079,9 @@ export class ActividadesItinerariosComponent implements OnInit {
       modal.remove();
     });
 
-    // âœ¨ NUEVO BOTÃ“N: VER EN LISTA DE ARCHIVOS
+    // Ã¢Å“Â¨ NUEVO BOTÃƒâ€œN: VER EN LISTA DE ARCHIVOS
     const btnVerArchivo = document.createElement('button');
-    btnVerArchivo.textContent = 'ðŸ“ Ver en Archivos';
+    btnVerArchivo.textContent = 'Ã°Å¸â€œÂ Ver en Archivos';
     btnVerArchivo.style.cssText = `
     background: #2196F3;
     color: white;
@@ -1094,10 +1094,10 @@ export class ActividadesItinerariosComponent implements OnInit {
   `;
 
     btnVerArchivo.addEventListener('click', () => {
-      console.log('ðŸ”— Navegando a archivos...');
+      console.log('Ã°Å¸â€â€” Navegando a archivos...');
       modal.remove();
 
-      // Navegar a la pÃ¡gina de archivos
+      // Navegar a la pÃƒÂ¡gina de archivos
       this.router.navigate([
         '/viajes-previstos',
         this.viajePrevistoId,
@@ -1125,12 +1125,12 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     document.body.appendChild(modal);
 
-    console.log(`âœ… Modal de ${etiqueta} abierto`);
+    console.log(`Ã¢Å“â€¦ Modal de ${etiqueta} abierto`);
   }
 
-  // âœ… NUEVO: Abrir modal con grupo de archivos (carrusel)
+  // Ã¢Å“â€¦ NUEVO: Abrir modal con grupo de archivos (carrusel)
   private abrirModalGrupo(archivos: any[], numeroSecuencial: number): void {
-    console.log(`ðŸ” Abriendo grupo #${numeroSecuencial} con ${archivos.length} archivo(s)`);
+    console.log(`Ã°Å¸â€Â Abriendo grupo #${numeroSecuencial} con ${archivos.length} archivo(s)`);
 
     const backendUrl = environment.apiUrl;
     let indiceActual = 0;
@@ -1162,12 +1162,12 @@ export class ActividadesItinerariosComponent implements OnInit {
       position: relative;
     `;
 
-    // FunciÃ³n para actualizar el contenido del modal
+    // FunciÃƒÂ³n para actualizar el contenido del modal
     const actualizarContenido = () => {
       const item = archivos[indiceActual];
       const archivo = item.archivo;
       const esFoto = archivo.tipo === 'foto';
-      const emoji = esFoto ? 'ðŸ“·' : 'ðŸŽ¬';
+      const emoji = esFoto ? 'Ã°Å¸â€œÂ·' : 'Ã°Å¸Å½Â¬';
       const urlArchivo = `${backendUrl}/uploads/${archivo.rutaArchivo}`;
 
       contenido.innerHTML = `
@@ -1184,7 +1184,7 @@ export class ActividadesItinerariosComponent implements OnInit {
             border-radius: 6px;
             cursor: pointer;
             font-size: 14px;
-          ">âœ• Cerrar</button>
+          ">Ã¢Å“â€¢ Cerrar</button>
         </div>
 
         <div style="position: relative; margin: 15px 0;">
@@ -1225,7 +1225,7 @@ export class ActividadesItinerariosComponent implements OnInit {
             font-size: 14px;
             ${indiceActual === 0 ? 'opacity: 0.5; cursor: not-allowed;' : ''}
           " ${indiceActual === 0 ? 'disabled' : ''}>
-            â† Anterior
+            Ã¢â€ Â Anterior
           </button>
           
           <span style="color: #666; font-size: 14px; white-space: nowrap;">
@@ -1243,13 +1243,13 @@ export class ActividadesItinerariosComponent implements OnInit {
             font-size: 14px;
             ${indiceActual === archivos.length - 1 ? 'opacity: 0.5; cursor: not-allowed;' : ''}
           " ${indiceActual === archivos.length - 1 ? 'disabled' : ''}>
-            Siguiente â†’
+            Siguiente Ã¢â€ â€™
           </button>
         </div>
         ` : ''}
       `;
 
-      // AÃ±adir event listeners
+      // AÃƒÂ±adir event listeners
       const btnCerrar = contenido.querySelector('#btn-cerrar-grupo');
       btnCerrar?.addEventListener('click', () => modal.remove());
 
@@ -1272,7 +1272,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         });
       }
 
-      // âœ¨ NUEVO: Click en la imagen para abrir visualizador avanzado
+      // Ã¢Å“Â¨ NUEVO: Click en la imagen para abrir visualizador avanzado
       if (esFoto) {
         const imgCarrusel = contenido.querySelector('#img-carrusel');
         imgCarrusel?.addEventListener('click', () => {
@@ -1293,12 +1293,12 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     document.body.appendChild(modal);
 
-    console.log(`âœ… Modal de grupo abierto`);
+    console.log(`Ã¢Å“â€¦ Modal de grupo abierto`);
   }
 
   // Ver Mapa PNG - Muestra en modal
   verMapa(actividadId: number): void {
-    console.log('ðŸ—ºï¸ Obteniendo mapa para actividad:', actividadId);
+    console.log('Ã°Å¸â€”ÂºÃ¯Â¸Â Obteniendo mapa para actividad:', actividadId);
     this.actividadSeleccionada = actividadId;
     this.actividadService.obtenerMapa(actividadId).subscribe({
       next: (blob) => {
@@ -1306,25 +1306,25 @@ export class ActividadesItinerariosComponent implements OnInit {
         reader.onload = (e: any) => {
           this.urlMapaDataURL = e.target.result;
           this.mostrarModalMapa = true;
-          console.log('âœ… Mapa cargado en modal');
+          console.log('Ã¢Å“â€¦ Mapa cargado en modal');
         };
         reader.readAsDataURL(blob);
       },
-      error: err => console.error('âŒ Error obteniendo mapa:', err)
+      error: err => console.error('Ã¢ÂÅ’ Error obteniendo mapa:', err)
     });
   }
 
-  // Ver EstadÃ­sticas - Muestra en modal
+  // Ver EstadÃƒÂ­sticas - Muestra en modal
   verEstadisticas(actividadId: number): void {
-    console.log('ðŸ“Š Obteniendo estadÃ­sticas para actividad:', actividadId);
+    console.log('Ã°Å¸â€œÅ  Obteniendo estadÃƒÂ­sticas para actividad:', actividadId);
     this.actividadSeleccionada = actividadId;
     this.actividadService.obtenerEstadisticas(actividadId).subscribe({
       next: (datos) => {
         this.estadisticasActuales = datos;
         this.mostrarModalEstadisticas = true;
-        console.log('âœ… EstadÃ­sticas cargadas:', datos);
+        console.log('Ã¢Å“â€¦ EstadÃƒÂ­sticas cargadas:', datos);
       },
-      error: err => console.error('âŒ Error obteniendo estadÃ­sticas:', err)
+      error: err => console.error('Ã¢ÂÅ’ Error obteniendo estadÃƒÂ­sticas:', err)
     });
   }
 
@@ -1347,12 +1347,12 @@ export class ActividadesItinerariosComponent implements OnInit {
     }
   }
 
-  // âœ… NUEVO: Toggle panel de estadÃ­sticas
+  // Ã¢Å“â€¦ NUEVO: Toggle panel de estadÃƒÂ­sticas
   toggleSidePanel(): void {
     this.showSidePanel = !this.showSidePanel;
-    console.log(`ðŸ—ºï¸ Panel lateral: ${this.showSidePanel ? 'VISIBLE' : 'OCULTO'}`);
+    console.log(`Ã°Å¸â€”ÂºÃ¯Â¸Â Panel lateral: ${this.showSidePanel ? 'VISIBLE' : 'OCULTO'}`);
     
-    // Invalida el tamaÃ±o del mapa poco despuÃ©s para que se adapte al contenedor redimensionado
+    // Invalida el tamaÃƒÂ±o del mapa poco despuÃƒÂ©s para que se adapte al contenedor redimensionado
     if (this.mapaGPX) {
       setTimeout(() => {
         this.mapaGPX.invalidateSize(true);
@@ -1360,38 +1360,38 @@ export class ActividadesItinerariosComponent implements OnInit {
     }
   }
 
-  // âœ… NUEVO: Expandir/contraer panel
+  // Ã¢Å“â€¦ NUEVO: Expandir/contraer panel
   togglePanelExpanded(): void {
     this.panelExpanded = !this.panelExpanded;
-    console.log(`ðŸ“Š Panel: ${this.panelExpanded ? 'EXPANDIDO' : 'CONTRAÃDO'}`);
+    console.log(`Ã°Å¸â€œÅ  Panel: ${this.panelExpanded ? 'EXPANDIDO' : 'CONTRAÃƒÂDO'}`);
   }
 
-  // âœ… NUEVO: Ajustar vista del mapa al track completo
+  // Ã¢Å“â€¦ NUEVO: Ajustar vista del mapa al track completo
   fitMapToTrack(): void {
     if (!this.mapaGPX || this.coordenadasGPX.length === 0) {
-      console.warn('âš ï¸ No hay mapa o coordenadas disponibles');
+      console.warn('Ã¢Å¡Â Ã¯Â¸Â No hay mapa o coordenadas disponibles');
       return;
     }
 
     import('leaflet').then(L => {
       const bounds = L.latLngBounds(this.coordenadasGPX);
       this.mapaGPX.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: true });
-      console.log('âœ… Vista ajustada al track completo');
+      console.log('Ã¢Å“â€¦ Vista ajustada al track completo');
     });
   }
 
-  // âœ… NUEVO: Obtener emoji de transporte
+  // Ã¢Å“â€¦ NUEVO: Obtener emoji de transporte
   getTransportEmoji(iconName: string): string {
     const emojiMap: { [key: string]: string } = {
-      'walk': 'ðŸš¶',
-      'fitness': 'ðŸƒ',
-      'bicycle': 'ðŸš´',
-      'car': 'ðŸš—'
+      'walk': 'Ã°Å¸Å¡Â¶',
+      'fitness': 'Ã°Å¸ÂÆ’',
+      'bicycle': 'Ã°Å¸Å¡Â´',
+      'car': 'Ã°Å¸Å¡â€”'
     };
-    return emojiMap[iconName] || 'ðŸ“';
+    return emojiMap[iconName] || 'Ã°Å¸â€œÂ';
   }
 
-  // âœ… NUEVO: Formatear distancia
+  // Ã¢Å“â€¦ NUEVO: Formatear distancia
   formatDistance(meters: number): string {
     if (meters < 1000) {
       return `${Math.round(meters)} m`;
@@ -1399,7 +1399,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     return `${(meters / 1000).toFixed(2)} km`;
   }
 
-  // âœ… NUEVO: Formatear duraciÃ³n
+  // Ã¢Å“â€¦ NUEVO: Formatear duraciÃƒÂ³n
   formatDuration(ms: number): string {
     const totalSeconds = Math.floor(ms / 1000);
     const hours = Math.floor(totalSeconds / 3600);
@@ -1412,12 +1412,12 @@ export class ActividadesItinerariosComponent implements OnInit {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   }
 
-  // âœ… MEJOR OPCIÃ“N: Flechas SVG (escalables sin pixelar)
+  // Ã¢Å“â€¦ MEJOR OPCIÃƒâ€œN: Flechas SVG (escalables sin pixelar)
   private addDirectionArrows(L: any, coordinates: any[], color: string = '#FF0000', opacity: number = 1): void {
     if (!this.mapaGPX || coordinates.length < 2) return;
 
     const totalPoints = coordinates.length;
-    // âœ¨ FASE 1 (IteraciÃ³n 3): Chevron minimalista, muy sutil
+    // Ã¢Å“Â¨ FASE 1 (IteraciÃƒÂ³n 3): Chevron minimalista, muy sutil
     const interval = Math.max(Math.floor(totalPoints / 4), 60);
 
     for (let i = interval; i < coordinates.length; i += interval) {
@@ -1438,7 +1438,7 @@ export class ActividadesItinerariosComponent implements OnInit {
                 stroke-width="6"
                 stroke-linecap="round"
                 stroke-linejoin="round"/>
-          <!-- LÃ­nea de color semÃ¡ntico -->
+          <!-- LÃƒÂ­nea de color semÃƒÂ¡ntico -->
           <path d="M 6 24 L 16 8 L 26 24" 
                 fill="none" 
                 stroke="${color}" 
@@ -1459,11 +1459,11 @@ export class ActividadesItinerariosComponent implements OnInit {
       }).addTo(this.mapaGPX);
     }
 
-    console.log(`âœ… ${Math.floor(totalPoints / interval)} flechas SVG aÃ±adidas`);
+    console.log(`Ã¢Å“â€¦ ${Math.floor(totalPoints / interval)} flechas SVG aÃƒÂ±adidas`);
   }
 
 
-  // âœ… NUEVO: Calcular Ã¡ngulo entre dos puntos
+  // Ã¢Å“â€¦ NUEVO: Calcular ÃƒÂ¡ngulo entre dos puntos
   private calculateAngle(pointA: number[], pointB: number[]): number {
     const lat1 = pointA[0];
     const lng1 = pointA[1];
@@ -1475,7 +1475,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     const lat1Rad = lat1 * Math.PI / 180;
     const lat2Rad = lat2 * Math.PI / 180;
 
-    // Calcular Ã¡ngulo
+    // Calcular ÃƒÂ¡ngulo
     const y = Math.sin(dLng) * Math.cos(lat2Rad);
     const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
       Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
@@ -1514,11 +1514,25 @@ export class ActividadesItinerariosComponent implements OnInit {
 
   centrarEnFoto(foto: any): void {
     if (foto.marcadorRef && this.mapaGPX) {
-      // 1. Centrar el mapa
-      this.mapaGPX.setView(foto.marcadorRef.getLatLng(), 17);
-      
-      // 2. Abrir el popup contextual enriquecido (No abrir visor completo aquÃ­)
-      foto.marcadorRef.openPopup();
+      if (this.coordenadasGPX && this.coordenadasGPX.length > 0) {
+        import('leaflet').then(L => {
+          // 1. Calcular el zoom necesario para ver toda la ruta
+          const bounds = L.latLngBounds(this.coordenadasGPX);
+          const zoomRuta = this.mapaGPX.getBoundsZoom(bounds);
+          
+          // Reducimos 1 nivel de zoom para asegurar que al centrar en un extremo, 
+          // la ruta completa siga estando dentro de los límites visuales
+          const zoomIdeal = Math.max(0, zoomRuta - 1);
+
+          // 2. Centrar el mapa en la foto manteniendo todo a la vista
+          this.mapaGPX.setView(foto.marcadorRef.getLatLng(), zoomIdeal);
+          foto.marcadorRef.openPopup();
+        });
+      } else {
+        // Fallback clásico
+        this.mapaGPX.setView(foto.marcadorRef.getLatLng(), 15);
+        foto.marcadorRef.openPopup();
+      }
       
       // Ajustar panel si es necesario
       if (this.panelExpanded) {
@@ -1532,10 +1546,10 @@ export class ActividadesItinerariosComponent implements OnInit {
     const actividad = this.actividades.find(a => a.id === id);
     return actividad?.nombre || 'Recorrido GPX';
   }
-  // âœ¨ NUEVO: Convertir coordenadas a direcciÃ³n legible bajo demanda usando Nominatim (Fase 4 - Bloque C)
+  // Ã¢Å“Â¨ NUEVO: Convertir coordenadas a direcciÃƒÂ³n legible bajo demanda usando Nominatim (Fase 4 - Bloque C)
   private async obtenerDireccion(geolocalizacion: string): Promise<string> {
     if (!geolocalizacion || geolocalizacion === 'No disponible') {
-      return 'UbicaciÃ³n no disponible';
+      return 'UbicaciÃƒÂ³n no disponible';
     }
 
     if (this.direccionesCache[geolocalizacion]) {
@@ -1552,10 +1566,10 @@ export class ActividadesItinerariosComponent implements OnInit {
       } else if (geolocalizacion.includes(',')) {
         [lat, lon] = geolocalizacion.split(',').map(parseFloat);
       } else {
-        return 'Formato invÃ¡lido';
+        return 'Formato invÃƒÂ¡lido';
       }
 
-      if (isNaN(lat) || isNaN(lon)) return 'Coordenadas invÃ¡lidas';
+      if (isNaN(lat) || isNaN(lon)) return 'Coordenadas invÃƒÂ¡lidas';
 
       this.nominatimQueue = this.nominatimQueue.then(() =>
         new Promise(resolve => setTimeout(resolve, this.NOMINATIM_DELAY))
@@ -1579,20 +1593,20 @@ export class ActividadesItinerariosComponent implements OnInit {
         clearTimeout(timeoutId);
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
-        const fallback = `${lat.toFixed(5)}Â°, ${lon.toFixed(5)}Â°`;
+        const fallback = `${lat.toFixed(5)}Ã‚Â°, ${lon.toFixed(5)}Ã‚Â°`;
         this.direccionesCache[geolocalizacion] = fallback;
         return fallback;
       }
 
       if (!res.ok) {
-        const fallback = `${lat.toFixed(5)}Â°, ${lon.toFixed(5)}Â°`;
+        const fallback = `${lat.toFixed(5)}Ã‚Â°, ${lon.toFixed(5)}Ã‚Â°`;
         this.direccionesCache[geolocalizacion] = fallback;
         return fallback;
       }
 
       const data = await res.json();
       if (!data || data.error) {
-        const fallback = `${lat.toFixed(5)}Â°, ${lon.toFixed(5)}Â°`;
+        const fallback = `${lat.toFixed(5)}Ã‚Â°, ${lon.toFixed(5)}Ã‚Â°`;
         this.direccionesCache[geolocalizacion] = fallback;
         return fallback;
       }
@@ -1604,29 +1618,29 @@ export class ActividadesItinerariosComponent implements OnInit {
           .join(', ');
 
       if (!direccion && data.display_name) direccion = data.display_name;
-      if (!direccion) direccion = `${lat.toFixed(5)}Â°, ${lon.toFixed(5)}Â°`;
+      if (!direccion) direccion = `${lat.toFixed(5)}Ã‚Â°, ${lon.toFixed(5)}Ã‚Â°`;
 
       this.direccionesCache[geolocalizacion] = direccion;
       return direccion;
     } catch (e: any) {
-      console.error('Error obteniendo direcciÃ³n:', e);
+      console.error('Error obteniendo direcciÃƒÂ³n:', e);
       try {
         const coords = JSON.parse(geolocalizacion);
-        const fallback = `${coords.latitud.toFixed(5)}Â°, ${coords.longitud.toFixed(5)}Â°`;
+        const fallback = `${coords.latitud.toFixed(5)}Ã‚Â°, ${coords.longitud.toFixed(5)}Ã‚Â°`;
         this.direccionesCache[geolocalizacion] = fallback;
         return fallback;
       } catch {
-        return 'UbicaciÃ³n no disponible';
+        return 'UbicaciÃƒÂ³n no disponible';
       }
     }
   }
 
-  // â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-  // âœï¸ EDITOR DE RECORRIDO GPX (Fase 1 y 2.1)
-  // â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+  // Ã¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€Â
+  // Ã¢Å“ÂÃ¯Â¸Â EDITOR DE RECORRIDO GPX (Fase 1 y 2.1)
+  // Ã¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€Â
 
   abrirEditorTrack(actividadId: number): void {
-    console.log('âœï¸ Abriendo editor de recorrido para actividad:', actividadId);
+    console.log('Ã¢Å“ÂÃ¯Â¸Â Abriendo editor de recorrido para actividad:', actividadId);
     this.actividadEditorId = actividadId;
 
     // 1. Cargar edits existentes
@@ -1638,7 +1652,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         this.trackEditorService.getSegments(actividadId).subscribe({
           next: (segments) => {
             if (segments && segments.length > 0) {
-              // Ya existe migraciÃ³n, construir track componiendo segmentos con Event Sourcing
+              // Ya existe migraciÃƒÂ³n, construir track componiendo segmentos con Event Sourcing
               this.gpxPointsEditor = this.trackEditorService.replaySegments(segments);
               this.mostrarEditorTrack = true;
               this.cdr.detectChanges();
@@ -1652,8 +1666,8 @@ export class ActividadesItinerariosComponent implements OnInit {
                     
                     // Guardar el track base como el segmento original idempotentemente
                     this.trackEditorService.createSegment(actividadId, this.gpxPointsEditor, 'original').subscribe({
-                      next: () => console.log('âœ… GPX base migrado exitosamente a segments (source: original)'),
-                      error: err => console.error('âŒ Error migrando GPX base a segments:', err)
+                      next: () => console.log('Ã¢Å“â€¦ GPX base migrado exitosamente a segments (source: original)'),
+                      error: err => console.error('Ã¢ÂÅ’ Error migrando GPX base a segments:', err)
                     });
 
                     this.mostrarEditorTrack = true;
@@ -1661,15 +1675,15 @@ export class ActividadesItinerariosComponent implements OnInit {
                   };
                   reader.readAsText(blob);
                 },
-                error: err => console.error('âŒ Error cargando GPX para editor:', err)
+                error: err => console.error('Ã¢ÂÅ’ Error cargando GPX para editor:', err)
               });
             }
           },
-          error: err => console.error('âŒ Error cargando segments para editor:', err)
+          error: err => console.error('Ã¢ÂÅ’ Error cargando segments para editor:', err)
         });
       },
       error: err => {
-        console.error('âŒ Error cargando TrackEdits para editor:', err);
+        console.error('Ã¢ÂÅ’ Error cargando TrackEdits para editor:', err);
         this.editsEditor = [];
       }
     });
@@ -1686,7 +1700,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   onTrackEditRequest(event: any): void {
     if (!this.actividadEditorId) return;
 
-    console.log('âœï¸ Guardando ediciÃ³n:', event);
+    console.log('Ã¢Å“ÂÃ¯Â¸Â Guardando ediciÃƒÂ³n:', event);
 
     const edit: TrackEdit = {
       actividadId: this.actividadEditorId,
@@ -1699,13 +1713,13 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     this.trackEditorService.createTrackEdit(edit).subscribe({
       next: (savedEdit) => {
-        console.log('âœ… EdiciÃ³n guardada con ID:', savedEdit.id);
+        console.log('Ã¢Å“â€¦ EdiciÃƒÂ³n guardada con ID:', savedEdit.id);
         this.editsEditor = [...this.editsEditor, savedEdit];
         this.cdr.detectChanges();
       },
       error: (err) => {
-        console.error('âŒ Error guardando ediciÃ³n:', err);
-        alert('âŒ Error guardando la ediciÃ³n. Revisa la consola.');
+        console.error('Ã¢ÂÅ’ Error guardando ediciÃƒÂ³n:', err);
+        alert('Ã¢ÂÅ’ Error guardando la ediciÃƒÂ³n. Revisa la consola.');
       }
     });
   }
@@ -1713,13 +1727,13 @@ export class ActividadesItinerariosComponent implements OnInit {
   onAppendRequest(event: { points: { lat: number; lng: number }[] }): void {
     if (!this.actividadEditorId || !event.points || event.points.length === 0) return;
 
-    console.log('âž• Guardando Append:', event.points.length, 'puntos');
+    console.log('Ã¢Å¾â€¢ Guardando Append:', event.points.length, 'puntos');
 
     this.trackEditorService.createSegment(this.actividadEditorId, event.points, 'user-append').subscribe({
       next: (resp) => {
-        console.log('âœ… Segment append guardado con id:', resp.id, 'order:', resp.segmentOrder);
+        console.log('Ã¢Å“â€¦ Segment append guardado con id:', resp.id, 'order:', resp.segmentOrder);
 
-        // Calcular timestamps monotÃ³nicos y concatenar al array local
+        // Calcular timestamps monotÃƒÂ³nicos y concatenar al array local
         const appendedGpxPoints = this.trackEditorService.applyAppendWithTimestamps(
           this.gpxPointsEditor,
           event.points
@@ -1729,8 +1743,8 @@ export class ActividadesItinerariosComponent implements OnInit {
         this.cdr.detectChanges();
       },
       error: (err) => {
-        console.error('âŒ Error guardando segment append:', err);
-        alert('âŒ Error guardando el tramo. Revisa la consola.');
+        console.error('Ã¢ÂÅ’ Error guardando segment append:', err);
+        alert('Ã¢ÂÅ’ Error guardando el tramo. Revisa la consola.');
       }
     });
   }
@@ -1738,7 +1752,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   onInsertRequest(event: { points: { lat: number; lng: number; time?: string }[] }): void {
     if (!this.actividadEditorId || !event.points || event.points.length < 2) return;
 
-    console.log('ðŸ“ Guardando Insert:', event.points.length, 'puntos');
+    console.log('Ã°Å¸â€œÂ Guardando Insert:', event.points.length, 'puntos');
 
     // 1. Convertir a formato GpxPoint para interpolar en cliente antes de persistir
     const gpxPoints = event.points.map(p => ({
@@ -1765,7 +1779,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     // 4. Guardar
     this.trackEditorService.createSegment(this.actividadEditorId, payload, 'user-insert').subscribe({
       next: (resp) => {
-        console.log('âœ… Segment insert guardado con id:', resp.id, 'order:', resp.segmentOrder);
+        console.log('Ã¢Å“â€¦ Segment insert guardado con id:', resp.id, 'order:', resp.segmentOrder);
 
         // 5. Refrescar track desde backend para re-aplicar el replay completo
         this.trackEditorService.getSegments(this.actividadEditorId!).subscribe({
@@ -1778,8 +1792,8 @@ export class ActividadesItinerariosComponent implements OnInit {
         });
       },
       error: (err) => {
-        console.error('âŒ Error guardando segment insert:', err);
-        alert('âŒ Error guardando el tramo insertado. Revisa la consola.');
+        console.error('Ã¢ÂÅ’ Error guardando segment insert:', err);
+        alert('Ã¢ÂÅ’ Error guardando el tramo insertado. Revisa la consola.');
       }
     });
   }
@@ -1787,7 +1801,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   onOverrideModeRequest(event: { points: { lat: number; lng: number; time?: string; mode?: string }[] }): void {
     if (!this.actividadEditorId || !event.points || event.points.length < 2) return;
 
-    console.log('ðŸ”„ Guardando Override de Modo de Transporte:', event.points.length, 'puntos');
+    console.log('Ã°Å¸â€â€ž Guardando Override de Modo de Transporte:', event.points.length, 'puntos');
 
     // Mapear al formato de persistencia plano
     const payload = event.points.map(p => ({
@@ -1800,7 +1814,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     // Guardar como 'user-override' para que replaySegments lo procese como un reemplazo de atributos
     this.trackEditorService.createSegment(this.actividadEditorId, payload, 'user-override').subscribe({
       next: (resp) => {
-        console.log('âœ… Segment override guardado con id:', resp.id, 'order:', resp.segmentOrder);
+        console.log('Ã¢Å“â€¦ Segment override guardado con id:', resp.id, 'order:', resp.segmentOrder);
 
         // Refrescar track desde backend para aplicar
         this.trackEditorService.getSegments(this.actividadEditorId!).subscribe({
@@ -1813,8 +1827,8 @@ export class ActividadesItinerariosComponent implements OnInit {
         });
       },
       error: (err) => {
-        console.error('âŒ Error guardando segment override:', err);
-        alert('âŒ Error guardando el cambio de transporte. Revisa la consola.');
+        console.error('Ã¢ÂÅ’ Error guardando segment override:', err);
+        alert('Ã¢ÂÅ’ Error guardando el cambio de transporte. Revisa la consola.');
       }
     });
   }
@@ -1822,9 +1836,9 @@ export class ActividadesItinerariosComponent implements OnInit {
   onDeleteRequest(event: { anchorA: any; anchorB: any }): void {
     if (!this.actividadEditorId || !event.anchorA || !event.anchorB) return;
 
-    console.log('ðŸ”„ Guardando Delete de Tramo:', event.anchorA, event.anchorB);
+    console.log('Ã°Å¸â€â€ž Guardando Delete de Tramo:', event.anchorA, event.anchorB);
 
-    // Mapear al formato de persistencia plano: sÃ³lo guardamos las dos anclas
+    // Mapear al formato de persistencia plano: sÃƒÂ³lo guardamos las dos anclas
     const payload = [
       { lat: event.anchorA.lat, lng: event.anchorA.lng, time: event.anchorA.time },
       { lat: event.anchorB.lat, lng: event.anchorB.lng, time: event.anchorB.time }
@@ -1833,7 +1847,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     // Guardar como 'user-delete'
     this.trackEditorService.createSegment(this.actividadEditorId, payload, 'user-delete').subscribe({
       next: (resp) => {
-        console.log('âœ… Segment delete guardado con id:', resp.id, 'order:', resp.segmentOrder);
+        console.log('Ã¢Å“â€¦ Segment delete guardado con id:', resp.id, 'order:', resp.segmentOrder);
 
         // Refrescar track desde backend para aplicar
         this.trackEditorService.getSegments(this.actividadEditorId!).subscribe({
@@ -1846,8 +1860,8 @@ export class ActividadesItinerariosComponent implements OnInit {
         });
       },
       error: (err) => {
-        console.error('âŒ Error guardando segment delete:', err);
-        alert('âŒ Error guardando el borrado del tramo. Revisa la consola.');
+        console.error('Ã¢ÂÅ’ Error guardando segment delete:', err);
+        alert('Ã¢ÂÅ’ Error guardando el borrado del tramo. Revisa la consola.');
       }
     });
   }
