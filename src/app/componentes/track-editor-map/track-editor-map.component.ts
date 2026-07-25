@@ -89,7 +89,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     plane: '#7C3AED',   // Violet
     train: '#D97706',   // Amber dark
     bus: '#9C27B0',     // Purple
-    original: '#4f46e5' // Indigo
+    original: '#FF0000' // Red (igual que ver-gpx)
   };
 
   constructor(private trackEditorService: TrackEditorService, private routingService: RoutingService) {}
@@ -115,12 +115,36 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   private initMap() {
     if (!this.mapContainer || !this.gpxPoints || this.gpxPoints.length === 0) return;
 
-    this.map = L.map(this.mapContainer.nativeElement).setView([this.gpxPoints[0].lat, this.gpxPoints[0].lng], 13);
+    this.map = L.map(this.mapContainer.nativeElement, {
+      attributionControl: true,
+      zoomControl: true,
+      preferCanvas: true
+    }).setView([this.gpxPoints[0].lat, this.gpxPoints[0].lng], 13);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap contributors © CARTO',
-      maxZoom: 19
-    }).addTo(this.map);
+    // --- CAPAS BASE (SATÉLITE Y MAPA) ---
+    const satellite = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { attribution: 'Tiles © Esri', maxZoom: 18 }
+    );
+    const streets = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { attribution: '© OpenStreetMap', maxZoom: 19 }
+    );
+    
+    satellite.addTo(this.map); // Capa por defecto
+
+    // Control de capas
+    const layersControl = L.control.layers(
+      { 'Satélite': satellite, 'Mapa': streets },
+      {},
+      { position: 'topleft' }
+    ).addTo(this.map);
+
+    // Mover el control de capas a la mitad izquierda de la pantalla
+    const layersContainer = layersControl.getContainer();
+    if (layersContainer) {
+      layersContainer.classList.add('capas-medio-izq');
+    }
 
     this.polylinesGroup = L.featureGroup().addTo(this.map);
 
@@ -187,8 +211,9 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         
         let color = this.MODE_COLORS[currentMode] || this.MODE_COLORS['original'];
         let weight = 4;
-        let opacity = 0.8;
+        let opacity = 0.85;
         let dashArray = '';
+        let smoothFactor = 1;
 
         if (currentIsDeleted) {
           color = '#9ca3af'; // Gris fantasma
@@ -201,8 +226,11 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         }
 
         L.polyline(latlngs, {
-          color, weight, opacity, dashArray
+          color, weight, opacity, dashArray, smoothFactor
         }).addTo(this.polylinesGroup!);
+
+        // Pintar las flechas con el color de este tramo
+        this.addDirectionArrows(L, latlngs, color, opacity);
       }
     };
 
@@ -221,6 +249,37 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
     }
     flushSegment(); // Último segmento
+
+    // Marcador de INICIO (verde)
+    const inicioIcon = L.divIcon({
+      className: 'inicio-marker-custom',
+      html: `
+        <svg width="24" height="34" viewBox="0 0 24 34" style="filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4));">
+          <path d="M12 2C6.48 2 2 6.48 2 12c0 7.5 10 20 10 20s10-12.5 10-20c0-5.52-4.48-10-10-10z" fill="#4CAF50"/>
+          <circle cx="12" cy="12" r="4" fill="white"/>
+        </svg>
+      `,
+      iconSize: [24, 34],
+      iconAnchor: [12, 34],
+      popupAnchor: [0, -34]
+    });
+    L.marker([this.gpxPoints[0].lat, this.gpxPoints[0].lng], { icon: inicioIcon, interactive: false }).addTo(this.polylinesGroup!);
+
+    // Marcador de FIN (rojo)
+    const finIcon = L.divIcon({
+      className: 'fin-marker-custom',
+      html: `
+        <svg width="24" height="34" viewBox="0 0 24 34" style="filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4));">
+          <path d="M12 2C6.48 2 2 6.48 2 12c0 7.5 10 20 10 20s10-12.5 10-20c0-5.52-4.48-10-10-10z" fill="#F44336"/>
+          <circle cx="12" cy="12" r="4" fill="white"/>
+        </svg>
+      `,
+      iconSize: [24, 34],
+      iconAnchor: [12, 34],
+      popupAnchor: [0, -34]
+    });
+    const lastPoint = this.gpxPoints[this.gpxPoints.length - 1];
+    L.marker([lastPoint.lat, lastPoint.lng], { icon: finIcon, interactive: false }).addTo(this.polylinesGroup!);
 
     // 4. Se ha eliminado el pintado manual heredado de replaces
   }
@@ -852,5 +911,66 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.appendVertices.forEach((m: L.Marker) => m.remove());
     this.appendVertices = [];
     this.appendPoints = [];
+  }
+
+  // Métodos de Flechas Direccionales
+  private calculateAngle(p1: any, p2: any): number {
+    const p1Lat = Array.isArray(p1) ? p1[0] : (p1.lat || 0);
+    const p1Lng = Array.isArray(p1) ? p1[1] : (p1.lng || 0);
+    const p2Lat = Array.isArray(p2) ? p2[0] : (p2.lat || 0);
+    const p2Lng = Array.isArray(p2) ? p2[1] : (p2.lng || 0);
+
+    const dy = p2Lat - p1Lat;
+    const dx = Math.cos((Math.PI / 180) * p1Lat) * (p2Lng - p1Lng);
+    const angle = Math.atan2(dy, dx);
+    let degrees = angle * (180 / Math.PI);
+    degrees = (90 - degrees + 360) % 360;
+    return Math.round(degrees);
+  }
+
+  private addDirectionArrows(L: any, coordinates: any[], color: string = '#FF0000', opacity: number = 1): void {
+    if (!this.polylinesGroup || coordinates.length < 2) return;
+
+    const totalPoints = coordinates.length;
+    const interval = Math.max(Math.floor(totalPoints / 4), 60);
+
+    for (let i = interval; i < coordinates.length; i += interval) {
+      const prevPoint = coordinates[i - 1];
+      const currentPoint = coordinates[i];
+
+      const angle = this.calculateAngle(prevPoint, currentPoint);
+
+      const arrowIcon = L.divIcon({
+        className: 'direction-arrow-svg',
+        html: `
+        <svg width="16" height="16" viewBox="0 0 32 32" 
+             style="transform: rotate(${angle}deg); filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3)); opacity: ${opacity * 0.5};">
+          <!-- Fondo/Borde blanco para contraste -->
+          <path d="M 6 24 L 16 8 L 26 24" 
+                fill="none" 
+                stroke="white" 
+                stroke-width="6"
+                stroke-linecap="round"
+                stroke-linejoin="round"/>
+          <!-- Línea de color semántico -->
+          <path d="M 6 24 L 16 8 L 26 24" 
+                fill="none" 
+                stroke="${color}" 
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"/>
+        </svg>
+      `,
+        iconSize: [16, 16],
+        iconAnchor: [8, 12]
+      });
+
+      L.marker(currentPoint, {
+        icon: arrowIcon,
+        interactive: false,
+        keyboard: false,
+        alt: ''
+      }).addTo(this.polylinesGroup);
+    }
   }
 }
