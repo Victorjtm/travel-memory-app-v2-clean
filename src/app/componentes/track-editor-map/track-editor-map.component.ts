@@ -57,7 +57,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   anchorA: TrackAnchor | null = null;
   anchorB: TrackAnchor | null = null;
 
-  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' | 'IDLE' | 'SELECTING_A' | 'SELECTING_B' | 'SELECTING_MODE' | 'DRAWING_INSERT' | 'PREVIEW_INSERT' | 'CALCULATING_ROUTE' | 'PREVIEW_ROUTE' = 'SELECTING';
+  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' | 'APPEND_SELECTING_B' | 'IDLE' | 'SELECTING_A' | 'SELECTING_B' | 'SELECTING_MODE' | 'DRAWING_INSERT' | 'PREVIEW_INSERT' | 'CALCULATING_ROUTE' | 'PREVIEW_ROUTE' = 'SELECTING';
+  activeFlow: 'INSERT' | 'APPEND' | null = null;
 
   // --- Routing asistido (Fase 2.2) ---
   routingProfile: string = 'driving';
@@ -264,6 +265,35 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
     flushSegment(); // Último segmento
 
+    // 4. Dibujar Prolongaciones (Appends) virtuales
+    const appends = this.pendingEdits.filter(e => e.type === 'append_segment');
+    let finalLat = this.gpxPoints[this.gpxPoints.length - 1].lat;
+    let finalLng = this.gpxPoints[this.gpxPoints.length - 1].lng;
+
+    appends.forEach((appendEdit, index) => {
+      const isPreviewing = this.previewingEditId === appendEdit.id;
+      const points = appendEdit.data.points;
+      if (!points || points.length === 0) return;
+
+      const latlngs = points.map((p: any) => [p.lat, p.lng] as L.LatLngExpression);
+      
+      const mode = points[0].mode || 'driving';
+      let color = this.MODE_COLORS[mode] || '#0d9488';
+      let weight = 5;
+      let opacity = 1;
+      let className = isPreviewing ? 'preview-blink' : '';
+
+      L.polyline(latlngs, {
+        color, weight, opacity, className, dashArray: '5, 5' // Línea punteada para indicar prolongación no guardada
+      }).addTo(this.polylinesGroup!);
+      
+      this.addDirectionArrows(L, latlngs, color, opacity);
+
+      const lastP = points[points.length - 1];
+      finalLat = lastP.lat;
+      finalLng = lastP.lng;
+    });
+
     // Marcador de INICIO (verde)
     const inicioIcon = L.divIcon({
       className: 'inicio-marker-custom',
@@ -292,8 +322,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       iconAnchor: [12, 34],
       popupAnchor: [0, -34]
     });
-    const lastPoint = this.gpxPoints[this.gpxPoints.length - 1];
-    L.marker([lastPoint.lat, lastPoint.lng], { icon: finIcon, interactive: false }).addTo(this.polylinesGroup!);
+    L.marker([finalLat, finalLng], { icon: finIcon, interactive: false }).addTo(this.polylinesGroup!);
 
     // Marcadores de Fotos (solo visuales, idénticos a ver-gpx)
     if (this.mediaGroups && this.mediaGroups.length > 0) {
@@ -335,6 +364,12 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
 
     if (this.editorState === 'IDLE' || this.editorState === 'PREVIEW_INSERT') return;
+
+    if (this.editorState === 'APPEND_SELECTING_B') {
+      // Para prolongar, permitimos pinchar en cualquier parte del mapa, no hace falta que sea un punto existente
+      this.setInsertAnchorBVirtual(e.latlng);
+      return;
+    }
 
     const clickLayerPoint = this.map.latLngToLayerPoint(e.latlng);
     let closestIdx = -1;
@@ -626,6 +661,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.cleanupAppendMode();
     this.cleanupGeometryMode();
     this.cleanupInsertMode();
+    this.activeFlow = 'INSERT';
     this.editorState = 'SELECTING_A';
   }
 
@@ -648,6 +684,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.clearRoutePreview();
     this.routingResult = null;
     this.routingError = null;
+    this.activeFlow = null;
 
     if (this.polylinesGroup) {
       this.polylinesGroup.setStyle({ opacity: 1 });
@@ -680,6 +717,19 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.insertMarkerB = L.circleMarker([p.lat, p.lng], {
       color: 'white', fillColor: '#ef4444', fillOpacity: 1, radius: 8, weight: 2
     }).addTo(this.map).bindTooltip('Fin Insert (B)', { permanent: true, direction: 'right' }).openTooltip();
+
+    this.editorState = 'SELECTING_MODE';
+  }
+
+  private setInsertAnchorBVirtual(latlng: L.LatLng) {
+    if (!this.map || !this.insertAnchorA) return;
+    
+    // Asignar punto arbitrario seleccionado por el usuario para prolongación
+    this.insertAnchorB = { index: -1, time: undefined, lat: latlng.lat, lng: latlng.lng };
+    
+    this.insertMarkerB = L.circleMarker([latlng.lat, latlng.lng], {
+      color: 'white', fillColor: '#ef4444', fillOpacity: 1, radius: 8, weight: 2
+    }).addTo(this.map).bindTooltip('Fin Prolongación (B)', { permanent: true, direction: 'right' }).openTooltip();
 
     this.editorState = 'SELECTING_MODE';
   }
@@ -756,9 +806,23 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       { lat: this.insertAnchorB.lat, lng: this.insertAnchorB.lng, time: this.insertAnchorB.time, mode: appliedMode }
     ];
 
-    this.insertRequest.emit({
-      points: fullPointsArray as any
-    });
+    if (this.activeFlow === 'APPEND') {
+      const editId = Math.random().toString(36).substring(2, 9);
+      this.pendingEdits.push({
+        id: editId,
+        type: 'append_segment',
+        description: `${this.pendingEdits.length + 1} - Prolongación`,
+        data: {
+          points: fullPointsArray
+        },
+        isHidden: false // Los puntos añadidos sí se dibujan
+      });
+      this.drawBaseAndEdits();
+    } else {
+      this.insertRequest.emit({
+        points: fullPointsArray as any
+      });
+    }
 
     this.cleanupInsertMode();
     this.editorState = 'SELECTING';
@@ -887,31 +951,43 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   startAppendMode() {
     if (!this.map || this.gpxPoints.length === 0) return;
 
-    // Limpiar selección previa para evitar interferencia
     this.clearSelection();
-    this.editorState = 'APPENDING';
-    this.appendPoints = [];
+    this.cleanupInsertMode();
+    this.cleanupGeometryMode();
 
-    // Dibujar línea de append desde el último punto
-    const lastPt = this.gpxPoints[this.gpxPoints.length - 1];
-    this.appendLine = L.polyline(
-      [[lastPt.lat, lastPt.lng]],
-      {
-        color: '#0d9488', // Teal-600 — diferenciado del rosa de replace y del indigo original
-        weight: 5,
-        dashArray: '12, 8',
-        opacity: 0.9
+    this.activeFlow = 'APPEND';
+    this.editorState = 'APPEND_SELECTING_B';
+
+    // Para Append, siempre partimos del último punto (real o virtual de pendingEdits)
+    const lastPt = this.getVirtualLastPoint();
+    
+    // Setear insertAnchorA al final (usamos un índice virtual -1 para indicar que es el final dinámico)
+    this.insertAnchorA = { 
+      index: -1, 
+      time: undefined, 
+      lat: lastPt.lat, 
+      lng: lastPt.lng 
+    };
+
+    // Pintar marcador visual
+    this.insertMarkerA = L.circleMarker([lastPt.lat, lastPt.lng], {
+      color: 'white', fillColor: '#0d9488', fillOpacity: 1, radius: 8, weight: 2
+    }).addTo(this.map).bindTooltip('Inicio Prolongación', { permanent: true, direction: 'right' }).openTooltip();
+  }
+
+  getVirtualLastPoint(): { lat: number, lng: number } {
+    let lastPt = this.gpxPoints[this.gpxPoints.length - 1];
+    
+    // Si hay appends en memoria, cogemos el último punto de la última prolongación
+    const appends = this.pendingEdits.filter(e => e.type === 'append_segment');
+    if (appends.length > 0) {
+      const lastAppend = appends[appends.length - 1];
+      const pts = lastAppend.data.points;
+      if (pts && pts.length > 0) {
+        lastPt = pts[pts.length - 1];
       }
-    ).addTo(this.map);
-
-    // Marcador del punto de partida del append (para referencia visual)
-    L.circleMarker([lastPt.lat, lastPt.lng], {
-      color: '#0d9488',
-      fillColor: '#0d9488',
-      fillOpacity: 1,
-      radius: 6,
-      weight: 2
-    }).addTo(this.map).bindTooltip('Inicio Append', { permanent: false, direction: 'right' });
+    }
+    return { lat: lastPt.lat, lng: lastPt.lng };
   }
 
   private addAppendVertex(latlng: L.LatLng) {

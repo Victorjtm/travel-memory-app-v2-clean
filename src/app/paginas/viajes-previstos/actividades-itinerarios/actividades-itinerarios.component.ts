@@ -1,4 +1,4 @@
-﻿import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
@@ -1769,6 +1769,20 @@ export class ActividadesItinerariosComponent implements OnInit {
             this.actividadEditorId, 
             points, 
             'user-delete'
+          ));
+        } else if (edit.type === 'append_segment') {
+          // Evitamos duplicar el punto de anclaje A con slice(1)
+          const points = edit.data.points.slice(1).map((p: any) => ({
+            lat: p.lat,
+            lng: p.lng,
+            time: p.time ? new Date(p.time).toISOString() : undefined,
+            mode: p.mode
+          }));
+
+          await firstValueFrom(this.trackEditorService.createSegment(
+            this.actividadEditorId,
+            points,
+            'user-append'
           ));
         }
       }
