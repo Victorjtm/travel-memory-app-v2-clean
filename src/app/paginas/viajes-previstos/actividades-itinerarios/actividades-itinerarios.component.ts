@@ -683,7 +683,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     const primerArchivo = archivos[0].archivo;
     
     let popupContent = `
-        <div class="photo-popup-custom" style="max-width: 320px; font-family: sans-serif;">
+        <div class="photo-popup-custom" style="width: 320px; min-width: 250px; max-width: 600px; resize: horizontal; overflow: hidden; font-family: sans-serif; display: flex; flex-direction: column;">
           <div class="photo-popup-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 6px; margin-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 6px;">
               <span style="background: #3b82f6; color: white; border-radius: 4px; padding: 2px 6px; font-size: 12px; font-weight: bold;">#${numeroSecuencial}</span>
@@ -691,7 +691,7 @@ export class ActividadesItinerariosComponent implements OnInit {
             </div>
             <span style="font-size: 10px; color: #64748b;">(Clic en miniatura para ver)</span>
           </div>
-          <div class="photo-popup-body" style="display: flex; flex-direction: column; gap: 12px;">
+          <div class="photo-popup-body" style="display: flex; flex-direction: column; gap: 12px; max-height: 45vh; overflow-y: auto; overflow-x: hidden; padding-right: 5px;">
       `;
 
     archivos.forEach((item, index) => {
@@ -918,8 +918,10 @@ export class ActividadesItinerariosComponent implements OnInit {
       const popupContent = this.crearPopupContent(archivos, numeroSecuencial, cantidadArchivos, tieneMultiples);
 
       marker.bindPopup(popupContent, {
+          autoPan: false,
           className: 'photo-popup-leaflet',
-          maxWidth: 320
+          minWidth: 250,
+          maxWidth: 600
         });
 
       // Guardar referencia de los archivos
@@ -1535,21 +1537,20 @@ export class ActividadesItinerariosComponent implements OnInit {
     if (foto.marcadorRef && this.mapaGPX) {
       if (this.coordenadasGPX && this.coordenadasGPX.length > 0) {
         import('leaflet').then(L => {
-          // 1. Calcular el zoom necesario para ver toda la ruta
+          // Aseguramos que la ruta completa esté visible y centrada
           const bounds = L.latLngBounds(this.coordenadasGPX);
-          const zoomRuta = this.mapaGPX.getBoundsZoom(bounds);
-          
-          // Reducimos 1 nivel de zoom para asegurar que al centrar en un extremo, 
-          // la ruta completa siga estando dentro de los límites visuales
-          const zoomIdeal = Math.max(0, zoomRuta - 1);
+          this.mapaGPX.fitBounds(bounds, { padding: [50, 50] });
 
-          // 2. Centrar el mapa en la foto manteniendo todo a la vista
-          this.mapaGPX.setView(foto.marcadorRef.getLatLng(), zoomIdeal);
+          // Desactivamos el auto-pan del popup para que no mueva el mapa al abrirse
+          const popup = foto.marcadorRef.getPopup();
+          if (popup) {
+            popup.options.autoPan = false;
+          }
           foto.marcadorRef.openPopup();
         });
       } else {
-        // Fallback clásico
-        this.mapaGPX.setView(foto.marcadorRef.getLatLng(), 15);
+        const popup = foto.marcadorRef.getPopup();
+        if (popup) popup.options.autoPan = false;
         foto.marcadorRef.openPopup();
       }
       
