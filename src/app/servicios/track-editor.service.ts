@@ -513,8 +513,7 @@ export class TrackEditorService {
           continue;
         }
 
-        // Fase 2.4: Delete
-        // Semántica: eliminamos estrictamente el contenido INTERMEDIO, conservando A y B
+        // Semántica: eliminamos el segmento completo (inclusivo A y B), igual que delete_segment antiguo
         let actualA = idxA;
         let actualB = idxB;
         if (idxB < idxA) {
@@ -522,9 +521,9 @@ export class TrackEditorService {
           actualB = idxA;
         }
         
-        const deleteLength = (actualB - actualA) - 1;
+        const deleteLength = (actualB - actualA) + 1;
         if (deleteLength > 0) {
-          accumulatedPoints.splice(actualA + 1, deleteLength);
+          accumulatedPoints.splice(actualA, deleteLength);
         }
       }
     }
