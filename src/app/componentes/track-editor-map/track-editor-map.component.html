@@ -34,6 +34,46 @@
     </div>
   </div>
 
+  <!-- Panel de Historial de Cambios (Flotante o lateral) -->
+  <div class="editor-sidebar pending-edits-panel" *ngIf="pendingEdits.length > 0 && !anchorA && editorState === 'SELECTING'">
+    <div class="sidebar-header" style="background: #3b82f6;">
+      <h3>Cambios Pendientes</h3>
+      <p class="subtitle">Modificaciones sin guardar</p>
+    </div>
+
+    <!-- Botón Maestro de Guardar -->
+    <div style="padding: 15px; background: #eff6ff; border-bottom: 1px solid #bfdbfe;">
+      <button class="btn-primary" style="width: 100%; background: #2563eb; border-color: #2563eb; font-size: 15px; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.4);" (click)="emitSaveAllEdits()">
+        💾 Guardar Todos los Cambios
+      </button>
+    </div>
+
+    <!-- Modo Previsualización de un cambio -->
+    <div class="preview-mode" *ngIf="previewingEditId" style="padding: 15px; background: #fff1f2; border-bottom: 1px solid #fecdd3;">
+      <h4 style="color: #e11d48; margin-top: 0;">👀 Previsualizando Cambio</h4>
+      <p style="font-size: 13px; color: #4c1d95;">El tramo afectado está parpadeando en el mapa.</p>
+      <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <button class="btn-danger" style="flex: 1;" (click)="revertEdit(previewingEditId)">Revertir Cambio</button>
+        <button class="btn-secondary" style="flex: 1;" (click)="cancelPreview()">Cancelar</button>
+      </div>
+    </div>
+
+    <!-- Lista de Cambios -->
+    <div class="edits-list" style="overflow-y: auto; flex: 1; padding: 10px;">
+      <div *ngFor="let edit of pendingEdits" 
+           class="edit-item" 
+           [class.active-preview]="previewingEditId === edit.id"
+           style="padding: 12px; background: white; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s;"
+           (click)="previewEdit(edit.id)">
+        <div style="font-weight: 600; color: #1e293b; display: flex; align-items: center; justify-content: space-between;">
+          <span>{{ edit.description }}</span>
+          <span *ngIf="previewingEditId === edit.id" style="font-size: 18px;">👁️</span>
+        </div>
+        <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Clic para previsualizar o revertir</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Panel de operaciones de selección (flotante o en el lateral según diseño) -->
   <div class="editor-sidebar" *ngIf="anchorA && editorState === 'SELECTING'">
     <div class="sidebar-header">

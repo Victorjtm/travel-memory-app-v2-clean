@@ -40,7 +40,12 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   @Output() appendRequest = new EventEmitter<{
     points: { lat: number; lng: number }[]
   }>();
+  @Output() saveAllEdits = new EventEmitter<any[]>(); // Emits pendingEdits
   @Output() close = new EventEmitter<void>();
+
+  // In-memory edits tracking
+  pendingEdits: any[] = [];
+  previewingEditId: string | null = null;
 
   private map: L.Map | null = null;
   private polylinesGroup: L.FeatureGroup | null = null;
@@ -170,43 +175,47 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       lat: p.lat, 
       lng: p.lng, 
       visualMode: 'original', 
-      isDeleted: false 
+      isDeleted: false,
+      isHidden: false,
+      isPreviewing: false
     }));
 
-    // 2. Aplicar Edits para marcar el estado (Priority: delete > override)
-    // Aplicamos overrides primero para que si hay un solapamiento con delete,
-    // el isDeleted se mantenga y prevalezca visualmente.
-    const overrides = this.trackEdits.filter(e => e.action === 'override_mode');
-    const deletes = this.trackEdits.filter(e => e.action === 'delete_segment');
+    // 2. Aplicar Edits EN MEMORIA para marcar el estado
+    // Recorremos los pendingEdits locales en lugar de this.trackEdits
+    const deletes = this.pendingEdits.filter(e => e.type === 'delete_segment');
 
-    const applyEditToVisuals = (edit: TrackEdit) => {
-      const startIdx = this.trackEditorService.resolveAnchor(edit.startAnchor, this.gpxPoints);
-      const endIdx = this.trackEditorService.resolveAnchor(edit.endAnchor, this.gpxPoints);
+    const applyEditToVisuals = (edit: any) => {
+      const startIdx = this.trackEditorService.resolveAnchor(edit.data.startAnchor, this.gpxPoints);
+      const endIdx = this.trackEditorService.resolveAnchor(edit.data.endAnchor, this.gpxPoints);
       
       if (startIdx !== -1 && endIdx !== -1) {
         const min = Math.min(startIdx, endIdx);
         const max = Math.max(startIdx, endIdx);
         
         for (let i = min; i <= max; i++) {
-          if (edit.action === 'override_mode' && edit.newMode) {
-             visualPoints[i].visualMode = edit.newMode;
-          } else if (edit.action === 'delete_segment') {
+          if (edit.type === 'delete_segment') {
              visualPoints[i].isDeleted = true;
+             visualPoints[i].isHidden = true; // Por defecto no se dibujará
+             if (this.previewingEditId === edit.id) {
+               visualPoints[i].isHidden = false; // Se dibujará si está en preview
+               visualPoints[i].isPreviewing = true;
+             }
           }
         }
       }
     };
 
-    overrides.forEach(applyEditToVisuals);
     deletes.forEach(applyEditToVisuals);
 
     // 3. Agrupar puntos contiguos que comparten el mismo estado visual
     let currentSegment: any[] = [];
     let currentMode = visualPoints[0].visualMode;
     let currentIsDeleted = visualPoints[0].isDeleted;
+    let currentIsHidden = visualPoints[0].isHidden;
+    let currentIsPreviewing = visualPoints[0].isPreviewing;
 
     const flushSegment = () => {
-      if (currentSegment.length > 1) {
+      if (currentSegment.length > 1 && !currentIsHidden) {
         // Añadir el último punto al nuevo segmento para que no haya huecos
         const latlngs = currentSegment.map(p => [p.lat, p.lng] as L.LatLngExpression);
         
@@ -215,36 +224,40 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         let opacity = 0.85;
         let dashArray = '';
         let smoothFactor = 1;
+        let className = '';
 
-        if (currentIsDeleted) {
-          color = '#9ca3af'; // Gris fantasma
-          dashArray = '5, 10';
-          opacity = 0.4;
-          weight = 3;
+        if (currentIsDeleted && currentIsPreviewing) {
+          color = '#ff4444'; // Rojo fuerte para preview de borrado
+          weight = 5;
+          className = 'preview-blink';
         } else if (currentMode !== 'original') {
           weight = 5; // Un poco más grueso para destacar que ha sido cambiado
           opacity = 1;
         }
 
         L.polyline(latlngs, {
-          color, weight, opacity, dashArray, smoothFactor
+          color, weight, opacity, dashArray, smoothFactor, className
         }).addTo(this.polylinesGroup!);
 
-        // Pintar las flechas con el color de este tramo
-        this.addDirectionArrows(L, latlngs, color, opacity);
+        // Solo pintar flechas si no es un tramo fantasma
+        if (!currentIsDeleted) {
+          this.addDirectionArrows(L, latlngs, color, opacity);
+        }
       }
     };
 
     for (let i = 0; i < visualPoints.length; i++) {
       const p = visualPoints[i];
       
-      if (p.visualMode !== currentMode || p.isDeleted !== currentIsDeleted) {
+      if (p.visualMode !== currentMode || p.isDeleted !== currentIsDeleted || p.isHidden !== currentIsHidden || p.isPreviewing !== currentIsPreviewing) {
         // Para que las líneas conecten, el segmento anterior debe terminar en el punto actual
         currentSegment.push(p); 
         flushSegment();
         currentSegment = [p];
         currentMode = p.visualMode;
         currentIsDeleted = p.isDeleted;
+        currentIsHidden = p.isHidden;
+        currentIsPreviewing = p.isPreviewing;
       } else {
         currentSegment.push(p);
       }
@@ -419,16 +432,63 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
   onDeleteSegment() {
     if (!this.anchorA || !this.anchorB) return;
-    this.deleteRequest.emit({
-      anchorA: this.anchorA,
-      anchorB: this.anchorB
+    
+    // Generar un ID único simple para tracking local
+    const editId = Math.random().toString(36).substring(2, 9);
+    
+    this.pendingEdits.push({
+      id: editId,
+      type: 'delete_segment',
+      description: `${this.pendingEdits.length + 1} - Eliminación tramo`,
+      data: {
+        startAnchor: this.anchorA,
+        endAnchor: this.anchorB
+      },
+      isHidden: true
     });
-    this.cleanupGeometryMode(); // Limpiar la selección de la interfaz visual
+
+    this.clearSelection();
+    this.drawBaseAndEdits();
+  }
+
+  // Interacciones en el panel lateral de historial
+  previewEdit(editId: string): void {
+    this.previewingEditId = editId;
+    this.drawBaseAndEdits();
+    
+    // Zoom al tramo afectado
+    const edit = this.pendingEdits.find(e => e.id === editId);
+    if (edit && this.map) {
+      const startIdx = this.trackEditorService.resolveAnchor(edit.data.startAnchor, this.gpxPoints);
+      const endIdx = this.trackEditorService.resolveAnchor(edit.data.endAnchor, this.gpxPoints);
+      if (startIdx !== -1 && endIdx !== -1) {
+        const p1 = this.gpxPoints[startIdx];
+        const p2 = this.gpxPoints[endIdx];
+        const bounds = L.latLngBounds([p1.lat, p1.lng], [p2.lat, p2.lng]);
+        this.map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+      }
+    }
+  }
+
+  cancelPreview(): void {
+    this.previewingEditId = null;
+    this.drawBaseAndEdits();
+  }
+
+  revertEdit(editId: string): void {
+    this.pendingEdits = this.pendingEdits.filter(e => e.id !== editId);
+    if (this.previewingEditId === editId) {
+      this.previewingEditId = null;
+    }
+    this.drawBaseAndEdits();
+  }
+
+  emitSaveAllEdits(): void {
+    this.saveAllEdits.emit(this.pendingEdits);
   }
 
   onOverrideMode() {
     if (!this.anchorA || !this.anchorB) return;
-
     // Extraer los puntos del track original entre A y B inclusive
     const startIndex = this.anchorA.index!;
     const endIndex = this.anchorB.index!;
