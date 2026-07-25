@@ -353,9 +353,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
     }
 
-    const SNAP_TOLERANCE_PX = 30;
-
-    if (minPixelDist <= SNAP_TOLERANCE_PX) {
+    // Eliminamos la limitación SNAP_TOLERANCE_PX para permitir seleccionar vértices de tramos largos
+    if (closestIdx !== -1) {
       if (this.editorState === 'SELECTING_A') {
         this.setInsertAnchorA(closestIdx);
       } else if (this.editorState === 'SELECTING_B') {
@@ -363,8 +362,6 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       } else if (this.editorState === 'SELECTING') {
         this.setAnchor(closestIdx);
       }
-    } else {
-      console.log('Clic demasiado lejos del trazado GPX.');
     }
   }
 

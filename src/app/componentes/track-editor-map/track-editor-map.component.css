@@ -5,6 +5,6 @@
   100% { opacity: 1; }
 }
 
-.preview-blink {
+::ng-deep .preview-blink {
   animation: blinkLine 1s infinite;
 }
