@@ -747,14 +747,15 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚Â¨ NUEVO: Cargar fotos y videos desde backend y aÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â±adirlas al mapa con agrupaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n
-  private cargarYAnadirFotos(): void {
-    if (!this.mapaGPX || !this.actividadSeleccionada) {
-      console.warn('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Mapa o ID de actividad no disponible');
+  private cargarYAnadirFotos(actividadId?: number): void {
+    const targetId = actividadId || this.actividadSeleccionada;
+    if (!targetId) {
+      console.warn('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â  Mapa o ID de actividad no disponible');
       return;
     }
 
     const backendUrl = environment.apiUrl;
-    const urlArchivos = `${backendUrl}/archivos?actividadId=${this.actividadSeleccionada}`;
+    const urlArchivos = `${backendUrl}/archivos?actividadId=${targetId}`;
     const urlAsociados = `${backendUrl}/archivos-asociados`;
 
     this.http.get<any[]>(urlArchivos).subscribe({
@@ -1705,6 +1706,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     // IMPORTANTE: No cargar TrackEdits antiguos. Ver GPX es la verdad absoluta.
     // El editor arranca limpio con los segmentos puros.
     this.editsEditor = [];
+    this.cargarYAnadirFotos(actividadId);
 
     // Cargar Segmentos
     this.trackEditorService.getSegments(actividadId).subscribe({

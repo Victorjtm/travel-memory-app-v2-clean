@@ -329,14 +329,20 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       this.mediaGroups.forEach((grupo, index) => {
         const numeroSecuencial = index + 1;
         const grupoIcon = L.divIcon({
-          className: 'custom-media-marker-editor',
+          className: 'photo-marker-custom',
           html: `
-            <div style="background-color: #2196F3; color: white; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5); font-family: sans-serif; font-size: 12px; pointer-events: none;">
+          <div style="display: flex; flex-direction: column; align-items: center;">
+            <svg width="44" height="44" viewBox="0 0 44 44" style="filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4)); z-index: 5;">
+              <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="#E53935" />
+              <circle cx="22" cy="16" r="6" fill="white" />
+            </svg>
+            <div style="margin-top: -8px; background: #1E88E5; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.4); z-index: 10; position: relative;">
               #${numeroSecuencial}
             </div>
+          </div>
           `,
-          iconSize: [26, 26],
-          iconAnchor: [13, 13]
+          iconSize: [44, 60],
+          iconAnchor: [22, 60]
         });
         L.marker([grupo.lat, grupo.lng], { icon: grupoIcon, interactive: false, keyboard: false }).addTo(this.polylinesGroup!);
       });
