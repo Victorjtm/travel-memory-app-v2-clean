@@ -370,9 +370,14 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
 
     if (this.editorState === 'GET_LOCATION') {
-      const lat = e.latlng.lat.toFixed(6);
-      const lng = e.latlng.lng.toFixed(6);
-      const coordStr = `${lat}, ${lng}`;
+      const lat = parseFloat(e.latlng.lat.toFixed(6));
+      const lng = parseFloat(e.latlng.lng.toFixed(6));
+      const coordObj = {
+        latitud: lat,
+        longitud: lng,
+        altitud: 0
+      };
+      const coordStr = JSON.stringify(coordObj, null, 2);
       
       const copyFallback = (text: string) => {
         const textArea = document.createElement("textarea");
