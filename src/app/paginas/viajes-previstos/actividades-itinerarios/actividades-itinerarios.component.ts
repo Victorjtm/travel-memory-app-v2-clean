@@ -715,7 +715,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         }
       }
 
-      const dateTag = archivo.fechaCreacion ? `<div style="font-size: 11px; color: #94a3b8; margin-top: 2px;"><i class="fa fa-clock-o"></i> ${new Date(archivo.fechaCreacion).toLocaleString()}</div>` : '';
+      const dateTag = archivo.fechaCreacion ? `<div style="font-size: 11px; color: #94a3b8; margin-top: 2px;"><i class="fa fa-clock-o"></i> ${new Date(archivo.timestampReal || archivo.fechaCreacion).toLocaleString()}</div>` : '';
       const descTag = archivo.descripcion ? `<div style="font-size: 12px; color: #475569; margin-top: 6px; font-style: italic;">"${archivo.descripcion}"</div>` : '';
 
       const mediaTag = esVideo 
@@ -811,9 +811,21 @@ export class ActividadesItinerariosComponent implements OnInit {
 
         const lat = geoData.latitud ?? geoData.latitude;
         const lng = geoData.longitud ?? geoData.longitude;
-        const timestamp = geoData.timestamp || archivo.fechaCreacion;
+        // Reconstruimos el timestamp exacto a partir de los campos editables de la BD
+        let timestamp = 0;
+        if (archivo.fechaCreacion) {
+          const fecha = new Date(archivo.fechaCreacion);
+          if (archivo.horaCaptura) {
+            const [horas, minutos] = archivo.horaCaptura.split(':').map(Number);
+            if (!isNaN(horas) && !isNaN(minutos)) {
+              fecha.setHours(horas, minutos, 0, 0);
+            }
+          }
+          timestamp = fecha.getTime();
+        }
 
         if (lat && lng) {
+          archivo.timestampReal = timestamp; // Guardamos para mostrarlo luego
           return { archivo, lat, lng, timestamp };
         }
       } catch (err) {
