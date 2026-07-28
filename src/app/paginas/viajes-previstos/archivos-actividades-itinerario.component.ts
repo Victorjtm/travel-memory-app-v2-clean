@@ -110,23 +110,32 @@ export class ArchivosComponent implements OnInit, OnDestroy {
     this.archivoService.getArchivosPorActividad(this.actividadId).subscribe({
       next: archivos => {
         this.archivos = (archivos ?? []).sort((a, b) => {
-          const toTimestamp = (fechaCreacion?: string, horaCaptura?: string): number => {
+          const getExifTimestamp = (archivo: any): number | null => {
+            if (archivo.geolocalizacion && typeof archivo.geolocalizacion === 'string' && archivo.geolocalizacion.includes('{')) {
+              try {
+                const geo = JSON.parse(archivo.geolocalizacion);
+                if (geo.timestamp) {
+                  return new Date(geo.timestamp).getTime();
+                }
+              } catch (e) {}
+            }
+            return null;
+          };
+
+          const getFallbackTimestamp = (fechaCreacion?: string, horaCaptura?: string): number => {
             if (!fechaCreacion) return Number.MAX_SAFE_INTEGER;
-
             const fecha = new Date(fechaCreacion);
-
             if (horaCaptura) {
               const [horas, minutos] = horaCaptura.split(':').map(Number);
               if (!isNaN(horas) && !isNaN(minutos)) {
                 fecha.setHours(horas, minutos, 0, 0);
               }
             }
-
             return fecha.getTime();
           };
 
-          const timestampA = toTimestamp(a.fechaCreacion, a.horaCaptura);
-          const timestampB = toTimestamp(b.fechaCreacion, b.horaCaptura);
+          const timestampA = getExifTimestamp(a) ?? getFallbackTimestamp(a.fechaCreacion, a.horaCaptura);
+          const timestampB = getExifTimestamp(b) ?? getFallbackTimestamp(b.fechaCreacion, b.horaCaptura);
 
           return timestampA - timestampB;
         });
