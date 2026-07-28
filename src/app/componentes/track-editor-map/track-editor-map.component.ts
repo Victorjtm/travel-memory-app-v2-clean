@@ -104,7 +104,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   ngOnInit() {}
 
   ngOnChanges(changes: SimpleChanges) {
-    if ((changes['gpxPoints'] || changes['trackEdits']) && this.map) {
+    if ((changes['gpxPoints'] || changes['trackEdits'] || changes['mediaGroups']) && this.map) {
       this.drawBaseAndEdits();
     }
   }
@@ -374,7 +374,30 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       const lng = e.latlng.lng.toFixed(6);
       const coordStr = `${lat}, ${lng}`;
       
-      navigator.clipboard.writeText(coordStr).then(() => {
+      const copyFallback = (text: string) => {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          textArea.remove();
+          return Promise.resolve();
+        } catch (err) {
+          textArea.remove();
+          return Promise.reject(err);
+        }
+      };
+
+      const copyPromise = (navigator.clipboard && window.isSecureContext) 
+        ? navigator.clipboard.writeText(coordStr)
+        : copyFallback(coordStr);
+
+      copyPromise.then(() => {
         alert(`¡Coordenada copiada!\n\n${coordStr}\n\nPuedes pegarla directamente en la ficha de la foto o actividad.`);
         this.editorState = 'SELECTING';
       }).catch(err => {
