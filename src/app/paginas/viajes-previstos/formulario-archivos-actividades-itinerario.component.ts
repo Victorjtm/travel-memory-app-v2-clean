@@ -141,6 +141,24 @@ export class FormularioArchivosComponent implements OnInit, OnDestroy {
     return this.modoEdicion ? 'Editar Archivo' : 'Subir Nuevos Archivos';
   }
 
+  get fechaCreacionFormateada(): string {
+    if (!this.nuevoArchivo.fechaCreacion) return '';
+    // Devuelve solo el fragmento YYYY-MM-DD para el input type="date"
+    return this.nuevoArchivo.fechaCreacion.split('T')[0];
+  }
+
+  set fechaCreacionFormateada(valor: string) {
+    if (!valor) {
+      this.nuevoArchivo.fechaCreacion = new Date().toISOString();
+      return;
+    }
+    // Reconstruimos la fecha combinando el YYYY-MM-DD del input con la hora original (o 00:00:00 si no hay)
+    const fechaActual = this.nuevoArchivo.fechaCreacion ? new Date(this.nuevoArchivo.fechaCreacion) : new Date();
+    const [year, month, day] = valor.split('-').map(Number);
+    fechaActual.setFullYear(year, month - 1, day);
+    this.nuevoArchivo.fechaCreacion = fechaActual.toISOString();
+  }
+
   get hayCambios(): boolean {
     if (!this.modoEdicion || !this.archivoOriginal) return false;
 
@@ -149,6 +167,7 @@ export class FormularioArchivosComponent implements OnInit, OnDestroy {
       this.nuevoArchivo.tipo !== this.archivoOriginal.tipo ||
       this.nuevoArchivo.descripcion !== this.archivoOriginal.descripcion ||
       this.nuevoArchivo.horaCaptura !== this.archivoOriginal.horaCaptura ||
+      this.nuevoArchivo.fechaCreacion !== this.archivoOriginal.fechaCreacion ||
       this.nuevoArchivo.geolocalizacion !== this.archivoOriginal.geolocalizacion
     );
   }

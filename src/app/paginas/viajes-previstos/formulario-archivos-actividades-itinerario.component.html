@@ -41,10 +41,16 @@
                   name="descripcion"></textarea>
       </div>
 
-      <!-- ===== Hora de captura del archivo ===== -->
-      <div class="campo-formulario">
-        <label><i class="fa fa-clock"></i> Hora de captura:</label>
-        <input type="time" [(ngModel)]="nuevoArchivo.horaCaptura" name="horaCaptura">
+      <!-- ===== Fecha y Hora de captura del archivo ===== -->
+      <div class="campo-formulario" style="display: flex; gap: 10px;">
+        <div style="flex: 1;">
+          <label><i class="fa fa-calendar-alt"></i> Fecha de captura:</label>
+          <input type="date" [(ngModel)]="fechaCreacionFormateada" name="fechaCreacion" style="width: 100%;">
+        </div>
+        <div style="flex: 1;">
+          <label><i class="fa fa-clock"></i> Hora:</label>
+          <input type="time" [(ngModel)]="nuevoArchivo.horaCaptura" name="horaCaptura" style="width: 100%;">
+        </div>
       </div>
 
       <!-- ===== Geolocalización del archivo ===== -->
