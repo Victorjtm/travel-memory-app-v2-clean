@@ -57,7 +57,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   anchorA: TrackAnchor | null = null;
   anchorB: TrackAnchor | null = null;
 
-  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' | 'APPEND_SELECTING_B' | 'IDLE' | 'SELECTING_A' | 'SELECTING_B' | 'SELECTING_MODE' | 'DRAWING_INSERT' | 'PREVIEW_INSERT' | 'CALCULATING_ROUTE' | 'PREVIEW_ROUTE' = 'SELECTING';
+  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' | 'APPEND_SELECTING_B' | 'IDLE' | 'SELECTING_A' | 'SELECTING_B' | 'SELECTING_MODE' | 'DRAWING_INSERT' | 'PREVIEW_INSERT' | 'CALCULATING_ROUTE' | 'PREVIEW_ROUTE' | 'GET_LOCATION' = 'SELECTING';
   activeFlow: 'INSERT' | 'APPEND' | null = null;
 
   // --- Routing asistido (Fase 2.2) ---
@@ -369,6 +369,22 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       return;
     }
 
+    if (this.editorState === 'GET_LOCATION') {
+      const lat = e.latlng.lat.toFixed(6);
+      const lng = e.latlng.lng.toFixed(6);
+      const coordStr = `${lat}, ${lng}`;
+      
+      navigator.clipboard.writeText(coordStr).then(() => {
+        alert(`¡Coordenada copiada!\n\n${coordStr}\n\nPuedes pegarla directamente en la ficha de la foto o actividad.`);
+        this.editorState = 'SELECTING';
+      }).catch(err => {
+        console.error('Error al copiar:', err);
+        alert(`Coordenada: ${coordStr}\n(Cópiala manualmente, el navegador bloqueó el portapapeles)`);
+        this.editorState = 'SELECTING';
+      });
+      return;
+    }
+
     if (this.editorState === 'IDLE' || this.editorState === 'PREVIEW_INSERT') return;
 
     if (this.editorState === 'APPEND_SELECTING_B') {
@@ -660,6 +676,10 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   private insertLine: L.Polyline | null = null;
   private insertVertices: L.Marker[] = [];
   insertPoints: { lat: number; lng: number }[] = [];
+
+  startGetLocationMode() {
+    this.editorState = 'GET_LOCATION';
+  }
 
   startInsertMode() {
     if (!this.map || this.gpxPoints.length === 0) return;

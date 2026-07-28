@@ -31,6 +31,9 @@
       <button class="btn-insert-float" (click)="startInsertMode()" style="background: #8b5cf6; margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
         ✏️ Insertar Tramo
       </button>
+      <button class="btn-location-float" (click)="startGetLocationMode()" style="background: #eab308; margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        📍 Obtener Coordenada
+      </button>
     </div>
   </div>
 
@@ -295,5 +298,29 @@
     <div class="cancel-wrapper" style="margin-top: auto; padding: 15px;">
       <button class="btn-secondary" (click)="cancelInsertMode()">✖ Cancelar</button>
     </div>
+
   </div>
+
+  <!-- Panel de Obtener Coordenada -->
+  <div class="editor-sidebar" *ngIf="editorState === 'GET_LOCATION'">
+    <div class="sidebar-header" style="background: #eab308;">
+      <h3>Obtener Coordenada GPS</h3>
+      <p class="subtitle">Haz clic en cualquier punto del mapa</p>
+    </div>
+    
+    <div class="actions-panel" style="flex: 1;">
+      <div class="action-group">
+        <p class="warning-text" style="font-size: 14px; text-align: center; margin-top: 20px;">
+          📍 Haz clic en el lugar exacto del mapa de donde quieres extraer la coordenada.
+        </p>
+        <p style="font-size: 13px; color: #64748b; text-align: center; margin-top: 10px;">
+          La coordenada se copiará automáticamente al portapapeles.
+        </p>
+      </div>
+      <div class="cancel-wrapper" style="margin-top: auto; padding: 15px;">
+        <button class="btn-secondary" (click)="editorState = 'SELECTING'">✖ Cancelar</button>
+      </div>
+    </div>
+  </div>
+
 </div>
