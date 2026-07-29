@@ -44,9 +44,20 @@
     <button class="btn-control" (click)="togglePlay()">
       <span class="icon">{{ isPlaying ? '⏸' : '▶' }}</span>
     </button>
+    
+    <!-- NUEVO: Auto Velocidad -->
+    <div class="auto-toggle-container" [class.active]="(narrativeService.speedState$ | async)?.autoSpeedEnabled" (click)="narrativeService.restoreAutoSpeed()">
+      <span class="auto-icon" title="Recuperar Auto Velocidad">⚡ Auto</span>
+    </div>
+
     <div class="velocidad-selector">
       <label>x{{ speed }}</label>
-      <input type="range" min="1" max="1000" step="1" [(ngModel)]="speed">
+      <input type="range" min="1" max="1000" step="1" [(ngModel)]="speed" (input)="onManualSpeedChange()">
+    </div>
+
+    <!-- NUEVO: Auto Cámara -->
+    <div class="auto-toggle-container" [class.active]="(narrativeService.cameraState$ | async)?.autoCameraEnabled" (click)="narrativeService.restoreAutoZoom()">
+      <span class="auto-icon" title="Recuperar Auto Zoom">🔍 Auto</span>
     </div>
     
     <!-- NUEVO TOGGLE PROTOTIPO: Auto-completar trazado (BETA) -->

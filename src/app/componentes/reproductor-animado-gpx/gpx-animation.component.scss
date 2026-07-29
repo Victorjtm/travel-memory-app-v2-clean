@@ -782,3 +782,21 @@
     }
   }
 }
+
+.auto-toggle-container {
+  margin: 0 10px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.3s;
+}
+
+.auto-toggle-container.active {
+  opacity: 1;
+  text-shadow: 0 0 10px rgba(0,255,255,0.8);
+}
+
+.auto-icon {
+  font-size: 1.2em;
+  font-weight: bold;
+  color: white;
+}

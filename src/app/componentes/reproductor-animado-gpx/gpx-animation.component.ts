@@ -7,6 +7,7 @@ import { GpxAnimationService, GpxPoint, AnimationStats } from '../../servicios/g
 import { ArchivoService } from '../../servicios/archivo.service';
 import { VideoGeneratorService, ProgresoVideo, ConfiguracionVideo } from '../../servicios/video-generator.service';
 import { GeocodificacionService } from '../../servicios/geocodificacion.service';
+import { AnimacionNarrativaService } from '../../servicios/animacion-narrativa.service';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
@@ -173,7 +174,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     private archivoService: ArchivoService,
     private geocodificacionService: GeocodificacionService,
     private cdr: ChangeDetectorRef,
-    private ngZone: NgZone
+    private ngZone: NgZone,
+    public narrativeService: AnimacionNarrativaService // INYECTADO AQUI
   ) { }
 
   async ngOnInit() {
@@ -249,11 +251,43 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       }
 
       this.createNewPolyline(this.currentMode || 'walking', [p0.lat, p0.lng], pointContext);
+      
+      // NUEVO: Mostrar todos los POIs de inmediato
+      this.displayAllPois();
       console.log(`🛣️ Primera polilínea (HF) creada. Color: ${this.currentHfColor || 'default'}`);
     } else {
       await this.initMap();
     }
     // this.togglePlay(); // Desactivamos el auto-arranque para permitir configurar OSRM antes
+  }
+
+  // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar
+  private displayAllPois() {
+    if (!this.map || !this.multimedia || this.multimedia.length === 0) return;
+    
+    // Si no existe el grupo, crearlo
+    if (!this.visualSessionGroup) {
+      this.visualSessionGroup = this.L.layerGroup().addTo(this.map);
+    }
+    
+    this.multimedia.forEach((archivo: any) => {
+      if (archivo.geolocalizacion) {
+        try {
+          const loc = typeof archivo.geolocalizacion === 'string' ? JSON.parse(archivo.geolocalizacion) : archivo.geolocalizacion;
+          if (loc.latitud && loc.longitud) {
+             const icon = this.L.divIcon({
+                className: 'custom-session-marker',
+                html: `<div style="background-color: #3b82f6; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); font-weight: bold;">
+                         ${archivo.ordenVisita !== undefined ? archivo.ordenVisita : '*'}
+                       </div>`,
+                iconSize: [28, 28],
+                iconAnchor: [14, 14]
+             });
+             this.L.marker([loc.latitud, loc.longitud], { icon: icon }).addTo(this.visualSessionGroup);
+          }
+        } catch(e) {}
+      }
+    });
   }
 
   ngOnDestroy() {
@@ -360,10 +394,15 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     }
   }
 
+  onManualSpeedChange() {
+    this.narrativeService.setManualSpeed(this.speed);
+  }
+
   private handleUserMapInteraction(e: any) {
     if (e.originalEvent || (e.sourceTarget && e.sourceTarget === this.map)) {
        this.autoZoomPaused = true;
        this.lastInteractionTime = Date.now();
+       this.narrativeService.setManualZoom();
     }
   }
 
@@ -530,7 +569,15 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     // El zoom discreto se gestiona en updateCameraTracking() con throttle de 1000ms.
 
     // Motor: El índice avanza por frames (Fluidez Total)
-    const currentSpeed = Number(this.speed) || 2;
+    let currentSpeed = Number(this.speed) || 2;
+    
+    // Usar NarrativeService para auto-speed si está habilitado
+    if (this.narrativeService.speedState$.value.autoSpeedEnabled) {
+       currentSpeed = this.narrativeService.calculateAutoSpeed(this.currentMode || 'walking');
+       // Reflejar la velocidad automática en la UI pasiva
+       this.speed = currentSpeed;
+    }
+
     const speedFactor = this.getSpeedFactor(this.currentMode);
     
     // ~0.5 puntos por frame at 60fps
@@ -798,6 +845,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private async pauseForEvent(event: any) {
     this.isPlaying = false;
     this.stopAnimation();
+    this.narrativeService.pauseAtPoi();
 
     // Guardar snapshot completa del estado de cámara ANTES del flyTo al evento
     if (this.map) {
@@ -897,6 +945,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       const resumePlayback = () => {
         if (!this.isPlaying) {
           this.isPlaying = true;
+          this.narrativeService.startSegment(Math.floor(this.currentIndex), this.currentDistKm, this.currentMode || 'walking');
           this.lastTimestamp = performance.now();
           this.animate();
           this.cdr.detectChanges();
@@ -904,7 +953,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       };
 
       // 3. Mecanismo principal: reanudar al terminar la animación del mapa (evento real)
-      this.map.once('moveend', resumePlayback);
+      (this.map as any).once('moveend', resumePlayback);
 
       // 4. Fallback de seguridad: si moveend no llega en 1500ms, cancelar listener y reanudar
       setTimeout(() => {
@@ -1371,9 +1420,15 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
    * - Operación coordinada: setView si pan+zoom coinciden, panTo si solo pan, setZoom si solo zoom.
    */
   private updateCameraTracking(markerLatLng: [number, number]) {
+    if (this.cameraMode !== 'TRACKING' || !this.map) return;
+    
+    // Si el autoCamera está desactivado por el usuario, no hacer nada
+    if (!this.narrativeService.cameraState$.value.autoCameraEnabled) {
+       return;
+    }
+
     const now = performance.now();
     if (now - this.lastCameraUpdateTime < this.CAMERA_THROTTLE_MS) return;
-
     if (!this.map) return;
 
     const container = this.map.getContainer();
@@ -1398,7 +1453,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     let needsZoom = false;
     let discreteZoom = this.currentActualZoom;
     if (!this.autoZoomPaused && (now - this.lastZoomUpdateTime > this.ZOOM_THROTTLE_MS)) {
-      const roundedTarget = Math.round(this.targetZoom);
+      const roundedTarget = this.narrativeService.calculateAutoZoom(this.currentDistKm, this.currentMode || 'walking');
       if (Math.abs(roundedTarget - this.currentActualZoom) >= 1) {
         discreteZoom = roundedTarget;
         needsZoom = true;
