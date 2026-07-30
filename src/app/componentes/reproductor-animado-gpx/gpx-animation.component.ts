@@ -261,7 +261,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     // this.togglePlay(); // Desactivamos el auto-arranque para permitir configurar OSRM antes
   }
 
-  // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar
+  // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
   private displayAllPois() {
     if (!this.map || !this.multimedia || this.multimedia.length === 0) return;
     
@@ -270,6 +270,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       this.visualSessionGroup = this.L.layerGroup().addTo(this.map);
     }
     
+    const boundsPoints: any[] = [];
+
     this.multimedia.forEach((archivo: any) => {
       if (archivo.geolocalizacion) {
         try {
@@ -284,10 +286,15 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
                 iconAnchor: [14, 14]
              });
              this.L.marker([loc.latitud, loc.longitud], { icon: icon }).addTo(this.visualSessionGroup);
+             boundsPoints.push([loc.latitud, loc.longitud]);
           }
         } catch(e) {}
       }
     });
+
+    if (boundsPoints.length > 0) {
+      this.map.fitBounds(this.L.latLngBounds(boundsPoints), { padding: [50, 50] });
+    }
   }
 
   ngOnDestroy() {
@@ -334,10 +341,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         this.userSelectedZoom = zoom;
         this.currentActualZoom = zoom;
         this.targetZoom = zoom;
+        this.cdr.detectChanges();
       }
     });
-
-    this.startZoomStrategyEngine();
 
     // ✨ MODIFICADO: Almacenar marcadores para revelarlos progresivamente
     if (this.isHighFidelityMode && this.visualSessionData?.layers) {
@@ -388,6 +394,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.isPlaying = !this.isPlaying;
     if (this.isPlaying) {
       this.lastTimestamp = performance.now();
+      if (this.narrativeService.cameraState$.value.autoCameraEnabled && !this.autoZoomPaused) {
+          this.calculateSegmentBoundsAndSpeed();
+      }
       this.animate();
     } else {
       this.stopAnimation();
@@ -406,68 +415,68 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     }
   }
 
-  private startZoomStrategyEngine() {
-    if (this.zoomStrategyInterval) clearInterval(this.zoomStrategyInterval);
-    
-    // Sensor matemático a 4Hz (250ms) para proteger requestAnimationFrame
-    this.zoomStrategyInterval = setInterval(() => {
-        if (!this.isPlaying || !this.map || this.points.length === 0) return;
+  private calculateSegmentBoundsAndSpeed() {
+    if (!this.map || this.points.length === 0) return;
 
-        // 1. Control de Cooldown Humano (15s)
-        if (this.autoZoomPaused) {
-            if (Date.now() - this.lastInteractionTime > 15000) {
-                this.autoZoomPaused = false;
-                console.log('✅ [Zoom V4] Cooldown de 15s superado. Reactivando seguimiento cinemático.');
-            } else {
-                return;
+    // Buscar el siguiente PI (estrictamente superior en ordenVisita o temporalmente siguiente)
+    let currentPiIdx = Math.floor(this.currentIndex);
+    let nextPiIdx = -1;
+
+    for (let i = currentPiIdx + 1; i < this.points.length; i++) {
+        if (this.points[i].event) {
+            nextPiIdx = i;
+            break;
+        }
+    }
+
+    if (nextPiIdx !== -1) {
+        // Encontramos el próximo tramo
+        const segmentCoords = [];
+        for (let i = currentPiIdx; i <= nextPiIdx; i++) {
+             segmentCoords.push([this.points[i].lat, this.points[i].lng]);
+        }
+        
+        if (segmentCoords.length > 0) {
+            const bounds = this.L.latLngBounds(segmentCoords);
+            this.map.fitBounds(bounds, { padding: [80, 80], animate: true, duration: 1.5 });
+            
+            // Calculo de velocidad basado en la distancia del tramo para ritmo constante
+            const p1 = this.points[currentPiIdx];
+            const p2 = this.points[nextPiIdx];
+            const distKm = (p2.distAcum - p1.distAcum) / 1000;
+            
+            let autoSpeed = Math.floor(distKm * 50);
+            if (autoSpeed < 2) autoSpeed = 2;
+            if (autoSpeed > 800) autoSpeed = 800;
+            
+            if (this.narrativeService.speedState$.value.autoSpeedEnabled) {
+                this.speed = autoSpeed;
+                this.onManualSpeedChange();
             }
         }
-
-        // 2. Extraer velocidad cruda del tramo (Raw Speed)
-        const currentIdx = Math.floor(this.currentIndex);
-        const nextIdx = Math.min(currentIdx + 1, this.points.length - 1);
-        const p1 = this.points[currentIdx];
-        const p2 = this.points[nextIdx];
-        
-        let rawKmh = 0;
-        if (p1 && p2) {
-             const dKm = (p2.distAcum - p1.distAcum) / 1000;
-             const tSec = p2.timeAcum - p1.timeAcum;
-             if (tSec > 0) {
-                 rawKmh = dKm / (tSec / 3600);
-             } else if (dKm > 0) {
-                 rawKmh = (this.currentMode === 'driving' || this.currentMode === 'car') ? 100 : 5;
-             }
+    } else {
+        // No hay más PIs, encuadrar el resto del trayecto
+        const segmentCoords = [];
+        for (let i = currentPiIdx; i < this.points.length; i++) {
+             segmentCoords.push([this.points[i].lat, this.points[i].lng]);
         }
-
-        // 3. Filtro de Estabilidad Urbana (EMA ~ 2s Inercia)
-        this.smoothedKmh = rawKmh * 0.15 + this.smoothedKmh * 0.85;
-
-        // 4. Ecuación Continua de Mapeo por Contexto
-        let rawTargetZoom = this.targetZoom;
-        
-        if (this.isWalkingMode(this.currentMode)) {
-             // Peatón: [16.5 - 17.5]
-             const t = Math.min(this.smoothedKmh / 10, 1); // 0 a 10 km/h
-             rawTargetZoom = 17.5 - (17.5 - 16.5) * t;
-        } else {
-             // Vehículo
-             if (this.smoothedKmh < 60) {
-                 // Ciudad: [14.0 - 16.5]
-                 const t = this.smoothedKmh / 60; // 0 a 60 km/h -> 0 a 1
-                 rawTargetZoom = 16.5 - (16.5 - 14.0) * t;
-             } else {
-                 // Autovía: [11.5 - 14.0]
-                 const t = Math.min((this.smoothedKmh - 60) / 60, 1); // 60 a 120 km/h -> 0 a 1
-                 rawTargetZoom = 14.0 - (14.0 - 11.5) * t;
-             }
+        if (segmentCoords.length > 0) {
+            const bounds = this.L.latLngBounds(segmentCoords);
+            this.map.fitBounds(bounds, { padding: [80, 80], animate: true, duration: 1.5 });
+            
+            const p1 = this.points[currentPiIdx];
+            const p2 = this.points[this.points.length - 1];
+            const distKm = (p2.distAcum - p1.distAcum) / 1000;
+            let autoSpeed = Math.floor(distKm * 50);
+            if (autoSpeed < 2) autoSpeed = 2;
+            if (autoSpeed > 800) autoSpeed = 800;
+            
+            if (this.narrativeService.speedState$.value.autoSpeedEnabled) {
+                this.speed = autoSpeed;
+                this.onManualSpeedChange();
+            }
         }
-
-        // 5. Anti-Oscilación (Micro-Banda Muerta Delta 0.15)
-        if (Math.abs(rawTargetZoom - this.targetZoom) > 0.15) {
-            this.targetZoom = rawTargetZoom;
-        }
-    }, 250);
+    }
   }
 
   async toggleOsrmFill() {
@@ -482,24 +491,40 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     let filledPoints: GpxPoint[] = [];
     let gapCount = 0;
 
-    // ✨ 1. Calcular densidad media del GPX original (metros por punto)
-    const avgDistanceMeters = this.points.length > 1 && this.stats
-      ? (this.stats.distanciaTotalKm * 1000) / this.points.length 
-      : 15; // fallback a 15 metros/punto
+    let segmentPointsCount = 0;
+    let segmentDistanceSum = 0;
 
     for (let i = 0; i < this.points.length - 1; i++) {
         const p1 = this.points[i];
         const p2 = this.points[i+1];
         filledPoints.push(p1);
 
+        // Si es un evento, reseteamos el segmento de conteo de densidad
+        if (p1.event && i > 0) {
+            segmentPointsCount = 0;
+            segmentDistanceSum = 0;
+        }
+
         const distKm = this.animationService.getDistance(p1.lat, p1.lng, p2.lat, p2.lng) / 1000;
+        
         if (distKm > 5) {
             console.log(`🚧 GAP detectado: ${distKm.toFixed(2)}km → Consultando OSRM...`);
-            // ✨ 2. Pasar la cantidad de puntos objetivos (downsampling target)
+            // ✨ DENSIDAD RELATIVA: Promedio del tramo anterior (segmentPointsCount)
+            const avgDistanceMeters = segmentPointsCount > 0 
+                ? (segmentDistanceSum * 1000) / segmentPointsCount 
+                : 15; // fallback
+            
             const targetNumPoints = Math.max(1, Math.floor((distKm * 1000) / avgDistanceMeters));
             const subPoints = await this.animationService.getOsrmRoute(p1, p2, targetNumPoints);
             filledPoints.push(...subPoints);
             if (subPoints.length > 0) gapCount++;
+            
+            // Reset for the next segment if needed
+            segmentPointsCount = 0;
+            segmentDistanceSum = 0;
+        } else {
+            segmentPointsCount++;
+            segmentDistanceSum += distKm;
         }
     }
     if (this.points.length > 0) {
@@ -575,14 +600,15 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     // Fase 3: El zoom ya no se interpola frame a frame (LERP eliminado).
     // El zoom discreto se gestiona en updateCameraTracking() con throttle de 1000ms.
 
-    // Motor: El índice avanza por frames (Fluidez Total)
+    // El auto-zoom discreto ahora se hace por tramos en calculateSegmentBoundsAndSpeed, 
+    // pero respetamos autoSpeed si el usuario restaura
     let currentSpeed = Number(this.speed) || 2;
     
-    // Usar NarrativeService para auto-speed si está habilitado
+    // Si la UI llama a restaurar autoSpeed, se delega al tramo si estuviera corriendo. 
+    // Mantenemos el override si se pulsó auto y no hubo cambio de tramo.
     if (this.narrativeService.speedState$.value.autoSpeedEnabled) {
-       currentSpeed = this.narrativeService.calculateAutoSpeed(this.currentMode || 'walking');
-       // Reflejar la velocidad automática en la UI pasiva
-       this.speed = currentSpeed;
+       // La velocidad está fijada por el inicio del tramo
+       currentSpeed = Number(this.speed) || 2;
     }
 
     const speedFactor = this.getSpeedFactor(this.currentMode);
@@ -954,6 +980,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
           this.isPlaying = true;
           this.narrativeService.startSegment(Math.floor(this.currentIndex), this.currentDistKm, this.currentMode || 'walking');
           this.lastTimestamp = performance.now();
+          if (this.narrativeService.cameraState$.value.autoCameraEnabled && !this.autoZoomPaused) {
+              this.calculateSegmentBoundsAndSpeed();
+          }
           this.animate();
           this.cdr.detectChanges();
         }
@@ -1420,34 +1449,28 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
-  /**
-   * FASE 2+3: Seguimiento de cámara throttled con Safe Zone proporcional y zoom discreto coordinado.
-   * - Paneo: solo si el marcador sale del 50% central del viewport (25% margen). Throttle: 150ms.
-   * - Zoom: solo si el target difiere en >= 1 nivel entero y han pasado 1000ms. Pasos enteros.
-   * - Operación coordinada: setView si pan+zoom coinciden, panTo si solo pan, setZoom si solo zoom.
-   */
   private updateCameraTracking(markerLatLng: [number, number]) {
     if (this.cameraMode !== 'TRACKING' || !this.map) return;
     
-    // Si el autoCamera está desactivado por el usuario, no hacer nada
-    if (!this.narrativeService.cameraState$.value.autoCameraEnabled) {
+    // En Fase 4, si autoCamera está activado y no pausado, el `fitBounds` del tramo
+    // ya se encarga de que todo esté en pantalla, por lo que NO necesitamos hacer pan ni zoom continuo,
+    // permitiendo que el marcador recorra la ruta libremente por la pantalla de PI a PI.
+    if (this.narrativeService.cameraState$.value.autoCameraEnabled && !this.autoZoomPaused) {
        return;
     }
 
+    // Si el usuario intervino (autoZoomPaused = true), hacemos PAN suave para que no se pierda el marcador
     const now = performance.now();
     if (now - this.lastCameraUpdateTime < this.CAMERA_THROTTLE_MS) return;
-    if (!this.map) return;
 
     const container = this.map.getContainer();
     const containerWidth = container.clientWidth;
     const containerHeight = container.clientHeight;
 
-    // Safe Zone: 50% central del viewport (25% de margen en cada lado)
     const SAFE_ZONE_RATIO = 0.25;
     const marginX = containerWidth * SAFE_ZONE_RATIO;
     const marginY = containerHeight * SAFE_ZONE_RATIO;
 
-    // Convertir posición del marcador a píxeles en pantalla
     const markerPoint = this.map.latLngToContainerPoint(markerLatLng);
 
     const outOfSafeZone =
@@ -1456,36 +1479,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       markerPoint.y < marginY ||
       markerPoint.y > containerHeight - marginY;
 
-    // Zoom discreto: solo si han pasado ZOOM_THROTTLE_MS y el target difiere en >= 1 nivel entero
-    let needsZoom = false;
-    let discreteZoom = this.currentActualZoom;
-    if (!this.autoZoomPaused && (now - this.lastZoomUpdateTime > this.ZOOM_THROTTLE_MS)) {
-      const roundedTarget = this.narrativeService.calculateAutoZoom(this.currentDistKm, this.currentMode || 'walking');
-      if (Math.abs(roundedTarget - this.currentActualZoom) >= 1) {
-        discreteZoom = roundedTarget;
-        needsZoom = true;
-      }
-    }
-
-    // Operación coordinada: evitar dos llamadas separadas en el mismo tick
-    if (outOfSafeZone && needsZoom) {
-      // Pan + Zoom en una sola operación
-      this.map.setView(markerLatLng, discreteZoom, { animate: true, duration: 0.4 });
-      this.currentActualZoom = discreteZoom;
-      this.lastZoomUpdateTime = now;
-      this.lastCameraUpdateTime = now;
-    } else if (outOfSafeZone) {
-      // Solo Pan
+    if (outOfSafeZone) {
       this.map.panTo(markerLatLng, { animate: true, duration: 0.3, easeLinearity: 1 });
       this.lastCameraUpdateTime = now;
-    } else if (needsZoom) {
-      // Solo Zoom (marcador sigue dentro de la safe zone)
-      this.map.setZoom(discreteZoom, { animate: true });
-      this.currentActualZoom = discreteZoom;
-      this.lastZoomUpdateTime = now;
-      this.lastCameraUpdateTime = now;
     }
-    // Si ninguna condición aplica: no hacer nada (cero operaciones, cero CPU de Leaflet)
   }
 
   private addLatLngsToCurrentPolylines(coords: [number, number][]) {
@@ -1502,6 +1499,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       coords.forEach(c => bgLatLngs.push(this.L.latLng(c[0], c[1])));
       this.currentBackgroundPolyline.redraw();
     }
+  }
+  
+  get displayZoom(): string {
+     return this.map ? this.map.getZoom().toFixed(1) : '16.0';
   }
 }
 

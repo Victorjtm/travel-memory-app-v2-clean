@@ -50,7 +50,10 @@
       <span class="auto-icon" title="Recuperar Auto Velocidad">⚡ Auto</span>
     </div>
 
-    <div class="velocidad-selector">
+    <div class="velocidad-selector" style="display: flex; align-items: center; gap: 15px;">
+      <div class="zoom-indicator" title="Nivel de Zoom" style="display: flex; align-items: center; gap: 5px; font-weight: bold; background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 6px;">
+        🔍 {{ displayZoom }}
+      </div>
       <label>x{{ speed }}</label>
       <input type="range" min="1" max="1000" step="1" [(ngModel)]="speed" (input)="onManualSpeedChange()">
     </div>
