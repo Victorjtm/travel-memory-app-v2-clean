@@ -482,6 +482,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     let filledPoints: GpxPoint[] = [];
     let gapCount = 0;
 
+    // ✨ 1. Calcular densidad media del GPX original (metros por punto)
+    const avgDistanceMeters = this.points.length > 1 && this.stats
+      ? (this.stats.distanciaTotalKm * 1000) / this.points.length 
+      : 15; // fallback a 15 metros/punto
+
     for (let i = 0; i < this.points.length - 1; i++) {
         const p1 = this.points[i];
         const p2 = this.points[i+1];
@@ -490,7 +495,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         const distKm = this.animationService.getDistance(p1.lat, p1.lng, p2.lat, p2.lng) / 1000;
         if (distKm > 5) {
             console.log(`🚧 GAP detectado: ${distKm.toFixed(2)}km → Consultando OSRM...`);
-            const subPoints = await this.animationService.getOsrmRoute(p1, p2);
+            // ✨ 2. Pasar la cantidad de puntos objetivos (downsampling target)
+            const targetNumPoints = Math.max(1, Math.floor((distKm * 1000) / avgDistanceMeters));
+            const subPoints = await this.animationService.getOsrmRoute(p1, p2, targetNumPoints);
             filledPoints.push(...subPoints);
             if (subPoints.length > 0) gapCount++;
         }
@@ -500,8 +507,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     }
 
     if (gapCount > 0) {
-        this.points = this.animationService.recalculateAccumulators(filledPoints);
-        this.stats = this.animationService.getStats(this.points);
+        // ✨ 3. Ya NO recalculamos accumulators globales. Los subPoints ya vienen con su distAcum interpolado.
+        this.points = filledPoints;
         
         this.currentIndex = 0;
         this.progress = 0;

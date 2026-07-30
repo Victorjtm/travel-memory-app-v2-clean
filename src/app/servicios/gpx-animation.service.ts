@@ -306,35 +306,57 @@ export class GpxAnimationService {
   /**
    * Interpola el tiempo y distancia cronológicamente para los puntos inyectados por OSRM
    */
-  private interpolateTimesForOsrm(p1: GpxPoint, p2: GpxPoint, coords: [number, number][]): GpxPoint[] {
+  private interpolateTimesForOsrm(p1: GpxPoint, p2: GpxPoint, coords: [number, number][], targetNumPoints?: number): GpxPoint[] {
     if (!p1.time || !p2.time || coords.length === 0) return [];
+    
+    // ✨ DOWNSAMPLING: Reducir (o mantener) la cantidad de puntos de OSRM para que coincida con la densidad original
+    let sampledCoords = coords;
+    if (targetNumPoints && targetNumPoints > 0 && coords.length > targetNumPoints) {
+      sampledCoords = [];
+      const step = coords.length / targetNumPoints;
+      for (let i = 0; i < targetNumPoints; i++) {
+        sampledCoords.push(coords[Math.floor(i * step)]);
+      }
+    }
+
     const t1 = p1.time.getTime();
     const t2 = p2.time.getTime();
     const timeSpan = t2 - t1;
     
     // Calcular distancia total del tramo OSRM para interpolación proporcional
-    const totalDist = coords.reduce((acc, curr, i) => {
+    const totalDist = sampledCoords.reduce((acc, curr, i) => {
       if (i === 0) return 0;
-      return acc + this.getDistance(coords[i - 1][0], coords[i - 1][1], curr[0], curr[1]);
+      return acc + this.getDistance(sampledCoords[i - 1][0], sampledCoords[i - 1][1], curr[0], curr[1]);
     }, 0);
 
     let distSum = 0;
     const newPoints: GpxPoint[] = [];
 
     // Omitimos el primero y último (son casi exactos a p1 y p2)
-    for (let i = 1; i < coords.length - 1; i++) {
-      const d = this.getDistance(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+    for (let i = 1; i < sampledCoords.length - 1; i++) {
+      const d = this.getDistance(sampledCoords[i - 1][0], sampledCoords[i - 1][1], sampledCoords[i][0], sampledCoords[i][1]);
       distSum += d;
       const ratio = totalDist > 0 ? (distSum / totalDist) : 0;
+      
       const newTime = new Date(t1 + timeSpan * ratio);
+      
+      // ✨ INTERPOLACIÓN PURA DE MÉTRICAS (Basado en P1 y P2 originales, sin recalcular geográficamente los globales)
+      const newDistAcum = p1.distAcum !== undefined && p2.distAcum !== undefined 
+          ? p1.distAcum + (p2.distAcum - p1.distAcum) * ratio 
+          : 0;
+          
+      const newTimeAcum = p1.timeAcum !== undefined && p2.timeAcum !== undefined
+          ? p1.timeAcum + (p2.timeAcum - p1.timeAcum) * ratio
+          : 0;
+
       newPoints.push({
-        lat: coords[i][0],
-        lng: coords[i][1],
+        lat: sampledCoords[i][0],
+        lng: sampledCoords[i][1],
         ele: p1.ele, // aproximado del anterior
         time: newTime,
         mode: p1.mode || 'driving',
-        distAcum: 0, // Se recalculará globalmente luego
-        timeAcum: 0,
+        distAcum: newDistAcum, // ✨ Interpolado
+        timeAcum: newTimeAcum, // ✨ Interpolado
         // ✨ HERENCIA DE ALTA FIDELIDAD
         hfColor: p1.hfColor,
         hfMode: p1.hfMode,
@@ -349,14 +371,14 @@ export class GpxAnimationService {
   /**
    * Recupera la ruta desde OSRM o Caché Local
    */
-  async getOsrmRoute(p1: GpxPoint, p2: GpxPoint): Promise<GpxPoint[]> {
+  async getOsrmRoute(p1: GpxPoint, p2: GpxPoint, targetNumPoints?: number): Promise<GpxPoint[]> {
     const cacheKey = 'osrm_' + p1.lat + '_' + p1.lng + '_' + p2.lat + '_' + p2.lng;
     const cached = localStorage.getItem(cacheKey);
 
     if (cached) {
       console.log('⚡ [OSRM] Cache HIT para hueco ' + p1.lat.toFixed(3) + ',' + p1.lng.toFixed(3) + ' -> ' + p2.lat.toFixed(3) + ',' + p2.lng.toFixed(3));
       const parsed = JSON.parse(cached);
-      return this.interpolateTimesForOsrm(p1, p2, parsed);
+      return this.interpolateTimesForOsrm(p1, p2, parsed, targetNumPoints);
     }
 
     const t0 = performance.now();
@@ -373,7 +395,7 @@ export class GpxAnimationService {
         const poly = data.routes[0].geometry;
         const coords = this.decodePolyline(poly, 5);
         localStorage.setItem(cacheKey, JSON.stringify(coords));
-        return this.interpolateTimesForOsrm(p1, p2, coords);
+        return this.interpolateTimesForOsrm(p1, p2, coords, targetNumPoints);
       }
     } catch (e) {
       console.warn('⚠️ [OSRM] Fallback activado (error red/API). Trazado recto matemático.', e);
