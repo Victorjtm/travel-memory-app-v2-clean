@@ -476,14 +476,14 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
             const indexDelta = nextPiIdx - currentPiIdx;
             const speedFactor = this.getSpeedFactor(this.currentMode);
             
-            // Fórmula: 30 * speed * speedFactor = indexDelta / targetDurationSeconds
+            // Fórmula: 0.5 * speed * speedFactor * 60fps = indexDelta / targetDurationSeconds
             let calculatedSpeed = indexDelta / (30 * speedFactor * targetDurationSeconds);
-            calculatedSpeed = Math.max(1, Math.min(1000, Math.floor(calculatedSpeed)));
+            calculatedSpeed = Math.max(1, Math.min(1000, Math.round(calculatedSpeed)));
 
-            if (this.narrativeService.speedState$.value.autoSpeedEnabled) {
-                this.speed = calculatedSpeed;
-                this.onManualSpeedChange();
-            }
+            console.log(`🎯 [Tramo] pixels=${visualDistPx.toFixed(0)}px, indices=${indexDelta}, speedFactor=${speedFactor}, targetSec=${targetDurationSeconds.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
+
+            // SIEMPRE aplicar la velocidad calculada (sin depender de autoSpeedEnabled)
+            this.speed = calculatedSpeed;
 
             // Reanudar viaje
             this.isPlaying = true;
