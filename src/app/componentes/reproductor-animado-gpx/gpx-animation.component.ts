@@ -391,13 +391,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   }
 
   togglePlay() {
+    if (this.isFramingSegment) return; // Prevenir interrupciones durante el encuadre
+    
     this.isPlaying = !this.isPlaying;
     if (this.isPlaying) {
-      this.lastTimestamp = performance.now();
-      if (this.narrativeService.cameraState$.value.autoCameraEnabled && !this.autoZoomPaused) {
-          this.calculateSegmentBoundsAndSpeed();
-      }
-      this.animate();
+      // SIEMPRE encuadrar el tramo antes de arrancar la animación
+      this.calculateSegmentBoundsAndSpeed();
     } else {
       this.stopAnimation();
     }
@@ -415,10 +414,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     }
   }
 
+  private isFramingSegment = false;
+
   private calculateSegmentBoundsAndSpeed() {
     if (!this.map || this.points.length === 0) return;
 
-    // Buscar el siguiente PI (estrictamente superior en ordenVisita o temporalmente siguiente)
     let currentPiIdx = Math.floor(this.currentIndex);
     let nextPiIdx = -1;
 
@@ -429,54 +429,79 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         }
     }
 
-    if (nextPiIdx !== -1) {
-        // Encontramos el próximo tramo
-        const segmentCoords = [];
-        for (let i = currentPiIdx; i <= nextPiIdx; i++) {
-             segmentCoords.push([this.points[i].lat, this.points[i].lng]);
-        }
-        
-        if (segmentCoords.length > 0) {
-            const bounds = this.L.latLngBounds(segmentCoords);
-            this.map.fitBounds(bounds, { padding: [80, 80], animate: true, duration: 1.5 });
-            
-            // Calculo de velocidad basado en la distancia del tramo para ritmo constante
-            const p1 = this.points[currentPiIdx];
-            const p2 = this.points[nextPiIdx];
-            const distKm = (p2.distAcum - p1.distAcum) / 1000;
-            
-            let autoSpeed = Math.floor(distKm * 50);
-            if (autoSpeed < 2) autoSpeed = 2;
-            if (autoSpeed > 800) autoSpeed = 800;
-            
-            if (this.narrativeService.speedState$.value.autoSpeedEnabled) {
-                this.speed = autoSpeed;
-                this.onManualSpeedChange();
-            }
-        }
-    } else {
-        // No hay más PIs, encuadrar el resto del trayecto
-        const segmentCoords = [];
-        for (let i = currentPiIdx; i < this.points.length; i++) {
-             segmentCoords.push([this.points[i].lat, this.points[i].lng]);
-        }
-        if (segmentCoords.length > 0) {
-            const bounds = this.L.latLngBounds(segmentCoords);
-            this.map.fitBounds(bounds, { padding: [80, 80], animate: true, duration: 1.5 });
-            
-            const p1 = this.points[currentPiIdx];
-            const p2 = this.points[this.points.length - 1];
-            const distKm = (p2.distAcum - p1.distAcum) / 1000;
-            let autoSpeed = Math.floor(distKm * 50);
-            if (autoSpeed < 2) autoSpeed = 2;
-            if (autoSpeed > 800) autoSpeed = 800;
-            
-            if (this.narrativeService.speedState$.value.autoSpeedEnabled) {
-                this.speed = autoSpeed;
-                this.onManualSpeedChange();
-            }
-        }
+    if (nextPiIdx === -1) {
+        nextPiIdx = this.points.length - 1;
     }
+    
+    if (currentPiIdx === nextPiIdx) {
+        this.lastTimestamp = performance.now();
+        this.animate();
+        return;
+    }
+
+    const p1 = this.points[currentPiIdx];
+    const p2 = this.points[nextPiIdx];
+
+    // Detenemos la animación mientras se hace el encuadre
+    this.isFramingSegment = true;
+    this.isPlaying = false;
+    this.stopAnimation();
+
+    const bounds = this.L.latLngBounds([
+        [p1.lat, p1.lng],
+        [p2.lat, p2.lng]
+    ]);
+    
+    const onFrameComplete = () => {
+        if (!this.isFramingSegment) return; // Evitar doble ejecución
+
+        // VENTANA DE DEPURACIÓN TEMPORAL (tal como pidió el usuario para ir paso a paso)
+        const ok = window.confirm('¿Es correcto el encuadre de los dos puntos en pantalla? (Punto inicial y próximo PI)');
+        if (!ok) {
+            this.isFramingSegment = false;
+            return;
+        }
+
+        // Calcular distancia visual en pantalla
+        const point1 = this.map.latLngToContainerPoint([p1.lat, p1.lng]);
+        const point2 = this.map.latLngToContainerPoint([p2.lat, p2.lng]);
+        const visualDistPx = Math.sqrt(Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2));
+        
+        // Velocidad visual deseada (ej: 150 píxeles por segundo)
+        const targetPxPerSec = 150;
+        const targetDurationSeconds = Math.max(0.5, visualDistPx / targetPxPerSec);
+        
+        const indexDelta = nextPiIdx - currentPiIdx;
+        const speedFactor = this.getSpeedFactor(this.currentMode);
+        
+        // Fórmua: 30 * speed * speedFactor = indexDelta / targetDurationSeconds
+        let calculatedSpeed = indexDelta / (30 * speedFactor * targetDurationSeconds);
+        calculatedSpeed = Math.max(1, Math.min(1000, Math.floor(calculatedSpeed)));
+
+        if (this.narrativeService.speedState$.value.autoSpeedEnabled) {
+            this.speed = calculatedSpeed;
+            this.onManualSpeedChange();
+        }
+
+        // Reanudar viaje
+        this.isFramingSegment = false;
+        this.isPlaying = true;
+        this.lastTimestamp = performance.now();
+        this.animate();
+        this.cdr.detectChanges();
+    };
+
+    // Encuadrar la cámara
+    this.map.once('moveend', onFrameComplete);
+    this.map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
+    
+    // Fallback de seguridad por si moveend no se dispara (ej. si ya estaba encuadrado)
+    setTimeout(() => {
+        if (this.isFramingSegment) {
+            this.map.off('moveend', onFrameComplete);
+            onFrameComplete();
+        }
+    }, 1600);
   }
 
   async toggleOsrmFill() {
@@ -979,12 +1004,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         if (!this.isPlaying) {
           this.isPlaying = true;
           this.narrativeService.startSegment(Math.floor(this.currentIndex), this.currentDistKm, this.currentMode || 'walking');
-          this.lastTimestamp = performance.now();
-          if (this.narrativeService.cameraState$.value.autoCameraEnabled && !this.autoZoomPaused) {
-              this.calculateSegmentBoundsAndSpeed();
-          }
-          this.animate();
-          this.cdr.detectChanges();
+          // SIEMPRE encuadrar el siguiente tramo antes de arrancar
+          this.calculateSegmentBoundsAndSpeed();
         }
       };
 
