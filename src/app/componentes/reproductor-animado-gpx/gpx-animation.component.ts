@@ -473,14 +473,18 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
             const targetPxPerSec = 150;
             const targetDurationSeconds = Math.max(0.5, visualDistPx / targetPxPerSec);
             
-            const indexDelta = nextPiIdx - currentPiIdx;
+            // Distancia geográfica real del tramo (en metros)
+            const segmentDistM = Math.abs((p2.distAcum - p1.distAcum)) || 1;
             const speedFactor = this.getSpeedFactor(this.currentMode);
             
-            // Fórmula: 0.5 * speed * speedFactor * 60fps = indexDelta / targetDurationSeconds
-            let calculatedSpeed = indexDelta / (30 * speedFactor * targetDurationSeconds);
+            // Nueva fórmula basada en distancia:
+            // metersPerSecond = 7.5 * speed * speedFactor
+            // targetDuration = segmentDistM / metersPerSecond
+            // speed = segmentDistM / (7.5 * speedFactor * targetDurationSeconds)
+            let calculatedSpeed = segmentDistM / (7.5 * speedFactor * targetDurationSeconds);
             calculatedSpeed = Math.max(1, Math.min(1000, Math.round(calculatedSpeed)));
 
-            console.log(`🎯 [Tramo] pixels=${visualDistPx.toFixed(0)}px, indices=${indexDelta}, speedFactor=${speedFactor}, targetSec=${targetDurationSeconds.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
+            console.log(`🎯 [Tramo] pixels=${visualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${targetDurationSeconds.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
 
             // SIEMPRE aplicar la velocidad calculada (sin depender de autoSpeedEnabled)
             this.speed = calculatedSpeed;
@@ -630,20 +634,32 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     // El auto-zoom discreto ahora se hace por tramos en calculateSegmentBoundsAndSpeed, 
     // pero respetamos autoSpeed si el usuario restaura
     let currentSpeed = Number(this.speed) || 2;
-    
-    // Si la UI llama a restaurar autoSpeed, se delega al tramo si estuviera corriendo. 
-    // Mantenemos el override si se pulsó auto y no hubo cambio de tramo.
-    if (this.narrativeService.speedState$.value.autoSpeedEnabled) {
-       // La velocidad está fijada por el inicio del tramo
-       currentSpeed = Number(this.speed) || 2;
-    }
 
     const speedFactor = this.getSpeedFactor(this.currentMode);
     
-    // ~0.5 puntos por frame at 60fps
-    const indexProgress = 0.5 * currentSpeed * speedFactor * frames;
-    
+    // ✨ AVANCE POR DISTANCIA GEOGRÁFICA (no por índice)
+    // Calculamos cuántos metros por segundo queremos avanzar, 
+    // y luego buscamos cuántos índices corresponden a esa distancia.
     const prevIdx = Math.floor(this.currentIndex);
+    const p_cur = this.points[prevIdx];
+    const p_next = this.points[Math.min(prevIdx + 1, this.points.length - 1)];
+    
+    // Distancia geográfica entre el punto actual y el siguiente (en metros)
+    const interPointDistM = (p_next.distAcum - p_cur.distAcum) || 1; // evitar /0
+    
+    // Velocidad deseada en metros/segundo: base ~7.5 m/s * speed * speedFactor
+    // (7.5 m/s ≈ 27 km/h como base, escalado por speed y speedFactor)
+    const metersPerSecond = 7.5 * currentSpeed * speedFactor;
+    
+    // Cuántos metros avanzamos en este frame
+    const metersThisFrame = metersPerSecond * safeDt;
+    
+    // Traducir metros a índices: si entre punto[i] y punto[i+1] hay X metros,
+    // avanzar Y metros equivale a avanzar Y/X índices
+    const indexProgress = Math.abs(interPointDistM) > 0.01 
+        ? metersThisFrame / Math.abs(interPointDistM)
+        : 0.5 * currentSpeed * speedFactor * frames; // fallback al método clásico si distancia es ~0
+    
     this.currentIndex += indexProgress;
     const newIdx = Math.floor(Math.min(this.currentIndex, this.points.length - 1));
 
