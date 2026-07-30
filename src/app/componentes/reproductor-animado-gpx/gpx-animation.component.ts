@@ -454,41 +454,43 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     
     const onFrameComplete = () => {
         if (!this.isFramingSegment) return; // Evitar doble ejecución
+        this.isFramingSegment = false; // Marcar como completado para evitar que el fallback lo llame otra vez
 
-        // VENTANA DE DEPURACIÓN TEMPORAL (tal como pidió el usuario para ir paso a paso)
-        const ok = window.confirm('¿Es correcto el encuadre de los dos puntos en pantalla? (Punto inicial y próximo PI)');
-        if (!ok) {
-            this.isFramingSegment = false;
-            return;
-        }
+        // Dar tiempo al navegador para renderizar el mapa con los dos puntos visibles
+        setTimeout(() => {
+            // VENTANA DE DEPURACIÓN TEMPORAL (tal como pidió el usuario para ir paso a paso)
+            const ok = window.confirm('¿Es correcto el encuadre de los dos puntos en pantalla? (Punto inicial y próximo PI)');
+            if (!ok) {
+                return;
+            }
 
-        // Calcular distancia visual en pantalla
-        const point1 = this.map.latLngToContainerPoint([p1.lat, p1.lng]);
-        const point2 = this.map.latLngToContainerPoint([p2.lat, p2.lng]);
-        const visualDistPx = Math.sqrt(Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2));
-        
-        // Velocidad visual deseada (ej: 150 píxeles por segundo)
-        const targetPxPerSec = 150;
-        const targetDurationSeconds = Math.max(0.5, visualDistPx / targetPxPerSec);
-        
-        const indexDelta = nextPiIdx - currentPiIdx;
-        const speedFactor = this.getSpeedFactor(this.currentMode);
-        
-        // Fórmua: 30 * speed * speedFactor = indexDelta / targetDurationSeconds
-        let calculatedSpeed = indexDelta / (30 * speedFactor * targetDurationSeconds);
-        calculatedSpeed = Math.max(1, Math.min(1000, Math.floor(calculatedSpeed)));
+            // Calcular distancia visual en pantalla
+            const point1 = this.map.latLngToContainerPoint([p1.lat, p1.lng]);
+            const point2 = this.map.latLngToContainerPoint([p2.lat, p2.lng]);
+            const visualDistPx = Math.sqrt(Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2));
+            
+            // Velocidad visual deseada (ej: 150 píxeles por segundo)
+            const targetPxPerSec = 150;
+            const targetDurationSeconds = Math.max(0.5, visualDistPx / targetPxPerSec);
+            
+            const indexDelta = nextPiIdx - currentPiIdx;
+            const speedFactor = this.getSpeedFactor(this.currentMode);
+            
+            // Fórmula: 30 * speed * speedFactor = indexDelta / targetDurationSeconds
+            let calculatedSpeed = indexDelta / (30 * speedFactor * targetDurationSeconds);
+            calculatedSpeed = Math.max(1, Math.min(1000, Math.floor(calculatedSpeed)));
 
-        if (this.narrativeService.speedState$.value.autoSpeedEnabled) {
-            this.speed = calculatedSpeed;
-            this.onManualSpeedChange();
-        }
+            if (this.narrativeService.speedState$.value.autoSpeedEnabled) {
+                this.speed = calculatedSpeed;
+                this.onManualSpeedChange();
+            }
 
-        // Reanudar viaje
-        this.isFramingSegment = false;
-        this.isPlaying = true;
-        this.lastTimestamp = performance.now();
-        this.animate();
-        this.cdr.detectChanges();
+            // Reanudar viaje
+            this.isPlaying = true;
+            this.lastTimestamp = performance.now();
+            this.animate();
+            this.cdr.detectChanges();
+        }, 500);
     };
 
     // Encuadrar la cámara
@@ -501,7 +503,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
             this.map.off('moveend', onFrameComplete);
             onFrameComplete();
         }
-    }, 1600);
+    }, 2500);
   }
 
   async toggleOsrmFill() {
