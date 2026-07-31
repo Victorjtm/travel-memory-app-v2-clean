@@ -246,17 +246,49 @@
 }
 
 .transport-icon-wrapper {
-  width: 38px;
-  height: 38px;
-  background: #FFEA00;
-  border: 3px solid #FFF;
+  width: 52px;
+  height: 52px;
+  background: #FFD600;
+  border: 3.5px solid #FFFFFF;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  font-size: 32px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.6);
   animation: marker-bounce 2s infinite ease-in-out;
+}
+
+.custom-poi-pin-marker {
+  background: none !important;
+  border: none !important;
+}
+
+.poi-badge-container {
+  width: 38px;
+  height: 38px;
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(239, 68, 68, 0.4);
+  color: #ffffff;
+  font-weight: 900;
+  font-size: 17px;
+  font-family: system-ui, -apple-system, sans-serif;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  transition: transform 0.2s ease;
+  
+  .poi-badge-number {
+    line-height: 1;
+  }
+
+  &:hover {
+    transform: scale(1.25);
+    z-index: 1000;
+  }
 }
 
 @keyframes marker-bounce {

@@ -46,19 +46,37 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   readonly MODE_COLORS: { [key: string]: string } = {
     walking: '#059669',
+    walk: '#059669',
+    andando: '#059669',
+    caminar: '#059669',
     driving: '#DC2626',
+    car: '#DC2626',
+    coche: '#DC2626',
     cycling: '#FF9800',
+    bici: '#FF9800',
+    bicycle: '#FF9800',
     running: '#2196F3',
+    correr: '#2196F3',
     bus: '#9C27B0',
+    autobus: '#9C27B0',
     transport: '#9E9E9E'
   };
 
   readonly RETURN_COLORS: { [key: string]: string } = {
     walking: '#6EE7B7',
+    walk: '#6EE7B7',
+    andando: '#6EE7B7',
+    caminar: '#6EE7B7',
     driving: '#FCA5A5',
+    car: '#FCA5A5',
+    coche: '#FCA5A5',
     cycling: '#FFB74D',
+    bici: '#FFB74D',
+    bicycle: '#FFB74D',
     running: '#64B5F6',
+    correr: '#64B5F6',
     bus: '#E1BEE7',
+    autobus: '#E1BEE7',
     transport: '#E0E0E0'
   };
 
@@ -263,34 +281,57 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
   private displayAllPois() {
-    if (!this.map || !this.multimedia || this.multimedia.length === 0) return;
+    if (!this.map) return;
     
     // Si no existe el grupo, crearlo
     if (!this.visualSessionGroup) {
       this.visualSessionGroup = this.L.layerGroup().addTo(this.map);
+    } else {
+      this.visualSessionGroup.clearLayers();
     }
     
     const boundsPoints: any[] = [];
+    const addedCoords = new Set<string>();
 
-    this.multimedia.forEach((archivo: any) => {
-      if (archivo.geolocalizacion) {
-        try {
-          const loc = typeof archivo.geolocalizacion === 'string' ? JSON.parse(archivo.geolocalizacion) : archivo.geolocalizacion;
-          if (loc.latitud && loc.longitud) {
-             const icon = this.L.divIcon({
-                className: 'custom-session-marker',
-                html: `<div style="background-color: #3b82f6; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); font-weight: bold;">
-                         ${archivo.ordenVisita !== undefined ? archivo.ordenVisita : '*'}
-                       </div>`,
-                iconSize: [28, 28],
-                iconAnchor: [14, 14]
-             });
-             this.L.marker([loc.latitud, loc.longitud], { icon: icon }).addTo(this.visualSessionGroup);
-             boundsPoints.push([loc.latitud, loc.longitud]);
-          }
-        } catch(e) {}
-      }
-    });
+    const createPoiMarker = (lat: number, lng: number, orden: any) => {
+      const coordKey = `${lat.toFixed(5)}_${lng.toFixed(5)}`;
+      if (addedCoords.has(coordKey)) return;
+      addedCoords.add(coordKey);
+
+      const icon = this.L.divIcon({
+        className: 'custom-poi-pin-marker',
+        html: `<div class="poi-badge-container">
+                 <span class="poi-badge-number">${orden !== undefined && orden !== null ? orden : '*'}</span>
+               </div>`,
+        iconSize: [38, 38],
+        iconAnchor: [19, 19]
+      });
+      this.L.marker([lat, lng], { icon: icon }).addTo(this.visualSessionGroup);
+      boundsPoints.push([lat, lng]);
+    };
+
+    if (this.multimedia && this.multimedia.length > 0) {
+      this.multimedia.forEach((archivo: any) => {
+        if (archivo.geolocalizacion) {
+          try {
+            const loc = typeof archivo.geolocalizacion === 'string' ? JSON.parse(archivo.geolocalizacion) : archivo.geolocalizacion;
+            if (loc.latitud && loc.longitud) {
+               const orden = archivo.ordenVisita !== undefined ? archivo.ordenVisita : (archivo.orden !== undefined ? archivo.orden : '*');
+               createPoiMarker(loc.latitud, loc.longitud, orden);
+            }
+          } catch(e) {}
+        }
+      });
+    }
+
+    if (this.points && this.points.length > 0) {
+      this.points.forEach((p: any) => {
+        if (p.event) {
+          const orden = p.event.ordenVisita !== undefined ? p.event.ordenVisita : (p.event.orden !== undefined ? p.event.orden : '*');
+          createPoiMarker(p.lat, p.lng, orden);
+        }
+      });
+    }
 
     if (boundsPoints.length > 0) {
       this.map.fitBounds(this.L.latLngBounds(boundsPoints), { padding: [50, 50] });
@@ -383,8 +424,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         icon: this.L.divIcon({
           className: 'custom-transport-marker',
           html: iconHtml,
-          iconSize: [40, 40],
-          iconAnchor: [20, 20]
+          iconSize: [54, 54],
+          iconAnchor: [27, 27]
         })
       }).addTo(this.map);
     }
@@ -441,6 +482,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
     const p1 = this.points[currentPiIdx];
     const p2 = this.points[nextPiIdx];
+
+    // Actualizar modo de transporte e icono del marcador para el nuevo tramo
+    const segMode = p1.hfMode || p1.mode || 'walking';
+    this.currentMode = segMode;
+    this.updateMarkerIcon(segMode);
 
     // Detenemos la animación mientras se hace el encuadre
     this.isFramingSegment = true;
@@ -587,8 +633,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
                icon: this.L.divIcon({
                  className: 'custom-transport-marker',
                  html: iconHtml,
-                 iconSize: [40, 40],
-                 iconAnchor: [20, 20]
+                 iconSize: [54, 54],
+                 iconAnchor: [27, 27]
                })
              }).addTo(this.map);
              
@@ -1210,6 +1256,17 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     console.log(`🏁 [HF Mapeo] Completado: ${this.hfSegments.length}/${polyLayers.length} capas restauradas.`);
   }
 
+  private normalizeModeKey(mode: string | null | undefined): string {
+    if (!mode) return 'walking';
+    const m = mode.toLowerCase();
+    if (m.includes('walk') || m.includes('camin') || m.includes('andan')) return 'walking';
+    if (m.includes('car') || m.includes('coch') || m.includes('driv')) return 'driving';
+    if (m.includes('bic') || m.includes('cycl')) return 'cycling';
+    if (m.includes('run') || m.includes('corr')) return 'running';
+    if (m.includes('bus') || m.includes('autobus')) return 'bus';
+    return 'transport';
+  }
+
   private createNewPolyline(mode: string, startLatLng: any, pointContext?: any) {
     if (!this.map) return;
 
@@ -1222,7 +1279,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     // 2. Fallback: Colores por modo (Legacy)
     if (!color) {
       const colorSet = isReturn ? this.RETURN_COLORS : this.MODE_COLORS;
-      color = colorSet[mode] || colorSet['transport'] || '#FF0000';
+      const normKey = this.normalizeModeKey(mode);
+      color = colorSet[normKey] || colorSet[mode] || colorSet['transport'] || '#FF0000';
     }
     
     if (opacity === undefined || opacity === null) {
@@ -1324,13 +1382,13 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   }
 
   private updateMarkerIcon(mode: string) {
-    if (!this.marker) return;
+    if (!this.marker || !this.L) return;
     const iconHtml = `<div class="transport-icon-wrapper">${this.getModeIcon(mode)}</div>`;
     this.marker.setIcon(this.L.divIcon({
       className: 'custom-transport-marker',
       html: iconHtml,
-      iconSize: [40, 40],
-      iconAnchor: [20, 20]
+      iconSize: [54, 54],
+      iconAnchor: [27, 27]
     }));
   }
 
