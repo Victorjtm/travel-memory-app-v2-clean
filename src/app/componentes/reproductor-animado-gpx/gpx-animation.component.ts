@@ -156,6 +156,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   @Input() visualSessionData: any = null;
   @Input() isHighFidelityMode = false;
   visualSessionGroup: any = null;
+  private poiLayerGroup: any = null; // ✨ Grupo independiente para POIs (no colisiona con HF)
 
   private animationFrameId: number | null = null;
   private lastTimestamp = 0;
@@ -281,60 +282,99 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
   private displayAllPois() {
-    if (!this.map) return;
+    if (!this.map) { console.warn('⚠️ [displayAllPois] No hay mapa'); return; }
     
-    // Si no existe el grupo, crearlo
-    if (!this.visualSessionGroup) {
-      this.visualSessionGroup = this.L.layerGroup().addTo(this.map);
+    // ✨ USAR GRUPO DEDICADO para POIs (separado de visualSessionGroup de HF)
+    if (!this.poiLayerGroup) {
+      this.poiLayerGroup = this.L.layerGroup().addTo(this.map);
     } else {
-      this.visualSessionGroup.clearLayers();
+      this.poiLayerGroup.clearLayers();
+      if (!this.map.hasLayer(this.poiLayerGroup)) {
+        this.poiLayerGroup.addTo(this.map);
+      }
     }
     
     const boundsPoints: any[] = [];
     const addedCoords = new Set<string>();
+    let markersCreated = 0;
 
     const createPoiMarker = (lat: number, lng: number, orden: any) => {
+      if (!lat || !lng || isNaN(lat) || isNaN(lng) || Math.abs(lat) < 0.01 || Math.abs(lng) < 0.01) return;
+
       const coordKey = `${lat.toFixed(5)}_${lng.toFixed(5)}`;
       if (addedCoords.has(coordKey)) return;
       addedCoords.add(coordKey);
 
+      // ✨ ESTILOS INLINE para evitar problemas de encapsulación SCSS de Angular
       const icon = this.L.divIcon({
         className: 'custom-poi-pin-marker',
-        html: `<div class="poi-badge-container">
-                 <span class="poi-badge-number">${orden !== undefined && orden !== null ? orden : '*'}</span>
+        html: `<div style="width:38px;height:38px;background:linear-gradient(135deg,#ef4444,#b91c1c);border:3px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.6),0 0 0 2px rgba(239,68,68,0.4);color:#fff;font-weight:900;font-size:17px;font-family:system-ui,-apple-system,sans-serif;text-shadow:0 1px 3px rgba(0,0,0,0.8);">
+                 <span style="line-height:1">${orden !== undefined && orden !== null ? orden : '*'}</span>
                </div>`,
         iconSize: [38, 38],
         iconAnchor: [19, 19]
       });
-      this.L.marker([lat, lng], { icon: icon }).addTo(this.visualSessionGroup);
+      this.L.marker([lat, lng], { icon: icon, zIndexOffset: 1000 }).addTo(this.poiLayerGroup);
       boundsPoints.push([lat, lng]);
+      markersCreated++;
     };
 
+    // FUENTE 1: Multimedia directa
+    console.log(`📌 [displayAllPois] multimedia.length = ${this.multimedia?.length || 0}`);
     if (this.multimedia && this.multimedia.length > 0) {
-      this.multimedia.forEach((archivo: any) => {
+      this.multimedia.forEach((archivo: any, idx: number) => {
+        let lat: number | null = null;
+        let lng: number | null = null;
+
+        // Intentar extraer coordenadas de todas las fuentes posibles
         if (archivo.geolocalizacion) {
           try {
             const loc = typeof archivo.geolocalizacion === 'string' ? JSON.parse(archivo.geolocalizacion) : archivo.geolocalizacion;
-            if (loc.latitud && loc.longitud) {
-               const orden = archivo.ordenVisita !== undefined ? archivo.ordenVisita : (archivo.orden !== undefined ? archivo.orden : '*');
-               createPoiMarker(loc.latitud, loc.longitud, orden);
-            }
+            lat = Number(loc.latitud || loc.latitude || loc.lat || 0);
+            lng = Number(loc.longitud || loc.longitude || loc.lng || 0);
           } catch(e) {}
+        }
+        if ((!lat || !lng) && archivo.latitud && archivo.longitud) {
+          lat = Number(archivo.latitud);
+          lng = Number(archivo.longitud);
+        }
+        if ((!lat || !lng) && archivo.lat && archivo.lng) {
+          lat = Number(archivo.lat);
+          lng = Number(archivo.lng);
+        }
+
+        if (lat && lng && Math.abs(lat) > 0.01) {
+          const orden = archivo.ordenVisita !== undefined ? archivo.ordenVisita : (archivo.orden !== undefined ? archivo.orden : '*');
+          createPoiMarker(lat, lng, orden);
         }
       });
     }
 
+    // FUENTE 2: Puntos GPX con eventos sincronizados
     if (this.points && this.points.length > 0) {
+      let eventCount = 0;
       this.points.forEach((p: any) => {
         if (p.event) {
-          const orden = p.event.ordenVisita !== undefined ? p.event.ordenVisita : (p.event.orden !== undefined ? p.event.orden : '*');
+          eventCount++;
+          const archivos = p.event.archivos || [];
+          const first = archivos[0] || {};
+          const orden = p.event.ordenVisita !== undefined 
+            ? p.event.ordenVisita 
+            : (first.ordenVisita !== undefined ? first.ordenVisita : (first.orden !== undefined ? first.orden : '*'));
           createPoiMarker(p.lat, p.lng, orden);
         }
       });
+      console.log(`📌 [displayAllPois] points con event: ${eventCount}`);
     }
 
+    console.log(`📌 [displayAllPois] TOTAL markers creados: ${markersCreated}, boundsPoints: ${boundsPoints.length}`);
+
+    // Encuadrar únicamente puntos válidos o en su defecto toda la ruta GPX
     if (boundsPoints.length > 0) {
-      this.map.fitBounds(this.L.latLngBounds(boundsPoints), { padding: [50, 50] });
+      this.map.fitBounds(this.L.latLngBounds(boundsPoints), { padding: [60, 60] });
+    } else if (this.points && this.points.length > 0) {
+      const gpxBounds = this.points.map(p => [p.lat, p.lng]);
+      this.map.fitBounds(this.L.latLngBounds(gpxBounds), { padding: [60, 60] });
     }
   }
 
@@ -424,8 +464,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         icon: this.L.divIcon({
           className: 'custom-transport-marker',
           html: iconHtml,
-          iconSize: [54, 54],
-          iconAnchor: [27, 27]
+          iconSize: [60, 60],
+          iconAnchor: [30, 30]
         })
       }).addTo(this.map);
     }
@@ -633,8 +673,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
                icon: this.L.divIcon({
                  className: 'custom-transport-marker',
                  html: iconHtml,
-                 iconSize: [54, 54],
-                 iconAnchor: [27, 27]
+                 iconSize: [60, 60],
+                 iconAnchor: [30, 30]
                })
              }).addTo(this.map);
              
@@ -1387,8 +1427,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.marker.setIcon(this.L.divIcon({
       className: 'custom-transport-marker',
       html: iconHtml,
-      iconSize: [54, 54],
-      iconAnchor: [27, 27]
+      iconSize: [60, 60],
+      iconAnchor: [30, 30]
     }));
   }
 

@@ -178,6 +178,10 @@ export class GpxAnimationService {
       if (bestIdx !== -1) {
         if (!points[bestIdx].event) points[bestIdx].event = { archivos: [] };
         points[bestIdx].event.archivos.push(item);
+        const orden = item.ordenVisita !== undefined ? item.ordenVisita : (item.orden !== undefined ? item.orden : null);
+        if (orden !== null) {
+          points[bestIdx].event.ordenVisita = orden;
+        }
       }
     });
 
@@ -227,6 +231,9 @@ export class GpxAnimationService {
     });
 
     points.forEach(p => {
+      while (currentSegmentIdx < segmentThresholds.length - 1 && p.distAcum > segmentThresholds[currentSegmentIdx].threshold) {
+        currentSegmentIdx++;
+      }
       const mode = segmentThresholds[currentSegmentIdx].mode;
       p.mode = mode;
       
@@ -236,7 +243,7 @@ export class GpxAnimationService {
       }
     });
 
-    console.log(`✅ ${points.length} puntos GPX etiquetados con modos de transporte.`);
+    console.log(`✅ ${points.length} puntos GPX etiquetados con modos de transporte (Segmentos totales: ${segmentThresholds.length}).`);
     return points;
   }
 
