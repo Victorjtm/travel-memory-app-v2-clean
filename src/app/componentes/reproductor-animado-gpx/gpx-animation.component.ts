@@ -281,6 +281,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   }
 
   // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
+  // ✨ Replica la MISMA lógica de agrupación y estilo visual que "ver GPX" (actividades-itinerarios)
   private displayAllPois() {
     if (!this.map) { console.warn('⚠️ [displayAllPois] No hay mapa'); return; }
     
@@ -294,39 +295,19 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       }
     }
     
-    const boundsPoints: any[] = [];
-    const addedCoords = new Set<string>();
-    let markersCreated = 0;
+    // ❌ Evitar que se revelen marcadores dinámicos extra durante la animación (ya están todos mostrados)
+    this.pendingVisualMarkers = [];
 
-    const createPoiMarker = (lat: number, lng: number, orden: any) => {
-      if (!lat || !lng || isNaN(lat) || isNaN(lng) || Math.abs(lat) < 0.01 || Math.abs(lng) < 0.01) return;
+    // ═══════════════════════════════════════════════════════════════════
+    // PASO 1: Extraer coordenadas, timestamp y posición GPX de cada archivo
+    // ═══════════════════════════════════════════════════════════════════
+    const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; gpxIndex: number }[] = [];
 
-      const coordKey = `${lat.toFixed(5)}_${lng.toFixed(5)}`;
-      if (addedCoords.has(coordKey)) return;
-      addedCoords.add(coordKey);
-
-      // ✨ ESTILOS INLINE para evitar problemas de encapsulación SCSS de Angular
-      const icon = this.L.divIcon({
-        className: 'custom-poi-pin-marker',
-        html: `<div style="width:38px;height:38px;background:linear-gradient(135deg,#ef4444,#b91c1c);border:3px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.6),0 0 0 2px rgba(239,68,68,0.4);color:#fff;font-weight:900;font-size:17px;font-family:system-ui,-apple-system,sans-serif;text-shadow:0 1px 3px rgba(0,0,0,0.8);">
-                 <span style="line-height:1">${orden !== undefined && orden !== null ? orden : '*'}</span>
-               </div>`,
-        iconSize: [38, 38],
-        iconAnchor: [19, 19]
-      });
-      this.L.marker([lat, lng], { icon: icon, zIndexOffset: 1000 }).addTo(this.poiLayerGroup);
-      boundsPoints.push([lat, lng]);
-      markersCreated++;
-    };
-
-    // FUENTE 1: Multimedia directa
-    console.log(`📌 [displayAllPois] multimedia.length = ${this.multimedia?.length || 0}`);
     if (this.multimedia && this.multimedia.length > 0) {
-      this.multimedia.forEach((archivo: any, idx: number) => {
+      this.multimedia.forEach((archivo: any) => {
         let lat: number | null = null;
         let lng: number | null = null;
 
-        // Intentar extraer coordenadas de todas las fuentes posibles
         if (archivo.geolocalizacion) {
           try {
             const loc = typeof archivo.geolocalizacion === 'string' ? JSON.parse(archivo.geolocalizacion) : archivo.geolocalizacion;
@@ -343,31 +324,114 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
           lng = Number(archivo.lng);
         }
 
-        if (lat && lng && Math.abs(lat) > 0.01) {
-          const orden = archivo.ordenVisita !== undefined ? archivo.ordenVisita : (archivo.orden !== undefined ? archivo.orden : '*');
-          createPoiMarker(lat, lng, orden);
+        if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
+          // Extraer timestamp robusto (igual que en actividades-itinerarios.component.ts)
+          let ts = 0;
+          const rawDate = archivo.fechaCreacion || archivo.fechaTomada || archivo.fecha || archivo.created_at;
+          if (rawDate) {
+            const fecha = new Date(rawDate);
+            if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string') {
+              const [horas, minutos] = archivo.horaCaptura.split(':').map(Number);
+              if (!isNaN(horas) && !isNaN(minutos)) {
+                fecha.setHours(horas, minutos, 0, 0);
+              }
+            }
+            ts = fecha.getTime();
+          }
+
+          // Calcular índice en la ruta GPX (para asegurar que el orden espacial coincida con el avance)
+          let gpxIdx = 999999;
+          if (this.points && this.points.length > 0) {
+            let minDist = Infinity;
+            for (let i = 0; i < this.points.length; i++) {
+              const d = this.getDistance(lat, lng, this.points[i].lat, this.points[i].lng);
+              if (d < minDist) {
+                minDist = d;
+                gpxIdx = i;
+              }
+            }
+          }
+
+          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts, gpxIndex: gpxIdx });
         }
       });
     }
 
-    // FUENTE 2: Puntos GPX con eventos sincronizados
-    if (this.points && this.points.length > 0) {
-      let eventCount = 0;
-      this.points.forEach((p: any) => {
-        if (p.event) {
-          eventCount++;
-          const archivos = p.event.archivos || [];
-          const first = archivos[0] || {};
-          const orden = p.event.ordenVisita !== undefined 
-            ? p.event.ordenVisita 
-            : (first.ordenVisita !== undefined ? first.ordenVisita : (first.orden !== undefined ? first.orden : '*'));
-          createPoiMarker(p.lat, p.lng, orden);
-        }
-      });
-      console.log(`📌 [displayAllPois] points con event: ${eventCount}`);
-    }
+    console.log(`📌 [displayAllPois] archivos con coordenadas válidas: ${archivosConCoordenadas.length}`);
 
-    console.log(`📌 [displayAllPois] TOTAL markers creados: ${markersCreated}, boundsPoints: ${boundsPoints.length}`);
+    // ═══════════════════════════════════════════════════════════════════
+    // PASO 2: Ordenar por timestamp y por índice GPX (orden del recorrido)
+    // ═══════════════════════════════════════════════════════════════════
+    archivosConCoordenadas.sort((a, b) => {
+      if (a.timestamp > 0 && b.timestamp > 0 && Math.abs(a.timestamp - b.timestamp) > 1000) {
+        return a.timestamp - b.timestamp;
+      }
+      return a.gpxIndex - b.gpxIndex;
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PASO 3: Agrupar por ubicación con tolerancia ~10m (MISMA lógica que ver GPX)
+    // ═══════════════════════════════════════════════════════════════════
+    const TOLERANCIA_GPS = 0.0001; // ~10 metros
+    const grupos: { lat: number; lng: number; archivos: any[]; gpxIndex: number }[] = [];
+
+    archivosConCoordenadas.forEach(item => {
+      const grupoExistente = grupos.find(g =>
+        Math.abs(g.lat - item.lat) < TOLERANCIA_GPS &&
+        Math.abs(g.lng - item.lng) < TOLERANCIA_GPS
+      );
+
+      if (grupoExistente) {
+        grupoExistente.archivos.push(item);
+      } else {
+        grupos.push({
+          lat: item.lat,
+          lng: item.lng,
+          archivos: [item],
+          gpxIndex: item.gpxIndex
+        });
+      }
+    });
+
+    // Ordenar los grupos por posición en el trayecto GPX
+    grupos.sort((a, b) => a.gpxIndex - b.gpxIndex);
+
+    console.log(`📌 [displayAllPois] Grupos (PIs) creados y ordenados por ruta: ${grupos.length}`);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PASO 4: Crear marcadores con el MISMO estilo visual que "ver GPX"
+    // (Pin SVG rojo + badge azul con #N)
+    // ═══════════════════════════════════════════════════════════════════
+    const boundsPoints: any[] = [];
+
+    grupos.forEach((grupo, index) => {
+      const numeroSecuencial = index + 1;
+      const { lat, lng } = grupo;
+
+      const icon = this.L.divIcon({
+        className: '',
+        html: `
+        <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
+          <svg width="44" height="44" viewBox="0 0 44 44" style="filter:drop-shadow(0px 3px 3px rgba(0,0,0,0.4));z-index:5;">
+            <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="#E53935" />
+            <circle cx="22" cy="16" r="6" fill="white" />
+          </svg>
+          <div style="margin-top:-8px;background:#1E88E5;color:white;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.4);z-index:10;position:relative;">
+            #${numeroSecuencial}
+          </div>
+        </div>
+        `,
+        iconSize: [44, 60],
+        iconAnchor: [22, 60]
+      });
+
+      this.L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(this.poiLayerGroup);
+      boundsPoints.push([lat, lng]);
+
+      console.log(`📌 PI #${numeroSecuencial} → lat=${lat.toFixed(5)}, lng=${lng.toFixed(5)}, gpxIdx=${grupo.gpxIndex}, archivos=${grupo.archivos.length}`);
+    });
+
+    console.log(`📌 [displayAllPois] TOTAL PIs: ${grupos.length}, boundsPoints: ${boundsPoints.length}`);
 
     // Encuadrar únicamente puntos válidos o en su defecto toda la ruta GPX
     if (boundsPoints.length > 0) {
