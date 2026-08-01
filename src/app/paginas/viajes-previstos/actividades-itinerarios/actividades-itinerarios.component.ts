@@ -637,13 +637,8 @@ export class ActividadesItinerariosComponent implements OnInit {
           layersContainer.classList.add('capas-medio-izq');
         }
 
-        // Dibujar ruta con polyline roja robusta
-        L.polyline(this.coordenadasGPX, {
-          color: '#FF0000',
-          weight: 4,
-          opacity: 0.85,
-          smoothFactor: 1
-        }).addTo(this.mapaGPX);
+        // Dibujar ruta por tramos de transporte (colores distintos por modo)
+        this.dibujarRutaPorTransporte(L);
 
         this.addDirectionArrows(L, this.coordenadasGPX);
 
@@ -679,7 +674,118 @@ export class ActividadesItinerariosComponent implements OnInit {
     });
   }
 
+  /**
+   * Dibuja la ruta GPX en el mapa dividida por tramos de transporte.
+   * Cada tramo recibe el color correspondiente a su modo (verde=andando, rojo=coche, azul=barco, etc.)
+   * Si no hay desglose de transporte, dibuja una única línea con el color del modo principal.
+   */
+  private dibujarRutaPorTransporte(L: any): void {
+    const coords = this.coordenadasGPX;
+    if (!coords || coords.length === 0 || !this.mapaGPX) return;
+
+    // Mapa de colores por modo de transporte (idéntico al reproductor de animación)
+    const modeColors: { [key: string]: string } = {
+      walking: '#059669', walk: '#059669', caminar: '#059669', andando: '#059669',
+      driving: '#DC2626', car: '#DC2626', coche: '#DC2626',
+      cycling: '#FF9800', bici: '#FF9800', bicycle: '#FF9800',
+      running: '#2196F3', correr: '#2196F3',
+      bus: '#9C27B0', autobus: '#9C27B0',
+      boat: '#0284C7', barco: '#0284C7', ship: '#0284C7', ferry: '#0284C7', crucero: '#0284C7',
+      transport: '#9E9E9E'
+    };
+
+    const getModeColor = (rawMode: string): string => {
+      const m = (rawMode || '').toLowerCase();
+      if (m.includes('walk') || m.includes('camin') || m.includes('andan') || m.includes('pie')) return modeColors['walking'];
+      if (m.includes('car') || m.includes('coch') || m.includes('driv')) return modeColors['driving'];
+      if (m.includes('bic') || m.includes('cycl')) return modeColors['cycling'];
+      if (m.includes('run') || m.includes('corr')) return modeColors['running'];
+      if (m.includes('bus') || m.includes('autobus')) return modeColors['bus'];
+      if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return modeColors['boat'];
+      return modeColors['transport'];
+    };
+
+    // Función auxiliar: distancia Haversine en metros entre dos coords [lat, lng]
+    const haversine = (a: number[], b: number[]): number => {
+      const R = 6371e3;
+      const phi1 = a[0] * Math.PI / 180, phi2 = b[0] * Math.PI / 180;
+      const dPhi = (b[0] - a[0]) * Math.PI / 180;
+      const dLam = (b[1] - a[1]) * Math.PI / 180;
+      const x = Math.sin(dPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLam / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+    };
+
+    // Si no hay desglose de transporte → una sola línea con el color del modo principal
+    const desglose = this.estadisticasGPX?.desgloseTransporte || [];
+    if (desglose.length === 0) {
+      const mainMode = this.estadisticasGPX?.transportePrincipal?.nombre || 'walking';
+      const color = getModeColor(mainMode);
+      console.log(`🗺️ [Ver GPX] Sin desglose, dibujando línea única. Modo: ${mainMode}, Color: ${color}`);
+      L.polyline(coords, { color: '#FFFFFF', weight: 7, opacity: 0.7, lineCap: 'round' }).addTo(this.mapaGPX);
+      L.polyline(coords, { color, weight: 4, opacity: 0.9, smoothFactor: 1, lineCap: 'round' }).addTo(this.mapaGPX);
+      return;
+    }
+
+    // Calcular distancia acumulada en metros para cada punto GPX
+    const distAcum: number[] = [0];
+    for (let i = 1; i < coords.length; i++) {
+      distAcum.push(distAcum[i - 1] + haversine(coords[i - 1], coords[i]));
+    }
+    const totalDistM = distAcum[distAcum.length - 1];
+
+    // Calcular el umbral acumulado en metros para cada segmento del desglose
+    let acumM = 0;
+    const segmentThresholds: { color: string; nombre: string; thresholdM: number }[] = desglose.map((seg: any) => {
+      let rawDist = seg.distanciaMetros || seg.distance || 0;
+      if (!rawDist && seg.distanciaKm) {
+        rawDist = parseFloat(String(seg.distanciaKm).replace(',', '.')) * 1000;
+      }
+      acumM += Number(rawDist);
+      const nombre = seg.nombre || seg.tipo || seg.mode || 'walking';
+      console.log(`📏 [Ver GPX] Segmento: ${nombre} → Acum: ${acumM.toFixed(0)}m`);
+      return { color: getModeColor(nombre), nombre, thresholdM: acumM };
+    });
+
+    // Escalar los umbrales si la suma del desglose no coincide exactamente con la distancia real del GPX
+    const sumDesglose = acumM;
+    const scaleFactor = sumDesglose > 0 ? totalDistM / sumDesglose : 1;
+    if (Math.abs(scaleFactor - 1) > 0.05) {
+      console.log(`⚖️ [Ver GPX] Escalando umbrales de tramos (factor: ${scaleFactor.toFixed(3)})`);
+      segmentThresholds.forEach(s => s.thresholdM *= scaleFactor);
+    }
+
+    // Dividir coordenadas en grupos por segmento y dibujar una polyline por grupo
+    let segIdx = 0;
+    let segmentCoords: number[][] = [];
+
+    const flushSegment = () => {
+      if (segmentCoords.length > 1) {
+        const { color } = segmentThresholds[segIdx];
+        // Sombra blanca debajo para contraste sobre satélite
+        L.polyline(segmentCoords, { color: '#FFFFFF', weight: 7, opacity: 0.7, lineCap: 'round', lineJoin: 'round' }).addTo(this.mapaGPX);
+        L.polyline(segmentCoords, { color, weight: 4, opacity: 0.9, smoothFactor: 1, lineCap: 'round', lineJoin: 'round' }).addTo(this.mapaGPX);
+      }
+    };
+
+    for (let i = 0; i < coords.length; i++) {
+      segmentCoords.push(coords[i]);
+
+      // Ver si el siguiente punto ya supera el umbral del segmento actual
+      while (segIdx < segmentThresholds.length - 1 && distAcum[i] >= segmentThresholds[segIdx].thresholdM) {
+        flushSegment();
+        // El último punto del segmento anterior es el primero del siguiente (para que no quede hueco)
+        segmentCoords = [coords[i]];
+        segIdx++;
+      }
+    }
+    // Dibujar el último segmento
+    flushSegment();
+
+    console.log(`✅ [Ver GPX] Ruta dibujada con ${segmentThresholds.length} tramos de color.`);
+  }
+
   // Helper para el contenido del popup contextual enriquecido (Fase 4 - Bloque C)
+
   private crearPopupContent(archivos: any[], numeroSecuencial: number, cantidadArchivos: number, tieneMultiples: boolean): string {
     const primerArchivo = archivos[0].archivo;
     
