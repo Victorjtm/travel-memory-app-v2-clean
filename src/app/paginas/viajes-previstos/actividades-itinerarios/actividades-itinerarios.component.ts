@@ -637,8 +637,14 @@ export class ActividadesItinerariosComponent implements OnInit {
           layersContainer.classList.add('capas-medio-izq');
         }
 
-        // Dibujar ruta por tramos de transporte (colores distintos por modo)
-        this.dibujarRutaPorTransporte(L);
+        // Dibujar ruta: Alta Fidelidad (visual_session) → tiene prioridad
+        // porque ya guarda los colores exactos de cada tramo.
+        // Fallback: calcular desde estadísticas si no hay visual_session.
+        if (this.isHighFidelityMode && this.visualSessionData?.layers?.length > 0) {
+          this.dibujarCapasHighFidelity(L);
+        } else {
+          this.dibujarRutaPorTransporte(L);
+        }
 
         this.addDirectionArrows(L, this.coordenadasGPX);
 
@@ -672,6 +678,57 @@ export class ActividadesItinerariosComponent implements OnInit {
         console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ Error inicializando Leaflet:', error);
       }
     });
+  }
+
+  /**
+   * Modo Alta Fidelidad: dibuja las polylines exactamente como están guardadas
+   * en el visual_session.json, con sus colores y modos originales.
+   * Esta es la fuente de verdad cuando el track editor ha guardado una sesión.
+   */
+  private dibujarCapasHighFidelity(L: any): void {
+    if (!this.mapaGPX || !this.visualSessionData?.layers) return;
+
+    const polylines = this.visualSessionData.layers.filter((l: any) =>
+      l.type === 'polyline' && Array.isArray(l.latLngs) && l.latLngs.length > 1
+    );
+
+    if (polylines.length === 0) {
+      console.warn('⚠️ [Ver GPX HF] No hay polylines en visual_session. Usando fallback.');
+      this.dibujarRutaPorTransporte(L);
+      return;
+    }
+
+    console.log(`🎨 [Ver GPX HF] Dibujando ${polylines.length} tramo(s) desde visual_session.json`);
+
+    polylines.forEach((layer: any, idx: number) => {
+      const color = layer.options?.color || '#9E9E9E';
+      const opacity = layer.options?.opacity ?? 0.9;
+      const weight = layer.options?.weight ?? 6;
+      const mode = layer.mode || '?';
+
+      console.log(`  🖌️ Tramo ${idx + 1}: color=${color}, modo=${mode}, puntos=${layer.latLngs.length}`);
+
+      // Sombra blanca debajo para contraste sobre fondo satélite
+      L.polyline(layer.latLngs, {
+        color: '#FFFFFF',
+        weight: weight + 3,
+        opacity: 0.7,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(this.mapaGPX);
+
+      // Línea de color real encima
+      L.polyline(layer.latLngs, {
+        color,
+        weight,
+        opacity,
+        lineCap: 'round',
+        lineJoin: 'round',
+        smoothFactor: 1
+      }).addTo(this.mapaGPX);
+    });
+
+    console.log(`✅ [Ver GPX HF] Ruta dibujada con ${polylines.length} tramo(s) de alta fidelidad.`);
   }
 
   /**
