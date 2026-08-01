@@ -196,9 +196,22 @@ export class GpxAnimationService {
     
     if (points.length === 0) return points;
     
+    // ✨ Preservar modos específicos ya existentes (como boat, walking, driving asignados por replaySegments)
+    const hasSpecificModes = points.some(p => p.mode && p.mode !== 'walking');
+
     if (!segments || segments.length === 0) {
-      console.warn('⚠️ No hay segmentos de transporte definidos. Usando modo por defecto: walking');
-      points.forEach(p => p.mode = 'walking');
+      if (!hasSpecificModes) {
+        console.warn('⚠️ No hay segmentos de transporte definidos. Usando modo por defecto: walking');
+        points.forEach(p => p.mode = 'walking');
+      }
+      return points;
+    }
+
+    // Si solo hay 1 segmento o acumulado = 0, y los puntos ya tienen modos específicos, respetarlos
+    let totalDist = 0;
+    segments.forEach(s => totalDist += (s.distanciaMetros || s.distance || 0));
+    if (hasSpecificModes && (segments.length <= 1 || totalDist === 0)) {
+      console.log('✨ Preservando modos de transporte específicos existentes en los puntos');
       return points;
     }
 
@@ -220,7 +233,10 @@ export class GpxAnimationService {
       accumulatedSegmentDist += Number(rawDist);
       
       // Normalizar el nombre del modo para facilitar el mapeo posterior
-      const rawMode = (seg.tipo || seg.profileName || seg.nombre || 'walking').toLowerCase();
+      let rawMode = (seg.tipo || seg.profileName || seg.nombre || seg.mode || 'walking').toLowerCase();
+      if (rawMode.includes('boat') || rawMode.includes('barco') || rawMode.includes('ship') || rawMode.includes('ferry') || rawMode.includes('crucero')) {
+        rawMode = 'boat';
+      }
       
       console.log(`📏 Segmento ${idx}: ${rawMode} - Acumulado: ${accumulatedSegmentDist}m`);
 
@@ -238,9 +254,7 @@ export class GpxAnimationService {
       p.mode = mode;
       
       // ✨ Si no tiene modo de alta fidelidad, asignamos este como base
-      if (!p.hfMode) {
-        p.hfMode = mode;
-      }
+      if (!p.hfMode) p.hfMode = mode;
     });
 
     console.log(`✅ ${points.length} puntos GPX etiquetados con modos de transporte (Segmentos totales: ${segmentThresholds.length}).`);

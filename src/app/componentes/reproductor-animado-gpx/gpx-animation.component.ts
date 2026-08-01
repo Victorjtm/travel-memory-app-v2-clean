@@ -59,6 +59,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     correr: '#2196F3',
     bus: '#9C27B0',
     autobus: '#9C27B0',
+    boat: '#0284C7',
+    barco: '#0284C7',
+    ship: '#0284C7',
+    ferry: '#0284C7',
+    crucero: '#0284C7',
     transport: '#9E9E9E'
   };
 
@@ -77,6 +82,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     correr: '#64B5F6',
     bus: '#E1BEE7',
     autobus: '#E1BEE7',
+    boat: '#7DD3FC',
+    barco: '#7DD3FC',
+    ship: '#7DD3FC',
+    ferry: '#7DD3FC',
+    crucero: '#7DD3FC',
     transport: '#E0E0E0'
   };
 
@@ -95,6 +105,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     correr: '🏃',
     bus: '🚌',
     autobus: '🚌',
+    boat: '🚢',
+    barco: '🚢',
+    ship: '🚢',
+    ferry: '🚢',
+    crucero: '🚢',
     transport: '🚀',
     transporte: '🚀'
   };
@@ -1368,6 +1383,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     if (m.includes('bic') || m.includes('cycl')) return 'cycling';
     if (m.includes('run') || m.includes('corr')) return 'running';
     if (m.includes('bus') || m.includes('autobus')) return 'bus';
+    if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return 'boat';
     return 'transport';
   }
 
@@ -1460,6 +1476,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     if (m.includes('bic') || m.includes('cycl')) return 'En Bici';
     if (m.includes('run') || m.includes('corr')) return 'Corriendo';
     if (m.includes('bus')) return 'En Bus';
+    if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return 'En Barco';
     if (m.includes('transp')) return 'Transporte';
 
     return mode.charAt(0).toUpperCase() + mode.slice(1);
@@ -1481,6 +1498,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     if (m.includes('bic') || m.includes('cycl')) return '🚲';
     if (m.includes('run') || m.includes('corr')) return '🏃';
     if (m.includes('bus')) return '🚌';
+    if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return '🚢';
     
     return this.MODE_ICONS[m] || '📍';
   }
@@ -1502,8 +1520,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     if (m.includes('walk') || m.includes('andan') || m.includes('camin')) return 0.4;
     if (m.includes('run') || m.includes('corr')) return 0.8;
     if (m.includes('bic') || m.includes('cycl')) return 1.5;
-    if (m.includes('car') || m.includes('coch') || m.includes('driv')) return 1.5; // Reducido de 3.5 a 1.5
+    if (m.includes('car') || m.includes('coch') || m.includes('driv')) return 1.5;
     if (m.includes('bus')) return 2.0;
+    if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return 2.0;
     return 1;
   }
 
