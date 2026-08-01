@@ -314,12 +314,16 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.pendingVisualMarkers = [];
 
     // ═══════════════════════════════════════════════════════════════════
-    // PASO 1: Extraer coordenadas, timestamp y posición GPX de cada archivo
+    // PASO 1: Extraer coordenadas y timestamp de cada archivo foto/video (igual que ver GPX)
     // ═══════════════════════════════════════════════════════════════════
-    const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; gpxIndex: number }[] = [];
+    const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number }[] = [];
 
     if (this.multimedia && this.multimedia.length > 0) {
       this.multimedia.forEach((archivo: any) => {
+        // Filtrar exclusivamente fotos y vídeos (igual que ver GPX)
+        const tipo = (archivo.tipo || '').toLowerCase();
+        if (tipo !== 'foto' && tipo !== 'video') return;
+
         let lat: number | null = null;
         let lng: number | null = null;
 
@@ -340,11 +344,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         }
 
         if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
-          // Extraer timestamp robusto (igual que en actividades-itinerarios.component.ts)
+          // Extraer timestamp exacto a partir de los campos editables de la BD (igual que ver GPX)
           let ts = 0;
-          const rawDate = archivo.fechaCreacion || archivo.fechaTomada || archivo.fecha || archivo.created_at;
-          if (rawDate) {
-            const fecha = new Date(rawDate);
+          if (archivo.fechaCreacion) {
+            const fecha = new Date(archivo.fechaCreacion);
             if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string') {
               const [horas, minutos] = archivo.horaCaptura.split(':').map(Number);
               if (!isNaN(horas) && !isNaN(minutos)) {
@@ -352,22 +355,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
               }
             }
             ts = fecha.getTime();
+          } else if (archivo.fechaTomada || archivo.fecha || archivo.created_at) {
+            ts = new Date(archivo.fechaTomada || archivo.fecha || archivo.created_at).getTime() || 0;
           }
 
-          // Calcular índice en la ruta GPX (para asegurar que el orden espacial coincida con el avance)
-          let gpxIdx = 999999;
-          if (this.points && this.points.length > 0) {
-            let minDist = Infinity;
-            for (let i = 0; i < this.points.length; i++) {
-              const d = this.getDistance(lat, lng, this.points[i].lat, this.points[i].lng);
-              if (d < minDist) {
-                minDist = d;
-                gpxIdx = i;
-              }
-            }
-          }
-
-          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts, gpxIndex: gpxIdx });
+          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts });
         }
       });
     }
@@ -375,20 +367,15 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     console.log(`📌 [displayAllPois] archivos con coordenadas válidas: ${archivosConCoordenadas.length}`);
 
     // ═══════════════════════════════════════════════════════════════════
-    // PASO 2: Ordenar por timestamp y por índice GPX (orden del recorrido)
+    // PASO 2: Ordenar estrictamente por timestamp (IGUAL que ver GPX)
     // ═══════════════════════════════════════════════════════════════════
-    archivosConCoordenadas.sort((a, b) => {
-      if (a.timestamp > 0 && b.timestamp > 0 && Math.abs(a.timestamp - b.timestamp) > 1000) {
-        return a.timestamp - b.timestamp;
-      }
-      return a.gpxIndex - b.gpxIndex;
-    });
+    archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
 
     // ═══════════════════════════════════════════════════════════════════
     // PASO 3: Agrupar por ubicación con tolerancia ~10m (MISMA lógica que ver GPX)
     // ═══════════════════════════════════════════════════════════════════
     const TOLERANCIA_GPS = 0.0001; // ~10 metros
-    const grupos: { lat: number; lng: number; archivos: any[]; gpxIndex: number }[] = [];
+    const grupos: { lat: number; lng: number; archivos: any[] }[] = [];
 
     archivosConCoordenadas.forEach(item => {
       const grupoExistente = grupos.find(g =>
@@ -402,16 +389,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         grupos.push({
           lat: item.lat,
           lng: item.lng,
-          archivos: [item],
-          gpxIndex: item.gpxIndex
+          archivos: [item]
         });
       }
     });
 
-    // Ordenar los grupos por posición en el trayecto GPX
-    grupos.sort((a, b) => a.gpxIndex - b.gpxIndex);
-
-    console.log(`📌 [displayAllPois] Grupos (PIs) creados y ordenados por ruta: ${grupos.length}`);
+    console.log(`📌 [displayAllPois] Grupos (PIs) creados en orden temporal estricto (coincidente con ver GPX): ${grupos.length}`);
 
     // ═══════════════════════════════════════════════════════════════════
     // PASO 4: Crear marcadores con el MISMO estilo visual que "ver GPX"
@@ -443,7 +426,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       this.L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(this.poiLayerGroup);
       boundsPoints.push([lat, lng]);
 
-      console.log(`📌 PI #${numeroSecuencial} → lat=${lat.toFixed(5)}, lng=${lng.toFixed(5)}, gpxIdx=${grupo.gpxIndex}, archivos=${grupo.archivos.length}`);
+      console.log(`📌 PI #${numeroSecuencial} → lat=${lat.toFixed(5)}, lng=${lng.toFixed(5)}, archivos=${grupo.archivos.length}`);
     });
 
     console.log(`📌 [displayAllPois] TOTAL PIs: ${grupos.length}, boundsPoints: ${boundsPoints.length}`);
@@ -837,8 +820,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         const p = this.points[i];
         const prevP = this.points[i - 1] || this.points[0];
 
-        // Determinamos el metadato del punto (Prioridad: Segmento HF > Propiedades del punto > Fallback)
-        let newMode = p.hfMode || p.mode || 'walking';
+        // Determinamos el metadato del punto (Prioridad: Modo del punto en BD > Segmento HF > Fallback)
+        let newMode = p.mode || p.hfMode || 'walking';
         let newColor = p.hfColor || '';
         let newPhase = p.hfPhase || '';
         let newOpacity = p.hfOpacity ?? 0.9;
@@ -848,7 +831,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         if (this.isHighFidelityMode && this.hfSegments.length > 0) {
           const seg = this.hfSegments.find(s => i >= s.startIndex && i <= s.endIndex);
           if (seg) {
-            newMode = seg.mode;
+            // Si el punto no tiene un modo propio de BD (como boat o walking), usar seg.mode
+            if (!p.mode || (seg.mode && seg.mode !== 'driving')) {
+              newMode = seg.mode;
+            }
             newColor = seg.color;
             newPhase = seg.phase;
             newOpacity = seg.opacity;
