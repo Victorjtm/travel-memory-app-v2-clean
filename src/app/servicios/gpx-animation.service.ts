@@ -379,11 +379,11 @@ export class GpxAnimationService {
         distAcum: newDistAcum, // ✨ Interpolado
         timeAcum: newTimeAcum, // ✨ Interpolado
         // ✨ HERENCIA DE ALTA FIDELIDAD
-        hfColor: p1.hfColor,
-        hfMode: p1.hfMode,
-        hfPhase: p1.hfPhase,
-        hfOpacity: p1.hfOpacity,
-        hfDashArray: p1.hfDashArray
+        hfColor: (p1 as any)?.hfColor,
+        hfMode: (p1 as any)?.hfMode,
+        hfPhase: (p1 as any)?.hfPhase,
+        hfOpacity: (p1 as any)?.hfOpacity,
+        hfDashArray: (p1 as any)?.hfDashArray
       });
     }
     return newPoints;
