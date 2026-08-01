@@ -74,13 +74,18 @@ export class GpxAnimationService {
         timeAcum += (d / (5 / 3.6)); // v = d/t => t = d/v (5 km/h = 1.38 m/s)
       }
 
+      const modeEl = trkpts[i].getElementsByTagName('transportMode')[0];
+      const transportMode = modeEl ? (modeEl.textContent || undefined) : undefined;
+
       points.push({
         lat,
         lng,
         ele: eleEl ? parseFloat(eleEl.textContent || '0') : undefined,
         time: timeEl ? new Date(timeEl.textContent || '') : undefined,
         distAcum,
-        timeAcum
+        timeAcum,
+        mode: transportMode,
+        hfMode: transportMode
       });
 
       prevPoint = currentLatLng as any;

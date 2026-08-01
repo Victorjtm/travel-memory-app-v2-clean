@@ -58,9 +58,10 @@ export class ActividadesItinerariosComponent implements OnInit {
   configuracionVideo: ConfiguracionVideo | null = null;
   actividadVideoSeleccionada: any = null;
 
-  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚Â¨ PROPIEDADES PARA MAPA GPX
+  // 🟢 PROPIEDADES PARA MAPA GPX
   mapaGPX: any = null;
   coordenadasGPX: any[] = [];
+  puntosGPXConModo: { lat: number; lng: number; mode: string }[] = [];
 
   // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ NUEVAS PROPIEDADES: Panel de estadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas
   showSidePanel = true;
@@ -243,12 +244,12 @@ export class ActividadesItinerariosComponent implements OnInit {
       if (!gpxContent) throw new Error('No se pudo encontrar o resolver la ruta GPX asociada a esta actividad.');
 
       let points = this.gpxAnimationService.parseGpx(gpxContent);
-      
+
       // 2. Asociar multimedia y audios perdidos
       this.progresoVideo.mensaje = 'Sincronizando fotos, vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­deos y audios...';
       const archivoUrl = `${environment.apiUrl}/archivos?actividadId=${this.actividadVideoSeleccionada.id}`;
       const archivosAsociados = await firstValueFrom(this.http.get<any[]>(archivoUrl));
-      
+
       points = this.gpxAnimationService.syncMultimedia(points, archivosAsociados);
       points = this.gpxAnimationService.applyTransportSegments(points, []);
 
@@ -293,9 +294,9 @@ export class ActividadesItinerariosComponent implements OnInit {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      
+
       this.cerrarConfiguracionVideo();
-      
+
     } catch (error) {
       console.error('Error generando vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­deo:', error);
       alert('Error al generar el vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­deo: ' + (error instanceof Error ? error.message : 'Error desconocido'));
@@ -489,7 +490,7 @@ export class ActividadesItinerariosComponent implements OnInit {
               sessionData.layers = layers;
               this.visualSessionData = sessionData;
               this.isHighFidelityMode = true;
-              console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â½Ãƒâ€šÃ‚Â¨ [AnimaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n] Modo Alta Fidelidad activado.');
+              console.log('ðŸŽ¨ [Animación] Modo Alta Fidelidad activado.');
             }
             this.continuarCargaAnimacion(actividadId);
           },
@@ -501,14 +502,14 @@ export class ActividadesItinerariosComponent implements OnInit {
         });
       },
       error: (err) => {
-        console.error('ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ Error cargando estadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas para animaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n:', err);
+        console.error('âŒ Error cargando estadísticas para animación:', err);
         this.desgloseTransporteAnimacion = [];
         this.continuarCargaAnimacion(actividadId);
       }
     });
   }
 
-  /** Paso 2 y 3 de la animaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n: Multimedia y GPX */
+  /** Paso 2 y 3 de la animación: Multimedia y GPX */
   private continuarCargaAnimacion(actividadId: number): void {
     const backendUrl = environment.apiUrl;
     const urlFiles = `${backendUrl}/archivos?actividadId=${actividadId}`;
@@ -524,15 +525,15 @@ export class ActividadesItinerariosComponent implements OnInit {
             this.gpxTextAnimacion = gpxText;
             this.desgloseTransporteAnimacion = this.estadisticasGPX?.desgloseTransporte || [];
             this.actividadAnimacion = this.actividades.find(a => a.id === actividadId);
-            
-            console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â½Ãƒâ€šÃ‚Â¬ Lanzando reproductor animado con', this.desgloseTransporteAnimacion.length, 'segmentos');
+
+            console.log('ðŸŽ¬ Lanzando reproductor animado con', this.desgloseTransporteAnimacion.length, 'segmentos');
             this.mostrarReproductorAnimado = true;
             this.cdr.detectChanges();
           },
-          error: err => console.error('ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ Error obteniendo GPX para animaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n:', err)
+          error: err => console.error('âŒ Error obteniendo GPX para animación:', err)
         });
       },
-      error: err => console.error('ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ Error obteniendo multimedia para animaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n:', err)
+      error: err => console.error('âŒ Error obteniendo multimedia para animación:', err)
     });
   }
 
@@ -543,7 +544,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     this.cdr.detectChanges();
   }
 
-  // Parsear GPX y extraer coordenadas
+  // Parsear GPX y extraer coordenadas y modos de transporte
   parseGPX(gpxText: string): void {
     try {
       const parser = new DOMParser();
@@ -552,6 +553,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       // Extraer puntos de ruta (trkpt)
       const trkpts = gpxDoc.getElementsByTagName('trkpt');
       this.coordenadasGPX = [];
+      this.puntosGPXConModo = [];
 
       for (let i = 0; i < trkpts.length; i++) {
         const lat = parseFloat(trkpts[i].getAttribute('lat') || '0');
@@ -559,10 +561,15 @@ export class ActividadesItinerariosComponent implements OnInit {
 
         if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
           this.coordenadasGPX.push([lat, lon]);
+
+          const modeEl = trkpts[i].getElementsByTagName('transportMode')[0];
+          const mode = modeEl ? (modeEl.textContent || 'walking').toLowerCase() : 'walking';
+
+          this.puntosGPXConModo.push({ lat, lng: lon, mode });
         }
       }
 
-      console.log('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ GPX parseado. Coordenadas vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡lidas extraÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­das:', this.coordenadasGPX.length);
+      console.log(`✅ GPX parseado. ${this.coordenadasGPX.length} puntos extraídos (${this.puntosGPXConModo.length} con modo de transporte).`);
 
       // Extraer Waypoints (Punto de Giro / Save Point)
       const wpts = gpxDoc.getElementsByTagName('wpt');
@@ -621,7 +628,7 @@ export class ActividadesItinerariosComponent implements OnInit {
           'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
           { attribution: '&copy; OpenStreetMap', maxZoom: 19 }
         );
-        
+
         satellite.addTo(this.mapaGPX); // Capa por defecto
 
         // Control de capas
@@ -637,14 +644,8 @@ export class ActividadesItinerariosComponent implements OnInit {
           layersContainer.classList.add('capas-medio-izq');
         }
 
-        // Dibujar ruta: Alta Fidelidad (visual_session) → tiene prioridad
-        // porque ya guarda los colores exactos de cada tramo.
-        // Fallback: calcular desde estadísticas si no hay visual_session.
-        if (this.isHighFidelityMode && this.visualSessionData?.layers?.length > 0) {
-          this.dibujarCapasHighFidelity(L);
-        } else {
-          this.dibujarRutaPorTransporte(L);
-        }
+        // Dibujar ruta por tramos de transporte (colores distintos por modo)
+        this.dibujarRutaPorTransporte(L);
 
         this.addDirectionArrows(L, this.coordenadasGPX);
 
@@ -681,66 +682,19 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   /**
-   * Modo Alta Fidelidad: dibuja las polylines exactamente como están guardadas
-   * en el visual_session.json, con sus colores y modos originales.
-   * Esta es la fuente de verdad cuando el track editor ha guardado una sesión.
+   * Dibuja la ruta GPX en el mapa dividida por tramos de transporte.
+   * Lee los modos de transporte directamente de cada punto GPX procesado (obtenido del backend).
+   * Cada tramo recibe el color correspondiente a su modo (verde=andando, rojo=coche, azul=barco, etc.)
    */
-  private dibujarCapasHighFidelity(L: any): void {
-    if (!this.mapaGPX || !this.visualSessionData?.layers) return;
-
-    const polylines = this.visualSessionData.layers.filter((l: any) =>
-      l.type === 'polyline' && Array.isArray(l.latLngs) && l.latLngs.length > 1
-    );
-
-    if (polylines.length === 0) {
-      console.warn('⚠️ [Ver GPX HF] No hay polylines en visual_session. Usando fallback.');
-      this.dibujarRutaPorTransporte(L);
+  private dibujarRutaPorTransporte(L: any): void {
+    const puntos = this.puntosGPXConModo;
+    if (!puntos || puntos.length === 0 || !this.mapaGPX) {
+      if (this.coordenadasGPX && this.coordenadasGPX.length > 0) {
+        L.polyline(this.coordenadasGPX, { color: '#059669', weight: 4, opacity: 0.85 }).addTo(this.mapaGPX);
+      }
       return;
     }
 
-    console.log(`🎨 [Ver GPX HF] Dibujando ${polylines.length} tramo(s) desde visual_session.json`);
-
-    polylines.forEach((layer: any, idx: number) => {
-      const color = layer.options?.color || '#9E9E9E';
-      const opacity = layer.options?.opacity ?? 0.9;
-      const weight = layer.options?.weight ?? 6;
-      const mode = layer.mode || '?';
-
-      console.log(`  🖌️ Tramo ${idx + 1}: color=${color}, modo=${mode}, puntos=${layer.latLngs.length}`);
-
-      // Sombra blanca debajo para contraste sobre fondo satélite
-      L.polyline(layer.latLngs, {
-        color: '#FFFFFF',
-        weight: weight + 3,
-        opacity: 0.7,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(this.mapaGPX);
-
-      // Línea de color real encima
-      L.polyline(layer.latLngs, {
-        color,
-        weight,
-        opacity,
-        lineCap: 'round',
-        lineJoin: 'round',
-        smoothFactor: 1
-      }).addTo(this.mapaGPX);
-    });
-
-    console.log(`✅ [Ver GPX HF] Ruta dibujada con ${polylines.length} tramo(s) de alta fidelidad.`);
-  }
-
-  /**
-   * Dibuja la ruta GPX en el mapa dividida por tramos de transporte.
-   * Cada tramo recibe el color correspondiente a su modo (verde=andando, rojo=coche, azul=barco, etc.)
-   * Si no hay desglose de transporte, dibuja una única línea con el color del modo principal.
-   */
-  private dibujarRutaPorTransporte(L: any): void {
-    const coords = this.coordenadasGPX;
-    if (!coords || coords.length === 0 || !this.mapaGPX) return;
-
-    // Mapa de colores por modo de transporte (idéntico al reproductor de animación)
     const modeColors: { [key: string]: string } = {
       walking: '#059669', walk: '#059669', caminar: '#059669', andando: '#059669',
       driving: '#DC2626', car: '#DC2626', coche: '#DC2626',
@@ -762,90 +716,66 @@ export class ActividadesItinerariosComponent implements OnInit {
       return modeColors['transport'];
     };
 
-    // Función auxiliar: distancia Haversine en metros entre dos coords [lat, lng]
-    const haversine = (a: number[], b: number[]): number => {
-      const R = 6371e3;
-      const phi1 = a[0] * Math.PI / 180, phi2 = b[0] * Math.PI / 180;
-      const dPhi = (b[0] - a[0]) * Math.PI / 180;
-      const dLam = (b[1] - a[1]) * Math.PI / 180;
-      const x = Math.sin(dPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLam / 2) ** 2;
-      return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+    // Agrupar puntos contiguos que comparten el mismo modo de transporte
+    let currentSegment: [number, number][] = [];
+    let currentMode = puntos[0].mode;
+    let segCount = 0;
+
+    const drawPolyline = (coords: [number, number][], mode: string) => {
+      if (coords.length < 2) return;
+      const color = getModeColor(mode);
+
+      // Sombra blanca debajo para contraste sobre fondo de satélite
+      L.polyline(coords, {
+        color: '#FFFFFF',
+        weight: 7,
+        opacity: 0.7,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(this.mapaGPX);
+
+      // Línea con el color del transporte por encima
+      L.polyline(coords, {
+        color,
+        weight: 4,
+        opacity: 0.9,
+        smoothFactor: 1,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(this.mapaGPX);
+
+      segCount++;
+      console.log(`  🖌️ [Ver GPX] Tramo ${segCount}: modo=${mode}, color=${color}, puntos=${coords.length}`);
     };
 
-    // Si no hay desglose de transporte → una sola línea con el color del modo principal
-    const desglose = this.estadisticasGPX?.desgloseTransporte || [];
-    if (desglose.length === 0) {
-      const mainMode = this.estadisticasGPX?.transportePrincipal?.nombre || 'walking';
-      const color = getModeColor(mainMode);
-      console.log(`🗺️ [Ver GPX] Sin desglose, dibujando línea única. Modo: ${mainMode}, Color: ${color}`);
-      L.polyline(coords, { color: '#FFFFFF', weight: 7, opacity: 0.7, lineCap: 'round' }).addTo(this.mapaGPX);
-      L.polyline(coords, { color, weight: 4, opacity: 0.9, smoothFactor: 1, lineCap: 'round' }).addTo(this.mapaGPX);
-      return;
-    }
+    for (let i = 0; i < puntos.length; i++) {
+      const pt = puntos[i];
+      const ptCoords: [number, number] = [pt.lat, pt.lng];
 
-    // Calcular distancia acumulada en metros para cada punto GPX
-    const distAcum: number[] = [0];
-    for (let i = 1; i < coords.length; i++) {
-      distAcum.push(distAcum[i - 1] + haversine(coords[i - 1], coords[i]));
-    }
-    const totalDistM = distAcum[distAcum.length - 1];
+      if (pt.mode !== currentMode) {
+        // Conectar tramos añadiendo el primer punto del nuevo tramo al tramo anterior
+        currentSegment.push(ptCoords);
+        drawPolyline(currentSegment, currentMode);
 
-    // Calcular el umbral acumulado en metros para cada segmento del desglose
-    let acumM = 0;
-    const segmentThresholds: { color: string; nombre: string; thresholdM: number }[] = desglose.map((seg: any) => {
-      let rawDist = seg.distanciaMetros || seg.distance || 0;
-      if (!rawDist && seg.distanciaKm) {
-        rawDist = parseFloat(String(seg.distanciaKm).replace(',', '.')) * 1000;
-      }
-      acumM += Number(rawDist);
-      const nombre = seg.nombre || seg.tipo || seg.mode || 'walking';
-      console.log(`📏 [Ver GPX] Segmento: ${nombre} → Acum: ${acumM.toFixed(0)}m`);
-      return { color: getModeColor(nombre), nombre, thresholdM: acumM };
-    });
-
-    // Escalar los umbrales si la suma del desglose no coincide exactamente con la distancia real del GPX
-    const sumDesglose = acumM;
-    const scaleFactor = sumDesglose > 0 ? totalDistM / sumDesglose : 1;
-    if (Math.abs(scaleFactor - 1) > 0.05) {
-      console.log(`⚖️ [Ver GPX] Escalando umbrales de tramos (factor: ${scaleFactor.toFixed(3)})`);
-      segmentThresholds.forEach(s => s.thresholdM *= scaleFactor);
-    }
-
-    // Dividir coordenadas en grupos por segmento y dibujar una polyline por grupo
-    let segIdx = 0;
-    let segmentCoords: number[][] = [];
-
-    const flushSegment = () => {
-      if (segmentCoords.length > 1) {
-        const { color } = segmentThresholds[segIdx];
-        // Sombra blanca debajo para contraste sobre satélite
-        L.polyline(segmentCoords, { color: '#FFFFFF', weight: 7, opacity: 0.7, lineCap: 'round', lineJoin: 'round' }).addTo(this.mapaGPX);
-        L.polyline(segmentCoords, { color, weight: 4, opacity: 0.9, smoothFactor: 1, lineCap: 'round', lineJoin: 'round' }).addTo(this.mapaGPX);
-      }
-    };
-
-    for (let i = 0; i < coords.length; i++) {
-      segmentCoords.push(coords[i]);
-
-      // Ver si el siguiente punto ya supera el umbral del segmento actual
-      while (segIdx < segmentThresholds.length - 1 && distAcum[i] >= segmentThresholds[segIdx].thresholdM) {
-        flushSegment();
-        // El último punto del segmento anterior es el primero del siguiente (para que no quede hueco)
-        segmentCoords = [coords[i]];
-        segIdx++;
+        currentMode = pt.mode;
+        currentSegment = [ptCoords];
+      } else {
+        currentSegment.push(ptCoords);
       }
     }
-    // Dibujar el último segmento
-    flushSegment();
 
-    console.log(`✅ [Ver GPX] Ruta dibujada con ${segmentThresholds.length} tramos de color.`);
+    if (currentSegment.length > 0) {
+      drawPolyline(currentSegment, currentMode);
+    }
+
+    console.log(`✅ [Ver GPX] Ruta dibujada dinámicamente con ${segCount} tramo(s) de transporte.`);
   }
 
   // Helper para el contenido del popup contextual enriquecido (Fase 4 - Bloque C)
 
   private crearPopupContent(archivos: any[], numeroSecuencial: number, cantidadArchivos: number, tieneMultiples: boolean): string {
     const primerArchivo = archivos[0].archivo;
-    
+
     let popupContent = `
         <div class="photo-popup-custom" style="width: 320px; min-width: 250px; max-width: 600px; resize: horizontal; overflow: hidden; font-family: sans-serif; display: flex; flex-direction: column;">
           <div class="photo-popup-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 6px; margin-bottom: 8px;">
@@ -862,7 +792,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       const archivo = item.archivo;
       const esVideo = this.esVideo(archivo);
       const thumbUrl = this.getThumbnailUrl(archivo);
-      
+
       const audioTag = archivo.audioAsociado ? `
         <div style="margin-top: 6px; width: 100%;">
           <audio controls src="${environment.apiUrl}/uploads/${archivo.audioAsociado}" style="height: 24px; width: 100%;"></audio>
@@ -881,7 +811,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       const dateTag = archivo.fechaCreacion ? `<div style="font-size: 11px; color: #94a3b8; margin-top: 2px;"><i class="fa fa-clock-o"></i> ${new Date(archivo.timestampReal || archivo.fechaCreacion).toLocaleString()}</div>` : '';
       const descTag = archivo.descripcion ? `<div style="font-size: 12px; color: #475569; margin-top: 6px; font-style: italic;">"${archivo.descripcion}"</div>` : '';
 
-      const mediaTag = esVideo 
+      const mediaTag = esVideo
         ? `<video src="${thumbUrl}#t=0.1" preload="metadata" muted playsinline style="width: 100px; height: 75px; object-fit: cover; border-radius: 6px; border: 2px solid #e2e8f0; cursor: pointer;" class="clickable-media" data-index="${index}"></video>`
         : `<img src="${thumbUrl}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 6px; border: 2px solid #e2e8f0; cursor: pointer;" class="clickable-media" data-index="${index}" />`;
 
@@ -953,13 +883,13 @@ export class ActividadesItinerariosComponent implements OnInit {
       if (audioRelacionado) {
         archivo.audioAsociado = audioRelacionado.rutaArchivo;
       }
-      
+
       // 2. Extraer Lugar (Parseo conservador de la ubicaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n texto)
       try {
         const geoData = typeof archivo.geolocalizacion === 'string'
           ? JSON.parse(archivo.geolocalizacion)
           : archivo.geolocalizacion;
-          
+
         if (!archivo.lugar) {
           archivo.lugar = geoData.lugar || geoData.direccion || geoData.ubicacion_texto || geoData.locality || null;
         }
@@ -1011,7 +941,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     grupos.forEach((grupo, index) => {
       const numeroSecuencial = index + 1;
-      
+
       this.anadirMarcadorGrupo(
         grupo.lat,
         grupo.lng,
@@ -1086,7 +1016,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
 
       const marker = L.marker([lat, lng], { icon: grupoIcon }).addTo(this.mapaGPX!);
-      
+
       // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ NUEVO: Guardar referencia del marcador en cada archivo para sincronizaciÃƒÆ’Ã‚Â³n
       archivos.forEach(a => {
         a.archivo.marcadorRef = marker;
@@ -1123,13 +1053,13 @@ export class ActividadesItinerariosComponent implements OnInit {
             currentWidth += zoomIn ? 60 : -60;
             currentWidth = Math.max(250, Math.min(800, currentWidth));
             customPopup.style.width = currentWidth + 'px';
-            
+
             // TambiÃƒÂ©n forzamos el ancho del contenedor padre de Leaflet
             const leafletContent = customPopup.closest('.leaflet-popup-content') as HTMLElement;
             if (leafletContent) {
               leafletContent.style.width = currentWidth + 'px';
             }
-            
+
             // Forzar a Leaflet a recalcular la posiciÃƒÂ³n
             const popup = marker.getPopup();
             if (popup) setTimeout(() => popup.update(), 10);
@@ -1141,7 +1071,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       clickables.forEach((el: any) => {
         el.addEventListener('click', (event: MouseEvent) => {
           const index = parseInt(el.getAttribute('data-index') || '0', 10);
-          
+
           if (event.shiftKey || !tieneMultiples) {
             // Si presionan SHIFT o solo hay una foto, abrir directamente
             const item = archivos[index].archivo;
@@ -1154,11 +1084,11 @@ export class ActividadesItinerariosComponent implements OnInit {
       });
 
       marker.bindPopup(popupDiv, {
-          autoPan: false,
-          className: 'photo-popup-leaflet',
-          minWidth: 250,
-          maxWidth: 600
-        });
+        autoPan: false,
+        className: 'photo-popup-leaflet',
+        minWidth: 250,
+        maxWidth: 600
+      });
 
       // Guardar referencia de los archivos
       (marker as any).archivosGrupo = archivos;
@@ -1587,7 +1517,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   toggleSidePanel(): void {
     this.showSidePanel = !this.showSidePanel;
     console.log(`ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬ÂÃƒâ€šÃ‚ÂºÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€š  Panel lateral: ${this.showSidePanel ? 'VISIBLE' : 'OCULTO'}`);
-    
+
     // Invalida el tamaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â±o del mapa poco despuÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©s para que se adapte al contenedor redimensionado
     if (this.mapaGPX) {
       setTimeout(() => {
@@ -1768,7 +1698,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         if (popup) popup.options.autoPan = false;
         foto.marcadorRef.openPopup();
       }
-      
+
       // Ajustar panel si es necesario
       if (this.panelExpanded) {
         this.togglePanelExpanded();
@@ -1941,10 +1871,10 @@ export class ActividadesItinerariosComponent implements OnInit {
               time: edit.data.endAnchor.time ? new Date(edit.data.endAnchor.time).toISOString() : undefined
             }
           ];
-          
+
           await firstValueFrom(this.trackEditorService.createSegment(
-            this.actividadEditorId, 
-            points, 
+            this.actividadEditorId,
+            points,
             'user-delete'
           ));
         } else if (edit.type === 'append_segment') {
@@ -1963,15 +1893,15 @@ export class ActividadesItinerariosComponent implements OnInit {
           ));
         }
       }
-      
+
       console.log('✅ Todos los cambios guardados correctamente.');
-      
+
       const segments = await firstValueFrom(this.trackEditorService.getSegments(this.actividadEditorId));
       this.gpxPointsEditor = this.trackEditorService.replaySegments(segments);
-      
+
       alert('Cambios guardados con éxito.');
       this.cerrarEditorTrack();
-      
+
     } catch (err) {
       console.error('❌ Error guardando cambios:', err);
       alert('Error guardando los cambios. Revisa la consola.');
@@ -2043,7 +1973,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     // 2. Interpolar
     const anchorA = gpxPoints[0];
     const anchorB = gpxPoints[gpxPoints.length - 1];
-    
+
     // Asegurarnos de que A y B tengan fechas validas
     if (anchorA.time && anchorB.time) {
       this.trackEditorService.interpolateTimeBetweenAnchors(anchorA, anchorB, gpxPoints);
