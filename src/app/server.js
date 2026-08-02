@@ -8212,9 +8212,117 @@ app.get('/api/actividades/:id/segments', (req, res) => {
       createdAt: row.createdAt
     }));
 
-    res.json(parsedRows);
+    // ── Enriquecimiento de modo de transporte desde el GPX original ──────────
+    // Los puntos de segmentos 'original' guardados antes de esta corrección
+    // no tienen el campo 'mode'. Lo leemos del GPX para que todas las rutas
+    // ya guardadas se muestren con los colores correctos sin ninguna migración.
+    const hasOriginalWithoutMode = parsedRows.some(
+      seg => seg.source === 'original' && seg.points.length > 0 && !seg.points[0].mode
+    );
+
+    if (!hasOriginalWithoutMode) {
+      // Todos los puntos ya tienen modo: respuesta directa sin leer el GPX
+      return res.json(parsedRows);
+    }
+
+    // Necesitamos leer el GPX original para obtener los modos
+    db.get('SELECT rutaGpxCompleto FROM actividades WHERE id = ?', [id], (gpxErr, actRow) => {
+      if (gpxErr || !actRow || !actRow.rutaGpxCompleto) {
+        // Si no podemos leer el GPX, devolvemos los datos sin enriquecer
+        return res.json(parsedRows);
+      }
+
+      const gpxFilePath = path.join(uploadsPath, actRow.rutaGpxCompleto);
+
+      if (!fs.existsSync(gpxFilePath)) {
+        return res.json(parsedRows);
+      }
+
+      try {
+        const gpxText = fs.readFileSync(gpxFilePath, 'utf8');
+
+        // Parsear el GPX con DOMParser nativo de Node (disponible vía xmldom si está disponible,
+        // o bien extraer con regex simple para máxima compatibilidad)
+        // Usamos regex simple ya que el GPX es bien estructurado y evitamos dependencias
+        const modeByTime = new Map(); // key: ISO time string → mode string
+        const trkptRegex = /<trkpt[^>]+lat="([^"]+)"[^>]+lon="([^"]+)"[^>]*>([\s\S]*?)<\/trkpt>/g;
+        const timeRegex = /<time>([^<]+)<\/time>/;
+        // Etiquetas soportadas en orden de prioridad
+        const modeTagsRegex = /<(?:transportMode|profileId|mode|profileName)>([^<]+)<\/(?:transportMode|profileId|mode|profileName)>/;
+
+        let match;
+        const gpxPoints = []; // [ { lat, lng, time, mode } ]
+
+        while ((match = trkptRegex.exec(gpxText)) !== null) {
+          const lat = parseFloat(match[1]);
+          const lng = parseFloat(match[2]);
+          const innerXml = match[3];
+          const timeMatch = timeRegex.exec(innerXml);
+          const modeMatch = modeTagsRegex.exec(innerXml);
+          const timeStr = timeMatch ? timeMatch[1].trim() : null;
+          const mode = modeMatch ? modeMatch[1].trim().toLowerCase() : null;
+
+          if (timeStr) modeByTime.set(timeStr, mode);
+          gpxPoints.push({ lat, lng, time: timeStr, mode });
+        }
+
+        console.log(`🗺️ [Segments Enrich] GPX leído: ${gpxPoints.length} puntos, ${modeByTime.size} con tiempo.`);
+
+        // Para puntos sin tiempo, usamos búsqueda espacial por posición
+        // Construimos también un índice posicional para fallback
+        let gpxPosIdx = 0;
+
+        // Enriquecer solo los segmentos 'original' cuyos puntos no tienen mode
+        parsedRows.forEach(seg => {
+          if (seg.source !== 'original') return;
+
+          seg.points = seg.points.map(pt => {
+            if (pt.mode) return pt; // Ya tiene modo, no tocar
+
+            // 1. Intentar por timestamp (más preciso)
+            if (pt.time) {
+              const timeKey = (pt.time instanceof Date ? pt.time.toISOString() : String(pt.time)).replace(/\.000Z$/, '.000Z');
+              // Intentar coincidencia exacta o con pequeñas variaciones de formato
+              let mode = modeByTime.get(timeKey);
+              if (!mode) {
+                // Probar sin milisegundos
+                const timeNoMs = timeKey.replace(/\.\d+Z$/, 'Z');
+                for (const [k, v] of modeByTime) {
+                  if (k.replace(/\.\d+Z$/, 'Z') === timeNoMs) { mode = v; break; }
+                }
+              }
+              if (mode) return { ...pt, mode, hfMode: mode };
+            }
+
+            // 2. Fallback: búsqueda espacial — punto GPX más cercano
+            let bestMode = null;
+            let bestDist = Infinity;
+            for (const gp of gpxPoints) {
+              if (!gp.mode) continue;
+              const d = Math.abs(gp.lat - pt.lat) + Math.abs(gp.lng - pt.lng);
+              if (d < bestDist) { bestDist = d; bestMode = gp.mode; }
+              if (bestDist < 0.00001) break; // Suficientemente cerca
+            }
+
+            if (bestMode) return { ...pt, mode: bestMode, hfMode: bestMode };
+            return pt;
+          });
+        });
+
+        const enrichedCount = parsedRows.reduce((acc, seg) =>
+          acc + seg.points.filter(p => p.mode).length, 0);
+        console.log(`✅ [Segments Enrich] ${enrichedCount} puntos enriquecidos con modo de transporte.`);
+
+      } catch (parseErr) {
+        console.error('⚠️ [Segments Enrich] Error leyendo GPX para enriquecimiento:', parseErr.message);
+        // En caso de error, devolver sin enriquecer
+      }
+
+      res.json(parsedRows);
+    });
   });
 });
+
 
 // 2. Crear un segmento (append al final)
 app.post('/api/actividades/:id/segments', (req, res) => {
