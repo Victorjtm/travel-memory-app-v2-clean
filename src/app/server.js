@@ -3853,45 +3853,23 @@ app.get(['/actividades/:id/gpx', '/api/actividades/:id/gpx'], (req, res) => {
   const id = req.params.id;
 
   db.get(
-    'SELECT a.id, a.rutaGpxCompleto, a.viajePrevistoId, i.viajePrevistoId as itinerarioViajeId FROM actividades a LEFT JOIN itinerarios i ON a.itinerarioId = i.id WHERE a.id = ?',
+    'SELECT rutaGpxCompleto FROM actividades WHERE id = ?',
     [id],
     (err, row) => {
       if (err) return res.status(500).json({ error: err.message });
-      if (!row) return res.status(404).json({ error: 'Actividad no encontrada' });
-
-      const candidates = [];
-
-      // 1. Si rutaGpxCompleto está guardado en la BD
-      if (row.rutaGpxCompleto) {
-        const cleanRel = row.rutaGpxCompleto.replace(/^[\/\\]?uploads[\/\\]?/i, '').replace(/\\/g, '/');
-        candidates.push(path.join(uploadsPath, cleanRel));
-        if (path.isAbsolute(row.rutaGpxCompleto)) {
-          candidates.push(row.rutaGpxCompleto);
-        }
+      if (!row || !row.rutaGpxCompleto) {
+        return res.status(404).json({ error: 'GPX no encontrado' });
       }
 
-      // 2. Estructura estándar de carpetas de la aplicación
-      const viajeId = row.viajePrevistoId || row.itinerarioViajeId;
-      if (viajeId) {
-        candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'gpx', 'recorrido.gpx'));
-        candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'gpx', 'recorrido_completo.gpx'));
-        candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'recorrido.gpx'));
-      }
-      candidates.push(path.join(uploadsPath, String(id), 'gpx', 'recorrido.gpx'));
-      candidates.push(path.join(uploadsPath, String(id), 'recorrido.gpx'));
+      const filePath = path.join(uploadsPath, row.rutaGpxCompleto);
 
-      // Encontrar el primer archivo que exista físicamente en disco
-      const finalFilePath = candidates.find(p => fs.existsSync(p));
-
-      if (!finalFilePath) {
-        console.warn(`⚠️ [GPX GET] No se encontró GPX para actividad ${id}. Candidatos probados:`, candidates);
+      if (!fs.existsSync(filePath)) {
         return res.status(404).json({ error: 'Archivo GPX no existe' });
       }
 
-      console.log(`✅ [GPX GET] Servido GPX para actividad ${id}: ${finalFilePath}`);
       res.setHeader('Content-Type', 'application/gpx+xml');
       res.setHeader('Content-Disposition', `attachment; filename="recorrido.gpx"`);
-      res.sendFile(finalFilePath);
+      res.sendFile(filePath);
     }
   );
 });
@@ -8248,35 +8226,17 @@ app.get('/api/actividades/:id/segments', (req, res) => {
     }
 
     // Necesitamos leer el GPX original para obtener los modos
-    db.get(
-      'SELECT a.id, a.rutaGpxCompleto, a.perfilTransporte, a.viajePrevistoId, i.viajePrevistoId as itinerarioViajeId FROM actividades a LEFT JOIN itinerarios i ON a.itinerarioId = i.id WHERE a.id = ?',
-      [id],
-      (gpxErr, actRow) => {
-        if (gpxErr || !actRow) return res.json(parsedRows);
+    db.get('SELECT rutaGpxCompleto FROM actividades WHERE id = ?', [id], (gpxErr, actRow) => {
+      if (gpxErr || !actRow || !actRow.rutaGpxCompleto) {
+        // Si no podemos leer el GPX, devolvemos los datos sin enriquecer
+        return res.json(parsedRows);
+      }
 
-        const candidates = [];
-        if (actRow.rutaGpxCompleto) {
-          const cleanRel = actRow.rutaGpxCompleto.replace(/^[\/\\]?uploads[\/\\]?/i, '').replace(/\\/g, '/');
-          candidates.push(path.join(uploadsPath, cleanRel));
-          if (path.isAbsolute(actRow.rutaGpxCompleto)) {
-            candidates.push(actRow.rutaGpxCompleto);
-          }
-        }
+      const gpxFilePath = path.join(uploadsPath, actRow.rutaGpxCompleto);
 
-        const viajeId = actRow.viajePrevistoId || actRow.itinerarioViajeId;
-        if (viajeId) {
-          candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'gpx', 'recorrido.gpx'));
-          candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'gpx', 'recorrido_completo.gpx'));
-          candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'recorrido.gpx'));
-        }
-        candidates.push(path.join(uploadsPath, String(id), 'gpx', 'recorrido.gpx'));
-        candidates.push(path.join(uploadsPath, String(id), 'recorrido.gpx'));
-
-        const gpxFilePath = candidates.find(p => fs.existsSync(p));
-
-        if (!gpxFilePath) {
-          return res.json(parsedRows);
-        }
+      if (!fs.existsSync(gpxFilePath)) {
+        return res.json(parsedRows);
+      }
 
       try {
         const gpxText = fs.readFileSync(gpxFilePath, 'utf8');
