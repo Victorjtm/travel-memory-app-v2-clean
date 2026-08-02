@@ -165,25 +165,38 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.map.on('click', (e: L.LeafletMouseEvent) => this.handleMapClick(e));
   }
 
+  // Paleta y mapeo de colores por modo de transporte (idéntico a ver-gpx y reproductor animado)
+  public getModeColor(rawMode: string): string {
+    const m = (rawMode || '').toLowerCase();
+    if (m.includes('walk') || m.includes('camin') || m.includes('andan') || m.includes('pie')) return '#059669';
+    if (m.includes('car') || m.includes('coch') || m.includes('driv')) return '#DC2626';
+    if (m.includes('bic') || m.includes('cycl')) return '#FF9800';
+    if (m.includes('run') || m.includes('corr')) return '#2196F3';
+    if (m.includes('bus') || m.includes('autobus')) return '#9C27B0';
+    if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return '#0284C7';
+    if (m.includes('plane') || m.includes('avion')) return '#7C3AED';
+    if (m.includes('train') || m.includes('tren')) return '#D97706';
+    return '#9E9E9E';
+  }
+
   private drawBaseAndEdits() {
     if (!this.map || !this.gpxPoints || this.gpxPoints.length === 0 || !this.polylinesGroup) return;
 
     this.polylinesGroup.clearLayers();
 
-    // 1. Determinar el estado visual de cada punto
-    // Clonamos información necesaria para saber cómo pintar cada punto
+    // 1. Determinar el estado visual de cada punto leyendo su modo real
     const visualPoints = this.gpxPoints.map(p => ({ 
       lat: p.lat, 
       lng: p.lng, 
-      visualMode: 'original', 
+      visualMode: p.mode || p.hfMode || 'walking', 
       isDeleted: false,
       isHidden: false,
       isPreviewing: false
     }));
 
-    // 2. Aplicar Edits EN MEMORIA para marcar el estado
-    // Recorremos los pendingEdits locales en lugar de this.trackEdits
+    // 2. Aplicar Edits EN MEMORIA para marcar el estado visual
     const deletes = this.pendingEdits.filter(e => e.type === 'delete_segment');
+    const overrides = this.pendingEdits.filter(e => e.type === 'override_mode');
 
     const applyEditToVisuals = (edit: any) => {
       const startIdx = this.trackEditorService.resolveAnchor(edit.data.startAnchor, this.gpxPoints);
@@ -201,12 +214,15 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
                visualPoints[i].isHidden = false; // Se dibujará si está en preview
                visualPoints[i].isPreviewing = true;
              }
+          } else if (edit.type === 'override_mode' && edit.data.newMode) {
+             visualPoints[i].visualMode = edit.data.newMode;
           }
         }
       }
     };
 
     deletes.forEach(applyEditToVisuals);
+    overrides.forEach(applyEditToVisuals);
 
     // 3. Agrupar puntos contiguos que comparten el mismo estado visual
     let currentSegment: any[] = [];
@@ -217,12 +233,11 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     const flushSegment = () => {
       if (currentSegment.length > 1 && !currentIsHidden) {
-        // Añadir el último punto al nuevo segmento para que no haya huecos
         const latlngs = currentSegment.map(p => [p.lat, p.lng] as L.LatLngExpression);
         
-        let color = this.MODE_COLORS[currentMode] || this.MODE_COLORS['original'];
+        let color = this.getModeColor(currentMode);
         let weight = 4;
-        let opacity = 0.85;
+        let opacity = 0.9;
         let dashArray = '';
         let smoothFactor = 1;
         let className = '';
@@ -231,16 +246,23 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
           color = '#ff4444'; // Rojo fuerte para preview de borrado
           weight = 5;
           className = 'preview-blink';
-        } else if (currentMode !== 'original') {
-          weight = 5; // Un poco más grueso para destacar que ha sido cambiado
-          opacity = 1;
         }
 
+        // Sombra blanca inferior para contraste en satélite (idéntico a ver-gpx)
         L.polyline(latlngs, {
-          color, weight, opacity, dashArray, smoothFactor, className
+          color: '#FFFFFF',
+          weight: weight + 3,
+          opacity: 0.7,
+          lineCap: 'round',
+          lineJoin: 'round'
         }).addTo(this.polylinesGroup!);
 
-        // Solo pintar flechas si no es un tramo fantasma
+        // Línea principal con el color del transporte
+        L.polyline(latlngs, {
+          color, weight, opacity, dashArray, smoothFactor, className, lineCap: 'round', lineJoin: 'round'
+        }).addTo(this.polylinesGroup!);
+
+        // Solo pintar flechas si no es un tramo borrado
         if (!currentIsDeleted) {
           this.addDirectionArrows(L, latlngs, color, opacity);
         }
@@ -251,7 +273,6 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       const p = visualPoints[i];
       
       if (p.visualMode !== currentMode || p.isDeleted !== currentIsDeleted || p.isHidden !== currentIsHidden || p.isPreviewing !== currentIsPreviewing) {
-        // Para que las líneas conecten, el segmento anterior debe terminar en el punto actual
         currentSegment.push(p); 
         flushSegment();
         currentSegment = [p];
@@ -278,13 +299,22 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       const latlngs = points.map((p: any) => [p.lat, p.lng] as L.LatLngExpression);
       
       const mode = points[0].mode || 'driving';
-      let color = this.MODE_COLORS[mode] || '#0d9488';
+      let color = this.getModeColor(mode);
       let weight = 5;
       let opacity = 1;
       let className = isPreviewing ? 'preview-blink' : '';
 
+      // Sombra blanca inferior
       L.polyline(latlngs, {
-        color, weight, opacity, className, dashArray: '5, 5' // Línea punteada para indicar prolongación no guardada
+        color: '#FFFFFF',
+        weight: weight + 3,
+        opacity: 0.7,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(this.polylinesGroup!);
+
+      L.polyline(latlngs, {
+        color, weight, opacity, className, dashArray: '5, 5', lineCap: 'round', lineJoin: 'round'
       }).addTo(this.polylinesGroup!);
       
       this.addDirectionArrows(L, latlngs, color, opacity);
