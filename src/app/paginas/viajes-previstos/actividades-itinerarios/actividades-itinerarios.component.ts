@@ -555,6 +555,12 @@ export class ActividadesItinerariosComponent implements OnInit {
       this.coordenadasGPX = [];
       this.puntosGPXConModo = [];
 
+      // El modo se propaga: si un punto no tiene etiqueta de modo,
+      // hereda el del punto anterior en lugar de defaultear a 'walking'.
+      // Esto evita que tramos prolongados (user-append) aparezcan en verde
+      // cuando algún punto intermedio no tiene la etiqueta de modo.
+      let lastKnownMode = 'walking'; // Solo se usa si el primer punto tampoco tiene modo
+
       for (let i = 0; i < trkpts.length; i++) {
         const lat = parseFloat(trkpts[i].getAttribute('lat') || '0');
         const lon = parseFloat(trkpts[i].getAttribute('lon') || '0');
@@ -566,13 +572,18 @@ export class ActividadesItinerariosComponent implements OnInit {
                          trkpts[i].getElementsByTagName('profileId')[0] ||
                          trkpts[i].getElementsByTagName('mode')[0] ||
                          trkpts[i].getElementsByTagName('profileName')[0];
-          const mode = modeEl ? (modeEl.textContent || 'walking').toLowerCase() : 'walking';
 
-          this.puntosGPXConModo.push({ lat, lng: lon, mode });
+          if (modeEl && modeEl.textContent) {
+            lastKnownMode = modeEl.textContent.toLowerCase();
+          }
+          // Si modeEl no existe, lastKnownMode conserva el valor del punto anterior
+
+          this.puntosGPXConModo.push({ lat, lng: lon, mode: lastKnownMode });
         }
       }
 
       console.log(`✅ GPX parseado. ${this.coordenadasGPX.length} puntos extraídos (${this.puntosGPXConModo.length} con modo de transporte).`);
+
 
       // Extraer Waypoints (Punto de Giro / Save Point)
       const wpts = gpxDoc.getElementsByTagName('wpt');

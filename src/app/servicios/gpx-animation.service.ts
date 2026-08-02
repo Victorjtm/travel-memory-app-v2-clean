@@ -44,6 +44,7 @@ export class GpxAnimationService {
     let timeAcum = 0;
     let prevPoint: L.LatLng | null = null;
     let startTime: number | null = null;
+    let lastKnownMode: string | undefined = undefined; // Propagar modo entre puntos contiguos
 
     for (let i = 0; i < trkpts.length; i++) {
       const lat = parseFloat(trkpts[i].getAttribute('lat') || '0');
@@ -78,7 +79,12 @@ export class GpxAnimationService {
                      trkpts[i].getElementsByTagName('profileId')[0] ||
                      trkpts[i].getElementsByTagName('mode')[0] ||
                      trkpts[i].getElementsByTagName('profileName')[0];
-      const transportMode = modeEl ? (modeEl.textContent || undefined) : undefined;
+
+      // Si hay etiqueta de modo, actualizamos lastKnownMode; si no, propagamos el anterior
+      if (modeEl && modeEl.textContent) {
+        lastKnownMode = modeEl.textContent || undefined;
+      }
+      const transportMode = lastKnownMode;
 
       points.push({
         lat,
@@ -93,6 +99,7 @@ export class GpxAnimationService {
 
       prevPoint = currentLatLng as any;
     }
+
 
     return points;
   }
