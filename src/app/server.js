@@ -875,28 +875,28 @@ db.run(`
     console.error('❌ Error al crear tabla track_edits:', err.message);
   } else {
     console.log('✅ Tabla track_edits creada o ya existe');
-    
+
     // Migración silenciosa por si se creó sin injectedGeometry_json
     db.run("ALTER TABLE track_edits ADD COLUMN injectedGeometry_json TEXT", (alterErr) => {
       // Ignoramos el error si ya existe
     });
-    
+
     // VALIDACIÓN ESTRICTA DE ESQUEMA PARA FASE 1
     db.all("PRAGMA table_info(track_edits)", (err, columns) => {
       if (err) {
         console.error('❌ Error verificando esquema de track_edits:', err.message);
         return;
       }
-      
+
       const expectedColumns = [
-        'id', 'actividadId', 'action', 'startAnchor_json', 
+        'id', 'actividadId', 'action', 'startAnchor_json',
         'endAnchor_json', 'config_json', 'syntheticPoints_json', 'injectedGeometry_json', 'createdAt'
       ];
-      
+
       const actualColumns = columns.map(c => c.name);
       const missingColumns = expectedColumns.filter(c => !actualColumns.includes(c));
       const extraColumns = actualColumns.filter(c => !expectedColumns.includes(c));
-      
+
       if (missingColumns.length > 0 || extraColumns.length > 0) {
         console.error('❌ DESVIACIÓN DE ESQUEMA DETECTADA EN track_edits!');
         // Ignore injectedGeometry_json as extra column if it's missing just for now, or just log
@@ -2426,24 +2426,24 @@ function analizarConflictos(actividadesPorFecha) {
         isDiaCompletoPresent = true;
       }
     }
-    
+
     // Detectar solapamientos reales
     const actsSorted = [...acts].sort((a, b) => a.horaInicio.localeCompare(b.horaInicio));
     for (let i = 0; i < actsSorted.length - 1; i++) {
       for (let j = i + 1; j < actsSorted.length; j++) {
         const actA = actsSorted[i];
         const actB = actsSorted[j];
-        
+
         // Solapamiento: A termina después del inicio de B Y B termina después del inicio de A
         // Esto cubre horas idénticas o solapamientos parciales
         if (actA.horaFin > actB.horaInicio && actB.horaFin > actA.horaInicio) {
-           overlapDetected = true;
-           const isA_Full = (actA.horaInicio === '00:00' && actA.horaFin === '23:59');
-           const isB_Full = (actB.horaInicio === '00:00' && actB.horaFin === '23:59');
-           
-           if (isA_Full && !isB_Full) parciales.push(`${actB.horaInicio}-${actB.horaFin}`);
-           if (isB_Full && !isA_Full) parciales.push(`${actA.horaInicio}-${actA.horaFin}`);
-           if (!isA_Full && !isB_Full) parciales.push(`${actA.horaInicio}-${actA.horaFin} y ${actB.horaInicio}-${actB.horaFin}`);
+          overlapDetected = true;
+          const isA_Full = (actA.horaInicio === '00:00' && actA.horaFin === '23:59');
+          const isB_Full = (actB.horaInicio === '00:00' && actB.horaFin === '23:59');
+
+          if (isA_Full && !isB_Full) parciales.push(`${actB.horaInicio}-${actB.horaFin}`);
+          if (isB_Full && !isA_Full) parciales.push(`${actA.horaInicio}-${actA.horaFin}`);
+          if (!isA_Full && !isB_Full) parciales.push(`${actA.horaInicio}-${actA.horaFin} y ${actB.horaInicio}-${actB.horaFin}`);
         }
       }
     }
@@ -2454,21 +2454,21 @@ function analizarConflictos(actividadesPorFecha) {
     if (overlapDetected || isGpxConflict) {
       estado = 'CONFLICTO_RESOLUBLE';
       const canFuse = isDiaCompletoPresent && !isGpxConflict;
-      
+
       conflictos[fecha] = {
-         rangoDiaCompleto: isDiaCompletoPresent ? '00:00-23:59' : 'No hay día completo',
-         rangoParcial: parciales.length > 0 ? parciales.join(', ') : 'No hay solapamiento',
-         detalleGPX: isGpxConflict ? 'Existen GPX distintos' : (gpxSets.size === 1 ? 'Se heredaría el GPX' : 'Ninguno tiene GPX'),
-         opcionesPermitidas: canFuse 
-             ? ['mismo_viaje_itinerarios_separados', 'fusionar_dia_completo'] 
-             : ['mismo_viaje_itinerarios_separados'],
-         motivo: isGpxConflict 
-             ? 'GPX distintos obligan a mantener itinerarios separados.' 
-             : (!isDiaCompletoPresent ? 'No hay un itinerario de día completo para absorber las parciales.' : 'Solapamiento de horarios.')
+        rangoDiaCompleto: isDiaCompletoPresent ? '00:00-23:59' : 'No hay día completo',
+        rangoParcial: parciales.length > 0 ? parciales.join(', ') : 'No hay solapamiento',
+        detalleGPX: isGpxConflict ? 'Existen GPX distintos' : (gpxSets.size === 1 ? 'Se heredaría el GPX' : 'Ninguno tiene GPX'),
+        opcionesPermitidas: canFuse
+          ? ['mismo_viaje_itinerarios_separados', 'fusionar_dia_completo']
+          : ['mismo_viaje_itinerarios_separados'],
+        motivo: isGpxConflict
+          ? 'GPX distintos obligan a mantener itinerarios separados.'
+          : (!isDiaCompletoPresent ? 'No hay un itinerario de día completo para absorber las parciales.' : 'Solapamiento de horarios.')
       };
     }
   }
-  
+
   return { estado, conflictos };
 }
 
@@ -2476,9 +2476,9 @@ function analizarConflictos(actividadesPorFecha) {
 app.post('/viajes/unificar', async (req, res) => {
   try {
     console.log('🔄 Iniciando unificación de viajes...');
-    
+
     // Recibir las resoluciones del usuario
-    const { resoluciones = [] } = req.body || {}; 
+    const { resoluciones = [] } = req.body || {};
 
     // 1. Obtener todos los viajes
     const viajes = await new Promise((resolve, reject) => {
@@ -2545,7 +2545,7 @@ app.post('/viajes/unificar', async (req, res) => {
           const conflicto = analisis.conflictos[fecha];
           const idResolucion = `${maestro.id}_${fecha}`;
           const resUsuario = resoluciones.find(r => r.idResolucion === idResolucion);
-          
+
           if (!resUsuario) {
             // ✨ NUEVO: Si la única opción viable es el Modo Seguro, auto-resolverlo sin preguntar
             if (conflicto.opcionesPermitidas.length === 1 && conflicto.opcionesPermitidas[0] === 'mismo_viaje_itinerarios_separados') {
@@ -2564,20 +2564,20 @@ app.post('/viajes/unificar', async (req, res) => {
               });
             }
           } else if (resUsuario.modoUnificacion === 'omitir') {
-             rechazado = true;
+            rechazado = true;
           }
         }
 
         if (rechazado) {
-           console.log(`  🚫 Grupo "${maestro.destino}" abortado porque un conflicto fue omitido por el usuario.`);
-           errores.push({ destino: maestro.destino, error: "Unificación omitida por el usuario." });
-           continue; // Saltar el grupo entero
+          console.log(`  🚫 Grupo "${maestro.destino}" abortado porque un conflicto fue omitido por el usuario.`);
+          errores.push({ destino: maestro.destino, error: "Unificación omitida por el usuario." });
+          continue; // Saltar el grupo entero
         }
 
         // Si falta alguna confirmación, pausamos este grupo (esperando a que el frontend pregunte)
         if (faltaConfirmacion) {
-           console.log(`  ⏳ Pausando grupo "${maestro.destino}" por requerir decisión del usuario.`);
-           continue;
+          console.log(`  ⏳ Pausando grupo "${maestro.destino}" por requerir decisión del usuario.`);
+          continue;
         }
       }
 
@@ -2595,49 +2595,49 @@ app.post('/viajes/unificar', async (req, res) => {
           const modoUnificacion = resUsuario ? resUsuario.modoUnificacion : null;
 
           if (modoUnificacion === 'mismo_viaje_itinerarios_separados') {
-             // MODO 2: Mantener separados. Cambiamos el viajePrevistoId al maestro y listo (las rutas físicas se actualizarán al final).
-             console.log(`    -> MODO 2: Trasladando itinerario ${itinSec.fechaInicio} al maestro (Manteniendo independencia)`);
-             
-             // ✨ RENOMBRADO SEGURO DE ACTIVIDADES
-             const actsMaestro = await new Promise((resolve, reject) => {
-               db.all(`SELECT a.* FROM actividades a 
+            // MODO 2: Mantener separados. Cambiamos el viajePrevistoId al maestro y listo (las rutas físicas se actualizarán al final).
+            console.log(`    -> MODO 2: Trasladando itinerario ${itinSec.fechaInicio} al maestro (Manteniendo independencia)`);
+
+            // ✨ RENOMBRADO SEGURO DE ACTIVIDADES
+            const actsMaestro = await new Promise((resolve, reject) => {
+              db.all(`SELECT a.* FROM actividades a 
                        JOIN ItinerarioGeneral i ON a.itinerarioId = i.id 
-                       WHERE i.viajePrevistoId = ? AND i.fechaInicio = ?`, 
-                       [maestro.id, itinSec.fechaInicio], (err, rows) => err ? reject(err) : resolve(rows || []));
-             });
-             
-             const actsSec = await new Promise((resolve, reject) => {
-               db.all('SELECT * FROM actividades WHERE itinerarioId = ?', [itinSec.id], (err, rows) => err ? reject(err) : resolve(rows || []));
-             });
+                       WHERE i.viajePrevistoId = ? AND i.fechaInicio = ?`,
+                [maestro.id, itinSec.fechaInicio], (err, rows) => err ? reject(err) : resolve(rows || []));
+            });
 
-             for (const act of actsSec) {
-                let nuevoNombre = act.nombre;
-                const isNombreVacio = !nuevoNombre || nuevoNombre.trim() === '';
-                
-                if (isNombreVacio) {
-                   nuevoNombre = `${maestro.destino} - ${act.horaInicio} a ${act.horaFin}`;
-                }
+            const actsSec = await new Promise((resolve, reject) => {
+              db.all('SELECT * FROM actividades WHERE itinerarioId = ?', [itinSec.id], (err, rows) => err ? reject(err) : resolve(rows || []));
+            });
 
-                if (nuevoNombre !== act.nombre) {
-                   await new Promise((resolve, reject) => {
-                     db.run('UPDATE actividades SET nombre = ? WHERE id = ?', [nuevoNombre, act.id], err => err ? reject(err) : resolve());
-                   });
-                }
-             }
+            for (const act of actsSec) {
+              let nuevoNombre = act.nombre;
+              const isNombreVacio = !nuevoNombre || nuevoNombre.trim() === '';
 
-             // ✨ RENOMBRADO SEGURO DE ITINERARIO
-             const isDescVacia = !itinSec.descripcionGeneral || itinSec.descripcionGeneral.trim() === '';
-             const descFinal = isDescVacia 
-                 ? `Itinerario separado dentro del viaje a ${maestro.destino} para conservar GPX y archivos independientes.` 
-                 : itinSec.descripcionGeneral;
-             
-             await new Promise((resolve, reject) => {
-               db.run('UPDATE ItinerarioGeneral SET viajePrevistoId = ?, descripcionGeneral = ? WHERE id = ?', [maestro.id, descFinal, itinSec.id], err => err ? reject(err) : resolve());
-             });
-             await new Promise((resolve, reject) => {
-               db.run('UPDATE actividades SET viajePrevistoId = ? WHERE itinerarioId = ?', [maestro.id, itinSec.id], err => err ? reject(err) : resolve());
-             });
-             continue; // Skip the rest of the fusion logic for this itinerary
+              if (isNombreVacio) {
+                nuevoNombre = `${maestro.destino} - ${act.horaInicio} a ${act.horaFin}`;
+              }
+
+              if (nuevoNombre !== act.nombre) {
+                await new Promise((resolve, reject) => {
+                  db.run('UPDATE actividades SET nombre = ? WHERE id = ?', [nuevoNombre, act.id], err => err ? reject(err) : resolve());
+                });
+              }
+            }
+
+            // ✨ RENOMBRADO SEGURO DE ITINERARIO
+            const isDescVacia = !itinSec.descripcionGeneral || itinSec.descripcionGeneral.trim() === '';
+            const descFinal = isDescVacia
+              ? `Itinerario separado dentro del viaje a ${maestro.destino} para conservar GPX y archivos independientes.`
+              : itinSec.descripcionGeneral;
+
+            await new Promise((resolve, reject) => {
+              db.run('UPDATE ItinerarioGeneral SET viajePrevistoId = ?, descripcionGeneral = ? WHERE id = ?', [maestro.id, descFinal, itinSec.id], err => err ? reject(err) : resolve());
+            });
+            await new Promise((resolve, reject) => {
+              db.run('UPDATE actividades SET viajePrevistoId = ? WHERE itinerarioId = ?', [maestro.id, itinSec.id], err => err ? reject(err) : resolve());
+            });
+            continue; // Skip the rest of the fusion logic for this itinerary
           }
 
           // Buscar si el Maestro ya tiene itinerario en esa fecha para Fusión normal o Modo 1
@@ -2673,66 +2673,66 @@ app.post('/viajes/unificar', async (req, res) => {
 
             // Verificar si hay una actividad 00:00-23:59 a la cual fusionar las parciales
             const actDiaCompleto = actsMaestro.find(a => a.horaInicio === '00:00' && a.horaFin === '23:59');
-            
+
             if (actDiaCompleto) {
-               console.log(`      -> Detectada actividad maestro de día completo. Fusionando parciales en ID ${actDiaCompleto.id}...`);
-               for (const act of actsMaestro) {
-                  if (act.id !== actDiaCompleto.id) {
-                     console.log(`        -> Absorbiendo actividad parcial "${act.nombre}" (ID ${act.id})...`);
-                     // Mover archivos
-                     await new Promise((resolve, reject) => {
-                       db.run('UPDATE archivos SET actividadId = ? WHERE actividadId = ?', [actDiaCompleto.id, act.id], err => err ? reject(err) : resolve());
-                     });
-                     // Heredar GPX si el maestro no tiene pero la parcial sí
-                     if (!actDiaCompleto.rutaGpxCompleto && act.rutaGpxCompleto) {
-                        await new Promise((resolve, reject) => {
-                          db.run('UPDATE actividades SET rutaGpxCompleto = ?, rutaMapaCompleto = ?, rutaManifest = ?, rutaEstadisticas = ? WHERE id = ?',
-                             [act.rutaGpxCompleto, act.rutaMapaCompleto, act.rutaManifest, act.rutaEstadisticas, actDiaCompleto.id], err => err ? reject(err) : resolve());
-                        });
-                        actDiaCompleto.rutaGpxCompleto = act.rutaGpxCompleto; // Actualizar ref en memoria
-                     }
-                     // Eliminar la actividad parcial
-                     await new Promise((resolve, reject) => {
-                       db.run('DELETE FROM actividades WHERE id = ?', [act.id], err => err ? reject(err) : resolve());
-                     });
+              console.log(`      -> Detectada actividad maestro de día completo. Fusionando parciales en ID ${actDiaCompleto.id}...`);
+              for (const act of actsMaestro) {
+                if (act.id !== actDiaCompleto.id) {
+                  console.log(`        -> Absorbiendo actividad parcial "${act.nombre}" (ID ${act.id})...`);
+                  // Mover archivos
+                  await new Promise((resolve, reject) => {
+                    db.run('UPDATE archivos SET actividadId = ? WHERE actividadId = ?', [actDiaCompleto.id, act.id], err => err ? reject(err) : resolve());
+                  });
+                  // Heredar GPX si el maestro no tiene pero la parcial sí
+                  if (!actDiaCompleto.rutaGpxCompleto && act.rutaGpxCompleto) {
+                    await new Promise((resolve, reject) => {
+                      db.run('UPDATE actividades SET rutaGpxCompleto = ?, rutaMapaCompleto = ?, rutaManifest = ?, rutaEstadisticas = ? WHERE id = ?',
+                        [act.rutaGpxCompleto, act.rutaMapaCompleto, act.rutaManifest, act.rutaEstadisticas, actDiaCompleto.id], err => err ? reject(err) : resolve());
+                    });
+                    actDiaCompleto.rutaGpxCompleto = act.rutaGpxCompleto; // Actualizar ref en memoria
                   }
-               }
+                  // Eliminar la actividad parcial
+                  await new Promise((resolve, reject) => {
+                    db.run('DELETE FROM actividades WHERE id = ?', [act.id], err => err ? reject(err) : resolve());
+                  });
+                }
+              }
             } else {
-               // Deduplicación normal exacta
-               const actsVistas = {};
-               for (const act of actsMaestro) {
-                 const key = `${act.nombre || ''}_${act.horaInicio}_${act.horaFin}`.toLowerCase();
-                 if (!actsVistas[key]) {
-                   actsVistas[key] = act;
-                 } else {
-                   const masterAct = actsVistas[key];
-                   console.log(`      -> Fusionando actividad duplicada exacta: "${act.nombre}" (ID ${act.id} -> ${masterAct.id})`);
-   
-                   // Mover archivos evitando duplicados en BD
-                   const archivosSec = await new Promise((resolve, reject) => {
-                     db.all('SELECT * FROM archivos WHERE actividadId = ?', [act.id], (err, rows) => err ? reject(err) : resolve(rows || []));
-                   });
-   
-                   for (const f of archivosSec) {
-                     const existe = await new Promise((resolve, reject) => {
-                       db.get('SELECT id FROM archivos WHERE actividadId = ? AND nombreArchivo = ? AND tipo = ?', [masterAct.id, f.nombreArchivo, f.tipo], (err, row) => err ? reject(err) : resolve(row));
-                     });
-                     if (existe) {
-                       await new Promise((resolve, reject) => {
-                         db.run('DELETE FROM archivos WHERE id = ?', [f.id], err => err ? reject(err) : resolve());
-                       });
-                     } else {
-                       await new Promise((resolve, reject) => {
-                         db.run('UPDATE archivos SET actividadId = ? WHERE id = ?', [masterAct.id, f.id], err => err ? reject(err) : resolve());
-                       });
-                     }
-                   }
-                   // Eliminar actividad secundaria
-                   await new Promise((resolve, reject) => {
-                     db.run('DELETE FROM actividades WHERE id = ?', [act.id], err => err ? reject(err) : resolve());
-                   });
-                 }
-               }
+              // Deduplicación normal exacta
+              const actsVistas = {};
+              for (const act of actsMaestro) {
+                const key = `${act.nombre || ''}_${act.horaInicio}_${act.horaFin}`.toLowerCase();
+                if (!actsVistas[key]) {
+                  actsVistas[key] = act;
+                } else {
+                  const masterAct = actsVistas[key];
+                  console.log(`      -> Fusionando actividad duplicada exacta: "${act.nombre}" (ID ${act.id} -> ${masterAct.id})`);
+
+                  // Mover archivos evitando duplicados en BD
+                  const archivosSec = await new Promise((resolve, reject) => {
+                    db.all('SELECT * FROM archivos WHERE actividadId = ?', [act.id], (err, rows) => err ? reject(err) : resolve(rows || []));
+                  });
+
+                  for (const f of archivosSec) {
+                    const existe = await new Promise((resolve, reject) => {
+                      db.get('SELECT id FROM archivos WHERE actividadId = ? AND nombreArchivo = ? AND tipo = ?', [masterAct.id, f.nombreArchivo, f.tipo], (err, row) => err ? reject(err) : resolve(row));
+                    });
+                    if (existe) {
+                      await new Promise((resolve, reject) => {
+                        db.run('DELETE FROM archivos WHERE id = ?', [f.id], err => err ? reject(err) : resolve());
+                      });
+                    } else {
+                      await new Promise((resolve, reject) => {
+                        db.run('UPDATE archivos SET actividadId = ? WHERE id = ?', [masterAct.id, f.id], err => err ? reject(err) : resolve());
+                      });
+                    }
+                  }
+                  // Eliminar actividad secundaria
+                  await new Promise((resolve, reject) => {
+                    db.run('DELETE FROM actividades WHERE id = ?', [act.id], err => err ? reject(err) : resolve());
+                  });
+                }
+              }
             }
           } else {
             // REASIGNAR
@@ -2826,7 +2826,7 @@ app.post('/viajes/unificar', async (req, res) => {
 
         // ✨ NUEVO: ACTUALIZAR RUTAS EN BASE DE DATOS DE FORMA SEGURA CON PARÁMETROS
         console.log(`\n🔄 Actualizando rutas en base de datos...`);
-        
+
         const maestroPrefix = `${maestro.id}/`;
         const secPrefix = `${viajeSecundario.id}/`;
         const secPattern = `${viajeSecundario.id}/%`;
@@ -3853,23 +3853,45 @@ app.get(['/actividades/:id/gpx', '/api/actividades/:id/gpx'], (req, res) => {
   const id = req.params.id;
 
   db.get(
-    'SELECT rutaGpxCompleto FROM actividades WHERE id = ?',
+    'SELECT a.id, a.rutaGpxCompleto, a.viajePrevistoId, i.viajePrevistoId as itinerarioViajeId FROM actividades a LEFT JOIN itinerarios i ON a.itinerarioId = i.id WHERE a.id = ?',
     [id],
     (err, row) => {
       if (err) return res.status(500).json({ error: err.message });
-      if (!row || !row.rutaGpxCompleto) {
-        return res.status(404).json({ error: 'GPX no encontrado' });
+      if (!row) return res.status(404).json({ error: 'Actividad no encontrada' });
+
+      const candidates = [];
+
+      // 1. Si rutaGpxCompleto está guardado en la BD
+      if (row.rutaGpxCompleto) {
+        const cleanRel = row.rutaGpxCompleto.replace(/^[\/\\]?uploads[\/\\]?/i, '').replace(/\\/g, '/');
+        candidates.push(path.join(uploadsPath, cleanRel));
+        if (path.isAbsolute(row.rutaGpxCompleto)) {
+          candidates.push(row.rutaGpxCompleto);
+        }
       }
 
-      const filePath = path.join(uploadsPath, row.rutaGpxCompleto);
+      // 2. Estructura estándar de carpetas de la aplicación
+      const viajeId = row.viajePrevistoId || row.itinerarioViajeId;
+      if (viajeId) {
+        candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'gpx', 'recorrido.gpx'));
+        candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'gpx', 'recorrido_completo.gpx'));
+        candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'recorrido.gpx'));
+      }
+      candidates.push(path.join(uploadsPath, String(id), 'gpx', 'recorrido.gpx'));
+      candidates.push(path.join(uploadsPath, String(id), 'recorrido.gpx'));
 
-      if (!fs.existsSync(filePath)) {
+      // Encontrar el primer archivo que exista físicamente en disco
+      const finalFilePath = candidates.find(p => fs.existsSync(p));
+
+      if (!finalFilePath) {
+        console.warn(`⚠️ [GPX GET] No se encontró GPX para actividad ${id}. Candidatos probados:`, candidates);
         return res.status(404).json({ error: 'Archivo GPX no existe' });
       }
 
+      console.log(`✅ [GPX GET] Servido GPX para actividad ${id}: ${finalFilePath}`);
       res.setHeader('Content-Type', 'application/gpx+xml');
       res.setHeader('Content-Disposition', `attachment; filename="recorrido.gpx"`);
-      res.sendFile(filePath);
+      res.sendFile(finalFilePath);
     }
   );
 });
@@ -8132,7 +8154,7 @@ app.get('/api/actividades/:id/track-edits', (req, res) => {
       console.error('❌ Error obteniendo track_edits:', err.message);
       return res.status(500).json({ error: 'Error obteniendo track_edits' });
     }
-    
+
     // Parse JSON fields
     const parsedRows = rows.map(row => ({
       ...row,
@@ -8143,7 +8165,7 @@ app.get('/api/actividades/:id/track-edits', (req, res) => {
       syntheticPoints: row.syntheticPoints_json ? JSON.parse(row.syntheticPoints_json) : undefined,
       injectedGeometry: row.injectedGeometry_json ? JSON.parse(row.injectedGeometry_json) : undefined
     }));
-    
+
     res.json(parsedRows);
   });
 });
@@ -8151,7 +8173,7 @@ app.get('/api/actividades/:id/track-edits', (req, res) => {
 // 2. Crear un track edit
 app.post('/api/track-edits', (req, res) => {
   const { actividadId, action, startAnchor, endAnchor, newMode, estimatedSpeedKmh, syntheticPoints, injectedGeometry } = req.body;
-  
+
   if (!actividadId || !action || !startAnchor || !endAnchor) {
     return res.status(400).json({ error: 'Faltan campos obligatorios' });
   }
@@ -8166,8 +8188,8 @@ app.post('/api/track-edits', (req, res) => {
     INSERT INTO track_edits (actividadId, action, startAnchor_json, endAnchor_json, config_json, syntheticPoints_json, injectedGeometry_json)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
-  
-  db.run(sql, [actividadId, action, startAnchor_json, endAnchor_json, config_json, syntheticPoints_json, injectedGeometry_json], function(err) {
+
+  db.run(sql, [actividadId, action, startAnchor_json, endAnchor_json, config_json, syntheticPoints_json, injectedGeometry_json], function (err) {
     if (err) {
       console.error('❌ Error guardando track_edit:', err.message);
       return res.status(500).json({ error: 'Error guardando track_edit' });
@@ -8180,7 +8202,7 @@ app.post('/api/track-edits', (req, res) => {
 app.delete('/api/track-edits/:id', (req, res) => {
   const { id } = req.params;
   const sql = 'DELETE FROM track_edits WHERE id = ?';
-  db.run(sql, [id], function(err) {
+  db.run(sql, [id], function (err) {
     if (err) {
       console.error('❌ Error eliminando track_edit:', err.message);
       return res.status(500).json({ error: 'Error eliminando track_edit' });
@@ -8226,17 +8248,35 @@ app.get('/api/actividades/:id/segments', (req, res) => {
     }
 
     // Necesitamos leer el GPX original para obtener los modos
-    db.get('SELECT rutaGpxCompleto FROM actividades WHERE id = ?', [id], (gpxErr, actRow) => {
-      if (gpxErr || !actRow || !actRow.rutaGpxCompleto) {
-        // Si no podemos leer el GPX, devolvemos los datos sin enriquecer
-        return res.json(parsedRows);
-      }
+    db.get(
+      'SELECT a.id, a.rutaGpxCompleto, a.perfilTransporte, a.viajePrevistoId, i.viajePrevistoId as itinerarioViajeId FROM actividades a LEFT JOIN itinerarios i ON a.itinerarioId = i.id WHERE a.id = ?',
+      [id],
+      (gpxErr, actRow) => {
+        if (gpxErr || !actRow) return res.json(parsedRows);
 
-      const gpxFilePath = path.join(uploadsPath, actRow.rutaGpxCompleto);
+        const candidates = [];
+        if (actRow.rutaGpxCompleto) {
+          const cleanRel = actRow.rutaGpxCompleto.replace(/^[\/\\]?uploads[\/\\]?/i, '').replace(/\\/g, '/');
+          candidates.push(path.join(uploadsPath, cleanRel));
+          if (path.isAbsolute(actRow.rutaGpxCompleto)) {
+            candidates.push(actRow.rutaGpxCompleto);
+          }
+        }
 
-      if (!fs.existsSync(gpxFilePath)) {
-        return res.json(parsedRows);
-      }
+        const viajeId = actRow.viajePrevistoId || actRow.itinerarioViajeId;
+        if (viajeId) {
+          candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'gpx', 'recorrido.gpx'));
+          candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'gpx', 'recorrido_completo.gpx'));
+          candidates.push(path.join(uploadsPath, String(viajeId), String(id), 'recorrido.gpx'));
+        }
+        candidates.push(path.join(uploadsPath, String(id), 'gpx', 'recorrido.gpx'));
+        candidates.push(path.join(uploadsPath, String(id), 'recorrido.gpx'));
+
+        const gpxFilePath = candidates.find(p => fs.existsSync(p));
+
+        if (!gpxFilePath) {
+          return res.json(parsedRows);
+        }
 
       try {
         const gpxText = fs.readFileSync(gpxFilePath, 'utf8');
@@ -8350,7 +8390,7 @@ app.post('/api/actividades/:id/segments', (req, res) => {
       VALUES (?, ?, ?, ?)
     `;
 
-    db.run(sql, [actividadId, segSource, nextOrder, points_json], function(insertErr) {
+    db.run(sql, [actividadId, segSource, nextOrder, points_json], function (insertErr) {
       if (insertErr) {
         console.error('❌ Error guardando segment:', insertErr.message);
         return res.status(500).json({ error: 'Error guardando segment' });
@@ -8365,7 +8405,7 @@ app.post('/api/actividades/:id/segments', (req, res) => {
 app.delete('/api/segments/:id', (req, res) => {
   const { id } = req.params;
   const sql = 'DELETE FROM segments WHERE id = ?';
-  db.run(sql, [id], function(err) {
+  db.run(sql, [id], function (err) {
     if (err) {
       console.error('❌ Error eliminando segment:', err.message);
       return res.status(500).json({ error: 'Error eliminando segment' });
