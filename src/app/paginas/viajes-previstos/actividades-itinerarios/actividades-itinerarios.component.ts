@@ -555,11 +555,29 @@ export class ActividadesItinerariosComponent implements OnInit {
       this.coordenadasGPX = [];
       this.puntosGPXConModo = [];
 
-      // El modo se propaga: si un punto no tiene etiqueta de modo,
-      // hereda el del punto anterior en lugar de defaultear a 'walking'.
-      // Esto evita que tramos prolongados (user-append) aparezcan en verde
-      // cuando algún punto intermedio no tiene la etiqueta de modo.
-      let lastKnownMode = 'walking'; // Solo se usa si el primer punto tampoco tiene modo
+      // Buscar modo de transporte global en el documento GPX (etiquetas de archivo/pista)
+      const globalModeEl = gpxDoc.getElementsByTagName('transportMode')[0] ||
+                           gpxDoc.getElementsByTagName('profileId')[0] ||
+                           gpxDoc.getElementsByTagName('mode')[0] ||
+                           gpxDoc.getElementsByTagName('type')[0] ||
+                           gpxDoc.getElementsByTagName('profileName')[0];
+
+      const tp = this.estadisticasGPX?.transportePrincipal;
+      const tpStr = typeof tp === 'string' ? tp : (tp?.nombre || '');
+
+      let initialFallbackMode = (globalModeEl?.textContent || 
+                                 tpStr || 
+                                 this.estadisticasGPX?.tracking?.perfilTransporte || 
+                                 'driving').toLowerCase();
+
+      // Mapear nombres en español a nombres de modo interno si hace falta
+      if (initialFallbackMode.includes('coche') || initialFallbackMode.includes('car')) initialFallbackMode = 'driving';
+      else if (initialFallbackMode.includes('barco') || initialFallbackMode.includes('boat') || initialFallbackMode.includes('ferry') || initialFallbackMode.includes('ship')) initialFallbackMode = 'boat';
+      else if (initialFallbackMode.includes('bici') || initialFallbackMode.includes('cycle')) initialFallbackMode = 'cycling';
+      else if (initialFallbackMode.includes('autobus') || initialFallbackMode.includes('bus')) initialFallbackMode = 'bus';
+
+      // El modo se propaga: si un punto no tiene etiqueta propia, hereda el del punto anterior/global
+      let lastKnownMode = initialFallbackMode;
 
       for (let i = 0; i < trkpts.length; i++) {
         const lat = parseFloat(trkpts[i].getAttribute('lat') || '0');
@@ -571,18 +589,18 @@ export class ActividadesItinerariosComponent implements OnInit {
           const modeEl = trkpts[i].getElementsByTagName('transportMode')[0] ||
                          trkpts[i].getElementsByTagName('profileId')[0] ||
                          trkpts[i].getElementsByTagName('mode')[0] ||
+                         trkpts[i].getElementsByTagName('type')[0] ||
                          trkpts[i].getElementsByTagName('profileName')[0];
 
           if (modeEl && modeEl.textContent) {
             lastKnownMode = modeEl.textContent.toLowerCase();
           }
-          // Si modeEl no existe, lastKnownMode conserva el valor del punto anterior
 
           this.puntosGPXConModo.push({ lat, lng: lon, mode: lastKnownMode });
         }
       }
 
-      console.log(`✅ GPX parseado. ${this.coordenadasGPX.length} puntos extraídos (${this.puntosGPXConModo.length} con modo de transporte).`);
+      console.log(`✅ GPX parseado. ${this.coordenadasGPX.length} puntos extraídos (${this.puntosGPXConModo.length} con modo: primerModo=${lastKnownMode}).`);
 
 
       // Extraer Waypoints (Punto de Giro / Save Point)
