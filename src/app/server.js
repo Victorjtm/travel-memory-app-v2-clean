@@ -3848,8 +3848,8 @@ app.delete('/actividades/:id', async (req, res) => {
 // NUEVOS ENDPOINTS PARA VER ARCHIVOS
 // ----------------------------------------
 
-// GET GPX de una actividad
-app.get('/actividades/:id/gpx', (req, res) => {
+// GET GPX de una actividad (soporta tanto /actividades/:id/gpx como /api/actividades/:id/gpx)
+app.get(['/actividades/:id/gpx', '/api/actividades/:id/gpx'], (req, res) => {
   const id = req.params.id;
 
   db.get(
