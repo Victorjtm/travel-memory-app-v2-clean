@@ -243,22 +243,23 @@
 .custom-transport-marker {
   background: none !important;
   border: none !important;
-  width: 110px !important;
-  height: 110px !important;
-  margin-left: -55px !important;
-  margin-top: -55px !important;
+  width: 120px !important;
+  height: 120px !important;
+  margin-left: -60px !important;
+  margin-top: -60px !important;
 }
 
 .transport-icon-wrapper {
-  width: 110px;
-  height: 110px;
+  width: 120px;
+  height: 120px;
   background: #FFD600;
   border: 6px solid #FFFFFF;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 64px;
+  font-size: 90px;
+  line-height: 1;
   box-shadow: 0 10px 30px rgba(0,0,0,0.7);
   animation: marker-bounce 2s infinite ease-in-out;
 }

@@ -526,8 +526,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         icon: this.L.divIcon({
           className: 'custom-transport-marker',
           html: iconHtml,
-          iconSize: [110, 110],
-          iconAnchor: [55, 55]
+          iconSize: [120, 120],
+          iconAnchor: [60, 60]
         })
       }).addTo(this.map);
     }
@@ -625,16 +625,16 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
             const segmentDistM = Math.abs((p2.distAcum - p1.distAcum)) || 1;
             const speedFactor = this.getSpeedFactor(this.currentMode);
             
-            // Para distancias largas (> 2 km), acelerar progresivamente el tiempo objetivo del tramo
+            // Para distancias largas (> 2 km), acelerar suavemente el tiempo objetivo del tramo
             let effectiveTargetSec = targetDurationSeconds;
             if (segmentDistM > 2000) {
               const distKm = segmentDistM / 1000;
-              const distanceSpeedBoost = Math.min(3.5, 1 + Math.log10(distKm));
+              const distanceSpeedBoost = Math.min(2.2, 1 + 0.3 * Math.log10(distKm));
               effectiveTargetSec = targetDurationSeconds / distanceSpeedBoost;
             }
 
             let calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
-            calculatedSpeed = Math.max(1, Math.min(5000, Math.round(calculatedSpeed)));
+            calculatedSpeed = Math.max(1, Math.min(3000, Math.round(calculatedSpeed)));
 
             console.log(`🎯 [Tramo] pixels=${visualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${targetDurationSeconds.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
 
@@ -1499,22 +1499,22 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.marker.setIcon(this.L.divIcon({
       className: 'custom-transport-marker',
       html: iconHtml,
-      iconSize: [110, 110],
-      iconAnchor: [55, 55]
+      iconSize: [120, 120],
+      iconAnchor: [60, 60]
     }));
   }
 
   private getSpeedFactor(mode: string | null): number {
     if (!mode) return 1;
     const m = mode.toLowerCase();
-    if (m.includes('walk') || m.includes('andan') || m.includes('camin')) return 0.4;
-    if (m.includes('run') || m.includes('corr')) return 0.8;
+    if (m.includes('walk') || m.includes('andan') || m.includes('camin')) return 1.2;
+    if (m.includes('run') || m.includes('corr')) return 1.5;
     if (m.includes('bic') || m.includes('cycl')) return 1.5;
-    if (m.includes('car') || m.includes('coch') || m.includes('driv')) return 2.5;
-    if (m.includes('bus')) return 2.5;
-    if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return 3.0;
-    if (m.includes('plane') || m.includes('avion')) return 6.0;
-    if (m.includes('train') || m.includes('tren')) return 4.0;
+    if (m.includes('car') || m.includes('coch') || m.includes('driv')) return 1.6;
+    if (m.includes('bus')) return 1.3;
+    if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return 1.8;
+    if (m.includes('plane') || m.includes('avion')) return 3.0;
+    if (m.includes('train') || m.includes('tren')) return 2.0;
     return 1;
   }
 
