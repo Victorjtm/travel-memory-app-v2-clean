@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DragDropModule } from '@angular/cdk/drag-drop';
@@ -17,6 +17,7 @@ import { environment } from '../../../environments/environment';
   imports: [CommonModule, FormsModule, DragDropModule],
   templateUrl: './gpx-animation.component.html',
   styleUrls: ['./gpx-animation.component.scss'],
+  encapsulation: ViewEncapsulation.None,
   animations: [
     trigger('fadeInOut', [
       transition(':enter', [
@@ -519,7 +520,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
     // Marcador de posición (Icono dinámico de transporte)
     const initialMode = this.currentMode || 'walking';
-    const iconHtml = `<div class="transport-icon-wrapper">${this.getModeIcon(initialMode)}</div>`;
+    const iconHtml = `<div class="transport-icon-wrapper" style="width:120px;height:120px;background:#FFD600;border:6px solid #FFFFFF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:90px;line-height:1;box-shadow:0 10px 30px rgba(0,0,0,0.7);">${this.getModeIcon(initialMode)}</div>`;
     
     if (this.points.length > 0) {
       this.marker = this.L.marker([this.points[0].lat, this.points[0].lng], {
@@ -606,12 +607,6 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
         // Dar tiempo al navegador para renderizar el mapa con los dos puntos visibles
         setTimeout(() => {
-            // VENTANA DE DEPURACIÓN TEMPORAL (tal como pidió el usuario para ir paso a paso)
-            const ok = window.confirm('¿Es correcto el encuadre de los dos puntos en pantalla? (Punto inicial y próximo PI)');
-            if (!ok) {
-                return;
-            }
-
             // Calcular distancia visual en pantalla
             const point1 = this.map.latLngToContainerPoint([p1.lat, p1.lng]);
             const point2 = this.map.latLngToContainerPoint([p2.lat, p2.lng]);
@@ -1495,7 +1490,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   private updateMarkerIcon(mode: string) {
     if (!this.marker || !this.L) return;
-    const iconHtml = `<div class="transport-icon-wrapper">${this.getModeIcon(mode)}</div>`;
+    const iconHtml = `<div class="transport-icon-wrapper" style="width:120px;height:120px;background:#FFD600;border:6px solid #FFFFFF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:90px;line-height:1;box-shadow:0 10px 30px rgba(0,0,0,0.7);">${this.getModeIcon(mode)}</div>`;
     this.marker.setIcon(this.L.divIcon({
       className: 'custom-transport-marker',
       html: iconHtml,
