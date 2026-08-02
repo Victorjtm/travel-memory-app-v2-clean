@@ -74,7 +74,10 @@ export class GpxAnimationService {
         timeAcum += (d / (5 / 3.6)); // v = d/t => t = d/v (5 km/h = 1.38 m/s)
       }
 
-      const modeEl = trkpts[i].getElementsByTagName('transportMode')[0];
+      const modeEl = trkpts[i].getElementsByTagName('transportMode')[0] ||
+                     trkpts[i].getElementsByTagName('profileId')[0] ||
+                     trkpts[i].getElementsByTagName('mode')[0] ||
+                     trkpts[i].getElementsByTagName('profileName')[0];
       const transportMode = modeEl ? (modeEl.textContent || undefined) : undefined;
 
       points.push({

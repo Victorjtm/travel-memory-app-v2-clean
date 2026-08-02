@@ -562,7 +562,10 @@ export class ActividadesItinerariosComponent implements OnInit {
         if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
           this.coordenadasGPX.push([lat, lon]);
 
-          const modeEl = trkpts[i].getElementsByTagName('transportMode')[0];
+          const modeEl = trkpts[i].getElementsByTagName('transportMode')[0] ||
+                         trkpts[i].getElementsByTagName('profileId')[0] ||
+                         trkpts[i].getElementsByTagName('mode')[0] ||
+                         trkpts[i].getElementsByTagName('profileName')[0];
           const mode = modeEl ? (modeEl.textContent || 'walking').toLowerCase() : 'walking';
 
           this.puntosGPXConModo.push({ lat, lng: lon, mode });
