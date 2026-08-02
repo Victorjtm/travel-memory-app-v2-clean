@@ -528,6 +528,21 @@ export class TrackEditorService {
       }
     }
 
+    // Paso final: propagar el modo entre puntos contiguos.
+    // Si un punto no tiene 'mode', hereda el del punto anterior.
+    // Esto asegura que los tramos prolongados (user-append) y los puntos
+    // intermedios del track original se muestren con el color correcto en el editor,
+    // igual que en "ver GPX".
+    let lastMode: string | undefined = undefined;
+    for (const pt of accumulatedPoints) {
+      if (pt.mode) {
+        lastMode = pt.mode;
+      } else if (lastMode) {
+        pt.mode = lastMode;
+        pt.hfMode = lastMode;
+      }
+    }
+
     return accumulatedPoints;
   }
 
