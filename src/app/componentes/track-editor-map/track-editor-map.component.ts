@@ -601,26 +601,22 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
   onOverrideMode() {
     if (!this.anchorA || !this.anchorB) return;
-    // Extraer los puntos del track original entre A y B inclusive
-    const startIndex = this.anchorA.index!;
-    const endIndex = this.anchorB.index!;
-    
-    if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex) {
-      console.warn('Índices inválidos para override mode');
-      return;
-    }
 
-    const overriddenPoints = this.gpxPoints.slice(startIndex, endIndex + 1).map(p => ({
-      lat: p.lat,
-      lng: p.lng,
-      time: p.time ? new Date(p.time).toISOString() : undefined,
-      mode: this.selectedMode
-    }));
+    const editId = Math.random().toString(36).substring(2, 9);
 
-    this.overrideModeRequest.emit({ points: overriddenPoints });
+    this.pendingEdits.push({
+      id: editId,
+      type: 'override_mode',
+      description: `${this.pendingEdits.length + 1} - Cambio a ${this.selectedMode}`,
+      data: {
+        startAnchor: this.anchorA,
+        endAnchor: this.anchorB,
+        newMode: this.selectedMode
+      }
+    });
 
-    // Limpiar selección
-    this.cleanupGeometryMode();
+    this.clearSelection();
+    this.drawBaseAndEdits();
   }
 
   // --- MODO GEOMETRÍA SINTÉTICA ---

@@ -1905,6 +1905,27 @@ export class ActividadesItinerariosComponent implements OnInit {
             points,
             'user-append'
           ));
+        } else if (edit.type === 'override_mode') {
+          const startIdx = this.trackEditorService.resolveAnchor(edit.data.startAnchor, this.gpxPointsEditor);
+          const endIdx = this.trackEditorService.resolveAnchor(edit.data.endAnchor, this.gpxPointsEditor);
+
+          if (startIdx !== -1 && endIdx !== -1) {
+            const min = Math.min(startIdx, endIdx);
+            const max = Math.max(startIdx, endIdx);
+
+            const points = this.gpxPointsEditor.slice(min, max + 1).map((p: any) => ({
+              lat: p.lat,
+              lng: p.lng,
+              time: p.time ? new Date(p.time).toISOString() : undefined,
+              mode: edit.data.newMode
+            }));
+
+            await firstValueFrom(this.trackEditorService.createSegment(
+              this.actividadEditorId,
+              points,
+              'user-override'
+            ));
+          }
         }
       }
 

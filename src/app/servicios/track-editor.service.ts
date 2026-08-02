@@ -464,14 +464,12 @@ export class TrackEditorService {
       if (!segPoints || segPoints.length === 0) continue;
 
       // Firma de ancla: time + lat + lng
-      // Firma de ancla: time + lat + lng con tolerancia para evitar problemas de precisión en BBDD
+      // Firma de ancla: time + lat + lng con tolerancia para evitar problemas de precisión en BBDD o punto flotante
       const isMatch = (p1: GpxPoint, p2: GpxPoint) => {
-        if (p1.lat !== p2.lat || p1.lng !== p2.lng) return false;
-        
-        if (p1.time && p2.time) {
-          return Math.abs(p1.time.getTime() - p2.time.getTime()) < 2000;
+        if (p1.time && p2.time && Math.abs(p1.time.getTime() - p2.time.getTime()) < 2000) {
+          return true;
         }
-        return true; // Si ambos no tienen time, o uno no lo tiene pero la lat/lng coincide, lo aceptamos
+        return Math.abs(p1.lat - p2.lat) < 0.00005 && Math.abs(p1.lng - p2.lng) < 0.00005;
       };
 
       if (seg.source === 'original' || seg.source === 'user-append') {
