@@ -249,8 +249,20 @@ export class GpxAnimationService {
       
       // Normalizar el nombre del modo para facilitar el mapeo posterior
       let rawMode = (seg.tipo || seg.profileName || seg.nombre || seg.mode || 'walking').toLowerCase();
-      if (rawMode.includes('boat') || rawMode.includes('barco') || rawMode.includes('ship') || rawMode.includes('ferry') || rawMode.includes('crucero')) {
+      const fullSegText = `${seg.nombre || ''} ${seg.profileName || ''} ${seg.tipo || ''} ${seg.mode || ''}`.toLowerCase();
+      
+      if (fullSegText.includes('coche') || fullSegText.includes('driving') || fullSegText.includes('car') || fullSegText.includes('auto')) {
+        rawMode = 'driving';
+      } else if (fullSegText.includes('boat') || fullSegText.includes('barco') || fullSegText.includes('ship') || fullSegText.includes('ferry') || fullSegText.includes('crucero')) {
         rawMode = 'boat';
+      } else if (fullSegText.includes('bici') || fullSegText.includes('cycling') || fullSegText.includes('bicycle')) {
+        rawMode = 'cycling';
+      } else if (fullSegText.includes('bus') || fullSegText.includes('autobus')) {
+        rawMode = 'bus';
+      } else if (fullSegText.includes('run') || fullSegText.includes('correr')) {
+        rawMode = 'running';
+      } else if (fullSegText.includes('andando') || fullSegText.includes('walking') || fullSegText.includes('caminar')) {
+        rawMode = 'walking';
       }
       
       console.log(`📏 Segmento ${idx}: ${rawMode} - Acumulado: ${accumulatedSegmentDist}m`);

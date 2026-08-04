@@ -290,7 +290,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       const a = document.createElement('a');
       a.href = url;
       const nombreArchivo = (this.actividadVideoSeleccionada.nombre || 'recorrido').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      a.download = `animacion_gpx_${nombreArchivo}.webm`;
+      a.download = 'animacion_gpx_' + nombreArchivo + '.webm';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -298,8 +298,8 @@ export class ActividadesItinerariosComponent implements OnInit {
       this.cerrarConfiguracionVideo();
 
     } catch (error) {
-      console.error('Error generando vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­deo:', error);
-      alert('Error al generar el vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­deo: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+      console.error('Error generando vídeo:', error);
+      alert('Error al generar el vídeo: ' + (error instanceof Error ? error.message : 'Error desconocido'));
     } finally {
       this.generandoVideo = false;
       this.progresoVideo = null;
@@ -318,9 +318,8 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   actualizarActividad(actividad: Actividad): void {
-    console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ Navegando al formulario de ediciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n para actividad:', actividad.id);
+    console.log('Navegando al formulario de edición para actividad:', actividad.id);
 
-    // Navegar al formulario de ediciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n con todos los parÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡metros necesarios
     this.router.navigate([
       '/formulario-actividad',
       this.viajePrevistoId,
@@ -329,12 +328,12 @@ export class ActividadesItinerariosComponent implements OnInit {
       actividad.id
     ]).then(success => {
       if (success) {
-        console.log('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ NavegaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n exitosa');
+        console.log('Navegación exitosa');
       } else {
-        console.error('ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ Error en la navegaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n');
+        console.error('Error en la navegación');
       }
     }).catch(err => {
-      console.error('ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ Error navegando:', err);
+      console.error('Error navegando:', err);
     });
   }
 
@@ -365,13 +364,12 @@ export class ActividadesItinerariosComponent implements OnInit {
     console.log('Navegando a URL:', url.join('/'));
 
     this.router.navigate(url).catch(err => {
-      console.error('Error en navegaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n:', err);
+      console.error('Error en navegación:', err);
     });
   }
 
-  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ MEJORADO: Ver GPX con Alta Fidelidad si existe visual_session.json
   verGPX(actividadId: number): void {
-    console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â Iniciando Ver GPX para actividad:', actividadId);
+    console.log('📍 Iniciando Ver GPX para actividad:', actividadId);
 
     // Resetear estado de alta fidelidad para esta apertura
     this.visualSessionData = null;
@@ -379,7 +377,34 @@ export class ActividadesItinerariosComponent implements OnInit {
     this.visualSessionGroup = null;
     this.actividadSeleccionada = actividadId;
 
-    // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ PASO 1: Cargar estadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas (paralelo con los demÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡s pasos)
+    const continuarCargaVisualYModal = () => {
+      this.actividadService.obtenerVisualSession(actividadId).subscribe({
+        next: (sessionData) => {
+          const layers = sessionData?.layers || sessionData?.mapState?.layers;
+          if (layers && layers.length > 0) {
+            sessionData.layers = layers;
+            this.visualSessionData = sessionData;
+            this.isHighFidelityMode = true;
+            console.log(`🎨 [Alta Fidelidad] visual_session.json cargado. Capas: ${layers.length}`);
+          } else {
+            console.warn('⚠️ [Alta Fidelidad] JSON sin capas válidas. Activando modo Legacy.');
+          }
+          this.cargarGPXYAbrirModal(actividadId);
+        },
+        error: (err) => {
+          const statusCode = err?.status;
+          if (statusCode === 404) {
+            console.log('ℹ️ [Legacy] No hay visual_session.json para esta actividad. Usando GPX.');
+          } else {
+            console.warn('⚠️ [Legacy] Error descargando visual_session.json:', err?.message);
+          }
+          this.isHighFidelityMode = false;
+          this.cargarGPXYAbrirModal(actividadId);
+        }
+      });
+    };
+
+    // PASO 1: Cargar estadísticas PRIMERO para asegurar que desgloseTransporte esté disponible en parseGPX
     this.actividadService.obtenerEstadisticas(actividadId).subscribe({
       next: (stats) => {
         this.estadisticasGPX = {
@@ -405,39 +430,12 @@ export class ActividadesItinerariosComponent implements OnInit {
           multimedia: stats.multimedia || { fotos: 0, videos: 0 },
           tiempos: stats.tiempos || { enMarcha: '00:00:00', parado: '00:00:00', pausado: '00:00:00' }
         };
-        console.log('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ EstadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas mapeadas:', this.estadisticasGPX);
-      },
-      error: err => console.warn('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Error cargando estadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas:', err)
-    });
-
-    // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ PASO 2: Intentar cargar visual_session.json (Alta Fidelidad)
-    //   ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Independientemente del resultado, despuÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©s cargamos el GPX como base de coordenadas.
-    //   NOTA: las capas estÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n en la raÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­z del JSON (sessionData.layers), NO en sessionData.mapState.layers
-    this.actividadService.obtenerVisualSession(actividadId).subscribe({
-      next: (sessionData) => {
-        // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ FIX: leer layers desde la raÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­z del JSON, no desde mapState
-        const layers = sessionData?.layers || sessionData?.mapState?.layers;
-        if (layers && layers.length > 0) {
-          // Normalizar: garantizar que siempre accedemos con sessionData.layers
-          sessionData.layers = layers;
-          this.visualSessionData = sessionData;
-          this.isHighFidelityMode = true;
-          console.log(`ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â½Ãƒâ€šÃ‚Â¨ [Alta Fidelidad] visual_session.json cargado. Capas: ${layers.length}`);
-        } else {
-          console.warn('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â [Alta Fidelidad] JSON sin capas vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡lidas. Activando modo Legacy.');
-        }
-        this.cargarGPXYAbrirModal(actividadId);
+        console.log('✅ Estadísticas cargadas en verGPX:', this.estadisticasGPX);
+        continuarCargaVisualYModal();
       },
       error: (err) => {
-        // 404 es esperado si la actividad no tiene sesiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n visual ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ fallback limpio
-        const statusCode = err?.status;
-        if (statusCode === 404) {
-          console.log('ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¹ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â [Legacy] No hay visual_session.json para esta actividad. Usando GPX.');
-        } else {
-          console.warn('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â [Legacy] Error descargando visual_session.json:', err?.message);
-        }
-        this.isHighFidelityMode = false;
-        this.cargarGPXYAbrirModal(actividadId);
+        console.warn('⚠️ Error cargando estadísticas en verGPX:', err);
+        continuarCargaVisualYModal();
       }
     });
   }
@@ -559,6 +557,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       // hereda el del punto anterior en lugar de defaultear a 'walking'.
       // Esto evita que tramos prolongados (user-append) aparezcan en verde
       // cuando algún punto intermedio no tiene la etiqueta de modo.
+      let hasXmlTransportModes = false;
       let lastKnownMode = 'walking'; // Solo se usa si el primer punto tampoco tiene modo
 
       for (let i = 0; i < trkpts.length; i++) {
@@ -575,6 +574,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
           if (modeEl && modeEl.textContent) {
             lastKnownMode = modeEl.textContent.toLowerCase();
+            hasXmlTransportModes = true;
           }
           // Si modeEl no existe, lastKnownMode conserva el valor del punto anterior
 
@@ -582,7 +582,52 @@ export class ActividadesItinerariosComponent implements OnInit {
         }
       }
 
-      console.log(`✅ GPX parseado. ${this.coordenadasGPX.length} puntos extraídos (${this.puntosGPXConModo.length} con modo de transporte).`);
+      console.log(`✅ GPX parseado. ${this.coordenadasGPX.length} puntos extraídos (${this.puntosGPXConModo.length} con modo de transporte, etiquetas XML: ${hasXmlTransportModes}).`);
+
+      // ✨ FALLBACK PARA RUTAS ANTIGUAS:
+      // Si el XML NO traía ninguna etiqueta de transporte O si todas las etiquetas eran 'walking'
+      // pero las estadísticas señalan otro transporte (coche, barco, etc.), aplicamos el desglose/transporte principal.
+      const isAllWalking = this.puntosGPXConModo.length > 0 && this.puntosGPXConModo.every(p => !p.mode || ['walking', 'walk', 'andando', 'caminar', 'pie'].includes(p.mode.toLowerCase()));
+
+      if ((!hasXmlTransportModes || isAllWalking) && this.puntosGPXConModo.length > 0) {
+        const desglose = this.estadisticasGPX?.desgloseTransporte;
+        const transportePrincipal = this.estadisticasGPX?.transportePrincipal;
+
+        if (desglose && Array.isArray(desglose) && desglose.length > 0) {
+          console.log('🔄 [Ruta Antigua] Aplicando desglose de transporte en mapa estático:', desglose.length, 'segmentos');
+          const parsedPoints = this.gpxAnimationService.parseGpx(gpxText);
+          if (parsedPoints && parsedPoints.length > 0) {
+            const mappedPoints = this.gpxAnimationService.applyTransportSegments(parsedPoints, desglose);
+            this.puntosGPXConModo = mappedPoints.map(p => ({
+              lat: p.lat,
+              lng: p.lng,
+              mode: p.mode || 'walking'
+            }));
+          }
+        } else {
+          const tpNombre = typeof transportePrincipal === 'string'
+            ? transportePrincipal
+            : (transportePrincipal?.nombre || this.estadisticasGPX?.tracking?.perfilTransporte || '');
+
+          if (tpNombre && tpNombre.trim() !== '') {
+            let modeNorm = tpNombre.toLowerCase();
+            if (modeNorm.includes('coche') || modeNorm.includes('car') || modeNorm.includes('driv') || modeNorm.includes('auto')) {
+              modeNorm = 'driving';
+            } else if (modeNorm.includes('barco') || modeNorm.includes('boat') || modeNorm.includes('ship') || modeNorm.includes('ferry')) {
+              modeNorm = 'boat';
+            } else if (modeNorm.includes('bici') || modeNorm.includes('cycling')) {
+              modeNorm = 'cycling';
+            } else if (modeNorm.includes('bus') || modeNorm.includes('autobus')) {
+              modeNorm = 'bus';
+            }
+
+            if (modeNorm !== 'walking' && modeNorm !== 'walk' && modeNorm !== 'andando') {
+              console.log(`🔄 [Ruta Antigua] Asignando transporte principal en mapa estático: ${modeNorm}`);
+              this.puntosGPXConModo.forEach(p => p.mode = modeNorm);
+            }
+          }
+        }
+      }
 
 
       // Extraer Waypoints (Punto de Giro / Save Point)
