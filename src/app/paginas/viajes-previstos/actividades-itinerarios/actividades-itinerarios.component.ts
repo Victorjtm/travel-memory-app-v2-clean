@@ -584,47 +584,50 @@ export class ActividadesItinerariosComponent implements OnInit {
 
       console.log(`✅ GPX parseado. ${this.coordenadasGPX.length} puntos extraídos (${this.puntosGPXConModo.length} con modo de transporte, etiquetas XML: ${hasXmlTransportModes}).`);
 
-      // ✨ FALLBACK PARA RUTAS ANTIGUAS:
-      // Si el XML NO traía ninguna etiqueta de transporte O si todas las etiquetas eran 'walking'
-      // pero las estadísticas señalan otro transporte (coche, barco, etc.), aplicamos el desglose/transporte principal.
-      const isAllWalking = this.puntosGPXConModo.length > 0 && this.puntosGPXConModo.every(p => !p.mode || ['walking', 'walk', 'andando', 'caminar', 'pie'].includes(p.mode.toLowerCase()));
+      // ✨ DESGLOSE Y FALLBACK POR TRANSPORTE:
+      // Verificar si los puntos GPX traen variedad de modos o si todos tienen el mismo modo
+      const uniqueModesInPoints = new Set(this.puntosGPXConModo.map(p => (p.mode || '').toLowerCase()));
+      const hasMultipleModesInXml = uniqueModesInPoints.size > 1;
+      const isAllWalking = this.puntosGPXConModo.length > 0 && this.puntosGPXConModo.every(p => !p.mode || ['walking', 'walk', 'andando', 'caminar', 'pie'].includes((p.mode || '').toLowerCase()));
 
-      if ((!hasXmlTransportModes || isAllWalking) && this.puntosGPXConModo.length > 0) {
-        const desglose = this.estadisticasGPX?.desgloseTransporte;
-        const transportePrincipal = this.estadisticasGPX?.transportePrincipal;
+      const desglose = this.estadisticasGPX?.desgloseTransporte;
+      const transportePrincipal = this.estadisticasGPX?.transportePrincipal;
 
-        if (desglose && Array.isArray(desglose) && desglose.length > 0) {
-          console.log('🔄 [Ruta Antigua] Aplicando desglose de transporte en mapa estático:', desglose.length, 'segmentos');
-          const parsedPoints = this.gpxAnimationService.parseGpx(gpxText);
-          if (parsedPoints && parsedPoints.length > 0) {
-            const mappedPoints = this.gpxAnimationService.applyTransportSegments(parsedPoints, desglose);
-            this.puntosGPXConModo = mappedPoints.map(p => ({
-              lat: p.lat,
-              lng: p.lng,
-              mode: p.mode || 'walking'
-            }));
+      // Si hay un desglose de transporte con segmentos (ej. Coche + Caminar), aplicar la división por distancias:
+      if (desglose && Array.isArray(desglose) && desglose.length > 0) {
+        console.log('🔄 [Desglose Transporte] Aplicando segmentos de transporte en mapa:', desglose.length, 'segmentos');
+        const parsedPoints = this.gpxAnimationService.parseGpx(gpxText);
+        if (parsedPoints && parsedPoints.length > 0) {
+          const mappedPoints = this.gpxAnimationService.applyTransportSegments(parsedPoints, desglose);
+          this.puntosGPXConModo = mappedPoints.map(p => ({
+            lat: p.lat,
+            lng: p.lng,
+            mode: p.mode || 'walking'
+          }));
+        }
+      } else if ((!hasXmlTransportModes || isAllWalking) && this.puntosGPXConModo.length > 0) {
+        const actSel = this.actividades?.find((a: any) => a.id === this.actividadSeleccionada);
+        const tpNombre = typeof transportePrincipal === 'string'
+          ? transportePrincipal
+          : (transportePrincipal?.nombre || this.estadisticasGPX?.tracking?.perfilTransporte || (actSel as any)?.perfilTransporte || (actSel as any)?.tipoActividadNombre || actSel?.nombre || '');
+
+        if (tpNombre && tpNombre.trim() !== '') {
+          let modeNorm = tpNombre.toLowerCase();
+          if (modeNorm.includes('coche') || modeNorm.includes('car') || modeNorm.includes('driv') || modeNorm.includes('auto') || modeNorm.includes('vehic') || modeNorm.includes('moto') || modeNorm.includes('taxi')) {
+            modeNorm = 'driving';
+          } else if (modeNorm.includes('barco') || modeNorm.includes('boat') || modeNorm.includes('ship') || modeNorm.includes('ferry') || modeNorm.includes('crucero') || modeNorm.includes('embarc') || modeNorm.includes('kayak') || modeNorm.includes('canoa')) {
+            modeNorm = 'boat';
+          } else if (modeNorm.includes('bici') || modeNorm.includes('cycl') || modeNorm.includes('bicycle')) {
+            modeNorm = 'cycling';
+          } else if (modeNorm.includes('bus') || modeNorm.includes('autobus') || modeNorm.includes('autocar') || modeNorm.includes('tren') || modeNorm.includes('metro') || modeNorm.includes('train')) {
+            modeNorm = 'bus';
+          } else if (modeNorm.includes('run') || modeNorm.includes('corr')) {
+            modeNorm = 'running';
           }
-        } else {
-          const tpNombre = typeof transportePrincipal === 'string'
-            ? transportePrincipal
-            : (transportePrincipal?.nombre || this.estadisticasGPX?.tracking?.perfilTransporte || '');
 
-          if (tpNombre && tpNombre.trim() !== '') {
-            let modeNorm = tpNombre.toLowerCase();
-            if (modeNorm.includes('coche') || modeNorm.includes('car') || modeNorm.includes('driv') || modeNorm.includes('auto')) {
-              modeNorm = 'driving';
-            } else if (modeNorm.includes('barco') || modeNorm.includes('boat') || modeNorm.includes('ship') || modeNorm.includes('ferry')) {
-              modeNorm = 'boat';
-            } else if (modeNorm.includes('bici') || modeNorm.includes('cycling')) {
-              modeNorm = 'cycling';
-            } else if (modeNorm.includes('bus') || modeNorm.includes('autobus')) {
-              modeNorm = 'bus';
-            }
-
-            if (modeNorm !== 'walking' && modeNorm !== 'walk' && modeNorm !== 'andando') {
-              console.log(`🔄 [Ruta Antigua] Asignando transporte principal en mapa estático: ${modeNorm}`);
-              this.puntosGPXConModo.forEach(p => p.mode = modeNorm);
-            }
+          if (modeNorm !== 'walking' && modeNorm !== 'walk' && modeNorm !== 'andando') {
+            console.log(`🔄 [Fallback Transporte] Asignando transporte principal en mapa estático: ${modeNorm} (a partir de '${tpNombre}')`);
+            this.puntosGPXConModo.forEach(p => p.mode = modeNorm);
           }
         }
       }
@@ -756,22 +759,22 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     const modeColors: { [key: string]: string } = {
       walking: '#059669', walk: '#059669', caminar: '#059669', andando: '#059669',
-      driving: '#DC2626', car: '#DC2626', coche: '#DC2626',
-      cycling: '#FF9800', bici: '#FF9800', bicycle: '#FF9800',
+      driving: '#DC2626', car: '#DC2626', coche: '#DC2626', auto: '#DC2626', vehiculo: '#DC2626', moto: '#DC2626', taxi: '#DC2626',
+      cycling: '#FF9800', bici: '#FF9800', bicycle: '#FF9800', bicicleta: '#FF9800',
       running: '#2196F3', correr: '#2196F3',
-      bus: '#9C27B0', autobus: '#9C27B0',
-      boat: '#0284C7', barco: '#0284C7', ship: '#0284C7', ferry: '#0284C7', crucero: '#0284C7',
+      bus: '#9C27B0', autobus: '#9C27B0', autocar: '#9C27B0', tren: '#9C27B0', metro: '#9C27B0',
+      boat: '#0284C7', barco: '#0284C7', ship: '#0284C7', ferry: '#0284C7', crucero: '#0284C7', kayak: '#0284C7', canoa: '#0284C7',
       transport: '#9E9E9E'
     };
 
     const getModeColor = (rawMode: string): string => {
       const m = (rawMode || '').toLowerCase();
-      if (m.includes('walk') || m.includes('camin') || m.includes('andan') || m.includes('pie')) return modeColors['walking'];
-      if (m.includes('car') || m.includes('coch') || m.includes('driv')) return modeColors['driving'];
+      if (m.includes('walk') || m.includes('camin') || m.includes('andan') || m.includes('pie') || m.includes('hiking')) return modeColors['walking'];
+      if (m.includes('car') || m.includes('coch') || m.includes('driv') || m.includes('auto') || m.includes('vehic') || m.includes('moto') || m.includes('taxi')) return modeColors['driving'];
       if (m.includes('bic') || m.includes('cycl')) return modeColors['cycling'];
       if (m.includes('run') || m.includes('corr')) return modeColors['running'];
-      if (m.includes('bus') || m.includes('autobus')) return modeColors['bus'];
-      if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return modeColors['boat'];
+      if (m.includes('bus') || m.includes('autobus') || m.includes('tren') || m.includes('metro') || m.includes('train')) return modeColors['bus'];
+      if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero') || m.includes('kayak') || m.includes('canoa')) return modeColors['boat'];
       return modeColors['transport'];
     };
 
@@ -1866,39 +1869,71 @@ export class ActividadesItinerariosComponent implements OnInit {
   abrirEditorTrack(actividadId: number): void {
     console.log('Abriendo editor de recorrido para actividad:', actividadId);
     this.actividadEditorId = actividadId;
-
-    // IMPORTANTE: No cargar TrackEdits antiguos. Ver GPX es la verdad absoluta.
-    // El editor arranca limpio con los segmentos puros.
     this.editsEditor = [];
     this.cargarYAnadirFotos(actividadId);
 
-    // Cargar Segmentos
-    this.trackEditorService.getSegments(actividadId).subscribe({
-      next: (segments) => {
-        if (segments && segments.length > 0) {
-          this.gpxPointsEditor = this.trackEditorService.replaySegments(segments);
-          this.mostrarEditorTrack = true;
-          this.cdr.detectChanges();
-        } else {
-          this.actividadService.obtenerGPX(actividadId).subscribe({
-            next: (blob) => {
-              const reader = new FileReader();
-              reader.onload = (e: any) => {
-                this.gpxPointsEditor = this.gpxAnimationService.parseGpx(e.target.result);
-                this.trackEditorService.createSegment(actividadId, this.gpxPointsEditor, 'original').subscribe({
-                  next: () => console.log('GPX base migrado exitosamente a segments'),
-                  error: err => console.error('Error migrando GPX base a segments:', err)
-                });
-                this.mostrarEditorTrack = true;
-                this.cdr.detectChanges();
-              };
-              reader.readAsText(blob);
-            },
-            error: err => console.error('Error cargando GPX para editor:', err)
-          });
-        }
+    const continuarCargaEditor = () => {
+      this.trackEditorService.getSegments(actividadId).subscribe({
+        next: (segments) => {
+          if (segments && segments.length > 0) {
+            this.gpxPointsEditor = this.trackEditorService.replaySegments(segments);
+            const desglose = this.estadisticasGPX?.desgloseTransporte;
+            if (desglose && Array.isArray(desglose) && desglose.length > 0) {
+              const hasUserOverrides = segments.some((s: any) => s.source === 'user-override');
+              if (!hasUserOverrides) {
+                this.gpxPointsEditor = this.gpxAnimationService.applyTransportSegments(this.gpxPointsEditor, desglose);
+              }
+            }
+            this.mostrarEditorTrack = true;
+            this.cdr.detectChanges();
+          } else {
+            this.actividadService.obtenerGPX(actividadId).subscribe({
+              next: (blob) => {
+                const reader = new FileReader();
+                reader.onload = (e: any) => {
+                  this.gpxPointsEditor = this.gpxAnimationService.parseGpx(e.target.result);
+                  const desglose = this.estadisticasGPX?.desgloseTransporte;
+                  if (desglose && Array.isArray(desglose) && desglose.length > 0) {
+                    this.gpxPointsEditor = this.gpxAnimationService.applyTransportSegments(this.gpxPointsEditor, desglose);
+                  }
+                  this.trackEditorService.createSegment(actividadId, this.gpxPointsEditor, 'original').subscribe({
+                    next: () => console.log('GPX base migrado exitosamente a segments'),
+                    error: err => console.error('Error migrando GPX base a segments:', err)
+                  });
+                  this.mostrarEditorTrack = true;
+                  this.cdr.detectChanges();
+                };
+                reader.readAsText(blob);
+              },
+              error: err => console.error('Error cargando GPX para editor:', err)
+            });
+          }
+        },
+        error: err => console.error('Error cargando segments para editor:', err)
+      });
+    };
+
+    // Cargar estadísticas primero para garantizar desgloseTransporte
+    this.actividadService.obtenerEstadisticas(actividadId).subscribe({
+      next: (stats) => {
+        this.estadisticasGPX = {
+          distanciaKm: stats.distancia?.km || '0.00',
+          distanciaMetros: stats.distancia?.metros || 0,
+          duracion: stats.duracion || { formateada: '00:00:00', segundos: 0 },
+          velocidad: stats.velocidad || { media: '0.0', maxima: '0.0', minima: '0.0' },
+          energia: stats.energia || { calorias: 0, pasos: 0 },
+          tracking: stats.tracking || { puntosGPS: 0, perfilTransporte: '' },
+          transportePrincipal: stats.transportePrincipal || null,
+          desgloseTransporte: stats.desgloseTransporte || [],
+          fecha: stats.fecha || '',
+          horario: stats.horario || { inicio: '', fin: '' }
+        };
+        continuarCargaEditor();
       },
-      error: err => console.error('Error cargando segments para editor:', err)
+      error: (err) => {
+        console.warn('⚠️ Error cargando estadísticas en abrirEditorTrack:', err);
+        continuarCargaEditor();
+      }
     });
   }
 

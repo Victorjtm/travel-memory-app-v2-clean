@@ -4088,13 +4088,26 @@ app.get('/actividades/:id/estadisticas', (req, res) => {
         } catch (e) { console.warn('⚠️ [FALLBACK] Error contando puntos GPX:', e.message); }
       }
 
-      // 4. Normalizar Desglose (Evitar NaN en frontend)
+      // 4. Normalizar Desglose (Evitar NaN en frontend y preservar tipos de transporte)
       if (estadisticas.desgloseTransporte && Array.isArray(estadisticas.desgloseTransporte)) {
         estadisticas.desgloseTransporte = estadisticas.desgloseTransporte.map(seg => ({
-          nombre: seg.nombre || 'Desconocido',
+          ...seg,
+          tipo: seg.tipo || seg.profileId || (seg.nombre && seg.nombre.toLowerCase().includes('coche') ? 'driving' : seg.nombre && seg.nombre.toLowerCase().includes('caminar') ? 'walking' : 'walking'),
+          nombre: seg.nombre || seg.profileName || 'Desconocido',
+          distanciaMetros: seg.distanciaMetros || seg.distancia_m || seg.distance || (parseNum(seg.km || seg.distanciaKm || seg.distancia_km || seg.distancia || 0) * 1000),
           distanciaKm: parseNum(seg.km || seg.distanciaKm || seg.distancia_km || seg.distancia || 0),
           duracionFormateada: seg.tiempoEmpleado || seg.duracionFormateada || seg.duracion_formateada || seg.tiempo || seg.duracion || '00:00:00'
         }));
+      }
+
+      // ✨ FALLBACK: Asegurar transportePrincipal si no está en stats JSON
+      if (!estadisticas.transportePrincipal) {
+        const rawTp = getField(['transportePrincipal', 'transporte_principal', 'perfilTransporte', 'perfil_transporte']);
+        if (rawTp) {
+          estadisticas.transportePrincipal = typeof rawTp === 'object' ? rawTp : { nombre: String(rawTp) };
+        } else if (row.perfilTransporte) {
+          estadisticas.transportePrincipal = { nombre: String(row.perfilTransporte) };
+        }
       }
 
       // Añadir data extra y info de depuración
@@ -8304,7 +8317,7 @@ app.get('/api/actividades/:id/segments', (req, res) => {
               if (bestDist < 0.00001) break; // Suficientemente cerca
             }
 
-            if (bestMode) return { ...pt, mode: bestMode, hfMode: bestMode };
+            if (bestMode && bestDist < 0.005) return { ...pt, mode: bestMode, hfMode: bestMode };
             return pt;
           });
         });

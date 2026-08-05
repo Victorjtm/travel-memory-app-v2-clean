@@ -8,4 +8,6 @@ export interface Actividad {
   descripcion?: string;           // Opcional
   horaInicio: string;             // Formato: "HH:MM" (ej: "09:00")
   horaFin: string;                // Formato: "HH:MM" (ej: "12:00")
+  perfilTransporte?: string;
+  tipoActividadNombre?: string;
 } 

@@ -210,6 +210,19 @@ export class GpxAnimationService {
     console.log('🔍 [GpxAnimationService] Procesando segmentos:', segments?.length || 0);
     
     if (points.length === 0) return points;
+
+    // ✨ Asegurar que todos los puntos tengan distAcum calculada si falta
+    let accumulatedDistance = 0;
+    for (let i = 0; i < points.length; i++) {
+      if (points[i].distAcum === undefined || points[i].distAcum === null) {
+        if (i > 0) {
+          accumulatedDistance += this.getDistance(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
+        }
+        points[i].distAcum = accumulatedDistance;
+      } else {
+        accumulatedDistance = points[i].distAcum!;
+      }
+    }
     
     // ✨ Preservar modos específicos ya existentes (como boat, walking, driving asignados por replaySegments)
     const hasSpecificModes = points.some(p => p.mode && p.mode !== 'walking');
@@ -274,14 +287,31 @@ export class GpxAnimationService {
     });
 
     points.forEach(p => {
-      while (currentSegmentIdx < segmentThresholds.length - 1 && p.distAcum > segmentThresholds[currentSegmentIdx].threshold) {
-        currentSegmentIdx++;
+      let assignedMode = segmentThresholds[0].mode;
+
+      if (segmentThresholds.length === 2 && segmentThresholds[0].mode !== segmentThresholds[1].mode) {
+        // Caso Ida en vehículo/transporte principal, caminata intermedia, y vuelta en vehículo/transporte principal
+        const t0 = segmentThresholds[0].threshold; // Fin tramo 1 (Ida)
+        const t1 = segmentThresholds[1].threshold; // Fin tramo 2 (Caminata/Intermedio)
+
+        if (p.distAcum <= t0) {
+          assignedMode = segmentThresholds[0].mode;
+        } else if (p.distAcum > t0 && p.distAcum <= t1) {
+          assignedMode = segmentThresholds[1].mode;
+        } else {
+          // Vuelta: se regresa en el transporte inicial (ej. Coche)
+          assignedMode = segmentThresholds[0].mode;
+        }
+      } else {
+        let segIdx = 0;
+        while (segIdx < segmentThresholds.length - 1 && p.distAcum > segmentThresholds[segIdx].threshold) {
+          segIdx++;
+        }
+        assignedMode = segmentThresholds[segIdx].mode;
       }
-      const mode = segmentThresholds[currentSegmentIdx].mode;
-      p.mode = mode;
-      
-      // ✨ Si no tiene modo de alta fidelidad, asignamos este como base
-      if (!p.hfMode) p.hfMode = mode;
+
+      p.mode = assignedMode;
+      p.hfMode = assignedMode;
     });
 
     console.log(`✅ ${points.length} puntos GPX etiquetados con modos de transporte (Segmentos totales: ${segmentThresholds.length}).`);
