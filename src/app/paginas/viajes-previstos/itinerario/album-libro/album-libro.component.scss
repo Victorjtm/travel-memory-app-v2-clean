@@ -1778,33 +1778,38 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      background: rgba(0, 0, 0, 0.85);
+      background: rgba(0, 0, 0, 0.88);
       position: absolute;
       top: 0;
       left: 0;
       z-index: 1;
 
       .carta-manuscrita-container {
-        max-width: 900px;
-        max-height: 90%;
-        overflow-y: auto;
-        padding: 40px;
+        width: 92%;
+        max-width: 850px;
+        max-height: 90vh;
+        overflow: hidden;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
 
         @media (max-width: 768px) {
-          padding: 10px;
-          max-height: 95%;
+          width: 95%;
+          max-height: 94vh;
         }
       }
 
       .papel-manuscrito {
-        // Reusamos los estilos base pero aseguramos visibilidad
-        min-height: auto;
-        padding: 60px 80px;
-        transform: none !important; // Quitar inclinación en fullscreen para legibilidad
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        max-height: 86vh;
+        overflow-y: auto;
+        padding: clamp(25px, 4vw, 55px) clamp(25px, 5vw, 65px);
+        transform: none !important;
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+        border-radius: 12px;
 
         @media (max-width: 768px) {
-          padding: 40px 30px;
+          padding: 25px 20px;
         }
       }
     }
@@ -2364,116 +2369,104 @@
   }
 
   /* ========================================
-    ESTILOS PARA CARTA MANUSCRITA - PERGAMINO ANTIGUO
+    ESTILOS PARA CARTA MANUSCRITA - PERGAMINO ANTIGUO (OPTIMIZADO)
   ======================================== */
 
   .carta-manuscrita-page {
     background: linear-gradient(45deg, #8b7355 0%, #a0956b 25%, #b8a882 50%, #a0956b 75%, #8b7355 100%);
-    padding: 0;
+    padding: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 100%;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
     position: relative;
+    overflow: hidden;
 
-    // Textura de fondo sutil
     &::before {
       content: '';
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      inset: 0;
       background-image:
-        radial-gradient(circle at 25% 30%, rgba(139, 115, 85, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 75% 70%, rgba(160, 149, 107, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 50% 50%, rgba(184, 168, 130, 0.05) 0%, transparent 50%);
+        radial-gradient(circle at 25% 30%, rgba(139, 115, 85, 0.12) 0%, transparent 50%),
+        radial-gradient(circle at 75% 70%, rgba(160, 149, 107, 0.12) 0%, transparent 50%);
       pointer-events: none;
     }
 
     @media (max-width: 768px) {
-      padding: 1rem 0.5rem;
+      padding: 5px;
     }
   }
 
   .carta-manuscrita-container {
     width: 100%;
     height: 100%;
+    max-height: 100%;
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 30px;
+    padding: clamp(8px, 1.5vw, 20px);
+    box-sizing: border-box;
     position: relative;
     z-index: 1;
-
-    @media (max-width: 768px) {
-      padding: 15px;
-    }
+    overflow: hidden;
   }
 
   .carta-manuscrita {
     perspective: 1200px;
     width: 100%;
-    max-width: 800px;
+    max-width: 780px;
+    max-height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
     .papel-manuscrito {
       position: relative;
       width: 100%;
-      min-height: 600px;
-
-      // Fondo de pergamino envejecido
+      max-height: 100%;
+      overflow-y: auto;
+      box-sizing: border-box;
       background:
-        radial-gradient(circle at 20% 80%, rgba(139, 115, 85, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(160, 149, 107, 0.08) 0%, transparent 50%),
-        radial-gradient(circle at 40% 40%, rgba(184, 168, 130, 0.06) 0%, transparent 50%),
+        radial-gradient(circle at 20% 80%, rgba(139, 115, 85, 0.12) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(160, 149, 107, 0.1) 0%, transparent 50%),
         linear-gradient(135deg, #f7f3e9 0%, #f1ead5 25%, #ede4c8 50%, #e8ddb8 75%, #e3d6a7 100%);
 
-      // Sombras y bordes envejecidos
       box-shadow:
-        0 25px 50px rgba(0, 0, 0, 0.3),
-        0 15px 30px rgba(0, 0, 0, 0.15),
-        inset 0 1px 0 rgba(255, 255, 255, 0.7),
-        inset 0 -1px 0 rgba(139, 115, 85, 0.2);
+        0 15px 35px rgba(0, 0, 0, 0.3),
+        0 5px 15px rgba(0, 0, 0, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8),
+        inset 0 -1px 0 rgba(139, 115, 85, 0.3);
 
       border-radius: 12px;
-      padding: 70px 80px;
-      transform: rotateX(2deg) rotateY(-1deg) rotateZ(0.5deg);
-      transition: transform 0.6s ease;
+      padding: clamp(20px, 3.5vw, 45px) clamp(22px, 4vw, 55px);
+      transform: rotateX(1deg) rotateY(-0.5deg);
+      transition: transform 0.4s ease, box-shadow 0.4s ease;
       margin: 0 auto;
-      border: 3px solid rgba(139, 115, 85, 0.2);
+      border: 3px solid rgba(139, 115, 85, 0.25);
 
-      // Efectos de pergamino envejecido
+      /* Scrollbar sutil para textos largos */
+      scrollbar-width: thin;
+      scrollbar-color: rgba(139, 115, 85, 0.4) transparent;
+
+      &::-webkit-scrollbar {
+        width: 6px;
+      }
+      &::-webkit-scrollbar-thumb {
+        background: rgba(139, 115, 85, 0.4);
+        border-radius: 3px;
+      }
+
       &::before {
         content: '';
         position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
+        inset: 0;
         background-image:
-          radial-gradient(circle at 15% 25%, rgba(101, 67, 33, 0.1) 0%, transparent 25%),
-          radial-gradient(circle at 85% 75%, rgba(139, 115, 85, 0.08) 0%, transparent 30%),
-          radial-gradient(circle at 45% 60%, rgba(160, 149, 107, 0.06) 0%, transparent 20%),
-          radial-gradient(circle at 70% 30%, rgba(101, 67, 33, 0.05) 0%, transparent 25%);
+          radial-gradient(circle at 15% 25%, rgba(101, 67, 33, 0.08) 0%, transparent 25%),
+          radial-gradient(circle at 85% 75%, rgba(139, 115, 85, 0.06) 0%, transparent 30%);
         border-radius: 12px;
         pointer-events: none;
-      }
-
-      // Manchas de tinta y edad
-      &::after {
-        content: '';
-        position: absolute;
-        top: 120px;
-        right: 100px;
-        width: 8px;
-        height: 8px;
-        background: rgba(58, 42, 31, 0.15);
-        border-radius: 50%;
-        box-shadow:
-          -250px 180px 0 2px rgba(101, 67, 33, 0.08),
-          -150px 320px 0 1px rgba(139, 115, 85, 0.12),
-          -350px 280px 0 3px rgba(58, 42, 31, 0.06),
-          100px -50px 0 1px rgba(160, 149, 107, 0.10);
       }
 
       &:hover {
@@ -2481,15 +2474,9 @@
       }
 
       @media (max-width: 768px) {
-        padding: 40px 50px;
-        min-height: 500px;
-        transform: rotateX(1deg) rotateY(-0.5deg);
-      }
-
-      @media (max-width: 480px) {
-        padding: 30px 35px;
-        min-height: 400px;
+        padding: clamp(15px, 3vw, 25px) clamp(15px, 3vw, 25px);
         transform: none;
+        border-width: 2px;
       }
     }
   }
@@ -2498,564 +2485,102 @@
     position: relative;
     z-index: 2;
 
-    .titulo-carta {
+    .titulo-carta, h2 {
       font-family: 'Cinzel', 'Trajan Pro', 'Times New Roman', serif;
-      font-size: 3.2rem;
+      font-size: clamp(1.3rem, 2.8vw, 2.2rem);
       font-weight: 600;
       color: #3a2a1f;
-      margin-bottom: 35px;
+      margin-bottom: clamp(10px, 1.8vw, 20px);
       text-align: center;
-      transform: rotate(-0.4deg);
-      text-shadow:
-        2px 2px 4px rgba(0, 0, 0, 0.2),
-        1px 1px 2px rgba(101, 67, 33, 0.3);
-      line-height: 1.1;
-      letter-spacing: 2px;
+      line-height: 1.25;
+      letter-spacing: 1px;
+      position: relative;
 
-      // Efecto de texto grabado
       background: linear-gradient(145deg, #3a2a1f 0%, #654321 50%, #3a2a1f 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
 
-      // Decoración superior e inferior
       &::before {
         content: '❦';
         display: block;
-        font-size: 2rem;
+        font-size: clamp(1rem, 1.8vw, 1.4rem);
         color: #8b7355;
-        margin-bottom: 10px;
-        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+        margin-bottom: 4px;
+        -webkit-text-fill-color: #8b7355;
       }
 
       &::after {
         content: '※ ※ ※';
         display: block;
-        font-size: 1.2rem;
+        font-size: clamp(0.75rem, 1.2vw, 0.95rem);
         color: #a0956b;
-        margin-top: 15px;
-        letter-spacing: 8px;
-        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
-      }
-
-      @media (max-width: 768px) {
-        font-size: 2.6rem;
-        margin-bottom: 25px;
-
-        &::before {
-          font-size: 1.6rem;
-        }
-
-        &::after {
-          font-size: 1rem;
-          letter-spacing: 6px;
-        }
-      }
-
-      @media (max-width: 480px) {
-        font-size: 2.2rem;
-        margin-bottom: 20px;
-        letter-spacing: 1px;
-
-        &::before {
-          font-size: 1.4rem;
-        }
-
-        &::after {
-          font-size: 0.9rem;
-          letter-spacing: 4px;
-        }
+        margin-top: 8px;
+        letter-spacing: 6px;
+        -webkit-text-fill-color: #a0956b;
       }
     }
 
     .fecha-carta {
       font-family: 'Cinzel', 'Times New Roman', serif;
-      font-size: 1.1rem;
+      font-size: clamp(0.85rem, 1.2vw, 1rem);
       font-style: italic;
       color: #654321;
       text-align: right;
-      margin-bottom: 40px;
-      transform: rotate(0.3deg);
-      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+      margin-bottom: clamp(12px, 2vw, 20px);
       letter-spacing: 0.5px;
 
       &::before {
         content: '※ ';
         color: #8b7355;
-        margin-right: 8px;
-      }
-
-      @media (max-width: 768px) {
-        font-size: 1rem;
-        margin-bottom: 30px;
+        margin-right: 6px;
       }
     }
 
-    .texto-manuscrito {
+    .texto-manuscrito, p {
       font-family: 'Cinzel', 'Libre Baskerville', 'Times New Roman', serif;
-      font-size: 1.4rem;
-      line-height: 1.9;
+      font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+      line-height: 1.65;
       color: #3a2a1f;
       text-align: justify;
-      margin-bottom: 50px;
-      text-indent: 50px;
-      letter-spacing: 0.5px;
-      word-spacing: 2px;
-      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
-      transform: rotate(-0.1deg);
+      margin-bottom: clamp(15px, 2.2vw, 25px);
+      letter-spacing: 0.3px;
+      word-spacing: 1px;
       hyphens: auto;
 
-      // Primera letra capitular
+      // Primera letra capitular limpia sin separar palabras
       &::first-letter {
         font-family: 'Cinzel Decorative', 'Cinzel', serif;
-        font-size: 4.5rem;
+        font-size: 2em;
         font-weight: bold;
         color: #654321;
         float: left;
-        line-height: 1;
-        margin: -8px 12px -8px 0;
-        text-shadow:
-          2px 2px 4px rgba(0, 0, 0, 0.3),
-          1px 1px 2px rgba(101, 67, 33, 0.4);
-        background: linear-gradient(145deg, #654321 0%, #8b7355 50%, #654321 100%);
+        line-height: 0.85;
+        margin: 1px 1px 0 0;
+        background: linear-gradient(145deg, #654321 0%, #8b7355 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
-      }
-
-      // Variaciones sutiles en el texto para simular escritura manual
-      &::selection {
-        background: rgba(139, 115, 85, 0.3);
-      }
-
-      @media (max-width: 768px) {
-        font-size: 1.2rem;
-        line-height: 1.8;
-        text-indent: 35px;
-        margin-bottom: 35px;
-
-        &::first-letter {
-          font-size: 3.5rem;
-          margin: -6px 10px -6px 0;
-        }
-      }
-
-      @media (max-width: 480px) {
-        font-size: 1.1rem;
-        line-height: 1.7;
-        text-indent: 25px;
-        margin-bottom: 30px;
-
-        &::first-letter {
-          font-size: 3rem;
-          margin: -4px 8px -4px 0;
-        }
       }
     }
 
     .firma-carta {
       font-family: 'Cinzel Decorative', 'Cinzel', serif;
-      font-size: 1.8rem;
+      font-size: clamp(1rem, 1.6vw, 1.25rem);
       font-weight: 600;
       color: #654321;
       text-align: center;
-      margin-top: 40px;
-      transform: rotate(-0.6deg);
-      text-shadow:
-        2px 2px 4px rgba(0, 0, 0, 0.2),
-        1px 1px 2px rgba(101, 67, 33, 0.3);
-      letter-spacing: 1px;
+      margin-top: clamp(12px, 2vw, 20px);
+      letter-spacing: 0.8px;
 
-      // Decoración de la firma
       &::before {
         content: '~ ';
         color: #8b7355;
-        font-size: 1.2rem;
       }
 
       &::after {
         content: ' ~';
         color: #8b7355;
-        font-size: 1.2rem;
-      }
-
-      @media (max-width: 768px) {
-        font-size: 1.5rem;
-        margin-top: 30px;
-      }
-
-      @media (max-width: 480px) {
-        font-size: 1.3rem;
-        margin-top: 25px;
-        letter-spacing: 0.5px;
-      }
-    }
-  }
-
-  // Animación de entrada más dramática
-  .carta-manuscrita {
-    animation: pergaminoEntrada 1.2s ease-out;
-  }
-
-  @keyframes pergaminoEntrada {
-    0% {
-      opacity: 0;
-      transform: translateY(50px) rotateX(15deg) rotateY(-10deg) rotateZ(-2deg) scale(0.9);
-    }
-
-    60% {
-      opacity: 0.8;
-      transform: translateY(10px) rotateX(4deg) rotateY(-2deg) rotateZ(1deg) scale(1.02);
-    }
-
-    100% {
-      opacity: 1;
-      transform: translateY(0) rotateX(2deg) rotateY(-1deg) rotateZ(0.5deg) scale(1);
-    }
-  }
-
-  // Responsive adicional para pergamino
-  @media (max-width: 380px) {
-    .carta-manuscrita-container {
-      padding: 10px;
-    }
-
-    .papel-manuscrito {
-      padding: 20px 25px;
-      min-height: 350px;
-    }
-
-    .titulo-carta {
-      font-size: 1.8rem;
-      letter-spacing: 0.5px;
-
-      &::before {
-        font-size: 1.2rem;
-      }
-
-      &::after {
-        font-size: 0.8rem;
-        letter-spacing: 3px;
-      }
-    }
-
-    .texto-manuscrito {
-      font-size: 1rem;
-      line-height: 1.6;
-      text-indent: 20px;
-
-      &::first-letter {
-        font-size: 2.5rem;
-        margin: -3px 6px -3px 0;
-      }
-    }
-
-    .firma-carta {
-      font-size: 1.1rem;
-    }
-  }
-
-  /* ========================================
-    ESTILOS PARA CARTA MANUSCRITA - RESPONSIVE MÓVIL CORREGIDO
-  ======================================== */
-
-  .carta-manuscrita-page {
-    background: linear-gradient(45deg, #8b7355 0%, #a0956b 25%, #b8a882 50%, #a0956b 75%, #8b7355 100%);
-    padding: 0;
-    display: flex;
-    align-items: stretch; // Cambio importante
-    justify-content: center;
-    min-height: 100%;
-    position: relative;
-
-    // Textura de fondo sutil
-    &::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-image:
-        radial-gradient(circle at 25% 30%, rgba(139, 115, 85, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 75% 70%, rgba(160, 149, 107, 0.1) 0%, transparent 50%);
-      pointer-events: none;
-    }
-
-    @media (max-width: 768px) {
-      padding: 0; // Sin padding en móvil
-      min-height: 100vh; // Altura completa de viewport
-      align-items: center;
-    }
-  }
-
-  .carta-manuscrita-container {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 30px;
-    position: relative;
-    z-index: 1;
-
-    @media (max-width: 768px) {
-      padding: 10px; // Padding mínimo
-      min-height: 100vh; // Altura completa
-      width: 100vw; // Ancho completo
-    }
-
-    @media (max-width: 480px) {
-      padding: 5px; // Padding aún menor
-    }
-  }
-
-  .carta-manuscrita {
-    perspective: 1200px;
-    width: 100%;
-    max-width: 800px;
-
-    @media (max-width: 768px) {
-      width: 100%;
-      max-width: none; // Sin límite de ancho en móvil
-    }
-
-    .papel-manuscrito {
-      position: relative;
-      width: 100%;
-      min-height: 600px;
-
-      // Fondo de pergamino envejecido
-      background:
-        radial-gradient(circle at 20% 80%, rgba(139, 115, 85, 0.12) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(160, 149, 107, 0.1) 0%, transparent 50%),
-        linear-gradient(135deg, #f7f3e9 0%, #f1ead5 25%, #ede4c8 50%, #e8ddb8 75%, #e3d6a7 100%);
-
-      box-shadow:
-        0 30px 60px rgba(0, 0, 0, 0.4),
-        0 20px 40px rgba(0, 0, 0, 0.2),
-        inset 0 1px 0 rgba(255, 255, 255, 0.8),
-        inset 0 -1px 0 rgba(139, 115, 85, 0.3);
-
-      border-radius: 12px;
-      padding: 80px 100px;
-      margin: auto;
-      border: 4px solid rgba(139, 115, 85, 0.3);
-
-      &::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-image:
-          radial-gradient(circle at 15% 25%, rgba(101, 67, 33, 0.15) 0%, transparent 25%),
-          radial-gradient(circle at 85% 75%, rgba(139, 115, 85, 0.12) 0%, transparent 30%),
-          radial-gradient(circle at 45% 60%, rgba(160, 149, 107, 0.08) 0%, transparent 20%);
-        border-radius: 12px;
-        pointer-events: none;
-      }
-
-      &::after {
-        content: '';
-        position: absolute;
-        top: 150px;
-        right: 120px;
-        width: 12px;
-        height: 12px;
-        background: rgba(58, 42, 31, 0.2);
-        border-radius: 50%;
-        box-shadow:
-          -300px 200px 0 3px rgba(101, 67, 33, 0.1),
-          -200px 350px 0 2px rgba(139, 115, 85, 0.15),
-          -400px 300px 0 4px rgba(58, 42, 31, 0.08);
-      }
-
-      @media (max-width: 768px) {
-        padding: 30px 25px; // Padding reducido para móvil
-        min-height: calc(100vh - 20px);
-        max-width: none;
-        width: 100%;
-        border-radius: 8px;
-
-        &::after {
-          top: 100px;
-          right: 40px;
-          width: 8px;
-          height: 8px;
-          box-shadow:
-            -150px 120px 0 2px rgba(101, 67, 33, 0.1),
-            -100px 200px 0 1px rgba(139, 115, 85, 0.15);
-        }
-      }
-
-      @media (max-width: 480px) {
-        padding: 20px 18px;
-        min-height: calc(100vh - 10px);
-        border-radius: 6px;
-
-        &::after {
-          top: 80px;
-          right: 25px;
-          width: 6px;
-          height: 6px;
-        }
-      }
-
-      @media (max-width: 380px) {
-        padding: 15px;
-        min-height: calc(100vh - 5px);
-      }
-
-      h2 {
-        font-family: 'Cinzel', 'Trajan Pro', 'Times New Roman', serif;
-        font-size: 3.8rem;
-        font-weight: 600;
-        color: #3a2a1f;
-        margin-bottom: 40px;
-        text-align: center;
-        transform: rotate(-0.4deg);
-        text-shadow:
-          2px 2px 4px rgba(0, 0, 0, 0.25),
-          1px 1px 2px rgba(101, 67, 33, 0.35);
-        line-height: 1.1;
-        letter-spacing: 3px;
-        position: relative;
-        z-index: 2;
-
-        background: linear-gradient(145deg, #3a2a1f 0%, #654321 50%, #3a2a1f 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-
-        &::before {
-          content: '❦';
-          display: block;
-          font-size: 2.4rem;
-          color: #8b7355;
-          margin-bottom: 12px;
-          text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
-        }
-
-        &::after {
-          content: '※ ※ ※';
-          display: block;
-          font-size: 1.4rem;
-          color: #a0956b;
-          margin-top: 18px;
-          letter-spacing: 10px;
-          text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
-        }
-
-        @media (max-width: 768px) {
-          font-size: 2.4rem; // Más pequeño para móvil
-          margin-bottom: 20px;
-          letter-spacing: 1px;
-          transform: none;
-
-          &::before {
-            font-size: 1.6rem;
-            margin-bottom: 8px;
-          }
-
-          &::after {
-            font-size: 1rem;
-            letter-spacing: 5px;
-            margin-top: 12px;
-          }
-        }
-
-        @media (max-width: 480px) {
-          font-size: 2rem;
-          margin-bottom: 15px;
-
-          &::before {
-            font-size: 1.4rem;
-            margin-bottom: 6px;
-          }
-
-          &::after {
-            font-size: 0.9rem;
-            letter-spacing: 4px;
-            margin-top: 10px;
-          }
-        }
-
-        @media (max-width: 380px) {
-          font-size: 1.8rem;
-          margin-bottom: 12px;
-        }
-      }
-
-      p {
-        font-family: 'Cinzel', 'Libre Baskerville', 'Times New Roman', serif;
-        font-size: 1.6rem;
-        line-height: 2;
-        color: #3a2a1f;
-        text-align: justify;
-        margin-bottom: 50px;
-        text-indent: 60px;
-        letter-spacing: 0.8px;
-        word-spacing: 2px;
-        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.12);
-        position: relative;
-        z-index: 2;
-        hyphens: auto;
-
-        &::first-letter {
-          font-family: 'Cinzel Decorative', 'Cinzel', serif;
-          font-size: 5.5rem;
-          font-weight: bold;
-          color: #654321;
-          float: left;
-          line-height: 1;
-          margin: -10px 15px -10px 0;
-          text-shadow:
-            2px 2px 4px rgba(0, 0, 0, 0.35),
-            1px 1px 2px rgba(101, 67, 33, 0.45);
-          background: linear-gradient(145deg, #654321 0%, #8b7355 50%, #654321 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-
-        @media (max-width: 768px) {
-          font-size: 1.2rem; // Más pequeño pero legible
-          line-height: 1.8;
-          text-indent: 30px;
-          margin-bottom: 20px;
-          text-align: left; // Mejor para móvil
-
-          &::first-letter {
-            font-size: 3.5rem;
-            margin: -6px 10px -6px 0;
-          }
-        }
-
-        @media (max-width: 480px) {
-          font-size: 1.1rem;
-          line-height: 1.7;
-          text-indent: 25px;
-          margin-bottom: 15px;
-
-          &::first-letter {
-            font-size: 3rem;
-            margin: -5px 8px -5px 0;
-          }
-        }
-
-        @media (max-width: 380px) {
-          font-size: 1rem;
-          line-height: 1.6;
-          text-indent: 20px;
-          margin-bottom: 12px;
-
-          &::first-letter {
-            font-size: 2.5rem;
-            margin: -4px 6px -4px 0;
-          }
-        }
       }
     }
   }
