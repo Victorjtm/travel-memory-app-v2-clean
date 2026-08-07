@@ -16,12 +16,16 @@ import { GeocodificacionService, UbicacionReversa } from '../../../../servicios/
 import { VideoGeneratorService, ProgresoVideo } from '../../../../servicios/video-generator.service';
 import { EscenaMultimedia, ConfiguracionExportacion } from '../../../../modelos/escena-multimedia';
 
+import { GpxAnimationComponent } from '../../../../componentes/reproductor-animado-gpx/gpx-animation.component';
+import { GpxAnimationService } from '../../../../servicios/gpx-animation.service';
+import { TrackEditorService } from '../../../../servicios/track-editor.service';
+
 // ==========================================
 // TIPOS E INTERFACES
 // ==========================================
 
 // Tipos de archivos multimedia soportados
-export type TipoMedia = 'imagen' | 'video' | 'audio' | 'documento' | 'pdf' | 'texto' | 'carta-manuscrita' | 'desconocido';
+export type TipoMedia = 'imagen' | 'video' | 'audio' | 'documento' | 'pdf' | 'texto' | 'carta-manuscrita' | 'mapa-animado' | 'desconocido';
 
 interface PaginaMedia {
   archivo: Archivo;
@@ -38,14 +42,18 @@ interface PaginaMedia {
   cargado?: boolean;
   esIndice?: boolean;
   esCartaManuscrita?: boolean;
+  esMapaAnimado?: boolean;
+  trackGpx?: string;
+  distanciaTramoKm?: number;
+  transportSegments?: any[];
+  actividadId?: number;
   coordenadas?: {
     latitud: number;
     longitud: number;
     altitud?: number;
   };
+  archivosAsociados?: any[];
 }
-
-
 
 interface ContextoViaje {
   viajeId: number;
@@ -58,7 +66,7 @@ interface InfoViaje {
   fechaInicio?: string;
   fechaFin?: string;
   imagen?: string;
-  audio?: string; // 👈 AÑADIR ESTA LÍNEA
+  audio?: string;
 }
 
 interface CoordenadaDMS {
@@ -77,7 +85,7 @@ interface CoordenadasDMS {
 @Component({
   selector: 'app-album-libro',
   standalone: true,
-  imports: [CommonModule, FontAwesomeModule, FormsModule],
+  imports: [CommonModule, FontAwesomeModule, FormsModule, GpxAnimationComponent],
   templateUrl: './album-libro.component.html',
   styleUrls: ['./album-libro.component.scss']
 })
@@ -180,6 +188,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   private ubicacionesCache = new Map<string, string>();
 
 
+  // ==========================================
+  // CONFIGURACIÓN DE MAPAS ANIMADOS POR TRAMOS
+  // ==========================================
+  incluirAnimacionesMapa: boolean = false;
+  distanciaMinimaAnimacionKm: number = 2.0;
+  paginasBase: PaginaMedia[] = [];
+
   // Extensiones de archivo por tipo
   private readonly EXTENSIONES_IMAGEN = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.tiff'];
   private readonly EXTENSIONES_VIDEO = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv', '.m4v'];
@@ -200,6 +215,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     private actividadesItinerariosService: ActividadesItinerariosService,
     private geocodificacionService: GeocodificacionService,
     public videoGeneratorService: VideoGeneratorService,
+    private gpxAnimationService: GpxAnimationService,
+    private trackEditorService: TrackEditorService,
     private cdr: ChangeDetectorRef,  // ✅ NUEVO
     private ngZone: NgZone  // ✅ NUEVO
   ) { }
@@ -1410,12 +1427,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       paginasFinales = [paginaIndice, ...paginasNormales];
     }
 
-    // SIEMPRE cargar la descripción ANTES de que Angular pinte la página 0
-    this.paginas = paginasFinales;
+    // Guardar paginas base y generar mapas animados según configuración
+    this.paginasBase = paginasFinales;
+    this.paginas = await this.generarPaginasConAnimaciones(this.paginasBase);
+
     console.log('📖 Páginas multimedia creadas:', this.paginas.length);
     console.log('📊 Tipos de archivos:', this.obtenerEstadisticasTipos());
 
-    // Cargar la descripción del itinerario DESPUÉS de asignar this.paginas
+    // Cargar la descripción del itinerario DESPUÉS de asignar esta.paginas
     if (this.contextoViaje?.itinerarioId && !this.contextoViaje?.actividadId) {
       await this.cargarDescripcionItinerario();
     }
@@ -1425,6 +1444,103 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.precargarContenido(),
       this.precargarUbicaciones()
     ]);
+  }
+
+  // ==========================================
+  // MÉTODOS PARA MAPAS ANIMADOS POR TRAMOS
+  // ==========================================
+
+  async toggleAnimacionesMapa(): Promise<void> {
+    this.incluirAnimacionesMapa = !this.incluirAnimacionesMapa;
+    await this.actualizarConfiguracionAnimaciones();
+  }
+
+  async actualizarConfiguracionAnimaciones(): Promise<void> {
+    console.log('🔄 Recalculando páginas del álbum según filtro de animaciones:', {
+      incluir: this.incluirAnimacionesMapa,
+      distanciaMinimaKm: this.distanciaMinimaAnimacionKm
+    });
+    this.isLoading = true;
+    try {
+      this.paginas = await this.generarPaginasConAnimaciones(this.paginasBase);
+      if (this.paginaActual >= this.paginas.length) {
+        this.paginaActual = Math.max(0, this.paginas.length - 1);
+      }
+      this.cdr.detectChanges();
+    } catch (e) {
+      console.error('❌ Error recalculando animaciones del mapa:', e);
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  private async generarPaginasConAnimaciones(paginasInput: PaginaMedia[]): Promise<PaginaMedia[]> {
+    if (!this.incluirAnimacionesMapa) {
+      return paginasInput.filter(p => !p.esMapaAnimado);
+    }
+
+    const resultado: PaginaMedia[] = [];
+    const actividadesProcesadas = new Set<number>();
+
+    for (let i = 0; i < paginasInput.length; i++) {
+      const pag = paginasInput[i];
+      if (pag.esMapaAnimado) continue;
+
+      const actId = pag.archivo?.actividadId;
+
+      if (actId && !actividadesProcesadas.has(actId)) {
+        actividadesProcesadas.add(actId);
+        try {
+          const gpxXml = await firstValueFrom(this.trackEditorService.resolveCanonicalGpxXml(actId));
+          if (gpxXml && gpxXml.trim().length > 0) {
+            const points = this.gpxAnimationService.parseGpx(gpxXml);
+            const distMetros = points.length > 0 ? (points[points.length - 1].distAcum || 0) : 0;
+            const distKm = distMetros / 1000;
+
+            console.log(`🗺️ Evaluando tramo actividad #${actId}: ${distKm.toFixed(2)} km (Mínimo: ${this.distanciaMinimaAnimacionKm} km)`);
+
+            if (distKm >= this.distanciaMinimaAnimacionKm) {
+              const paginaMapa: PaginaMedia = {
+                archivo: {} as Archivo,
+                url: '',
+                titulo: `Recorrido de ${distKm.toFixed(1)} km`,
+                descripcion: `Mapa animado del tramo (${distKm.toFixed(1)} km)`,
+                fecha: pag.fecha || '',
+                tipoMedia: 'mapa-animado',
+                mimeType: '',
+                cargado: true,
+                esMapaAnimado: true,
+                trackGpx: gpxXml,
+                distanciaTramoKm: distKm,
+                actividadId: actId
+              };
+
+              console.log(`✅ Añadiendo página de mapa animado para actividad #${actId} (${distKm.toFixed(1)} km)`);
+              resultado.push(paginaMapa);
+            } else {
+              console.log(`⏩ Tramo corto omitido para mapa animado: ${distKm.toFixed(2)} km < ${this.distanciaMinimaAnimacionKm} km`);
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️ No se pudo obtener GPX para actividad #${actId}:`, error);
+        }
+      }
+
+      resultado.push(pag);
+    }
+
+    return resultado;
+  }
+
+  onFinAnimacionMapa(): void {
+    console.log('🏁 Animación del mapa completada');
+    if (this.reproduciendoSlideshow) {
+      setTimeout(() => {
+        if (this.reproduciendoSlideshow) {
+          this.avanzarSlideshow();
+        }
+      }, 1000);
+    }
   }
 
   private async crearPaginasConDescripcionesItinerarios(archivos: PaginaMedia[]): Promise<PaginaMedia[]> {
@@ -1987,6 +2103,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
       if (paginaActual.esCartaManuscrita) {
         this.abrirFullscreen('', 'carta-manuscrita', {
+          titulo: paginaActual.titulo,
+          descripcion: paginaActual.descripcion
+        });
+      } else if (paginaActual.esMapaAnimado) {
+        this.abrirFullscreen('', 'mapa-animado', {
           titulo: paginaActual.titulo,
           descripcion: paginaActual.descripcion
         });
@@ -2566,7 +2687,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       pdf: 'fas fa-file-pdf',
       documento: 'fas fa-file-alt',
       texto: 'fas fa-file-text',
-      'carta-manuscrita': 'fas fa-envelope', // 👈 Añade esta línea
+      'carta-manuscrita': 'fas fa-envelope',
+      'mapa-animado': 'fas fa-route',
       desconocido: 'fas fa-file'
     };
     return iconos[tipo] || iconos['desconocido'];

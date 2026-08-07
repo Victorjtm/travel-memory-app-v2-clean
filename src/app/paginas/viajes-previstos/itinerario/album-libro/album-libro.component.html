@@ -77,6 +77,27 @@
       <i class="fas fa-video" aria-hidden="true"></i>
     </button>
 
+    <!-- --- Control Toggle Animaciones de Ruta --- -->
+    <div class="control-animaciones-panel">
+      <button class="btn-toggle-animaciones" [class.activo]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
+        title="Activar/Desactivar mapas animados por tramos" aria-label="Activar/Desactivar mapas animados por tramos">
+        <i class="fas fa-route"></i>
+        <span>Ver animaciones</span>
+      </button>
+
+      <div class="selector-distancia-wrapper" *ngIf="incluirAnimacionesMapa">
+        <label for="distancia-min-select" title="Filtrar tramos por distancia mínima">Tramos &gt;</label>
+        <select id="distancia-min-select" [(ngModel)]="distanciaMinimaAnimacionKm" (change)="actualizarConfiguracionAnimaciones()" class="select-distancia-min">
+          <option [ngValue]="0.5">500 m</option>
+          <option [ngValue]="1">1 km</option>
+          <option [ngValue]="2">2 km</option>
+          <option [ngValue]="5">5 km</option>
+          <option [ngValue]="10">10 km</option>
+          <option [ngValue]="20">20 km</option>
+        </select>
+      </div>
+    </div>
+
     <!-- Viejo Botón ℹ️ Eliminado -->
 
     <div class="archivos-asociados-botones"
@@ -228,9 +249,26 @@
       </div>
 
       <!-- ===================================== -->
+      <!-- SUB-BLOQUE: MAPA ANIMADO DE RUTA -->
+      <!-- ===================================== -->
+      <div class="pagina-contenido mapa-animado-page" *ngIf="paginaActual.esMapaAnimado">
+        <div class="header-mapa-animado">
+          <span class="badge-distancia"><i class="fas fa-route"></i> Recorrido: {{ paginaActual.distanciaTramoKm | number:'1.1-2' }} km</span>
+        </div>
+        <div class="mapa-animado-container" (click)="abrirFullscreen('', 'mapa-animado', { titulo: paginaActual.titulo, descripcion: paginaActual.descripcion })">
+          <app-gpx-animation 
+            *ngIf="paginaActual.trackGpx"
+            [gpxText]="paginaActual.trackGpx" 
+            [transportSegments]="paginaActual.transportSegments || []"
+            (onCerrar)="onFinAnimacionMapa()">
+          </app-gpx-animation>
+        </div>
+      </div>
+
+      <!-- ===================================== -->
       <!-- SUB-BLOQUE: PÁGINA MULTIMEDIA -->
       <!-- ===================================== -->
-      <div class="pagina-contenido" *ngIf="!paginaActual.esIndice && !paginaActual.esCartaManuscrita">
+      <div class="pagina-contenido" *ngIf="!paginaActual.esIndice && !paginaActual.esCartaManuscrita && !paginaActual.esMapaAnimado">
 
         <!-- --- Contenedor multimedia --->
         <div class="media-container" [attr.data-tipo]="paginaActual.tipoMedia">
@@ -493,6 +531,21 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- MAPA ANIMADO EN PANTALLA COMPLETA -->
+      <div *ngIf="tipoFullscreen === 'mapa-animado'" class="media-fullscreen mapa-animado-fullscreen"
+        (click)="$event.stopPropagation()">
+        <div class="header-mapa-fullscreen">
+          <h3><i class="fas fa-route"></i> {{ paginaActualData?.titulo }}</h3>
+        </div>
+        <div class="mapa-fullscreen-container" *ngIf="paginaActualData?.trackGpx">
+          <app-gpx-animation 
+            [gpxText]="paginaActualData!.trackGpx!" 
+            [transportSegments]="paginaActualData?.transportSegments || []"
+            (onCerrar)="onFinAnimacionMapa()">
+          </app-gpx-animation>
         </div>
       </div>
     </div>
