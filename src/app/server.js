@@ -19,6 +19,9 @@ const path = require('path');
 const multer = require('multer');
 const axios = require('axios');
 const { exec } = require('child_process'); // ⬅️ NUEVO: Para ejecutar ffmpeg y stt local
+const ffmpegStatic = require('ffmpeg-static');
+const FFMPEG_BIN = ffmpegStatic ? `"${ffmpegStatic}"` : 'ffmpeg';
+console.log('🎬 [FFMPEG] Binario de ffmpeg configurado en:', FFMPEG_BIN);
 
 // Lock para procesos de transcripción activos (evitar duplicados)
 const procesosTranscripcionActivos = new Set();
@@ -1891,7 +1894,7 @@ app.post('/archivos/:id/transcribir', async (req, res) => {
       const tmpPath = path.join(uploadsPath, `tmp_audio_${id}_${Date.now()}.mp3`);
       console.log(`🎬 [FFMPEG] Extrayendo audio de vídeo para ID ${id}...`);
       await new Promise((resolve, reject) => {
-        exec(`ffmpeg -i "${rutaAudio}" -vn -acodec libmp3lame -y "${tmpPath}"`, (err) => {
+        exec(`${FFMPEG_BIN} -i "${rutaAudio}" -vn -acodec libmp3lame -y "${tmpPath}"`, (err) => {
           if (err) reject(err);
           else resolve();
         });
@@ -1906,7 +1909,7 @@ app.post('/archivos/:id/transcribir', async (req, res) => {
       const compressedPath = path.join(uploadsPath, `comp_audio_${id}_${Date.now()}.mp3`);
       console.log(`📉 [FFMPEG] Comprimiendo audio para ID ${id} (${(stats.size / 1024 / 1024).toFixed(2)} MB)...`);
       await new Promise((resolve, reject) => {
-        exec(`ffmpeg -i "${rutaProcesada}" -b:a 64k -y "${compressedPath}"`, (err) => {
+        exec(`${FFMPEG_BIN} -i "${rutaProcesada}" -b:a 64k -y "${compressedPath}"`, (err) => {
           if (err) reject(err);
           else resolve();
         });
@@ -2037,8 +2040,7 @@ function generarMiniaturaVideo(archivoId, rutaCompleta, callback) {
   const outputPath = path.join(folder, thumbnailName);
 
   // Comando ffmpeg: extraer 1 frame en el segundo 1
-  // -ss 1 (seek to 1s), -i input, -vframes 1 (output 1 frame), -q:v 2 (calidad alta), -y (sobrescribir)
-  const command = `ffmpeg -ss 1 -i "${rutaCompleta}" -vframes 1 -q:v 2 -y "${outputPath}"`;
+  const command = `${FFMPEG_BIN} -ss 1 -i "${rutaCompleta}" -vframes 1 -q:v 2 -y "${outputPath}"`;
 
   console.log(`🎬 [FFMPEG] Generando miniatura para ID ${archivoId}...`);
 
@@ -2054,6 +2056,61 @@ function generarMiniaturaVideo(archivoId, rutaCompleta, callback) {
     callback(relativePath);
   });
 }
+
+/**
+ * ✨ NUEVO: Transcodificar vídeo a formato H.264 (AVC) + AAC compatible con navegadores web
+ */
+function transcodificarVideoH264(rutaInput, callback) {
+  const folder = path.dirname(rutaInput);
+  const ext = path.extname(rutaInput);
+  const base = path.basename(rutaInput, ext);
+  const rutaTmp = path.join(folder, `${base}_h264_tmp${ext}`);
+
+  console.log(`🎬 [FFMPEG] Transcodificando vídeo a H.264 para web: ${path.basename(rutaInput)}...`);
+  const command = `${FFMPEG_BIN} -i "${rutaInput}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -movflags +faststart -y "${rutaTmp}"`;
+
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`❌ [FFMPEG] Error transcodificando vídeo:`, error.message);
+      if (fs.existsSync(rutaTmp)) {
+        try { fs.unlinkSync(rutaTmp); } catch (e) {}
+      }
+      return callback(error);
+    }
+
+    try {
+      fs.copyFileSync(rutaTmp, rutaInput);
+      fs.unlinkSync(rutaTmp);
+      console.log(`✅ [FFMPEG] Vídeo transcodificado con éxito a H.264: ${path.basename(rutaInput)}`);
+      callback(null);
+    } catch (errCopy) {
+      console.error(`❌ [FFMPEG] Error reemplazando vídeo original:`, errCopy.message);
+      callback(errCopy);
+    }
+  });
+}
+
+/**
+ * ✨ NUEVO: Endpoint para transcodificar a H.264 cualquier vídeo de un archivo
+ */
+app.post('/archivos/:id/transcodificar-h264', (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT * FROM archivos WHERE id = ?', [id], (err, archivo) => {
+    if (err || !archivo) {
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
+    const rutaCompleta = path.join(uploadsPath, path.basename(archivo.ruta || archivo.url));
+    if (!fs.existsSync(rutaCompleta)) {
+      return res.status(404).json({ error: 'Fichero físico no encontrado' });
+    }
+    transcodificarVideoH264(rutaCompleta, (errTrans) => {
+      if (errTrans) {
+        return res.status(500).json({ error: 'Error al transcodificar vídeo: ' + errTrans.message });
+      }
+      res.json({ ok: true, mensaje: 'Vídeo transcodificado a H.264 correctamente' });
+    });
+  });
+});
 
 /**
  * ✨ NUEVO: Endpoint para recibir miniaturas generadas por el cliente
