@@ -12,7 +12,7 @@ export class TrackEditorService {
   // Ajustar baseUrl según entorno. Asumimos la misma ruta en la que sirve Angular en local o build
   private baseUrl = environment.apiUrl || '';
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) { }
 
   /**
    * Obtiene la lista de ediciones no destructivas para una actividad
@@ -87,7 +87,7 @@ export class TrackEditorService {
     if (existingPoints.length >= 2) {
       const windowStart = Math.max(0, existingPoints.length - N);
       const windowPoints = existingPoints.slice(windowStart);
-      
+
       const speeds: number[] = [];
       for (let i = 1; i < windowPoints.length; i++) {
         const prev = windowPoints[i - 1];
@@ -195,7 +195,7 @@ export class TrackEditorService {
       }
       const idxStart = this.resolveAnchor(edit.startAnchor, currentPoints);
       const idxEnd = this.resolveAnchor(edit.endAnchor, currentPoints);
-      
+
       if (idxStart !== -1 && idxEnd !== -1) {
         const min = Math.min(idxStart, idxEnd);
         const max = Math.max(idxStart, idxEnd);
@@ -203,7 +203,7 @@ export class TrackEditorService {
         if (edit.action === 'delete_segment') {
           // Eliminamos el segmento completo (inclusivo A y B)
           currentPoints.splice(min, max - min + 1);
-        } 
+        }
         else if (edit.action === 'override_mode') {
           for (let i = min; i <= max; i++) {
             if (edit.newMode) {
@@ -244,18 +244,18 @@ export class TrackEditorService {
     // 3. Resolución Espacial de Emergencia (Desempate por índice si hay múltiples muy cerca)
     let closestIdx = -1;
     let minDistance = Infinity;
-    
+
     // Si hay ancla index, lo usamos para desempatar, si no, 0
-    const expectedLogicalIndex = anchor.index !== undefined ? anchor.index : 0; 
+    const expectedLogicalIndex = anchor.index !== undefined ? anchor.index : 0;
     let bestScore = Infinity;
 
     for (let i = 0; i < points.length; i++) {
       const dist = this.getDistance(anchor.lat, anchor.lng, points[i].lat, points[i].lng);
-      
+
       if (dist < 50) { // Candidato viable
         // Puntuación: la distancia espacial + castigo por distancia lógica
         const score = dist + Math.abs(i - expectedLogicalIndex) * 0.1; // El index lógico desempataría
-        
+
         if (score < bestScore) {
           bestScore = score;
           minDistance = dist;
@@ -264,7 +264,7 @@ export class TrackEditorService {
       }
     }
 
-    if (closestIdx !== -1) { 
+    if (closestIdx !== -1) {
       return closestIdx;
     }
 
@@ -386,9 +386,10 @@ export class TrackEditorService {
           const timeStr = p.time instanceof Date ? p.time.toISOString() : p.time;
           xml += `        <time>${timeStr}</time>\n`;
         }
-        if (p.mode) {
+        const mode = p.mode || p.hfMode;
+        if (mode) {
           xml += `        <extensions>\n`;
-          xml += `          <transportMode>${p.mode}</transportMode>\n`;
+          xml += `          <transportMode>${mode}</transportMode>\n`;
           xml += `        </extensions>\n`;
         }
         xml += '      </trkpt>\n';
@@ -409,7 +410,7 @@ export class TrackEditorService {
    */
   resolveCanonicalGpxXml(actividadId: number, options?: { flattenSegments?: boolean }): Observable<string> {
     const flatten = options?.flattenSegments ?? false;
-    
+
     return new Observable<string>(subscriber => {
       this.getSegments(actividadId).subscribe({
         next: (segments) => {
@@ -420,7 +421,7 @@ export class TrackEditorService {
             // Ya tenemos el track totalmente resuelto
             // Para asegurar la robustez, el acumulado es inherentemente continuo
             const resolvedSegments: GpxPoint[][] = [accumulatedPoints];
-            
+
             // Generar XML
             const gpxXml = this.pointsToGpxXml(resolvedSegments, { multiSegment: !flatten });
             subscriber.next(gpxXml);
@@ -518,7 +519,7 @@ export class TrackEditorService {
           actualA = idxB;
           actualB = idxA;
         }
-        
+
         const deleteLength = (actualB - actualA) + 1;
         if (deleteLength > 0) {
           accumulatedPoints.splice(actualA, deleteLength);
@@ -556,7 +557,7 @@ export class TrackEditorService {
 
     const tA = (anchorA.time instanceof Date ? anchorA.time : new Date(anchorA.time)).getTime();
     const tB = (anchorB.time instanceof Date ? anchorB.time : new Date(anchorB.time)).getTime();
-    
+
     if (tB <= tA) {
       console.warn('[TrackEditor] Tiempo B <= Tiempo A. Interpolación inválida.');
       return;
@@ -567,7 +568,7 @@ export class TrackEditorService {
     const distances: number[] = [0];
 
     for (let i = 1; i < newPoints.length; i++) {
-      const d = this.getDistance(newPoints[i-1].lat, newPoints[i-1].lng, newPoints[i].lat, newPoints[i].lng);
+      const d = this.getDistance(newPoints[i - 1].lat, newPoints[i - 1].lng, newPoints[i].lat, newPoints[i].lng);
       totalDistance += d;
       distances.push(totalDistance);
     }

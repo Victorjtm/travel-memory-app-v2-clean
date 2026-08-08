@@ -1481,7 +1481,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     const resultado: PaginaMedia[] = [];
     const mapasPorArchivoId = new Map<number, PaginaMedia[]>();
-    const mapasSinArchivoObjetivo = new Map<number, PaginaMedia[]>();
+    const mapasInicioActividad = new Map<number, PaginaMedia[]>();
+    const mapasFinActividad = new Map<number, PaginaMedia[]>();
     const actividadesProcesadas = new Set<number>();
 
     // 1. Pre-procesar actividades y generar mapas parciales asignados al archivo objetivo de cada PI
@@ -1527,8 +1528,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
               if (subSegmentPoints.length < 2) continue;
 
-              const distMetros = (subSegmentPoints[subSegmentPoints.length - 1].distAcum || 0) 
-                               - (subSegmentPoints[0].distAcum || 0);
+              const distMetros = (subSegmentPoints[subSegmentPoints.length - 1].distAcum || 0)
+                - (subSegmentPoints[0].distAcum || 0);
               const distKm = distMetros / 1000;
 
               console.log(`  📏 Tramo PI_${s} → PI_${s + 1}: ${distKm.toFixed(2)} km (Mínimo: ${this.distanciaMinimaAnimacionKm} km)`);
@@ -1542,6 +1543,43 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   timeAcum: (p.timeAcum || 0) - baseTimeAcum,
                   event: undefined
                 }));
+
+                // Extraer desglose de transporte del sub-tramo
+                const subTransportSegments: any[] = [];
+                let currentMode: string | null = null;
+                let currentModeDist = 0;
+
+                for (let pIdx = 0; pIdx < subSegmentPoints.length; pIdx++) {
+                  const pt = subSegmentPoints[pIdx];
+                  const pMode = pt.mode || pt.hfMode || 'walking';
+                  const prevPt = pIdx > 0 ? subSegmentPoints[pIdx - 1] : null;
+                  const stepDist = prevPt ? Math.max(0, (pt.distAcum - prevPt.distAcum)) : 0;
+
+                  if (currentMode === null) {
+                    currentMode = pMode;
+                    currentModeDist = stepDist;
+                  } else if (pMode === currentMode) {
+                    currentModeDist += stepDist;
+                  } else {
+                    subTransportSegments.push({
+                      tipo: currentMode,
+                      nombre: currentMode,
+                      distanciaMetros: currentModeDist,
+                      distanciaKm: (currentModeDist / 1000).toFixed(2)
+                    });
+                    currentMode = pMode;
+                    currentModeDist = stepDist;
+                  }
+                }
+
+                if (currentMode && currentModeDist > 0) {
+                  subTransportSegments.push({
+                    tipo: currentMode,
+                    nombre: currentMode,
+                    distanciaMetros: currentModeDist,
+                    distanciaKm: (currentModeDist / 1000).toFixed(2)
+                  });
+                }
 
                 const gpxParcial = this.trackEditorService.pointsToGpxXml(subPointsRelativos);
 
@@ -1557,12 +1595,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   esMapaAnimado: true,
                   trackGpx: gpxParcial,
                   distanciaTramoKm: distKm,
-                  actividadId: actId
+                  actividadId: actId,
+                  transportSegments: subTransportSegments
                 };
 
-                console.log(`  ✅ Mapa animado generado: Tramo ${s + 1}, ${distKm.toFixed(1)} km`);
+                console.log(`  ✅ Mapa animado generado: Tramo ${s + 1}, ${distKm.toFixed(1)} km, modos: ${subTransportSegments.map(t => t.tipo).join(', ')}`);
 
-                // Identificar el archivo/foto de destino para intercalar el mapa justo antes
+                // Identificar archivo/foto de destino para intercalar mapa
                 const targetEvent = points[endIdx]?.event;
                 const targetArchivoId = targetEvent?.archivos?.[0]?.id;
 
@@ -1571,11 +1610,18 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                     mapasPorArchivoId.set(targetArchivoId, []);
                   }
                   mapasPorArchivoId.get(targetArchivoId)!.push(paginaMapa);
-                } else {
-                  if (!mapasSinArchivoObjetivo.has(actId)) {
-                    mapasSinArchivoObjetivo.set(actId, []);
+                } else if (s === 0) {
+                  // Tramo inicial sin foto objetivo -> colocar al inicio de la actividad
+                  if (!mapasInicioActividad.has(actId)) {
+                    mapasInicioActividad.set(actId, []);
                   }
-                  mapasSinArchivoObjetivo.get(actId)!.push(paginaMapa);
+                  mapasInicioActividad.get(actId)!.push(paginaMapa);
+                } else {
+                  // Tramo de vuelta (PI final -> fin del track) sin foto objetivo -> colocar AL FINAL de la actividad
+                  if (!mapasFinActividad.has(actId)) {
+                    mapasFinActividad.set(actId, []);
+                  }
+                  mapasFinActividad.get(actId)!.push(paginaMapa);
                 }
               } else {
                 console.log(`  ⏩ Tramo corto omitido: ${distKm.toFixed(2)} km < ${this.distanciaMinimaAnimacionKm} km`);
@@ -1588,8 +1634,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
     }
 
-    // 2. Intercalación fluida: colocar los mapas animados justo antes de la foto del PI destino
-    const actividadesInsertadasSinTarget = new Set<number>();
+    // 2. Intercalación fluida: mapas de ida antes de la foto destino, mapas de vuelta al final de la actividad
+    const actividadesInsertadasInicio = new Set<number>();
 
     for (let i = 0; i < paginasInput.length; i++) {
       const pag = paginasInput[i];
@@ -1598,12 +1644,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       const actId = pag.archivo?.actividadId;
       const archivoId = pag.archivo?.id;
 
-      // Si hay mapas sin foto destino fija (ej. inicio de actividad sin foto en primer PI), colocarlos al inicio de la actividad
-      if (actId && mapasSinArchivoObjetivo.has(actId) && !actividadesInsertadasSinTarget.has(actId)) {
-        actividadesInsertadasSinTarget.add(actId);
-        const mapasInicio = mapasSinArchivoObjetivo.get(actId)!;
+      // Si hay mapas del inicio de la actividad sin foto destino fija, colocarlos al inicio de la actividad
+      if (actId && mapasInicioActividad.has(actId) && !actividadesInsertadasInicio.has(actId)) {
+        actividadesInsertadasInicio.add(actId);
+        const mapasInicio = mapasInicioActividad.get(actId)!;
         resultado.push(...mapasInicio);
-        mapasSinArchivoObjetivo.delete(actId);
+        mapasInicioActividad.delete(actId);
       }
 
       // Si este archivo es la foto objetivo de uno o más mapas de tramo, insertarlos justo ANTES de esta foto
@@ -1614,6 +1660,17 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
 
       resultado.push(pag);
+
+      // Comprobar si esta página es la última foto de la actividad actual
+      const siguientePag = i < paginasInput.length - 1 ? paginasInput[i + 1] : null;
+      const siguienteActId = siguientePag?.archivo?.actividadId;
+
+      if (actId && siguienteActId !== actId && mapasFinActividad.has(actId)) {
+        console.log(`  🔄 Insertando mapas de vuelta al final de la actividad #${actId}`);
+        const mapasVuelta = mapasFinActividad.get(actId)!;
+        resultado.push(...mapasVuelta);
+        mapasFinActividad.delete(actId);
+      }
     }
 
     return resultado;
@@ -3004,7 +3061,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
       // 1. Construir la secuencia única de escenas basada en el estado actual del álbum
       const secuencia = this.construirSecuenciaEscenas();
-      
+
       if (secuencia.length === 0) {
         throw new Error('No hay contenido para generar el vídeo');
       }
@@ -3048,7 +3105,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       document.body.removeChild(a);
 
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      
+
       // Feedback final
       this.progresoVideo = {
         fase: 'completado',
@@ -3079,7 +3136,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       .filter(p => !p.esIndice)
       .map((p, index) => {
         const fechaHora = this.obtenerFechaHoraSeparadas(p);
-        
+
         return {
           id: p.archivo?.id || `escena-${index}`,
           tipo: p.esCartaManuscrita ? 'carta' : (p.tipoMedia === 'video' ? 'video' : 'imagen'),
