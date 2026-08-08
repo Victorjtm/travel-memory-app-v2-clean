@@ -3909,26 +3909,61 @@ app.delete('/actividades/:id', async (req, res) => {
 app.get(['/actividades/:id/gpx', '/api/actividades/:id/gpx'], (req, res) => {
   const id = req.params.id;
 
-  db.get(
-    'SELECT rutaGpxCompleto FROM actividades WHERE id = ?',
-    [id],
-    (err, row) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (!row || !row.rutaGpxCompleto) {
-        return res.status(404).json({ error: 'GPX no encontrado' });
-      }
-
-      const filePath = path.join(uploadsPath, row.rutaGpxCompleto);
-
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: 'Archivo GPX no existe' });
-      }
-
-      res.setHeader('Content-Type', 'application/gpx+xml');
-      res.setHeader('Content-Disposition', `attachment; filename="recorrido.gpx"`);
-      res.sendFile(filePath);
+  db.get('SELECT * FROM actividades WHERE id = ?', [id], (err, actividad) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!actividad) {
+      return res.status(404).json({ error: 'Actividad no encontrada' });
     }
-  );
+
+    // 1. Si ya existe un archivo GPX físico asociado
+    if (actividad.rutaGpxCompleto) {
+      const filePath = path.join(uploadsPath, actividad.rutaGpxCompleto);
+      if (fs.existsSync(filePath)) {
+        res.setHeader('Content-Type', 'application/gpx+xml');
+        res.setHeader('Content-Disposition', `attachment; filename="recorrido_${id}.gpx"`);
+        return res.sendFile(filePath);
+      }
+    }
+
+    // 2. Si no tiene rutaGpxCompleto (o no existe el archivo), generar GPX sintético desde fotos/vídeos o plantilla limpia
+    db.all(
+      'SELECT geolocalizacion, fechaCreacion, horaCaptura, nombreArchivo FROM archivos WHERE actividadId = ? AND geolocalizacion IS NOT NULL',
+      [id],
+      (errFiles, files) => {
+        const points = [];
+        if (!errFiles && files && files.length > 0) {
+          files.forEach(f => {
+            try {
+              const geo = typeof f.geolocalizacion === 'string' ? JSON.parse(f.geolocalizacion) : f.geolocalizacion;
+              if (geo && (geo.latitud !== undefined || geo.lat !== undefined) && (geo.longitud !== undefined || geo.lng !== undefined)) {
+                points.push({
+                  lat: Number(geo.latitud !== undefined ? geo.latitud : geo.lat),
+                  lng: Number(geo.longitud !== undefined ? geo.longitud : geo.lng),
+                  ele: Number(geo.altitud || geo.ele || 0),
+                  time: f.horaCaptura || f.fechaCreacion || new Date().toISOString(),
+                  name: f.nombreArchivo || 'Foto'
+                });
+              }
+            } catch (e) {}
+          });
+        }
+
+        let gpxContent = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="TravelMemoryApp" xmlns="http://www.topografix.com/GPX/1/1">\n  <metadata>\n    <name>${(actividad.nombre || 'Recorrido').replace(/</g, '&lt;')}</name>\n  </metadata>\n  <trk>\n    <name>${(actividad.nombre || 'Recorrido').replace(/</g, '&lt;')}</name>\n    <trkseg>`;
+
+        if (points.length > 0) {
+          points.forEach(pt => {
+            gpxContent += `\n      <trkpt lat="${pt.lat}" lon="${pt.lng}">\n        <ele>${pt.ele}</ele>\n        <time>${pt.time}</time>\n        <name>${(pt.name || '').replace(/</g, '&lt;')}</name>\n      </trkpt>`;
+          });
+        }
+
+        gpxContent += `\n    </trkseg>\n  </trk>\n</gpx>`;
+
+        res.setHeader('Content-Type', 'application/gpx+xml');
+        res.setHeader('Content-Disposition', `attachment; filename="recorrido_${id}.gpx"`);
+        return res.send(gpxContent);
+      }
+    );
+  });
 });
 
 // GET PNG del mapa de una actividad
