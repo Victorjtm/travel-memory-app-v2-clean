@@ -1480,19 +1480,20 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
 
     const resultado: PaginaMedia[] = [];
+    const mapasPorArchivoId = new Map<number, PaginaMedia[]>();
+    const mapasSinArchivoObjetivo = new Map<number, PaginaMedia[]>();
     const actividadesProcesadas = new Set<number>();
 
+    // 1. Pre-procesar actividades y generar mapas parciales asignados al archivo objetivo de cada PI
     for (let i = 0; i < paginasInput.length; i++) {
       const pag = paginasInput[i];
       if (pag.esMapaAnimado) continue;
 
       const actId = pag.archivo?.actividadId;
 
-      // Solo procesamos la actividad la primera vez que la encontramos
       if (actId && !actividadesProcesadas.has(actId)) {
         actividadesProcesadas.add(actId);
         try {
-          // 1. Obtener GPX completo y parsearlo
           const gpxXml = await firstValueFrom(
             this.trackEditorService.resolveCanonicalGpxXml(actId, { flattenSegments: true })
           );
@@ -1500,7 +1501,6 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           if (gpxXml && gpxXml.trim().length > 0) {
             let points = this.gpxAnimationService.parseGpx(gpxXml);
 
-            // 2. Obtener fotos geolocalizadas de esta actividad
             const archivosActividad = await firstValueFrom(
               this.archivoService.getArchivosPorActividad(actId)
             );
@@ -1508,22 +1508,18 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               (a.tipo === 'foto' || a.tipo === 'video') && a.geolocalizacion
             );
 
-            // 3. Sincronizar multimedia con el track → marca points[i].event en los PIs
             points = this.gpxAnimationService.syncMultimedia(points, archivosGeo);
 
-            // 4. Identificar índices de PIs (puntos con event + inicio + fin del track)
-            const piIndices: number[] = [0]; // El inicio es un PI
+            const piIndices: number[] = [0];
             for (let j = 1; j < points.length - 1; j++) {
               if (points[j].event) {
                 piIndices.push(j);
               }
             }
-            piIndices.push(points.length - 1); // El final es un PI
+            piIndices.push(points.length - 1);
 
             console.log(`🗺️ Actividad #${actId}: ${points.length} puntos, ${piIndices.length} PIs detectados`);
 
-            // 5. Crear sub-segmentos entre PIs consecutivos
-            const segmentosGenerados: PaginaMedia[] = [];
             for (let s = 0; s < piIndices.length - 1; s++) {
               const startIdx = piIndices[s];
               const endIdx = piIndices[s + 1];
@@ -1531,26 +1527,22 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
               if (subSegmentPoints.length < 2) continue;
 
-              // 6. Calcular distancia del sub-segmento
               const distMetros = (subSegmentPoints[subSegmentPoints.length - 1].distAcum || 0) 
                                - (subSegmentPoints[0].distAcum || 0);
               const distKm = distMetros / 1000;
 
               console.log(`  📏 Tramo PI_${s} → PI_${s + 1}: ${distKm.toFixed(2)} km (Mínimo: ${this.distanciaMinimaAnimacionKm} km)`);
 
-              // 7. Filtrar por distancia mínima
               if (distKm >= this.distanciaMinimaAnimacionKm) {
-                // 8. Recalcular distAcum relativa al sub-segmento (desde 0)
                 const baseDistAcum = subSegmentPoints[0].distAcum || 0;
                 const baseTimeAcum = subSegmentPoints[0].timeAcum || 0;
                 const subPointsRelativos = subSegmentPoints.map(p => ({
                   ...p,
                   distAcum: (p.distAcum || 0) - baseDistAcum,
                   timeAcum: (p.timeAcum || 0) - baseTimeAcum,
-                  event: undefined // Limpiar eventos multimedia del sub-segmento
+                  event: undefined
                 }));
 
-                // 9. Generar GPX parcial del sub-segmento
                 const gpxParcial = this.trackEditorService.pointsToGpxXml(subPointsRelativos);
 
                 const paginaMapa: PaginaMedia = {
@@ -1568,22 +1560,57 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   actividadId: actId
                 };
 
-                console.log(`  ✅ Mapa animado generado: Tramo ${s + 1}, ${distKm.toFixed(1)} km, ${subPointsRelativos.length} puntos`);
-                segmentosGenerados.push(paginaMapa);
+                console.log(`  ✅ Mapa animado generado: Tramo ${s + 1}, ${distKm.toFixed(1)} km`);
+
+                // Identificar el archivo/foto de destino para intercalar el mapa justo antes
+                const targetEvent = points[endIdx]?.event;
+                const targetArchivoId = targetEvent?.archivos?.[0]?.id;
+
+                if (targetArchivoId) {
+                  if (!mapasPorArchivoId.has(targetArchivoId)) {
+                    mapasPorArchivoId.set(targetArchivoId, []);
+                  }
+                  mapasPorArchivoId.get(targetArchivoId)!.push(paginaMapa);
+                } else {
+                  if (!mapasSinArchivoObjetivo.has(actId)) {
+                    mapasSinArchivoObjetivo.set(actId, []);
+                  }
+                  mapasSinArchivoObjetivo.get(actId)!.push(paginaMapa);
+                }
               } else {
                 console.log(`  ⏩ Tramo corto omitido: ${distKm.toFixed(2)} km < ${this.distanciaMinimaAnimacionKm} km`);
               }
             }
-
-            // 10. Insertar los mapas animados ANTES de las fotos de esta actividad
-            // Los mapas van intercalados: mapa_tramo_1, fotos_PI_1, mapa_tramo_2, fotos_PI_2...
-            // Pero como las fotos están mezcladas en el flujo general del álbum,
-            // insertamos todos los mapas válidos justo antes de la primera foto de la actividad
-            resultado.push(...segmentosGenerados);
           }
         } catch (error) {
           console.warn(`⚠️ No se pudo obtener GPX para actividad #${actId}:`, error);
         }
+      }
+    }
+
+    // 2. Intercalación fluida: colocar los mapas animados justo antes de la foto del PI destino
+    const actividadesInsertadasSinTarget = new Set<number>();
+
+    for (let i = 0; i < paginasInput.length; i++) {
+      const pag = paginasInput[i];
+      if (pag.esMapaAnimado) continue;
+
+      const actId = pag.archivo?.actividadId;
+      const archivoId = pag.archivo?.id;
+
+      // Si hay mapas sin foto destino fija (ej. inicio de actividad sin foto en primer PI), colocarlos al inicio de la actividad
+      if (actId && mapasSinArchivoObjetivo.has(actId) && !actividadesInsertadasSinTarget.has(actId)) {
+        actividadesInsertadasSinTarget.add(actId);
+        const mapasInicio = mapasSinArchivoObjetivo.get(actId)!;
+        resultado.push(...mapasInicio);
+        mapasSinArchivoObjetivo.delete(actId);
+      }
+
+      // Si este archivo es la foto objetivo de uno o más mapas de tramo, insertarlos justo ANTES de esta foto
+      if (archivoId && mapasPorArchivoId.has(archivoId)) {
+        const mapasDestino = mapasPorArchivoId.get(archivoId)!;
+        resultado.push(...mapasDestino);
+        mapasPorArchivoId.delete(archivoId);
       }
 
       resultado.push(pag);
