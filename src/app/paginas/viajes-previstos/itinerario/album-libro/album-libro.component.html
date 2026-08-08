@@ -275,6 +275,8 @@
             *ngIf="paginaActual.trackGpx"
             [gpxText]="paginaActual.trackGpx" 
             [transportSegments]="paginaActual.transportSegments || []"
+            [visualSessionData]="paginaActual.visualSessionData"
+            [isHighFidelityMode]="paginaActual.isHighFidelityMode || false"
             [autoPlay]="true"
             (onAnimacionCompletada)="onFinAnimacionMapa()"
             (onCerrar)="onFinAnimacionMapa()">
@@ -561,6 +563,8 @@
           <app-gpx-animation 
             [gpxText]="paginaActualData!.trackGpx!" 
             [transportSegments]="paginaActualData?.transportSegments || []"
+            [visualSessionData]="paginaActualData?.visualSessionData"
+            [isHighFidelityMode]="paginaActualData?.isHighFidelityMode || false"
             [autoPlay]="true"
             (onAnimacionCompletada)="onFinAnimacionMapa()"
             (onCerrar)="onFinAnimacionMapa()">

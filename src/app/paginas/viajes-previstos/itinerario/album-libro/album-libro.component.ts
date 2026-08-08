@@ -46,6 +46,8 @@ interface PaginaMedia {
   trackGpx?: string;
   distanciaTramoKm?: number;
   transportSegments?: any[];
+  visualSessionData?: any;
+  isHighFidelityMode?: boolean;
   actividadId?: number;
   coordenadas?: {
     latitud: number;
@@ -1512,27 +1514,63 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   private async obtenerInformacionTransporteActividad(actId: number): Promise<{
     desglose: any[];
     transportePrincipal: string;
+    visualSessionData: any;
   }> {
     try {
-      const act = await firstValueFrom(this.actividadesItinerariosService.getById(actId));
       let desglose: any[] = [];
-      if (act?.desgloseTransporte && Array.isArray(act.desgloseTransporte) && act.desgloseTransporte.length > 0) {
-        desglose = act.desgloseTransporte;
-      } else if (act?.tramos && Array.isArray(act.tramos) && act.tramos.length > 0) {
-        desglose = act.tramos;
+      let transportePrincipal: string = '';
+      let visualSessionData: any = null;
+
+      // 1. Obtener estadísticas de la actividad (donde está desgloseTransporte real)
+      try {
+        const stats = await firstValueFrom(this.actividadesItinerariosService.obtenerEstadisticas(actId));
+        if (stats?.desgloseTransporte && Array.isArray(stats.desgloseTransporte) && stats.desgloseTransporte.length > 0) {
+          desglose = stats.desgloseTransporte;
+        }
+        if (stats?.transportePrincipal) {
+          transportePrincipal = typeof stats.transportePrincipal === 'string'
+            ? stats.transportePrincipal
+            : (stats.transportePrincipal?.nombre || stats.transportePrincipal?.tipo || '');
+        }
+      } catch (e) {
+        console.warn(`⚠️ No se pudieron obtener estadísticas para actividad #${actId}`, e);
       }
 
-      const transportePrincipal = act?.transportePrincipal ||
-        act?.perfilTransporte ||
-        act?.tipoActividadNombre ||
-        act?.nombre ||
-        (act?.tramos?.[0]?.tipo) ||
-        'walking';
+      // 2. Intentar obtener visual session data de Alta Fidelidad
+      try {
+        const sessionData = await firstValueFrom(this.actividadesItinerariosService.obtenerVisualSession(actId));
+        const layers = sessionData?.layers || sessionData?.mapState?.layers;
+        if (layers && layers.length > 0) {
+          sessionData.layers = layers;
+          visualSessionData = sessionData;
+        }
+      } catch (e) {
+        // Silencioso si no hay visual session
+      }
 
-      return { desglose, transportePrincipal };
+      // 3. Si falta transportePrincipal o desglose, consultar los datos de la actividad
+      const act = await firstValueFrom(this.actividadesItinerariosService.getById(actId));
+      if (desglose.length === 0) {
+        if (act?.desgloseTransporte && Array.isArray(act.desgloseTransporte) && act.desgloseTransporte.length > 0) {
+          desglose = act.desgloseTransporte;
+        } else if (act?.tramos && Array.isArray(act.tramos) && act.tramos.length > 0) {
+          desglose = act.tramos;
+        }
+      }
+
+      if (!transportePrincipal) {
+        transportePrincipal = act?.transportePrincipal ||
+          act?.perfilTransporte ||
+          act?.tipoActividadNombre ||
+          act?.nombre ||
+          (act?.tramos?.[0]?.tipo) ||
+          'walking';
+      }
+
+      return { desglose, transportePrincipal, visualSessionData };
     } catch (err) {
       console.warn(`⚠️ No se pudo obtener info de transporte para actividad #${actId}`, err);
-      return { desglose: [], transportePrincipal: 'walking' };
+      return { desglose: [], transportePrincipal: 'walking', visualSessionData: null };
     }
   }
 
@@ -1588,15 +1626,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           if (gpxXml && gpxXml.trim().length > 0) {
             let points = this.gpxAnimationService.parseGpx(gpxXml);
 
-            // Cargar info de transporte de la actividad y etiquetar puntos GPX
-            const { desglose, transportePrincipal } = await this.obtenerInformacionTransporteActividad(actId);
+            // Cargar info de transporte y visualSession de la actividad y etiquetar puntos GPX
+            const { desglose, transportePrincipal, visualSessionData } = await this.obtenerInformacionTransporteActividad(actId);
             const modoBaseNorm = this.normalizarModoTransporte(transportePrincipal);
 
             if (desglose && Array.isArray(desglose) && desglose.length > 0) {
               points = this.gpxAnimationService.applyTransportSegments(points, desglose);
             } else {
               points.forEach(p => {
-                if (!p.mode || p.mode === 'walking' || p.mode === 'transport') {
+                if (!p.mode || p.mode === 'transport') {
                   p.mode = modoBaseNorm;
                   p.hfMode = modoBaseNorm;
                 }
@@ -1620,7 +1658,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             }
             piIndices.push(points.length - 1);
 
-            console.log(`🗺️ Actividad #${actId}: ${points.length} puntos, ${piIndices.length} PIs detectados, modo base: ${modoBaseNorm}`);
+            console.log(`🗺️ Actividad #${actId}: ${points.length} puntos, ${piIndices.length} PIs detectados, modo base: ${modoBaseNorm}, desglose: ${desglose.length} segs, HF: ${!!visualSessionData}`);
 
             for (let s = 0; s < piIndices.length - 1; s++) {
               const startIdx = piIndices[s];
@@ -1708,7 +1746,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   trackGpx: gpxParcial,
                   distanciaTramoKm: distKm,
                   actividadId: actId,
-                  transportSegments: subTransportSegments
+                  transportSegments: subTransportSegments,
+                  visualSessionData: visualSessionData,
+                  isHighFidelityMode: !!visualSessionData
                 };
 
                 console.log(`  ✅ Mapa animado generado: Tramo ${s + 1}, ${distKm.toFixed(1)} km, modos: ${subTransportSegments.map(t => t.tipo).join(', ')}`);
