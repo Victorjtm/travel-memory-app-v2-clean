@@ -1,22 +1,71 @@
 .recuerdos-container {
-    padding: 20px;
-    text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: appFadeUp 420ms var(--app-smooth) both;
+}
+
+.page-title {
+  font-size: clamp(2.2rem, 5vw, 4.8rem);
+}
+
+.recuerdos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recuerdo-card {
+  min-height: 190px;
+  padding: 22px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: var(--app-shadow-sm);
+  backdrop-filter: var(--app-blur);
+  transition: transform var(--app-fast), box-shadow var(--app-fast), border-color var(--app-fast);
+
+  i {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    color: var(--app-primary-strong);
+    background: rgba(10, 132, 255, 0.1);
   }
-  
-  .recuerdos-container ul {
-    list-style: none;
-    padding: 0;
+
+  h2 {
+    margin: 18px 0 8px;
+    color: var(--app-ink);
+    font-size: 1.2rem;
+    line-height: 1.2;
   }
-  
-  .recuerdos-container .btn {
-    background-color: #f44336;
-    color: white;
-    padding: 10px 20px;
-    text-decoration: none;
-    border-radius: 5px;
+
+  p {
+    margin: 0;
+    color: var(--app-text-muted);
   }
-  
-  .recuerdos-container .btn:hover {
-    background-color: #e53935;
+
+  &:hover {
+    transform: translateY(-4px);
+    border-color: rgba(10, 132, 255, 0.24);
+    box-shadow: var(--app-shadow-md);
   }
-  
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 620px) {
+  .actions .app-button {
+    width: 100%;
+  }
+}

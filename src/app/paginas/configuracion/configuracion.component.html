@@ -1,31 +1,37 @@
 <section class="configuracion">
-  <h2>Configuración de la Aplicación</h2>
-  
+  <div class="page-header">
+    <p class="page-kicker">Sistema</p>
+    <h1 class="page-title">Ajustes</h1>
+    <p class="page-subtitle">Mantenimiento, catalogos y herramientas para mantener la biblioteca de viajes limpia.</p>
+  </div>
+
   <div class="opciones-configuracion">
     <a routerLink="/configuracion/tipos-actividad" class="opcion">
-      ➕ Tipos de Actividad
-    </a>
-    
-    <a routerLink="/configuracion/archivos-sin-asignacion" class="opcion">
-      📁 Archivos sin Asignación
-    </a>
-    
-    <!-- 🆕 NUEVO BOTÓN -->
-    <button 
-      class="opcion opcion-procesamiento" 
-      (click)="procesarGeolocalizacionMasiva()"
-      [disabled]="procesando">
-      <span *ngIf="!procesando">
-        📍 Extraer Geolocalización de Archivos
+      <i class="fa-solid fa-tags"></i>
+      <span>
+        <strong>Tipos de actividad</strong>
+        <small>Define categorias para ordenar itinerarios y archivos.</small>
       </span>
-      <span *ngIf="procesando">
-        ⏳ Procesando... Por favor espera
+    </a>
+
+    <a routerLink="/configuracion/archivos-sin-asignacion" class="opcion">
+      <i class="fa-solid fa-folder-tree"></i>
+      <span>
+        <strong>Archivos sin asignacion</strong>
+        <small>Revisa contenido pendiente de clasificar.</small>
+      </span>
+    </a>
+
+    <button class="opcion opcion-procesamiento" (click)="procesarGeolocalizacionMasiva()" [disabled]="procesando">
+      <i class="fa-solid" [ngClass]="procesando ? 'fa-spinner fa-spin' : 'fa-location-crosshairs'"></i>
+      <span>
+        <strong>{{ procesando ? 'Procesando geolocalizacion' : 'Extraer geolocalizacion' }}</strong>
+        <small>{{ procesando ? 'Esto puede tardar varios minutos.' : 'Busca coordenadas GPS dentro de tus fotos.' }}</small>
       </span>
     </button>
   </div>
 
-  <!-- Barra de progreso (opcional) -->
-  <div *ngIf="procesando" class="progreso-container">
+  <div *ngIf="procesando" class="progreso-container app-card">
     <mat-progress-bar mode="indeterminate" color="primary"></mat-progress-bar>
     <p class="progreso-texto">Extrayendo coordenadas GPS de las fotos...</p>
   </div>

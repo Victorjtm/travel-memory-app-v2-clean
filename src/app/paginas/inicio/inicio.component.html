@@ -1,144 +1,175 @@
-<div class="inicio-container">
-  <h1>{{ mensajeBienvenida }}</h1>
-  <p>Comienza a guardar tus recuerdos de viaje aquí.</p>
+<section class="inicio-container">
+  <div class="hero">
+    <div class="hero-copy">
+      <p class="page-kicker">Travel Memory App</p>
+      <h1 class="page-title">Tus viajes, de idea a recuerdo.</h1>
+      <p class="page-subtitle">
+        Planifica escapadas con IA, importa rutas desde el movil y organiza cada actividad, foto y archivo en una experiencia cuidada.
+      </p>
 
-  <a routerLink="/planificar-viaje" class="btn">Planificar Viaje</a>
-  <a routerLink="/viajes-futuros" class="btn">Viajes Futuros</a>
-  <a routerLink="/viajes-previstos" class="btn">Recuerdos</a>
+      <div class="hero-actions">
+        <a routerLink="/planificar-viaje" class="app-button primary">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          Planificar viaje
+        </a>
+        <button class="app-button success" (click)="importarDesdeMovil()" title="Importar tracking desde AudioPhotoApp">
+          <i class="fa-solid fa-arrow-up-from-bracket"></i>
+          Importar desde movil
+        </button>
+      </div>
+    </div>
 
-  <!-- Nuevo botón para seleccionar archivos -->
+    <div class="hero-panel app-card">
+      <div class="panel-toolbar">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <div class="journey-map">
+        <div class="route-line"></div>
+        <span class="pin start"><i class="fa-solid fa-location-dot"></i></span>
+        <span class="pin middle"><i class="fa-solid fa-camera"></i></span>
+        <span class="pin end"><i class="fa-solid fa-flag-checkered"></i></span>
+      </div>
+      <div class="panel-stats">
+        <div>
+          <strong>3</strong>
+          <span>areas clave</span>
+        </div>
+        <div>
+          <strong>IA</strong>
+          <span>planificador</span>
+        </div>
+        <div>
+          <strong>GPS</strong>
+          <span>memorias</span>
+        </div>
+      </div>
+    </div>
+  </div>
 
+  <div class="quick-grid" aria-label="Accesos principales">
+    <a routerLink="/viajes-futuros" class="quick-card">
+      <i class="fa-solid fa-calendar-days"></i>
+      <span>
+        <strong>Viajes futuros</strong>
+        <small>Consulta planes guardados, fechas y estado.</small>
+      </span>
+    </a>
+    <a routerLink="/viajes-previstos" class="quick-card">
+      <i class="fa-solid fa-images"></i>
+      <span>
+        <strong>Recuerdos</strong>
+        <small>Explora viajes importados, itinerarios y albumes.</small>
+      </span>
+    </a>
+    <a routerLink="/formulario-archivos-actividades-itinerario" class="quick-card">
+      <i class="fa-solid fa-folder-open"></i>
+      <span>
+        <strong>Seleccionar archivos</strong>
+        <small>Anade material asociado a actividades.</small>
+      </span>
+    </a>
+    <a routerLink="/configuracion" class="quick-card">
+      <i class="fa-solid fa-sliders"></i>
+      <span>
+        <strong>Ajustes</strong>
+        <small>Gestiona catalogos y mantenimiento.</small>
+      </span>
+    </a>
+  </div>
+</section>
 
-  <!-- Nuevo botón para seleccionar archivos -->
-  <a routerLink="/formulario-archivos-actividades-itinerario" class="btn">
-    Seleccionar Archivos
-  </a>
-
-  <!-- ====================================================================== -->
-  <!-- NUEVO: Botón Importar desde Móvil                                     -->
-  <!-- ====================================================================== -->
-  <button class="btn btn-import" (click)="importarDesdeMovil()" title="Importar tracking desde AudioPhotoApp">
-    📤 Importar desde Móvil
-  </button>
-</div>
-
-<!-- ====================================================================== -->
-<!-- NUEVO: Modal de Importación                                           -->
-<!-- ====================================================================== -->
 <div class="modal-overlay" *ngIf="mostrarModalImport" (click)="cancelarImportacion()">
   <div class="modal-import" (click)="$event.stopPropagation()">
-
-    <!-- Header del Modal -->
     <div class="modal-header">
-      <h2>🚀 Importar con Progreso Real</h2>
-      <button class="btn-close" (click)="cancelarImportacion()" [disabled]="importando">
-        ✕
+      <div>
+        <p class="page-kicker">Importacion</p>
+        <h2>Preparar viaje importado</h2>
+      </div>
+      <button class="btn-close" (click)="cancelarImportacion()" [disabled]="importando" aria-label="Cerrar">
+        <i class="fa-solid fa-xmark"></i>
       </button>
     </div>
 
-    <!-- Contenido del Modal -->
     <div class="modal-body">
-
-      <!-- ============================================ -->
-      <!-- Vista de Configuración (antes de importar)  -->
-      <!-- ============================================ -->
       <div *ngIf="!importando">
-
-        <!-- Información del Tracking Detectado -->
-        <div class="tracking-info" *ngIf="manifestData">
-          <h3>🗺️ Tracking Detectado</h3>
+        <div class="tracking-info app-card" *ngIf="manifestData">
+          <h3>Tracking detectado</h3>
           <div class="info-grid">
             <div class="info-item">
-              <strong>Nombre:</strong>
+              <strong>Nombre</strong>
               <span>{{ manifestData.nombre }}</span>
             </div>
             <div class="info-item">
-              <strong>Fecha:</strong>
+              <strong>Fecha</strong>
               <span>{{ manifestData.fecha_exportacion | date:'dd/MM/yyyy HH:mm' }}</span>
             </div>
             <div class="info-item">
-              <strong>Distancia:</strong>
+              <strong>Distancia</strong>
               <span>{{ manifestData.estadisticas.distancia_km }} km</span>
             </div>
             <div class="info-item">
-              <strong>Duración:</strong>
+              <strong>Duracion</strong>
               <span>{{ manifestData.estadisticas.duracion_formateada }}</span>
             </div>
             <div class="info-item">
-              <strong>Fotos:</strong>
+              <strong>Fotos</strong>
               <span>{{ manifestData.estadisticas.num_fotos }}</span>
             </div>
             <div class="info-item">
-              <strong>Videos:</strong>
+              <strong>Videos</strong>
               <span>{{ manifestData.estadisticas.num_videos }}</span>
             </div>
             <div class="info-item">
-              <strong>Audios:</strong>
+              <strong>Audios</strong>
               <span>{{ manifestData.estadisticas.num_audios }}</span>
             </div>
             <div class="info-item">
-              <strong>Archivos:</strong>
+              <strong>Archivos</strong>
               <span>{{ archivosSeleccionados.length }} ({{ getTamanoTotal() }})</span>
             </div>
           </div>
         </div>
 
-        <!-- AVISO DE VIDEOS DETECTADOS -->
         <div class="video-alert" *ngIf="videosRequeridos">
           <div class="alert-content" [class.success]="videosSeleccionados" [class.ignored]="ignorarVideos">
             <div class="icon">
-              {{ videosSeleccionados ? '✅' : (ignorarVideos ? '⚠️' : '📹') }}
+              <i class="fa-solid" [ngClass]="videosSeleccionados ? 'fa-check' : (ignorarVideos ? 'fa-triangle-exclamation' : 'fa-video')"></i>
             </div>
             <div class="text">
               <h4>
-                {{ videosSeleccionados ? 'Videos listos para importar' : (ignorarVideos ? 'Importación de videos
-                omitida' : 'Videos detectados') }}
+                {{ videosSeleccionados ? 'Videos listos para importar' : (ignorarVideos ? 'Importacion de videos omitida' : 'Videos detectados') }}
               </h4>
               <p *ngIf="!videosSeleccionados && !ignorarVideos">
-                Este viaje contiene videos. Por favor selecciona la carpeta: <br>
-                <code>.../DCIM/AudioPhotoApp/videos</code>
+                Selecciona la carpeta <code>DCIM/AudioPhotoApp/videos</code> para incluirlos.
               </p>
-              <p *ngIf="ignorarVideos">
-                Se importará el viaje sin los archivos de video.
-              </p>
-              <p *ngIf="videosSeleccionados">
-                Se han cargado {{ archivosVideo.length }} videos correctamente.
-              </p>
+              <p *ngIf="ignorarVideos">Se importara el viaje sin archivos de video.</p>
+              <p *ngIf="videosSeleccionados">Se han cargado {{ archivosVideo.length }} videos correctamente.</p>
             </div>
           </div>
 
           <div class="video-actions" *ngIf="!videosSeleccionados">
-            <button *ngIf="!ignorarVideos" class="btn btn-video" (click)="seleccionarCarpetaVideos()">
-              📂 Seleccionar Carpeta de Videos
+            <button *ngIf="!ignorarVideos" class="app-button" (click)="seleccionarCarpetaVideos()">
+              <i class="fa-solid fa-folder-open"></i>
+              Seleccionar videos
             </button>
-
-            <button class="btn btn-ignore" (click)="ignorarVideos = !ignorarVideos">
-              {{ ignorarVideos ? '🔄 Volver a intentar' : '⏭️ Omitir videos' }}
+            <button class="app-button" (click)="ignorarVideos = !ignorarVideos">
+              <i class="fa-solid" [ngClass]="ignorarVideos ? 'fa-rotate-left' : 'fa-forward'"></i>
+              {{ ignorarVideos ? 'Volver a intentar' : 'Omitir videos' }}
             </button>
           </div>
         </div>
 
-        <!-- Separador -->
-        <hr class="divider">
-
-        <!-- Formulario de Configuración -->
         <div class="config-form">
-          <h3>⚙️ Configuración</h3>
-
-          <!-- Campo: Destino -->
+          <h3>Datos del viaje</h3>
           <div class="form-group">
-            <label for="destino">
-              🗺️ Destino del viaje:
-            </label>
-            <input type="text" id="destino" [(ngModel)]="destinoViaje" placeholder="Ej: Málaga, España"
-              class="form-input" required>
+            <label for="destino">Destino del viaje</label>
+            <input type="text" id="destino" [(ngModel)]="destinoViaje" placeholder="Ej: Malaga, Espana" class="form-input" required>
           </div>
 
-          <!-- Campo: Tipo de Actividad -->
           <div class="form-group">
-            <label for="tipoActividad">
-              🏃 Tipo de actividad:
-            </label>
+            <label for="tipoActividad">Tipo de actividad</label>
             <select id="tipoActividad" [(ngModel)]="tipoActividadId" class="form-select" required>
               <option [value]="null" disabled selected>Selecciona una actividad</option>
               <option *ngFor="let tipo of tiposActividad" [value]="tipo.id">
@@ -149,38 +180,22 @@
         </div>
       </div>
 
-      <!-- ============================================ -->
-      <!-- Vista de Progreso (durante importación)     -->
-      <!-- ============================================ -->
       <div *ngIf="importando" class="progress-container">
-        <h3>⏳ Importando...</h3>
-
-        <!-- Barra de Progreso -->
+        <h3>Importando archivos</h3>
         <div class="progress-bar-container">
-          <div class="progress-bar" [style.width.%]="progresoSubida">
-            {{ progresoSubida }}%
-          </div>
+          <div class="progress-bar" [style.width.%]="progresoSubida">{{ progresoSubida }}%</div>
         </div>
-
-        <!-- Mensaje de Progreso -->
         <p class="progress-message">{{ mensajeProgreso }}</p>
-
-        <!-- Spinner -->
         <div class="spinner"></div>
       </div>
-
     </div>
 
-    <!-- Footer del Modal -->
     <div class="modal-footer">
-      <button class="btn btn-cancel" (click)="cancelarImportacion()" [disabled]="importando">
-        Cancelar
-      </button>
-      <button class="btn btn-confirm" (click)="confirmarImportacion()"
+      <button class="app-button" (click)="cancelarImportacion()" [disabled]="importando">Cancelar</button>
+      <button class="app-button primary" (click)="confirmarImportacion()"
         [disabled]="importando || !destinoViaje || !tipoActividadId || (videosRequeridos && !videosSeleccionados && !ignorarVideos)">
         Importar
       </button>
     </div>
-
   </div>
 </div>

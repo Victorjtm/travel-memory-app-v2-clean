@@ -1,1 +1,320 @@
-/* You can add global styles to this file, and also import other style files */
+:root {
+  color-scheme: light;
+  --app-bg: #f5f5f7;
+  --app-bg-elevated: rgba(255, 255, 255, 0.78);
+  --app-surface: #ffffff;
+  --app-surface-soft: #fbfbfd;
+  --app-surface-muted: #f0f2f5;
+  --app-text: #121417;
+  --app-text-muted: #626a73;
+  --app-text-subtle: #8a929d;
+  --app-border: rgba(18, 20, 23, 0.1);
+  --app-border-strong: rgba(18, 20, 23, 0.16);
+  --app-primary: #0a84ff;
+  --app-primary-strong: #0068d6;
+  --app-accent: #36b37e;
+  --app-warning: #f59e0b;
+  --app-danger: #ff453a;
+  --app-ink: #1d1d1f;
+  --app-radius-xs: 6px;
+  --app-radius-sm: 8px;
+  --app-radius-md: 14px;
+  --app-radius-lg: 24px;
+  --app-shadow-sm: 0 1px 2px rgba(18, 20, 23, 0.05), 0 8px 24px rgba(18, 20, 23, 0.06);
+  --app-shadow-md: 0 18px 55px rgba(18, 20, 23, 0.11);
+  --app-shadow-lg: 0 28px 90px rgba(18, 20, 23, 0.16);
+  --app-blur: blur(22px) saturate(170%);
+  --app-page-pad: clamp(18px, 4vw, 56px);
+  --app-content: 1180px;
+  --app-fast: 160ms cubic-bezier(.2, .8, .2, 1);
+  --app-smooth: 360ms cubic-bezier(.2, .8, .2, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--app-bg);
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  color: var(--app-text);
+  background:
+    radial-gradient(circle at 18% -12%, rgba(10, 132, 255, 0.12), transparent 30vw),
+    radial-gradient(circle at 88% 8%, rgba(54, 179, 126, 0.11), transparent 26vw),
+    linear-gradient(180deg, #fbfbfd 0%, #f5f5f7 48%, #f0f2f5 100%);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(18, 20, 23, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(18, 20, 23, 0.03) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.65), transparent 70%);
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(10, 132, 255, 0.25);
+  outline-offset: 3px;
+}
+
+::selection {
+  color: #ffffff;
+  background: var(--app-primary);
+}
+
+.page-shell,
+.inicio-container,
+.viajes-container,
+.recuerdos-container,
+.configuracion {
+  width: min(var(--app-content), calc(100vw - var(--app-page-pad) * 2));
+  margin: 0 auto;
+}
+
+.page-kicker {
+  margin: 0 0 10px;
+  color: var(--app-primary-strong);
+  font-size: 0.78rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.page-title {
+  margin: 0;
+  color: var(--app-ink);
+  font-size: clamp(2.25rem, 5vw, 5.8rem);
+  font-weight: 820;
+  letter-spacing: 0;
+  line-height: 0.96;
+}
+
+.page-subtitle {
+  max-width: 720px;
+  margin: 18px 0 0;
+  color: var(--app-text-muted);
+  font-size: clamp(1rem, 2vw, 1.28rem);
+  line-height: 1.55;
+}
+
+.app-card {
+  background: var(--app-bg-elevated);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  box-shadow: var(--app-shadow-sm);
+  backdrop-filter: var(--app-blur);
+}
+
+.app-button,
+.btn,
+.btn-primary,
+.btn-agregar,
+.btn-retry,
+.opcion,
+.btn-plan,
+.btn-volver {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 17px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  color: var(--app-text);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 1px 1px rgba(18, 20, 23, 0.04);
+  font-size: 0.94rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    transform var(--app-fast),
+    box-shadow var(--app-fast),
+    border-color var(--app-fast),
+    background var(--app-fast),
+    color var(--app-fast);
+}
+
+.app-button:hover,
+.btn:hover,
+.btn-primary:hover,
+.btn-agregar:hover,
+.btn-retry:hover,
+.opcion:hover,
+.btn-plan:hover,
+.btn-volver:hover {
+  transform: translateY(-2px);
+  border-color: rgba(10, 132, 255, 0.26);
+  box-shadow: var(--app-shadow-sm);
+}
+
+.app-button:active,
+.btn:active,
+.btn-primary:active,
+.btn-agregar:active,
+.btn-retry:active,
+.opcion:active,
+.btn-plan:active,
+.btn-volver:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.app-button.primary,
+.btn-primary,
+.btn-confirm,
+.btn-agregar {
+  border-color: transparent;
+  color: #ffffff;
+  background: linear-gradient(180deg, var(--app-primary), var(--app-primary-strong));
+  box-shadow: 0 12px 30px rgba(10, 132, 255, 0.22);
+}
+
+.app-button.danger,
+.btn-eliminar {
+  border-color: transparent;
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff6961, var(--app-danger));
+}
+
+.app-button.success,
+.btn-import,
+.btn-guardar {
+  border-color: transparent;
+  color: #ffffff;
+  background: linear-gradient(180deg, #42c58a, #209a67);
+}
+
+.app-button.warning,
+.btn-unificar,
+.btn-itinerarios,
+.btn-mapa,
+.btn-toggle-vista,
+.btn-actualizar,
+.btn-album {
+  border-color: transparent;
+  color: #ffffff;
+  background: linear-gradient(180deg, #30363f, #171a20);
+}
+
+.app-chip,
+.badge-dias,
+.badge-dias-secundario,
+.etiqueta-tiempo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 5px 10px;
+  border: 1px solid rgba(10, 132, 255, 0.16);
+  border-radius: 999px;
+  color: var(--app-primary-strong);
+  background: rgba(10, 132, 255, 0.09);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+input,
+select,
+textarea {
+  color: var(--app-text);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--app-border-strong);
+  border-radius: var(--app-radius-sm);
+  transition: border-color var(--app-fast), box-shadow var(--app-fast), background var(--app-fast);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: rgba(10, 132, 255, 0.55);
+  box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.12);
+  outline: none;
+}
+
+.spinner {
+  border-color: rgba(10, 132, 255, 0.14);
+  border-top-color: var(--app-primary);
+}
+
+@keyframes appFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes appScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --app-page-pad: 16px;
+  }
+
+  body {
+    font-size: 15px;
+  }
+}

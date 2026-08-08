@@ -1,11 +1,26 @@
-<div class="recuerdos-container">
-    <h1>Mis Recuerdos</h1>
-    <ul>
-      <li *ngFor="let recuerdo of recuerdos">
-        <h2>{{ recuerdo.nombre }}</h2>
-        <p>{{ recuerdo.descripcion }}</p>
-      </li>
-    </ul>
-    <a routerLink="/inicio" class="btn">Volver al Inicio</a>
+<section class="recuerdos-container">
+  <div class="page-header">
+    <p class="page-kicker">Archivo</p>
+    <h1 class="page-title">Mis recuerdos</h1>
+    <p class="page-subtitle">Una vista ligera para revisar recuerdos destacados y volver rapidamente a la biblioteca completa.</p>
   </div>
-  
+
+  <ul class="recuerdos-grid">
+    <li *ngFor="let recuerdo of recuerdos" class="recuerdo-card">
+      <i class="fa-solid fa-image"></i>
+      <h2>{{ recuerdo.nombre }}</h2>
+      <p>{{ recuerdo.descripcion }}</p>
+    </li>
+  </ul>
+
+  <div class="actions">
+    <a routerLink="/" class="app-button">
+      <i class="fa-solid fa-house"></i>
+      Volver al inicio
+    </a>
+    <a routerLink="/viajes-previstos" class="app-button primary">
+      <i class="fa-solid fa-images"></i>
+      Ver biblioteca
+    </a>
+  </div>
+</section>

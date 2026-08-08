@@ -1,323 +1,249 @@
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ESTILOS: LISTADO DE VIAJES FUTUROS
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 .viajes-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(22px, 4vw, 36px);
+  animation: appFadeUp 420ms var(--app-smooth) both;
+}
 
-  // ══════════════════════════════════════════════════════════════════════
-  // HEADER
-  // ══════════════════════════════════════════════════════════════════════
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
 
-  .header {
-    text-align: center;
-    margin-bottom: 40px;
-
-    h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      color: #1a1a1a;
-      margin-bottom: 10px;
-    }
-
-    .subtitle {
-      font-size: 1.1rem;
-      color: #666;
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════
-  // ESTADOS: CARGANDO, ERROR, VACÍO
-  // ══════════════════════════════════════════════════════════════════════
-
-  .loading-state,
-  .error-state,
-  .empty-state {
-    text-align: center;
-    padding: 60px 20px;
-  }
-
-  .loading-state {
-    .spinner {
-      width: 50px;
-      height: 50px;
-      margin: 0 auto 20px;
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #008CBA;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-
-    p {
-      color: #666;
-      font-size: 1.1rem;
-    }
-  }
-
-  .error-state {
-    .error-icon {
-      font-size: 4rem;
-      margin-bottom: 20px;
-    }
-
-    h3 {
-      color: #d32f2f;
-      margin-bottom: 10px;
-    }
-
-    p {
-      color: #666;
-      margin-bottom: 20px;
-    }
-
-    .btn-retry {
-      background-color: #008CBA;
-      color: white;
-      border: none;
-      padding: 12px 24px;
-      font-size: 1rem;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-
-      &:hover {
-        background-color: #007bb5;
-        transform: translateY(-2px);
-      }
-    }
-  }
-
-  .empty-state {
-    .empty-icon {
-      font-size: 5rem;
-      margin-bottom: 20px;
-    }
-
-    h3 {
-      color: #1a1a1a;
-      margin-bottom: 10px;
-    }
-
-    p {
-      color: #666;
-      margin-bottom: 30px;
-    }
-
-    .btn-primary {
-      display: inline-block;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 14px 28px;
-      text-decoration: none;
-      border-radius: 8px;
-      font-weight: 600;
-      transition: all 0.3s ease;
-
-      &:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-      }
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════
-  // GRID DE VIAJES
-  // ══════════════════════════════════════════════════════════════════════
-
-  .viajes-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 24px;
-    margin-bottom: 80px;
-  }
-
-  // ══════════════════════════════════════════════════════════════════════
-  // CARD DE VIAJE
-  // ══════════════════════════════════════════════════════════════════════
-
-  .viaje-card {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    position: relative;
-
-    &:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-    }
-
-    // Estado migrado: borde verde
-    &[data-estado="migrado"] {
-      border: 2px solid #4caf50;
-    }
-
-    .viaje-badge {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(255, 255, 255, 0.95);
-      padding: 6px 12px;
-      border-radius: 20px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-
-      .icono {
-        font-size: 1rem;
-      }
-
-      .texto {
-        text-transform: capitalize;
-      }
-    }
-
-    .viaje-content {
-      padding: 24px;
-
-      .viaje-nombre {
-        font-size: 1.4rem;
-        font-weight: 700;
-        color: #1a1a1a;
-        margin-bottom: 12px;
-        margin-top: 8px;
-      }
-
-      .viaje-destino,
-      .viaje-fechas {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 10px;
-        color: #555;
-        font-size: 0.95rem;
-
-        .icon {
-          font-size: 1.1rem;
-        }
-
-        .separador {
-          margin: 0 4px;
-          color: #999;
-        }
-      }
-
-      .viaje-tiempo {
-        margin: 16px 0;
-
-        .etiqueta-tiempo {
-          display: inline-block;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          padding: 6px 14px;
-          border-radius: 20px;
-          font-size: 0.85rem;
-          font-weight: 600;
-        }
-      }
-
-      .viaje-descripcion {
-        color: #666;
-        font-size: 0.9rem;
-        line-height: 1.5;
-        margin-top: 12px;
-
-        // ✅ Limitar a 2 líneas con ellipsis (con propiedad estándar)
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        line-clamp: 2; // Propiedad estándar para compatibilidad
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-    }
-
-    .viaje-footer {
-      padding: 16px 24px;
-      background: #f8f9fa;
-      border-top: 1px solid #e9ecef;
-
-      .ver-mas {
-        color: #008CBA;
-        font-weight: 600;
-        font-size: 0.9rem;
-      }
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════
-  // BOTÓN FLOTANTE
-  // ══════════════════════════════════════════════════════════════════════
-
-  .btn-float {
-    position: fixed;
-    bottom: 30px;
-    right: 30px;
-    width: 60px;
-    height: 60px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2rem;
-    text-decoration: none;
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-    transition: all 0.3s ease;
-    z-index: 999;
-
-    &:hover {
-      transform: scale(1.1) rotate(90deg);
-      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════
-  // ANIMACIONES
-  // ══════════════════════════════════════════════════════════════════════
-
-  @keyframes spin {
-    0% {
-      transform: rotate(0deg);
-    }
-
-    100% {
-      transform: rotate(360deg);
-    }
+  .page-title {
+    font-size: clamp(2.2rem, 5vw, 4.8rem);
   }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// RESPONSIVE
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+.loading-state,
+.error-state,
+.empty-state {
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+  padding: 34px;
+  text-align: center;
 
-@media (max-width: 768px) {
-  .viajes-container {
-    padding: 15px;
+  p {
+    max-width: 520px;
+    margin: 0;
+    color: var(--app-text-muted);
+  }
+}
 
-    .header h1 {
-      font-size: 2rem;
-    }
+.loading-state .spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(10, 132, 255, 0.14);
+  border-top-color: var(--app-primary);
+  border-radius: 999px;
+  animation: spin 850ms linear infinite;
+}
 
-    .viajes-grid {
-      grid-template-columns: 1fr;
-      gap: 16px;
-    }
+.error-state,
+.empty-state {
+  i {
+    width: 58px;
+    height: 58px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 18px;
+    color: var(--app-primary-strong);
+    background: rgba(10, 132, 255, 0.1);
+    font-size: 1.45rem;
+  }
 
-    .btn-float {
-      bottom: 20px;
-      right: 20px;
-      width: 50px;
-      height: 50px;
-      font-size: 1.6rem;
-    }
+  h3 {
+    margin: 4px 0 0;
+    color: var(--app-ink);
+    font-size: 1.35rem;
+  }
+}
+
+.error-state i {
+  color: #b42318;
+  background: rgba(255, 69, 58, 0.1);
+}
+
+.viajes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 16px;
+  padding-bottom: 82px;
+}
+
+.viaje-card {
+  position: relative;
+  min-height: 310px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.74)),
+    radial-gradient(circle at top right, rgba(10, 132, 255, 0.14), transparent 46%);
+  box-shadow: var(--app-shadow-sm);
+  cursor: pointer;
+  backdrop-filter: var(--app-blur);
+  transition: transform var(--app-fast), box-shadow var(--app-fast), border-color var(--app-fast);
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(120deg, rgba(255, 255, 255, 0.55), transparent 34%);
+  }
+
+  &:hover {
+    transform: translateY(-6px);
+    border-color: rgba(10, 132, 255, 0.28);
+    box-shadow: var(--app-shadow-md);
+  }
+
+  &[data-estado="migrado"] {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.93), rgba(255, 255, 255, 0.76)),
+      radial-gradient(circle at top right, rgba(54, 179, 126, 0.18), transparent 48%);
+  }
+}
+
+.card-top {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 16px 0;
+}
+
+.viaje-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  color: var(--app-text-muted);
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 0.78rem;
+  font-weight: 780;
+  text-transform: capitalize;
+}
+
+.viaje-content {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  padding: 18px 20px 20px;
+}
+
+.viaje-nombre {
+  min-height: 3.1em;
+  margin: 0 0 18px;
+  color: var(--app-ink);
+  font-size: 1.55rem;
+  font-weight: 820;
+  line-height: 1.06;
+  letter-spacing: 0;
+}
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin-bottom: 11px;
+  color: var(--app-text-muted);
+  font-size: 0.92rem;
+  font-weight: 610;
+
+  i {
+    width: 16px;
+    color: var(--app-primary-strong);
+    text-align: center;
+  }
+}
+
+.separador {
+  color: var(--app-text-subtle);
+}
+
+.etiqueta-tiempo {
+  margin: 8px 0 0;
+}
+
+.viaje-descripcion {
+  display: -webkit-box;
+  margin: 16px 0 0;
+  overflow: hidden;
+  color: var(--app-text-muted);
+  font-size: 0.92rem;
+  line-height: 1.48;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.viaje-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 20px;
+  border-top: 1px solid var(--app-border);
+  color: var(--app-primary-strong);
+  background: rgba(255, 255, 255, 0.48);
+  font-size: 0.9rem;
+  font-weight: 780;
+}
+
+.btn-float {
+  position: fixed;
+  right: clamp(18px, 4vw, 36px);
+  bottom: clamp(20px, 5vw, 38px);
+  width: 58px;
+  height: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+  color: #ffffff;
+  background: linear-gradient(180deg, var(--app-primary), var(--app-primary-strong));
+  box-shadow: 0 20px 40px rgba(10, 132, 255, 0.32);
+  text-decoration: none;
+  transition: transform var(--app-fast), box-shadow var(--app-fast);
+  z-index: 40;
+
+  &:hover {
+    transform: translateY(-4px) scale(1.03);
+    box-shadow: 0 26px 54px rgba(10, 132, 255, 0.38);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 760px) {
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .page-header .app-button {
+    width: 100%;
+  }
+
+  .viajes-grid {
+    grid-template-columns: 1fr;
   }
 }

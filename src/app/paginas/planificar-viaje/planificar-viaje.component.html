@@ -1,17 +1,15 @@
-<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
-<!-- PÁGINA: PLANIFICAR VIAJE CON IA                                       -->
-<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
-
-<div class="planificar-container">
-
-    <!-- Header opcional con botón volver -->
-    <div class="page-header">
-        <button class="btn-volver" routerLink="/" title="Volver al inicio">
-            ← Volver
-        </button>
+<section class="planificar-container">
+  <div class="page-header">
+    <a class="btn-volver" routerLink="/" title="Volver al inicio">
+      <i class="fa-solid fa-arrow-left"></i>
+      Inicio
+    </a>
+    <div>
+      <p class="page-kicker">Asistente IA</p>
+      <h1 class="page-title">Planifica con contexto.</h1>
+      <p class="page-subtitle">Conversa, ajusta el itinerario y guarda el viaje cuando el plan este listo.</p>
     </div>
+  </div>
 
-    <!-- Componente de chat -->
-    <app-chat-ia></app-chat-ia>
-
-</div>
+  <app-chat-ia></app-chat-ia>
+</section>

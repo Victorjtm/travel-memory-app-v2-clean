@@ -1,17 +1,17 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common'; // Importa CommonModule
+import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
 
 @Component({
   selector: 'app-recuerdos',
   standalone: true,
-  imports: [CommonModule],  // Añade CommonModule aquí
+  imports: [CommonModule, RouterModule],
   templateUrl: './recuerdos.component.html',
   styleUrls: ['./recuerdos.component.scss']
 })
 export class RecuerdosComponent {
   recuerdos = [
-    { nombre: 'Recuerdo en la Torre Eiffel', descripcion: 'Fotografía tomada en París' },
-    { nombre: 'Recuerdo en la Sagrada Familia', descripcion: 'Fotografía tomada en Barcelona' },
+    { nombre: 'Recuerdo en la Torre Eiffel', descripcion: 'Fotografia tomada en Paris' },
+    { nombre: 'Recuerdo en la Sagrada Familia', descripcion: 'Fotografia tomada en Barcelona' },
   ];
 }
-

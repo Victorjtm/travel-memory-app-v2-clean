@@ -1,13 +1,32 @@
 <header class="cabecera">
-  <div class="titulo-app">
-    🌍 Travel Memory App
-  </div>
-  <nav class="menu-principal">
-    <a routerLink="/inicio" routerLinkActive="activo">Inicio</a>
-    <a routerLink="/viajes" routerLinkActive="activo">Histórico</a>
-    <a routerLink="/viajes-previstos" routerLinkActive="activo">Previstos</a>
-    <a routerLink="/configuracion" routerLinkActive="activo">⚙️ Configuración</a> <!-- NUEVO -->
+  <a class="brand" routerLink="/" aria-label="Ir al inicio">
+    <span class="brand-mark">TM</span>
+    <span class="brand-copy">
+      <strong>Travel Memory</strong>
+      <small>Trips, recuerdos y planes</small>
+    </span>
+  </a>
+
+  <nav class="menu-principal" aria-label="Navegacion principal">
+    <a routerLink="/" routerLinkActive="activo" [routerLinkActiveOptions]="{ exact: true }">
+      <i class="fa-solid fa-house"></i>
+      <span>Inicio</span>
+    </a>
+    <a routerLink="/planificar-viaje" routerLinkActive="activo">
+      <i class="fa-solid fa-wand-magic-sparkles"></i>
+      <span>Planificar</span>
+    </a>
+    <a routerLink="/viajes-futuros" routerLinkActive="activo">
+      <i class="fa-solid fa-suitcase-rolling"></i>
+      <span>Futuros</span>
+    </a>
+    <a routerLink="/viajes-previstos" routerLinkActive="activo">
+      <i class="fa-solid fa-images"></i>
+      <span>Recuerdos</span>
+    </a>
+    <a routerLink="/configuracion" routerLinkActive="activo">
+      <i class="fa-solid fa-sliders"></i>
+      <span>Ajustes</span>
+    </a>
   </nav>
 </header>
-
-  

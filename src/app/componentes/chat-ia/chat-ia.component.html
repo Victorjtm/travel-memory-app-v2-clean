@@ -1,218 +1,178 @@
-<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
-<!-- COMPONENTE DE CHAT CON IA                                           -->
-<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
-
 <div class="chat-container">
-
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <!-- HEADER                                                             -->
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <div class="chat-header">
-        <div class="header-left">
-            <h2>🤖 Planificador de Viajes con IA</h2>
-            <span class="session-id">Sesión: {{ sessionId.substring(0, 8) }}...</span>
-        </div>
-
-        <div class="header-right">
-            <!-- Indicador API Key -->
-            <button class="btn-header btn-api-key" [class.configurada]="apiKeyConfigurada"
-                (click)="apiKeyConfigurada ? eliminarApiKey() : configurarApiKey()"
-                [title]="apiKeyConfigurada ? 'API Key configurada (click para eliminar)' : 'Configurar API Key'">
-                <span *ngIf="apiKeyConfigurada">🔑 ✓</span>
-                <span *ngIf="!apiKeyConfigurada">🔑 ✗</span>
-            </button>
-
-            <!-- Nueva conversación -->
-            <button class="btn-header btn-nueva" (click)="nuevaConversacion()" title="Nueva conversación">
-                🔄
-            </button>
-
-            <!-- Cargar JSON -->
-            <input type="file" accept=".json" hidden #fileInput (change)="onFileSelected($event)">
-            <button class="btn-header btn-nueva" (click)="fileInput.click()" title="Cargar JSON externo">
-                📁
-            </button>
-
-            <!-- Limpiar historial -->
-            <button class="btn-header btn-limpiar" (click)="limpiarHistorial()" [disabled]="mensajes.length === 0"
-                title="Limpiar historial">
-                🗑️
-            </button>
-        </div>
+  <div class="chat-header">
+    <div class="header-left">
+      <h2>Planificador inteligente</h2>
+      <span class="session-id">Sesion {{ sessionId.substring(0, 8) }}</span>
     </div>
 
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <!-- PANEL DE PLAN DETECTADO                                           -->
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <div class="plan-panel" *ngIf="planDetectado">
-        <div class="plan-header">
-            <div class="plan-title">
-                <span class="plan-icon">✨</span>
-                <h3>Plan de Viaje Generado</h3>
-            </div>
-            <button class="btn-close-plan" (click)="planDetectado = null" title="Cerrar">✕</button>
-        </div>
+    <div class="header-right">
+      <button class="btn-header btn-api-key" [class.configurada]="apiKeyConfigurada"
+        (click)="apiKeyConfigurada ? eliminarApiKey() : configurarApiKey()"
+        [title]="apiKeyConfigurada ? 'API Key configurada. Click para eliminar.' : 'Configurar API Key'">
+        <i class="fa-solid fa-key"></i>
+      </button>
 
-        <div class="plan-body">
-            <div class="plan-info">
-                <div class="info-item">
-                    <strong>📍 Destino:</strong>
-                    <span>{{ planDetectado.viaje.destino }}</span>
-                </div>
-                <div class="info-item">
-                    <strong>📅 Fechas:</strong>
-                    <span>{{ planDetectado.viaje.fecha_inicio }} → {{ planDetectado.viaje.fecha_fin }}</span>
-                </div>
-                <div class="info-item">
-                    <strong>🗓️ Itinerarios:</strong>
-                    <span>{{ planDetectado.itinerarios.length }} días</span>
-                </div>
-                <div class="info-item">
-                    <strong>🎯 Actividades:</strong>
-                    <span>{{ contarActividades(planDetectado) }} actividades</span>
-                </div>
-            </div>
+      <button class="btn-header btn-nueva" (click)="nuevaConversacion()" title="Nueva conversacion">
+        <i class="fa-solid fa-rotate-right"></i>
+      </button>
 
-            <div class="plan-actions">
-                <button class="btn-plan btn-guardar" (click)="guardarViaje()"
-                    *ngIf="planDetectado && planDetectado.plan_completo" [disabled]="guardandoViaje">
-                    {{ guardandoViaje ? '⏳ Guardando...' : '💾 Guardar viaje' }}
-                </button>
+      <input type="file" accept=".json" hidden #fileInput (change)="onFileSelected($event)">
+      <button class="btn-header btn-nueva" (click)="fileInput.click()" title="Cargar JSON externo">
+        <i class="fa-solid fa-folder-open"></i>
+      </button>
 
-                <button class="btn-plan" (click)="toggleMostrarJson()">
-                    {{ mostrarJson ? '📋 Ocultar JSON' : '📋 Ver JSON' }}
-                </button>
+      <button class="btn-header btn-limpiar" (click)="limpiarHistorial()" [disabled]="mensajes.length === 0"
+        title="Limpiar historial">
+        <i class="fa-solid fa-trash"></i>
+      </button>
+    </div>
+  </div>
 
-                <button class="btn-plan btn-copiar" (click)="copiarJson()">
-                    📋 Copiar JSON
-                </button>
-            </div>
-
-
-            <!-- JSON expandible -->
-            <div class="json-container" *ngIf="mostrarJson">
-                <pre>{{ planDetectado | json }}</pre>
-            </div>
-        </div>
+  <div class="plan-panel" *ngIf="planDetectado">
+    <div class="plan-header">
+      <div class="plan-title">
+        <span class="plan-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+        <h3>Plan de viaje generado</h3>
+      </div>
+      <button class="btn-close-plan" (click)="planDetectado = null" title="Cerrar">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
     </div>
 
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <!-- ÁREA DE MENSAJES                                                  -->
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <div class="mensajes-container" #mensajesContainer>
-
-        <!-- Mensaje de bienvenida si no hay mensajes -->
-        <div class="bienvenida" *ngIf="mensajes.length === 0">
-            <div class="bienvenida-icon">🗺️</div>
-            <h3>¡Hola! Soy tu asistente de viajes</h3>
-            <p>Puedo ayudarte a planificar tu próximo viaje. Cuéntame:</p>
-            <ul>
-                <li>¿A dónde quieres ir?</li>
-                <li>¿Cuántos días?</li>
-                <li>¿Qué tipo de actividades te gustan?</li>
-            </ul>
-            <div class="ejemplo">
-                <strong>Ejemplo:</strong> "Quiero ir a Barcelona 3 días, me gusta la cultura y la gastronomía"
-            </div>
+    <div class="plan-body">
+      <div class="plan-info">
+        <div class="info-item">
+          <strong>Destino</strong>
+          <span>{{ planDetectado.viaje.destino }}</span>
         </div>
-
-        <!-- Lista de mensajes -->
-        <div class="mensaje" *ngFor="let mensaje of mensajes" [class.usuario]="mensaje.rol === 'user'"
-            [class.asistente]="mensaje.rol === 'assistant'">
-
-            <div class="mensaje-avatar">
-                <span *ngIf="mensaje.rol === 'user'">👤</span>
-                <span *ngIf="mensaje.rol === 'assistant'">🤖</span>
-            </div>
-
-            <div class="mensaje-contenido">
-                <div class="mensaje-texto">{{ mensaje.mensaje }}</div>
-
-                <div class="mensaje-meta">
-                    <span class="timestamp" *ngIf="mensaje.timestamp">
-                        {{ formatearFecha(mensaje.timestamp) }}
-                    </span>
-                    <span class="tokens" *ngIf="mensaje.tokens_usados">
-                        🪙 {{ mensaje.tokens_usados }} tokens
-                    </span>
-                    <span class="tiempo" *ngIf="mensaje.tiempo_respuesta">
-                        ⏱️ {{ mensaje.tiempo_respuesta }}ms
-                    </span>
-                </div>
-            </div>
+        <div class="info-item">
+          <strong>Fechas</strong>
+          <span>{{ planDetectado.viaje.fecha_inicio }} a {{ planDetectado.viaje.fecha_fin }}</span>
         </div>
-
-        <!-- Indicador de carga -->
-        <div class="mensaje asistente cargando-mensaje" *ngIf="cargando">
-            <div class="mensaje-avatar">
-                <span>🤖</span>
-            </div>
-            <div class="mensaje-contenido">
-                <div class="typing-indicator">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-                <div class="mensaje-meta">
-                    <span>La IA está escribiendo...</span>
-                </div>
-            </div>
+        <div class="info-item">
+          <strong>Itinerarios</strong>
+          <span>{{ planDetectado.itinerarios.length }} dias</span>
         </div>
+        <div class="info-item">
+          <strong>Actividades</strong>
+          <span>{{ contarActividades(planDetectado) }} actividades</span>
+        </div>
+      </div>
+
+      <div class="plan-actions">
+        <button class="btn-plan btn-guardar" (click)="guardarViaje()"
+          *ngIf="planDetectado && planDetectado.plan_completo" [disabled]="guardandoViaje">
+          <i class="fa-solid" [ngClass]="guardandoViaje ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"></i>
+          {{ guardandoViaje ? 'Guardando...' : 'Guardar viaje' }}
+        </button>
+
+        <button class="btn-plan" (click)="toggleMostrarJson()">
+          <i class="fa-solid fa-code"></i>
+          {{ mostrarJson ? 'Ocultar JSON' : 'Ver JSON' }}
+        </button>
+
+        <button class="btn-plan btn-copiar" (click)="copiarJson()">
+          <i class="fa-solid fa-copy"></i>
+          Copiar JSON
+        </button>
+      </div>
+
+      <div class="json-container" *ngIf="mostrarJson">
+        <pre>{{ planDetectado | json }}</pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="mensajes-container" #mensajesContainer>
+    <div class="bienvenida" *ngIf="mensajes.length === 0">
+      <div class="bienvenida-icon"><i class="fa-solid fa-map-location-dot"></i></div>
+      <h3>Cuéntame el viaje que tienes en mente</h3>
+      <p>Puedo ayudarte a transformar una idea suelta en un plan con fechas, destinos y actividades.</p>
+      <ul>
+        <li>Destino o tipo de viaje</li>
+        <li>Numero de dias y ritmo preferido</li>
+        <li>Intereses, presupuesto o restricciones</li>
+      </ul>
+      <div class="ejemplo">
+        <strong>Ejemplo</strong>
+        Quiero ir a Barcelona 3 dias, con cultura, gastronomia y paseos tranquilos.
+      </div>
     </div>
 
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <!-- INPUT DE MENSAJE                                                  -->
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <div class="input-container">
-        <textarea [(ngModel)]="mensajeActual" (keydown)="onKeydown($event)" [disabled]="cargando"
-            placeholder="Escribe tu mensaje... (Enter para enviar, Shift+Enter para nueva línea)" rows="1"
-            class="mensaje-input">
+    <div class="mensaje" *ngFor="let mensaje of mensajes" [class.usuario]="mensaje.rol === 'user'"
+      [class.asistente]="mensaje.rol === 'assistant'">
+      <div class="mensaje-avatar">
+        <i class="fa-solid" [ngClass]="mensaje.rol === 'user' ? 'fa-user' : 'fa-wand-magic-sparkles'"></i>
+      </div>
+
+      <div class="mensaje-contenido">
+        <div class="mensaje-texto">{{ mensaje.mensaje }}</div>
+        <div class="mensaje-meta">
+          <span class="timestamp" *ngIf="mensaje.timestamp">{{ formatearFecha(mensaje.timestamp) }}</span>
+          <span class="tokens" *ngIf="mensaje.tokens_usados">{{ mensaje.tokens_usados }} tokens</span>
+          <span class="tiempo" *ngIf="mensaje.tiempo_respuesta">{{ mensaje.tiempo_respuesta }}ms</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="mensaje asistente cargando-mensaje" *ngIf="cargando">
+      <div class="mensaje-avatar">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+      </div>
+      <div class="mensaje-contenido">
+        <div class="typing-indicator">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div class="mensaje-meta">
+          <span>La IA esta escribiendo...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="input-container">
+    <textarea [(ngModel)]="mensajeActual" (keydown)="onKeydown($event)" [disabled]="cargando"
+      placeholder="Escribe tu mensaje..." rows="1" class="mensaje-input">
     </textarea>
 
-        <button class="btn-enviar" (click)="enviarMensaje()" [disabled]="!mensajeActual.trim() || cargando"
-            [class.cargando]="cargando">
-            <span *ngIf="!cargando">📤</span>
-            <span *ngIf="cargando" class="spinner"></span>
-        </button>
-    </div>
+    <button class="btn-enviar" (click)="enviarMensaje()" [disabled]="!mensajeActual.trim() || cargando"
+      [class.cargando]="cargando" aria-label="Enviar mensaje">
+      <i *ngIf="!cargando" class="fa-solid fa-arrow-up"></i>
+      <span *ngIf="cargando" class="spinner"></span>
+    </button>
+  </div>
 
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <!-- FOOTER CON INFO                                                   -->
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <div class="chat-footer">
-        <!-- ✨ NUEVO: Barra de progreso de tokens -->
-        <div class="tokens-progress" *ngIf="limiteTokens">
-            <div class="tokens-info">
-                <span class="tokens-label">🪙 Consumo de tokens:</span>
-                <span class="tokens-numeros">
-                    {{ limiteTokens.consumidos.toLocaleString('es-ES') }} /
-                    {{ limiteTokens.maximo.toLocaleString('es-ES') }}
-                </span>
-                <span class="tokens-porcentaje" [class.warning]="limiteTokens.porcentaje_usado >= 75"
-                    [class.danger]="limiteTokens.porcentaje_usado >= 90">
-                    ({{ limiteTokens.porcentaje_usado }}%)
-                </span>
-            </div>
-            <div class="progress-bar">
-                <div class="progress-fill" [style.width.%]="limiteTokens.porcentaje_usado"
-                    [class.warning]="limiteTokens.porcentaje_usado >= 75"
-                    [class.danger]="limiteTokens.porcentaje_usado >= 90">
-                </div>
-            </div>
-            <div class="tokens-restantes">
-                <small>
-                    Quedan {{ limiteTokens.restantes.toLocaleString('es-ES') }} tokens disponibles
-                </small>
-            </div>
+  <div class="chat-footer">
+    <div class="tokens-progress" *ngIf="limiteTokens">
+      <div class="tokens-info">
+        <span class="tokens-label">Consumo de tokens</span>
+        <span class="tokens-numeros">
+          {{ limiteTokens.consumidos.toLocaleString('es-ES') }} /
+          {{ limiteTokens.maximo.toLocaleString('es-ES') }}
+        </span>
+        <span class="tokens-porcentaje" [class.warning]="limiteTokens.porcentaje_usado >= 75"
+          [class.danger]="limiteTokens.porcentaje_usado >= 90">
+          {{ limiteTokens.porcentaje_usado }}%
+        </span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" [style.width.%]="limiteTokens.porcentaje_usado"
+          [class.warning]="limiteTokens.porcentaje_usado >= 75"
+          [class.danger]="limiteTokens.porcentaje_usado >= 90">
         </div>
-
-        <small class="footer-text">
-            Powered by Perplexity AI •
-            {{ mensajes.length }} mensajes •
-            <span *ngIf="!apiKeyConfigurada" class="advertencia">⚠️ API Key no configurada</span>
-            <span *ngIf="apiKeyConfigurada" class="ok">✓ API Key configurada</span>
-        </small>
+      </div>
+      <div class="tokens-restantes">
+        <small>Quedan {{ limiteTokens.restantes.toLocaleString('es-ES') }} tokens disponibles</small>
+      </div>
     </div>
 
-
+    <small class="footer-text">
+      Powered by Perplexity AI ·
+      {{ mensajes.length }} mensajes ·
+      <span *ngIf="!apiKeyConfigurada" class="advertencia">API Key no configurada</span>
+      <span *ngIf="apiKeyConfigurada" class="ok">API Key configurada</span>
+    </small>
+  </div>
 </div>
