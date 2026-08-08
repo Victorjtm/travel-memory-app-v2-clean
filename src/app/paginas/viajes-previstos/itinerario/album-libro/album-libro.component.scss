@@ -3795,6 +3795,71 @@
           border-color: #3b82f6;
         }
       }
+
+      .input-metros-custom {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+
+        .input-distancia-m {
+          width: 65px;
+          background: #1f2937;
+          color: #ffffff;
+          border: 1px solid #3b82f6;
+          border-radius: 8px;
+          padding: 2px 6px;
+          font-size: 0.78rem;
+          text-align: right;
+
+          &:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+          }
+        }
+
+        .unit-m {
+          font-size: 0.75rem;
+          color: #94a3b8;
+          font-weight: 600;
+        }
+      }
+    }
+
+    .btn-toggle-videos {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 20px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #ffffff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      transition: all 0.3s ease;
+
+      i {
+        font-size: 0.95rem;
+        color: #f59e0b;
+      }
+
+      &:hover {
+        background: #334155;
+        transform: translateY(-1px);
+      }
+
+      &.activo {
+        background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+        border-color: #f59e0b;
+        color: #ffffff;
+        box-shadow: 0 4px 14px rgba(217, 119, 6, 0.45);
+
+        i {
+          color: #ffffff;
+        }
+      }
     }
   }
 

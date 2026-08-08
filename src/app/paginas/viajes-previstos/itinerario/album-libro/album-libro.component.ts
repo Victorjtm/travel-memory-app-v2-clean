@@ -189,11 +189,46 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
 
   // ==========================================
-  // CONFIGURACIÓN DE MAPAS ANIMADOS POR TRAMOS
+  // CONFIGURACIÓN DE MAPAS ANIMADOS Y VÍDEOS
   // ==========================================
   incluirAnimacionesMapa: boolean = false;
   distanciaMinimaAnimacionKm: number = 2.0;
+  distanciaMinimaMetros: number = 2000;
+  modoDistanciaPersonalizada: boolean = false;
+  reproducirVideosCompletos: boolean = false;
   paginasBase: PaginaMedia[] = [];
+
+  toggleVideosCompletos(): void {
+    this.reproducirVideosCompletos = !this.reproducirVideosCompletos;
+    console.log('🎬 Reproducción de vídeos completos:', this.reproducirVideosCompletos);
+
+    if (this.reproduciendoSlideshow && this.paginas[this.paginaActual]?.tipoMedia === 'video') {
+      if (this.reproducirVideosCompletos) {
+        this.limpiarTimerSlideshow();
+      } else {
+        this.reiniciarTimerSlideshow();
+      }
+    }
+  }
+
+  onCambioSelectDistancia(val: any): void {
+    if (val === 'custom' || val === 'personalizado') {
+      this.modoDistanciaPersonalizada = true;
+    } else {
+      this.modoDistanciaPersonalizada = false;
+      const numKm = Number(val);
+      this.distanciaMinimaAnimacionKm = numKm;
+      this.distanciaMinimaMetros = Math.round(numKm * 1000);
+      this.actualizarConfiguracionAnimaciones();
+    }
+  }
+
+  onCambioDistanciaMetrosInput(): void {
+    if (this.distanciaMinimaMetros !== null && this.distanciaMinimaMetros !== undefined && this.distanciaMinimaMetros >= 0) {
+      this.distanciaMinimaAnimacionKm = this.distanciaMinimaMetros / 1000;
+      this.actualizarConfiguracionAnimaciones();
+    }
+  }
 
   // Extensiones de archivo por tipo
   private readonly EXTENSIONES_IMAGEN = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.tiff'];
@@ -2285,8 +2320,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     console.log('▶️ Iniciando slideshow...');
     this.reproduciendoSlideshow = true;
 
-    if (this.paginas[this.paginaActual]?.esMapaAnimado) {
+    const currentPag = this.paginas[this.paginaActual];
+    if (currentPag?.esMapaAnimado) {
       console.log('🗺️ Página inicial del slideshow es mapa animado: pausando timer de 5s hasta completar trayecto');
+      this.limpiarTimerSlideshow();
+    } else if (currentPag?.tipoMedia === 'video' && this.reproducirVideosCompletos) {
+      console.log('🎬 Página inicial del slideshow es vídeo con reproducción completa: pausando timer de 5s hasta que finalice');
       this.limpiarTimerSlideshow();
     } else {
       this.reiniciarTimerSlideshow();
@@ -2381,6 +2420,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       if (this.reproduciendoSlideshow) {
         if (paginaActual?.esMapaAnimado) {
           console.log('🗺️ Slideshow navegó a mapa animado: pausando timer de 5s hasta completar trayecto');
+          this.limpiarTimerSlideshow();
+        } else if (paginaActual?.tipoMedia === 'video' && this.reproducirVideosCompletos) {
+          console.log('🎬 Slideshow navegó a vídeo con reproducción completa: pausando timer de 5s');
           this.limpiarTimerSlideshow();
         } else {
           this.reiniciarTimerSlideshow();
@@ -3430,6 +3472,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   onVideoEnded(): void {
     this.restaurarVolumenAudioViaje();
+    if (this.reproduciendoSlideshow && this.reproducirVideosCompletos) {
+      console.log('🎬 Vídeo completo finalizado en slideshow: avanzando a la siguiente diapositiva');
+      setTimeout(() => {
+        if (this.reproduciendoSlideshow) {
+          this.avanzarSlideshow();
+        }
+      }, 500);
+    }
   }
 
 }

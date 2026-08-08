@@ -77,7 +77,7 @@
       <i class="fas fa-video" aria-hidden="true"></i>
     </button>
 
-    <!-- --- Control Toggle Animaciones de Ruta --- -->
+    <!-- --- Control Toggle Animaciones y Vídeos --- -->
     <div class="control-animaciones-panel">
       <button class="btn-toggle-animaciones" [class.activo]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
         title="Activar/Desactivar mapas animados por tramos" aria-label="Activar/Desactivar mapas animados por tramos">
@@ -87,15 +87,30 @@
 
       <div class="selector-distancia-wrapper" *ngIf="incluirAnimacionesMapa">
         <label for="distancia-min-select" title="Filtrar tramos por distancia mínima">Tramos &gt;</label>
-        <select id="distancia-min-select" [(ngModel)]="distanciaMinimaAnimacionKm" (change)="actualizarConfiguracionAnimaciones()" class="select-distancia-min">
+        <select id="distancia-min-select" [ngModel]="modoDistanciaPersonalizada ? 'custom' : distanciaMinimaAnimacionKm" (ngModelChange)="onCambioSelectDistancia($event)" class="select-distancia-min">
+          <option [ngValue]="0.05">50 m</option>
+          <option [ngValue]="0.1">100 m</option>
+          <option [ngValue]="0.2">200 m</option>
+          <option [ngValue]="0.3">300 m</option>
           <option [ngValue]="0.5">500 m</option>
           <option [ngValue]="1">1 km</option>
           <option [ngValue]="2">2 km</option>
           <option [ngValue]="5">5 km</option>
           <option [ngValue]="10">10 km</option>
-          <option [ngValue]="20">20 km</option>
+          <option value="custom">✏️ Personalizado (m)...</option>
         </select>
+        <div class="input-metros-custom" *ngIf="modoDistanciaPersonalizada">
+          <input type="number" min="10" step="10" [(ngModel)]="distanciaMinimaMetros" (change)="onCambioDistanciaMetrosInput()" class="input-distancia-m" placeholder="Metros" title="Escribe la distancia mínima exacta en metros">
+          <span class="unit-m">m</span>
+        </div>
       </div>
+
+      <!-- --- Botón Reproducir Vídeos Completos --- -->
+      <button class="btn-toggle-videos" [class.activo]="reproducirVideosCompletos" (click)="toggleVideosCompletos()"
+        title="Reproducir vídeos completos sin cortar en el pase de diapositivas" aria-label="Reproducir vídeos completos">
+        <i class="fas fa-film"></i>
+        <span>Vídeos completos</span>
+      </button>
     </div>
 
     <!-- Viejo Botón ℹ️ Eliminado -->
