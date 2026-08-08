@@ -255,11 +255,13 @@
         <div class="header-mapa-animado">
           <span class="badge-distancia"><i class="fas fa-route"></i> Recorrido: {{ paginaActual.distanciaTramoKm | number:'1.1-2' }} km</span>
         </div>
-        <div class="mapa-animado-container" (click)="abrirFullscreen('', 'mapa-animado', { titulo: paginaActual.titulo, descripcion: paginaActual.descripcion })">
+        <div class="mapa-animado-container">
           <app-gpx-animation 
             *ngIf="paginaActual.trackGpx"
             [gpxText]="paginaActual.trackGpx" 
             [transportSegments]="paginaActual.transportSegments || []"
+            [autoPlay]="true"
+            (onAnimacionCompletada)="onFinAnimacionMapa()"
             (onCerrar)="onFinAnimacionMapa()">
           </app-gpx-animation>
         </div>
@@ -544,6 +546,8 @@
           <app-gpx-animation 
             [gpxText]="paginaActualData!.trackGpx!" 
             [transportSegments]="paginaActualData?.transportSegments || []"
+            [autoPlay]="true"
+            (onAnimacionCompletada)="onFinAnimacionMapa()"
             (onCerrar)="onFinAnimacionMapa()">
           </app-gpx-animation>
         </div>

@@ -1488,38 +1488,98 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
       const actId = pag.archivo?.actividadId;
 
+      // Solo procesamos la actividad la primera vez que la encontramos
       if (actId && !actividadesProcesadas.has(actId)) {
         actividadesProcesadas.add(actId);
         try {
-          const gpxXml = await firstValueFrom(this.trackEditorService.resolveCanonicalGpxXml(actId));
+          // 1. Obtener GPX completo y parsearlo
+          const gpxXml = await firstValueFrom(
+            this.trackEditorService.resolveCanonicalGpxXml(actId, { flattenSegments: true })
+          );
+
           if (gpxXml && gpxXml.trim().length > 0) {
-            const points = this.gpxAnimationService.parseGpx(gpxXml);
-            const distMetros = points.length > 0 ? (points[points.length - 1].distAcum || 0) : 0;
-            const distKm = distMetros / 1000;
+            let points = this.gpxAnimationService.parseGpx(gpxXml);
 
-            console.log(`🗺️ Evaluando tramo actividad #${actId}: ${distKm.toFixed(2)} km (Mínimo: ${this.distanciaMinimaAnimacionKm} km)`);
+            // 2. Obtener fotos geolocalizadas de esta actividad
+            const archivosActividad = await firstValueFrom(
+              this.archivoService.getArchivosPorActividad(actId)
+            );
+            const archivosGeo = (archivosActividad || []).filter((a: any) =>
+              (a.tipo === 'foto' || a.tipo === 'video') && a.geolocalizacion
+            );
 
-            if (distKm >= this.distanciaMinimaAnimacionKm) {
-              const paginaMapa: PaginaMedia = {
-                archivo: {} as Archivo,
-                url: '',
-                titulo: `Recorrido de ${distKm.toFixed(1)} km`,
-                descripcion: `Mapa animado del tramo (${distKm.toFixed(1)} km)`,
-                fecha: pag.fecha || '',
-                tipoMedia: 'mapa-animado',
-                mimeType: '',
-                cargado: true,
-                esMapaAnimado: true,
-                trackGpx: gpxXml,
-                distanciaTramoKm: distKm,
-                actividadId: actId
-              };
+            // 3. Sincronizar multimedia con el track → marca points[i].event en los PIs
+            points = this.gpxAnimationService.syncMultimedia(points, archivosGeo);
 
-              console.log(`✅ Añadiendo página de mapa animado para actividad #${actId} (${distKm.toFixed(1)} km)`);
-              resultado.push(paginaMapa);
-            } else {
-              console.log(`⏩ Tramo corto omitido para mapa animado: ${distKm.toFixed(2)} km < ${this.distanciaMinimaAnimacionKm} km`);
+            // 4. Identificar índices de PIs (puntos con event + inicio + fin del track)
+            const piIndices: number[] = [0]; // El inicio es un PI
+            for (let j = 1; j < points.length - 1; j++) {
+              if (points[j].event) {
+                piIndices.push(j);
+              }
             }
+            piIndices.push(points.length - 1); // El final es un PI
+
+            console.log(`🗺️ Actividad #${actId}: ${points.length} puntos, ${piIndices.length} PIs detectados`);
+
+            // 5. Crear sub-segmentos entre PIs consecutivos
+            const segmentosGenerados: PaginaMedia[] = [];
+            for (let s = 0; s < piIndices.length - 1; s++) {
+              const startIdx = piIndices[s];
+              const endIdx = piIndices[s + 1];
+              const subSegmentPoints = points.slice(startIdx, endIdx + 1);
+
+              if (subSegmentPoints.length < 2) continue;
+
+              // 6. Calcular distancia del sub-segmento
+              const distMetros = (subSegmentPoints[subSegmentPoints.length - 1].distAcum || 0) 
+                               - (subSegmentPoints[0].distAcum || 0);
+              const distKm = distMetros / 1000;
+
+              console.log(`  📏 Tramo PI_${s} → PI_${s + 1}: ${distKm.toFixed(2)} km (Mínimo: ${this.distanciaMinimaAnimacionKm} km)`);
+
+              // 7. Filtrar por distancia mínima
+              if (distKm >= this.distanciaMinimaAnimacionKm) {
+                // 8. Recalcular distAcum relativa al sub-segmento (desde 0)
+                const baseDistAcum = subSegmentPoints[0].distAcum || 0;
+                const baseTimeAcum = subSegmentPoints[0].timeAcum || 0;
+                const subPointsRelativos = subSegmentPoints.map(p => ({
+                  ...p,
+                  distAcum: (p.distAcum || 0) - baseDistAcum,
+                  timeAcum: (p.timeAcum || 0) - baseTimeAcum,
+                  event: undefined // Limpiar eventos multimedia del sub-segmento
+                }));
+
+                // 9. Generar GPX parcial del sub-segmento
+                const gpxParcial = this.trackEditorService.pointsToGpxXml(subPointsRelativos);
+
+                const paginaMapa: PaginaMedia = {
+                  archivo: {} as Archivo,
+                  url: '',
+                  titulo: `Recorrido de ${distKm.toFixed(1)} km`,
+                  descripcion: `Tramo ${s + 1} de ${piIndices.length - 1} (${distKm.toFixed(1)} km)`,
+                  fecha: pag.fecha || '',
+                  tipoMedia: 'mapa-animado',
+                  mimeType: '',
+                  cargado: true,
+                  esMapaAnimado: true,
+                  trackGpx: gpxParcial,
+                  distanciaTramoKm: distKm,
+                  actividadId: actId
+                };
+
+                console.log(`  ✅ Mapa animado generado: Tramo ${s + 1}, ${distKm.toFixed(1)} km, ${subPointsRelativos.length} puntos`);
+                segmentosGenerados.push(paginaMapa);
+              } else {
+                console.log(`  ⏩ Tramo corto omitido: ${distKm.toFixed(2)} km < ${this.distanciaMinimaAnimacionKm} km`);
+              }
+            }
+
+            // 10. Insertar los mapas animados ANTES de las fotos de esta actividad
+            // Los mapas van intercalados: mapa_tramo_1, fotos_PI_1, mapa_tramo_2, fotos_PI_2...
+            // Pero como las fotos están mezcladas en el flujo general del álbum,
+            // insertamos todos los mapas válidos justo antes de la primera foto de la actividad
+            resultado.push(...segmentosGenerados);
           }
         } catch (error) {
           console.warn(`⚠️ No se pudo obtener GPX para actividad #${actId}:`, error);
@@ -1534,12 +1594,23 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   onFinAnimacionMapa(): void {
     console.log('🏁 Animación del mapa completada');
+    if (this.mostrarFullscreen) {
+      this.cerrarFullscreen();
+    }
     if (this.reproduciendoSlideshow) {
       setTimeout(() => {
         if (this.reproduciendoSlideshow) {
           this.avanzarSlideshow();
         }
       }, 1000);
+    } else {
+      // Avance automático a las fotos del PI al completar el tramo de mapa
+      setTimeout(() => {
+        if (this.paginaActual < this.paginas.length - 1 && this.paginas[this.paginaActual]?.esMapaAnimado) {
+          console.log('➡️ Avanzando automáticamente del mapa animado a las fotos del PI');
+          this.cambiarPagina(1);
+        }
+      }, 1200);
     }
   }
 

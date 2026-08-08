@@ -35,7 +35,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   @Input() multimedia: any[] = [];
   @Input() transportSegments: any[] = [];
   @Input() actividadActual: any;
+  @Input() autoPlay: boolean = false;
   @Output() onCerrar = new EventEmitter<void>();
+  @Output() onAnimacionCompletada = new EventEmitter<void>();
 
   // Leaflet
   private map: any;
@@ -293,7 +295,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     } else {
       await this.initMap();
     }
-    // this.togglePlay(); // Desactivamos el auto-arranque para permitir configurar OSRM antes
+    // Auto-play: si se pide desde el álbum, arrancar automáticamente
+    if (this.autoPlay) {
+      setTimeout(() => this.togglePlay(), 800);
+    }
   }
 
   // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
@@ -918,6 +923,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     if (this.currentIndex >= this.points.length - 1) {
       this.isPlaying = false;
       this.currentIndex = this.points.length - 1;
+      // Notificar que la animación ha terminado (para auto-avance en el álbum)
+      this.onAnimacionCompletada.emit();
     }
 
     this.renderCurrentFrame();
