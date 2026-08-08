@@ -1474,6 +1474,57 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
   }
 
+  private async obtenerInformacionTransporteActividad(actId: number): Promise<{
+    desglose: any[];
+    transportePrincipal: string;
+  }> {
+    try {
+      const act = await firstValueFrom(this.actividadesItinerariosService.getById(actId));
+      let desglose: any[] = [];
+      if (act?.desgloseTransporte && Array.isArray(act.desgloseTransporte) && act.desgloseTransporte.length > 0) {
+        desglose = act.desgloseTransporte;
+      } else if (act?.tramos && Array.isArray(act.tramos) && act.tramos.length > 0) {
+        desglose = act.tramos;
+      }
+
+      const transportePrincipal = act?.transportePrincipal ||
+        act?.perfilTransporte ||
+        act?.tipoActividadNombre ||
+        act?.nombre ||
+        (act?.tramos?.[0]?.tipo) ||
+        'walking';
+
+      return { desglose, transportePrincipal };
+    } catch (err) {
+      console.warn(`⚠️ No se pudo obtener info de transporte para actividad #${actId}`, err);
+      return { desglose: [], transportePrincipal: 'walking' };
+    }
+  }
+
+  private normalizarModoTransporte(nombreModo: string): string {
+    if (!nombreModo) return 'walking';
+    const norm = nombreModo.toLowerCase();
+    if (norm.includes('coche') || norm.includes('driving') || norm.includes('car') || norm.includes('auto') || norm.includes('vehic') || norm.includes('moto') || norm.includes('taxi')) {
+      return 'driving';
+    }
+    if (norm.includes('barco') || norm.includes('boat') || norm.includes('ship') || norm.includes('ferry') || norm.includes('crucero') || norm.includes('embarc') || norm.includes('kayak') || norm.includes('canoa')) {
+      return 'boat';
+    }
+    if (norm.includes('bici') || norm.includes('cycling') || norm.includes('bicycle')) {
+      return 'cycling';
+    }
+    if (norm.includes('bus') || norm.includes('autobus')) {
+      return 'bus';
+    }
+    if (norm.includes('run') || norm.includes('correr')) {
+      return 'running';
+    }
+    if (norm.includes('andando') || norm.includes('walking') || norm.includes('caminar') || norm.includes('pie')) {
+      return 'walking';
+    }
+    return 'walking';
+  }
+
   private async generarPaginasConAnimaciones(paginasInput: PaginaMedia[]): Promise<PaginaMedia[]> {
     if (!this.incluirAnimacionesMapa) {
       return paginasInput.filter(p => !p.esMapaAnimado);
@@ -1502,6 +1553,21 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           if (gpxXml && gpxXml.trim().length > 0) {
             let points = this.gpxAnimationService.parseGpx(gpxXml);
 
+            // Cargar info de transporte de la actividad y etiquetar puntos GPX
+            const { desglose, transportePrincipal } = await this.obtenerInformacionTransporteActividad(actId);
+            const modoBaseNorm = this.normalizarModoTransporte(transportePrincipal);
+
+            if (desglose && Array.isArray(desglose) && desglose.length > 0) {
+              points = this.gpxAnimationService.applyTransportSegments(points, desglose);
+            } else {
+              points.forEach(p => {
+                if (!p.mode || p.mode === 'walking' || p.mode === 'transport') {
+                  p.mode = modoBaseNorm;
+                  p.hfMode = modoBaseNorm;
+                }
+              });
+            }
+
             const archivosActividad = await firstValueFrom(
               this.archivoService.getArchivosPorActividad(actId)
             );
@@ -1519,7 +1585,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             }
             piIndices.push(points.length - 1);
 
-            console.log(`🗺️ Actividad #${actId}: ${points.length} puntos, ${piIndices.length} PIs detectados`);
+            console.log(`🗺️ Actividad #${actId}: ${points.length} puntos, ${piIndices.length} PIs detectados, modo base: ${modoBaseNorm}`);
 
             for (let s = 0; s < piIndices.length - 1; s++) {
               const startIdx = piIndices[s];
@@ -1541,6 +1607,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   ...p,
                   distAcum: (p.distAcum || 0) - baseDistAcum,
                   timeAcum: (p.timeAcum || 0) - baseTimeAcum,
+                  mode: p.mode || modoBaseNorm,
+                  hfMode: p.hfMode || p.mode || modoBaseNorm,
                   event: undefined
                 }));
 
@@ -1551,7 +1619,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
                 for (let pIdx = 0; pIdx < subSegmentPoints.length; pIdx++) {
                   const pt = subSegmentPoints[pIdx];
-                  const pMode = pt.mode || pt.hfMode || 'walking';
+                  const pMode = pt.mode || pt.hfMode || modoBaseNorm;
                   const prevPt = pIdx > 0 ? subSegmentPoints[pIdx - 1] : null;
                   const stepDist = prevPt ? Math.max(0, (pt.distAcum - prevPt.distAcum)) : 0;
 
@@ -1572,12 +1640,21 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   }
                 }
 
-                if (currentMode && currentModeDist > 0) {
+                if (currentMode && (currentModeDist > 0 || subTransportSegments.length === 0)) {
                   subTransportSegments.push({
                     tipo: currentMode,
                     nombre: currentMode,
                     distanciaMetros: currentModeDist,
                     distanciaKm: (currentModeDist / 1000).toFixed(2)
+                  });
+                }
+
+                if (subTransportSegments.length === 0) {
+                  subTransportSegments.push({
+                    tipo: modoBaseNorm,
+                    nombre: modoBaseNorm,
+                    distanciaMetros: distMetros,
+                    distanciaKm: distKm.toFixed(2)
                   });
                 }
 
@@ -2208,21 +2285,36 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     console.log('▶️ Iniciando slideshow...');
     this.reproduciendoSlideshow = true;
 
-    // Primer avance opcional o esperar al intervalo
-    this.timerSlideshow = setInterval(() => {
-      this.ngZone.run(() => {
-        this.avanzarSlideshow();
-      });
-    }, this.INTERVALO_SLIDESHOW);
+    if (this.paginas[this.paginaActual]?.esMapaAnimado) {
+      console.log('🗺️ Página inicial del slideshow es mapa animado: pausando timer de 5s hasta completar trayecto');
+      this.limpiarTimerSlideshow();
+    } else {
+      this.reiniciarTimerSlideshow();
+    }
+  }
+
+  private limpiarTimerSlideshow(): void {
+    if (this.timerSlideshow) {
+      clearInterval(this.timerSlideshow);
+      this.timerSlideshow = null;
+    }
+  }
+
+  private reiniciarTimerSlideshow(): void {
+    this.limpiarTimerSlideshow();
+    if (this.reproduciendoSlideshow) {
+      this.timerSlideshow = setInterval(() => {
+        this.ngZone.run(() => {
+          this.avanzarSlideshow();
+        });
+      }, this.INTERVALO_SLIDESHOW);
+    }
   }
 
   private detenerSlideshow(): void {
     console.log('⏸️ Deteniendo slideshow...');
     this.reproduciendoSlideshow = false;
-    if (this.timerSlideshow) {
-      clearInterval(this.timerSlideshow);
-      this.timerSlideshow = null;
-    }
+    this.limpiarTimerSlideshow();
   }
 
   private avanzarSlideshow(): void {
@@ -2283,6 +2375,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       } else {
         this.mediaFullscreen = paginaActual.url;
         this.tipoFullscreen = paginaActual.tipoMedia;
+      }
+
+      // Control inteligente del timer de slideshow según la diapositiva entrante
+      if (this.reproduciendoSlideshow) {
+        if (paginaActual?.esMapaAnimado) {
+          console.log('🗺️ Slideshow navegó a mapa animado: pausando timer de 5s hasta completar trayecto');
+          this.limpiarTimerSlideshow();
+        } else {
+          this.reiniciarTimerSlideshow();
+        }
       }
     }
   }
