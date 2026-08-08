@@ -130,51 +130,48 @@ export class GpxAnimationService {
       let minDistance = Infinity;
       let minTimeDiff = Infinity;
 
-      // Usar lógica de "Sincronización Inteligente"
-      points.forEach((p, idx) => {
-        // 1. Prioridad: Coincidencia Espacial (Si hay geolocalización)
-        if (mLat && mLng) {
+      // Usar lógica de "Sincronización Inteligente" (Coincidencia Combinada de Espacio y Tiempo)
+      if (mLat && mLng) {
+        let bestCandidateIdx = -1;
+        let minScore = Infinity;
+
+        points.forEach((p, idx) => {
           const d = this.getDistance(p.lat, p.lng, mLat, mLng);
-          
-          if (d < 25) {
-            // Caso A: No hay candidato previo o este es claramente mejor (>0.5m de margen)
-            if (bestIdx === -1 || d < minDistance - 0.5) {
-              bestIdx = idx;
+
+          // Evaluar candidatos a menos de 100 metros del punto GPS
+          if (d < 100) {
+            let timeDiffMinutes = 0;
+
+            if (mTime && p.time) {
+              const ptTime = p.time.getTime();
+              // Evaluar posible desfase horario (+-1h, +-2h)
+              const diffMs = Math.min(
+                Math.abs(ptTime - mTime),
+                Math.abs(ptTime - (mTime + 3600000)),
+                Math.abs(ptTime - (mTime - 3600000)),
+                Math.abs(ptTime - (mTime + 7200000)),
+                Math.abs(ptTime - (mTime - 7200000))
+              );
+              timeDiffMinutes = diffMs / 60000;
+            }
+
+            // Score combinado: ponderar distancia espacial (m) + diferencia temporal (min)
+            // Esto garantiza que si la ubicación se repite a distintas horas (ej: hotel mañana y noche),
+            // la foto nocturna se asocie al punto del GPX de la noche.
+            const score = d + (mTime && p.time ? timeDiffMinutes * 0.5 : 0);
+
+            if (score < minScore) {
+              minScore = score;
+              bestCandidateIdx = idx;
               minDistance = d;
-            } 
-            // Caso B: Empate espacial (dentro de un margen de 2m) -> Desempate por tiempo
-            else if (Math.abs(d - minDistance) < 2 && mTime && p.time) {
-              const currentPtTime = p.time.getTime();
-              const bestPtTime = points[bestIdx].time?.getTime() || 0;
-              const currentDiff = Math.abs(currentPtTime - mTime);
-              const bestDiff = Math.abs(bestPtTime - mTime);
-              
-              if (currentDiff < bestDiff) {
-                bestIdx = idx;
-                // No actualizamos minDistance aquí porque d es similar
-              }
             }
           }
-          
-          // Actualizar minDistance global para el Fallback (Prioridad 3)
-          if (d < minDistance) minDistance = d;
-        }
+        });
 
-        // 2. Prioridad: Coincidencia de Tiempo con OFFSET (Si aún no hay éxito espacial)
-        // NOTA: Solo se evalúa si no se encontró un punto en el radio de 25m
-        if (bestIdx === -1 && mTime && p.time) {
-          const pt = p.time.getTime();
-          const offsets = [0, 3600000, -3600000, 7200000, -7200000];
-          offsets.forEach(off => {
-            const diff = Math.abs(pt - (mTime + off));
-            if (diff < minTimeDiff) minTimeDiff = diff;
-            // Tolerancia de 1 minuto tras ajustar la hora
-            if (diff < 60000 && (bestIdx === -1 || diff < minTimeDiff)) {
-              bestIdx = idx;
-            }
-          });
+        if (bestCandidateIdx !== -1) {
+          bestIdx = bestCandidateIdx;
         }
-      });
+      }
 
       // 3. Fallback Espacial Grueso: Si nada encajó bien pero estamos a < 50m (margen máximo de error)
       if (bestIdx === -1 && minDistance < 50) {

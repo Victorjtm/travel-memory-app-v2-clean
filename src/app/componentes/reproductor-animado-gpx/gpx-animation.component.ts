@@ -378,19 +378,26 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
 
     // ═══════════════════════════════════════════════════════════════════
-    // PASO 3: Agrupar por ubicación con tolerancia ~10m (MISMA lógica que ver GPX)
+    // PASO 3: Agrupar por ubicación y secuencia temporal (Tolerancia ~10m y máx 1h)
     // ═══════════════════════════════════════════════════════════════════
     const TOLERANCIA_GPS = 0.0001; // ~10 metros
+    const MAX_TIME_GAP_MS = 60 * 60 * 1000; // 1 hora de margen máximo
     const grupos: { lat: number; lng: number; archivos: any[] }[] = [];
 
     archivosConCoordenadas.forEach(item => {
-      const grupoExistente = grupos.find(g =>
-        Math.abs(g.lat - item.lat) < TOLERANCIA_GPS &&
-        Math.abs(g.lng - item.lng) < TOLERANCIA_GPS
-      );
+      // Evaluar únicamente el último grupo creado en la secuencia temporal
+      const ultimoGrupo = grupos.length > 0 ? grupos[grupos.length - 1] : null;
 
-      if (grupoExistente) {
-        grupoExistente.archivos.push(item);
+      const coincideUbicacion = ultimoGrupo &&
+        Math.abs(ultimoGrupo.lat - item.lat) < TOLERANCIA_GPS &&
+        Math.abs(ultimoGrupo.lng - item.lng) < TOLERANCIA_GPS;
+
+      const ultimoItem = ultimoGrupo ? ultimoGrupo.archivos[ultimoGrupo.archivos.length - 1] : null;
+      const tiempoCercano = !item.timestamp || !ultimoItem?.timestamp ||
+        Math.abs(item.timestamp - ultimoItem.timestamp) < MAX_TIME_GAP_MS;
+
+      if (coincideUbicacion && tiempoCercano) {
+        ultimoGrupo!.archivos.push(item);
       } else {
         grupos.push({
           lat: item.lat,

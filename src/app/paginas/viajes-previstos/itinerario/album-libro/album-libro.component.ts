@@ -1621,23 +1621,37 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   onFinAnimacionMapa(): void {
     console.log('🏁 Animación del mapa completada');
+
     if (this.mostrarFullscreen) {
-      this.cerrarFullscreen();
-    }
-    if (this.reproduciendoSlideshow) {
-      setTimeout(() => {
-        if (this.reproduciendoSlideshow) {
-          this.avanzarSlideshow();
-        }
-      }, 1000);
+      if (this.reproduciendoSlideshow) {
+        setTimeout(() => {
+          if (this.reproduciendoSlideshow && this.mostrarFullscreen) {
+            this.avanzarSlideshow();
+          }
+        }, 1000);
+      } else {
+        setTimeout(() => {
+          if (this.mostrarFullscreen && this.paginaActual < this.paginas.length - 1) {
+            console.log('➡️ Avanzando automáticamente del mapa animado a la foto en pantalla completa');
+            this.navegarEnFullscreen(1);
+          }
+        }, 1200);
+      }
     } else {
-      // Avance automático a las fotos del PI al completar el tramo de mapa
-      setTimeout(() => {
-        if (this.paginaActual < this.paginas.length - 1 && this.paginas[this.paginaActual]?.esMapaAnimado) {
-          console.log('➡️ Avanzando automáticamente del mapa animado a las fotos del PI');
-          this.cambiarPagina(1);
-        }
-      }, 1200);
+      if (this.reproduciendoSlideshow) {
+        setTimeout(() => {
+          if (this.reproduciendoSlideshow) {
+            this.avanzarSlideshow();
+          }
+        }, 1000);
+      } else {
+        setTimeout(() => {
+          if (this.paginaActual < this.paginas.length - 1 && this.paginas[this.paginaActual]?.esMapaAnimado) {
+            console.log('➡️ Avanzando automáticamente del mapa animado a las fotos del PI');
+            this.cambiarPagina(1);
+          }
+        }, 1200);
+      }
     }
   }
 
