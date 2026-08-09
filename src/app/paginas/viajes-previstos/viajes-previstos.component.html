@@ -18,6 +18,11 @@
       Unificar destinos
     </button>
 
+    <button *ngIf="ultimaUnificacion" (click)="deshacerUnificacion()" class="app-button warning" title="Deshacer la última unificación de destinos realizada">
+      <i class="fa fa-undo"></i>
+      Deshacer unificación ({{ ultimaUnificacion.destino }})
+    </button>
+
     <button (click)="toggleVista()" class="app-button">
       <i class="fa" [ngClass]="vistaModo === 'viajes' ? 'fa-calendar' : 'fa-suitcase'"></i>
       {{ vistaModo === 'viajes' ? 'Ver por fechas' : 'Ver por viajes' }}

@@ -663,6 +663,23 @@ db.run(
   }
 );
 
+// Tabla para historial y rollback de unificaciones de viajes por destino
+db.run(`
+  CREATE TABLE IF NOT EXISTS historial_unificaciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fechaCreacion TEXT DEFAULT (datetime('now')),
+    destino TEXT,
+    snapshotJson TEXT NOT NULL,
+    estado TEXT DEFAULT 'APLICADO'
+  )
+`, (err) => {
+  if (err) {
+    console.error("❌ Error al crear tabla historial_unificaciones:", err.message);
+  } else {
+    console.log("✅ Tabla historial_unificaciones verificada/creada.");
+  }
+});
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MÓDULO 1: TABLAS VIAJES FUTUROS (PLANIFICACIÓN CON IA)
 // Fecha: 2026-01-31
@@ -2638,6 +2655,48 @@ app.post('/viajes/unificar', async (req, res) => {
         }
       }
 
+      // 📸 Capturar snapshot completo pre-unificación para permitir DESHACER (rollback)
+      try {
+        const placeholders = todosIds.map(() => '?').join(',');
+        const snapshotViajes = await new Promise((resolve, reject) => {
+          db.all(`SELECT * FROM viajes WHERE id IN (${placeholders})`, todosIds, (err, rows) => err ? reject(err) : resolve(rows || []));
+        });
+        const snapshotItinerarios = await new Promise((resolve, reject) => {
+          db.all(`SELECT * FROM ItinerarioGeneral WHERE viajePrevistoId IN (${placeholders})`, todosIds, (err, rows) => err ? reject(err) : resolve(rows || []));
+        });
+        const snapshotActividades = await new Promise((resolve, reject) => {
+          db.all(`SELECT * FROM actividades WHERE viajePrevistoId IN (${placeholders})`, todosIds, (err, rows) => err ? reject(err) : resolve(rows || []));
+        });
+        const snapshotArchivos = await new Promise((resolve, reject) => {
+          db.all(`SELECT a.* FROM archivos a JOIN actividades act ON a.actividadId = act.id WHERE act.viajePrevistoId IN (${placeholders})`, todosIds, (err, rows) => err ? reject(err) : resolve(rows || []));
+        });
+        const snapshotArchivosAsociados = await new Promise((resolve, reject) => {
+          db.all(`SELECT aa.* FROM archivos_asociados aa JOIN archivos a ON aa.archivoPrincipalId = a.id JOIN actividades act ON a.actividadId = act.id WHERE act.viajePrevistoId IN (${placeholders})`, todosIds, (err, rows) => err ? reject(err) : resolve(rows || []));
+        });
+
+        const snapshotJson = JSON.stringify({
+          destino: maestro.destino,
+          maestroId: maestro.id,
+          secundariosIds: secundarios.map(s => s.id),
+          viajes: snapshotViajes,
+          itinerarios: snapshotItinerarios,
+          actividades: snapshotActividades,
+          archivos: snapshotArchivos,
+          archivosAsociados: snapshotArchivosAsociados
+        });
+
+        await new Promise((resolve, reject) => {
+          db.run(
+            `INSERT INTO historial_unificaciones (destino, snapshotJson, estado) VALUES (?, ?, 'APLICADO')`,
+            [maestro.destino, snapshotJson],
+            function (err) { err ? reject(err) : resolve(this.lastID); }
+          );
+        });
+        console.log(`  📸 Snapshot guardado en historial_unificaciones para "${maestro.destino}"`);
+      } catch (snapErr) {
+        console.error("  ⚠️ Error guardando snapshot de unificación:", snapErr);
+      }
+
       // 4.2 Ejecutar Unificación
       for (const viajeSecundario of secundarios) {
         // Obtener itinerarios del secundario
@@ -3001,6 +3060,146 @@ app.post('/viajes/unificar', async (req, res) => {
   } catch (err) {
     console.error('❌ Error en unificación:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint para obtener la última unificación que se puede deshacer
+app.get('/viajes/unificaciones/ultimo-historial', async (req, res) => {
+  try {
+    const ultimo = await new Promise((resolve, reject) => {
+      db.get("SELECT id, fechaCreacion, destino, estado FROM historial_unificaciones WHERE estado = 'APLICADO' ORDER BY id DESC LIMIT 1", [], (err, row) => err ? reject(err) : resolve(row));
+    });
+    return res.json({ success: true, historial: ultimo || null });
+  } catch (err) {
+    console.error("❌ Error al obtener último historial de unificación:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint para deshacer / rollback de unificación
+app.post('/viajes/deshacer-unificacion', async (req, res) => {
+  try {
+    const { historialId } = req.body || {};
+    let historial;
+
+    if (historialId) {
+      historial = await new Promise((resolve, reject) => {
+        db.get("SELECT * FROM historial_unificaciones WHERE id = ? AND estado = 'APLICADO'", [historialId], (err, row) => err ? reject(err) : resolve(row));
+      });
+    } else {
+      historial = await new Promise((resolve, reject) => {
+        db.get("SELECT * FROM historial_unificaciones WHERE estado = 'APLICADO' ORDER BY id DESC LIMIT 1", [], (err, row) => err ? reject(err) : resolve(row));
+      });
+    }
+
+    if (!historial) {
+      return res.status(404).json({ error: 'No hay ninguna unificación activa para deshacer.' });
+    }
+
+    console.log(`🔄 Deshaciendo unificación ID: ${historial.id} (Destino: ${historial.destino})...`);
+    const snapshot = JSON.parse(historial.snapshotJson);
+
+    // 1. Restaurar viajes
+    for (const v of snapshot.viajes || []) {
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT OR REPLACE INTO viajes (id, nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [v.id, v.nombre, v.destino, v.fecha_inicio, v.fecha_fin, v.imagen || '', v.audio || '', v.descripcion || ''],
+          err => err ? reject(err) : resolve()
+        );
+      });
+      console.log(`  ✅ Viaje ID ${v.id} ("${v.nombre}") restaurado.`);
+    }
+
+    // 2. Restaurar itinerarios
+    for (const i of snapshot.itinerarios || []) {
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT OR REPLACE INTO ItinerarioGeneral (id, viajePrevistoId, fechaInicio, fechaFin, descripcionGeneral) VALUES (?, ?, ?, ?, ?)`,
+          [i.id, i.viajePrevistoId, i.fechaInicio, i.fechaFin, i.descripcionGeneral || ''],
+          err => err ? reject(err) : resolve()
+        );
+      });
+    }
+    console.log(`  ✅ ${snapshot.itinerarios?.length || 0} itinerario(s) restaurados.`);
+
+    // 3. Restaurar actividades
+    for (const act of snapshot.actividades || []) {
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT OR REPLACE INTO actividades (id, itinerarioId, viajePrevistoId, tipoActividadId, actividadDisponibleId, nombre, descripcion, horaInicio, horaFin, rutaGpxCompleto, rutaMapaCompleto, rutaManifest, rutaEstadisticas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [act.id, act.itinerarioId, act.viajePrevistoId, act.tipoActividadId, act.actividadDisponibleId, act.nombre, act.descripcion || '', act.horaInicio, act.horaFin, act.rutaGpxCompleto || null, act.rutaMapaCompleto || null, act.rutaManifest || null, act.rutaEstadisticas || null],
+          err => err ? reject(err) : resolve()
+        );
+      });
+    }
+    console.log(`  ✅ ${snapshot.actividades?.length || 0} actividad(es) restauradas.`);
+
+    // 4. Restaurar archivos y mover ficheros en disco de vuelta
+    for (const arc of snapshot.archivos || []) {
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT OR REPLACE INTO archivos (id, actividadId, tipo, nombreArchivo, rutaArchivo, descripcion, fechaCreacion, fechaActualizacion, horaCaptura, version, geolocalizacion, metadatos, urlPoster) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [arc.id, arc.actividadId, arc.tipo, arc.nombreArchivo, arc.rutaArchivo, arc.descripcion || '', arc.fechaCreacion, arc.fechaActualizacion, arc.horaCaptura || '', arc.version || 1, arc.geolocalizacion || '', arc.metadatos || null, arc.urlPoster || null],
+          err => err ? reject(err) : resolve()
+        );
+      });
+
+      // Restaurar ubicación física de archivo en disco si fue movido
+      if (arc.rutaArchivo) {
+        const relPathOrig = arc.rutaArchivo.replace(/^uploads[\\\/]/, '').replace(/^\/+/, '');
+        const targetPath = path.join(uploadsPath, relPathOrig);
+        const fileName = path.basename(relPathOrig);
+
+        const findAndMoveBack = (dir) => {
+          if (!fs.existsSync(dir)) return false;
+          const items = fs.readdirSync(dir, { withFileTypes: true });
+          for (const item of items) {
+            const fullItem = path.join(dir, item.name);
+            if (item.isDirectory()) {
+              if (findAndMoveBack(fullItem)) return true;
+            } else if (item.name === fileName && fullItem !== targetPath) {
+              fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+              fs.renameSync(fullItem, targetPath);
+              console.log(`    📁 Fichero movido de vuelta: ${fullItem} -> ${targetPath}`);
+              return true;
+            }
+          }
+          return false;
+        };
+
+        if (!fs.existsSync(targetPath)) {
+          findAndMoveBack(uploadsPath);
+        }
+      }
+    }
+    console.log(`  ✅ ${snapshot.archivos?.length || 0} archivo(s) restaurados.`);
+
+    // 5. Restaurar archivos asociados
+    for (const asoc of snapshot.archivosAsociados || []) {
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT OR REPLACE INTO archivos_asociados (id, archivoPrincipalId, tipo, nombreArchivo, rutaArchivo, descripcion, fechaCreacion, metadatos) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [asoc.id, asoc.archivoPrincipalId, asoc.tipo, asoc.nombreArchivo, asoc.rutaArchivo, asoc.descripcion || '', asoc.fechaCreacion, asoc.metadatos || null],
+          err => err ? reject(err) : resolve()
+        );
+      });
+    }
+
+    // 6. Marcar historial como DESHECHO
+    await new Promise((resolve, reject) => {
+      db.run("UPDATE historial_unificaciones SET estado = 'DESHECHO' WHERE id = ?", [historial.id], err => err ? reject(err) : resolve());
+    });
+
+    console.log(`✅ Unificación ID ${historial.id} deshecha con éxito.`);
+    return res.json({
+      success: true,
+      message: `Se ha deshecho la unificación de "${historial.destino}". Todos los viajes y archivos fueron restaurados.`
+    });
+
+  } catch (err) {
+    console.error("❌ Error al deshacer unificación:", err);
+    return res.status(500).json({ error: "Error al deshacer unificación: " + err.message });
   }
 });
 

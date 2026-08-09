@@ -92,4 +92,14 @@ export class ViajesPrevistosService extends BaseHttpService {
     return this.post<any>(`${this.apiUrl}/unificar`, { resoluciones });
   }
 
+  // Obtener la última unificación susceptible de deshacer
+  obtenerUltimaUnificacion(): Observable<any> {
+    return this.get<any>(`${this.apiUrl}/unificaciones/ultimo-historial`);
+  }
+
+  // Deshacer/rollback de la unificación
+  deshacerUltimaUnificacion(historialId?: number): Observable<any> {
+    console.log('[ViajesService] POST deshacer unificación', historialId ? `ID: ${historialId}` : '');
+    return this.post<any>(`${this.apiUrl}/deshacer-unificacion`, { historialId });
+  }
 }

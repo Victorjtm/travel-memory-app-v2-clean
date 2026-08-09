@@ -23,6 +23,7 @@ export class ViajesPrevistosComponent implements OnInit {
   // ✨ NUEVO: Gestión de vistas
   vistaModo: 'viajes' | 'fechas' = 'viajes';
   itinerariosCombinados: any[] = [];
+  ultimaUnificacion: any = null;
 
   constructor(
     private viajesPrevistosService: ViajesPrevistosService,
@@ -45,6 +46,20 @@ export class ViajesPrevistosComponent implements OnInit {
       });
 
       console.log('[VIAJES ORDENADOS]', this.viajesPrevistos);
+    });
+
+    this.cargarUltimaUnificacion();
+  }
+
+  cargarUltimaUnificacion(): void {
+    this.viajesPrevistosService.obtenerUltimaUnificacion().subscribe({
+      next: (res) => {
+        this.ultimaUnificacion = res.historial || null;
+      },
+      error: (err) => {
+        console.error('Error obteniendo última unificación:', err);
+        this.ultimaUnificacion = null;
+      }
     });
   }
 
@@ -258,6 +273,26 @@ export class ViajesPrevistosComponent implements OnInit {
         alert('Ocurrió un error al unificar los viajes.\n' + (err.error?.error || err.message));
       }
     });
+  }
+
+  deshacerUnificacion(): void {
+    if (!this.ultimaUnificacion) return;
+
+    const msg = `¿Estás seguro de deshacer la unificación del destino "${this.ultimaUnificacion.destino}"?\n\nSe restaurarán los viajes, itinerarios, actividades y archivos a su estado previo.`;
+
+    if (confirm(msg)) {
+      this.viajesPrevistosService.deshacerUltimaUnificacion(this.ultimaUnificacion.id).subscribe({
+        next: (res) => {
+          alert('✅ ' + (res.message || 'Unificación deshecha correctamente.'));
+          this.ultimaUnificacion = null;
+          this.ngOnInit();
+        },
+        error: (err) => {
+          console.error('[DESHACER] Error:', err);
+          alert('❌ Ocurrió un error al deshacer la unificación.\n' + (err.error?.error || err.message));
+        }
+      });
+    }
   }
 
   verAlbumEnLibro(viajeId: number): void {
