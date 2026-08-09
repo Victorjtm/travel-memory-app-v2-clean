@@ -57,6 +57,7 @@
     <!-- 🔄 ITERACIÓN: Cada archivo usando el nuevo componente local -->
     <app-archivo-actividad-card
       *ngFor="let archivo of archivos; trackBy: trackByArchivoId"
+      [id]="'archivo-' + archivo.id"
       [archivo]="archivo"
       [modoGaleria]="modoGaleria"
       [fileUrl]="getFileUrl(archivo)"

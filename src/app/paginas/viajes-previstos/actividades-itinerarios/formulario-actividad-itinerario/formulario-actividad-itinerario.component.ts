@@ -153,10 +153,16 @@ export class FormularioActividadItinerarioComponent implements OnInit {
   }
 
   guardarActividad(): void {
+    const queryParams: any = {};
+    if (this.actividad.id) {
+      queryParams.scrollId = this.actividad.id;
+    }
+    const navUrl = ['/viajes-previstos', this.viajePrevistoId, 'itinerarios', this.itinerarioId, 'actividades'];
+
     if (this.actividad.id) {
       this.actividadesItinerariosService.update(this.actividad.id, this.actividad).subscribe(
         () => {
-          this.router.navigate(['/itinerarios', this.viajePrevistoId]);
+          this.router.navigate(navUrl, { queryParams });
         },
         (error) => {
           console.error('Error actualizando actividad:', error);
@@ -164,8 +170,11 @@ export class FormularioActividadItinerarioComponent implements OnInit {
       );
     } else {
       this.actividadesItinerariosService.create(this.actividad).subscribe(
-        () => {
-          this.router.navigate(['/itinerarios', this.viajePrevistoId]);
+        (res: any) => {
+          if (res && res.id) {
+            queryParams.scrollId = res.id;
+          }
+          this.router.navigate(navUrl, { queryParams });
         },
         (error) => {
           console.error('Error creando actividad:', error);
@@ -175,7 +184,11 @@ export class FormularioActividadItinerarioComponent implements OnInit {
   }
 
   cancelar(): void {
-    this.router.navigate(['/itinerarios', this.viajePrevistoId]);
+    const queryParams: any = {};
+    if (this.actividadId) {
+      queryParams.scrollId = this.actividadId;
+    }
+    this.router.navigate(['/viajes-previstos', this.viajePrevistoId, 'itinerarios', this.itinerarioId, 'actividades'], { queryParams });
   }
 
   // Nuevo método para cargar información del itinerario

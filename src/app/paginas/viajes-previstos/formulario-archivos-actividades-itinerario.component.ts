@@ -1252,10 +1252,14 @@ export class FormularioArchivosComponent implements OnInit, OnDestroy {
       'itinerarios',
       this.itinerarioId,
       'actividades'
-    ]);
+    ], { queryParams: { scrollId: this.actividadId } });
   }
 
   volverAListaArchivos(): void {
+    const queryParams: any = {};
+    if (this.archivoEditandoId) {
+      queryParams.scrollId = this.archivoEditandoId;
+    }
     this.router.navigate([
       '/viajes-previstos',
       this.viajePrevistoId,
@@ -1264,7 +1268,7 @@ export class FormularioArchivosComponent implements OnInit, OnDestroy {
       'actividades',
       this.actividadId,
       'archivos'
-    ]);
+    ], { queryParams });
   }
 
   // ═══════════════════════════════════════════════════════════════

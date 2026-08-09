@@ -59,6 +59,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   actividadVideoSeleccionada: any = null;
 
   // 🟢 PROPIEDADES PARA MAPA GPX
+  targetScrollId: number | null = null;
   mapaGPX: any = null;
   coordenadasGPX: any[] = [];
   puntosGPXConModo: { lat: number; lng: number; mode: string }[] = [];
@@ -173,6 +174,12 @@ export class ActividadesItinerariosComponent implements OnInit {
   ) { }
 
   ngOnInit(): void {
+    this.route.queryParams.subscribe(queryParams => {
+      if (queryParams['scrollId']) {
+        this.targetScrollId = Number(queryParams['scrollId']);
+      }
+    });
+
     this.route.paramMap.subscribe(params => {
       const viajeId = params.get('viajePrevistoId');
       const itinId = params.get('itinerarioId');
@@ -192,10 +199,26 @@ export class ActividadesItinerariosComponent implements OnInit {
         next: actividades => {
           console.log('Actividades cargadas:', actividades);
           this.actividades = actividades;
-          console.log('NÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºmero de actividades:', this.actividades.length);
+          this.cdr.detectChanges();
+          this.scrollToTargetElement();
         },
         error: err => console.error('Error cargando actividades:', err)
       });
+  }
+
+  private scrollToTargetElement(): void {
+    if (!this.targetScrollId) return;
+    const scrollId = this.targetScrollId;
+    this.targetScrollId = null;
+
+    setTimeout(() => {
+      const el = document.getElementById(`actividad-${scrollId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('highlight-card');
+        setTimeout(() => el.classList.remove('highlight-card'), 2500);
+      }
+    }, 300);
   }
 
   // ==========================================

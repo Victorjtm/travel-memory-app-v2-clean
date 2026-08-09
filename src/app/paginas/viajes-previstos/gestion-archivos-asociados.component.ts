@@ -303,6 +303,10 @@ export class GestionArchivosAsociadosComponent implements OnInit {
   }
 
   volver(): void {
+    const queryParams: any = {};
+    if (this.archivoPrincipalId) {
+      queryParams.scrollId = this.archivoPrincipalId;
+    }
     this.router.navigate([
       '/viajes-previstos',
       this.viajePrevistoId,
@@ -311,7 +315,7 @@ export class GestionArchivosAsociadosComponent implements OnInit {
       'actividades',
       this.actividadId,
       'archivos'
-    ]);
+    ], { queryParams });
   }
   /**
      * Devuelve los tipos de archivo aceptados según el tipo seleccionado

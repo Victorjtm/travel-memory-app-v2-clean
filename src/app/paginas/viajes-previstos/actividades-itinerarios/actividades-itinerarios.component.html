@@ -9,7 +9,7 @@
   <hr>
 
   <!-- Lista de actividades -->
-  <div *ngFor="let actividad of actividades; trackBy: trackByActividad">
+  <div *ngFor="let actividad of actividades; trackBy: trackByActividad" [id]="'actividad-' + actividad.id">
     <h3>Actividad {{ actividad.id }}</h3>
     <p><strong>Nombre:</strong> {{ actividad.nombre }}</p>
     <p><strong>Descripción:</strong> {{ actividad.descripcion }}</p>

@@ -44,6 +44,7 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   archivoSeleccionado: Archivo | null = null;
   urlsArchivos: { [key: number]: string } = {};
   estadoCarga: { [key: number]: 'cargando' | 'listo' | 'error' } = {};
+  targetScrollId: number | null = null;
   modoGaleria = false; // ✨ NUEVA PROPIEDAD PARA VISTA GALERÍA
 
   // ✨ NUEVAS PROPIEDADES PARA GPX INDIVIDUAL
@@ -88,6 +89,13 @@ export class ArchivosComponent implements OnInit, OnDestroy {
 
     this.viajePrevistoId = Number(params.get('viajePrevistoId')) || 0;
     this.itinerarioId = Number(params.get('itinerarioId')) || 0;
+
+    // Escuchar queryParams para capturar el scrollId si regresamos de editar
+    this.route.queryParams.subscribe(queryParams => {
+      if (queryParams['scrollId']) {
+        this.targetScrollId = Number(queryParams['scrollId']);
+      }
+    });
 
     const actividadIdParam = params.get('actividadId');
     if (actividadIdParam) {
@@ -137,6 +145,7 @@ export class ArchivosComponent implements OnInit, OnDestroy {
         this.cargarDireccionesProgresivamente();
 
         this.cdr.detectChanges();
+        this.scrollToTargetElement();
       },
       error: err => {
         console.error('Error cargando archivos:', err);
@@ -493,7 +502,22 @@ export class ArchivosComponent implements OnInit, OnDestroy {
       'itinerarios',
       this.itinerarioId,
       'actividades'
-    ]);
+    ], { queryParams: { scrollId: this.actividadId } });
+  }
+
+  private scrollToTargetElement(): void {
+    if (!this.targetScrollId) return;
+    const scrollId = this.targetScrollId;
+    this.targetScrollId = null; // resetear para evitar scroll secundario no deseado
+
+    setTimeout(() => {
+      const el = document.getElementById(`archivo-${scrollId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('highlight-card');
+        setTimeout(() => el.classList.remove('highlight-card'), 2500);
+      }
+    }, 300);
   }
 
   verEnFormatoLibro(): void {

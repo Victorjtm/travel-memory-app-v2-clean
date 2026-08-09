@@ -760,3 +760,23 @@
     justify-content: center;
   }
 }
+
+// ✨ Animación de resaltado al regresar de la edición
+:host ::ng-deep .highlight-card {
+  animation: highlightPulse 2.5s ease-out;
+  border-radius: 12px;
+}
+
+@keyframes highlightPulse {
+  0% {
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.8), 0 4px 15px rgba(59, 130, 246, 0.4);
+    transform: scale(1.02);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.4), 0 2px 10px rgba(59, 130, 246, 0.2);
+  }
+  100% {
+    box-shadow: none;
+    transform: scale(1);
+  }
+}
