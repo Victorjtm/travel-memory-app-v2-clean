@@ -156,9 +156,8 @@ export class GpxAnimationService {
             }
 
             // Score combinado: ponderar distancia espacial (m) + diferencia temporal (min)
-            // Esto garantiza que si la ubicación se repite a distintas horas (ej: hotel mañana y noche),
-            // la foto nocturna se asocie al punto del GPX de la noche.
-            const score = d + (mTime && p.time ? timeDiffMinutes * 0.5 : 0);
+            // Usamos un peso de 25m por minuto para priorizar la coherencia temporal frente a variaciones de unos pocos metros en paradas repetidas o tramos cercanos
+            const score = d + (mTime && p.time ? timeDiffMinutes * 25.0 : 0);
 
             if (score < minScore) {
               minScore = score;
