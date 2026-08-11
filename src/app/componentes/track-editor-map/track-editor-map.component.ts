@@ -47,6 +47,10 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   pendingEdits: any[] = [];
   previewingEditId: string | null = null;
 
+  // Visualizador de marcas de tiempo GPX
+  mostrarTiempos: boolean = false;
+  private timeMarkersGroup: L.FeatureGroup | null = null;
+
   private map: L.Map | null = null;
   private polylinesGroup: L.FeatureGroup | null = null;
   private highlightPolyline: L.Polyline | null = null;
@@ -154,6 +158,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
 
     this.polylinesGroup = L.featureGroup().addTo(this.map);
+    this.timeMarkersGroup = L.featureGroup().addTo(this.map);
 
     this.drawBaseAndEdits();
 
@@ -163,6 +168,13 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     // Evento de clic en el mapa para snap
     this.map.on('click', (e: L.LeafletMouseEvent) => this.handleMapClick(e));
+
+    // Escuchador de zoom para actualizar marcadores de tiempo adaptativamente
+    this.map.on('zoomend', () => {
+      if (this.mostrarTiempos) {
+        this.updateTimeMarkers();
+      }
+    });
   }
 
   // Paleta y mapeo de colores por modo de transporte (idéntico a ver-gpx y reproductor animado)
@@ -1209,5 +1221,120 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         alt: ''
       }).addTo(this.polylinesGroup);
     }
+  }
+
+  // ==========================================
+  // ⏱️ VISUALIZADOR DE MARCAS DE TIEMPO GPX
+  // ==========================================
+
+  toggleMostrarTiempos(): void {
+    this.mostrarTiempos = !this.mostrarTiempos;
+    if (this.mostrarTiempos) {
+      this.updateTimeMarkers();
+    } else {
+      this.clearTimeMarkers();
+    }
+  }
+
+  private clearTimeMarkers(): void {
+    if (this.timeMarkersGroup) {
+      this.timeMarkersGroup.clearLayers();
+    }
+  }
+
+  private updateTimeMarkers(): void {
+    if (!this.map || !this.gpxPoints || this.gpxPoints.length === 0 || !this.timeMarkersGroup) return;
+
+    this.clearTimeMarkers();
+    if (!this.mostrarTiempos) return;
+
+    const zoom = this.map.getZoom();
+
+    // Filtrar puntos que tengan tiempo asignado (p.time o timeAcum)
+    const pointsWithTime: { pt: GpxPoint; originalIdx: number }[] = [];
+    this.gpxPoints.forEach((pt, originalIdx) => {
+      if (pt.time || (pt.timeAcum !== undefined && pt.timeAcum !== null && pt.timeAcum > 0)) {
+        pointsWithTime.push({ pt, originalIdx });
+      }
+    });
+
+    if (pointsWithTime.length === 0) return;
+
+    // Determinar paso de diezmado según el nivel de zoom
+    let step = 1;
+    if (zoom < 11) {
+      step = Math.max(1, Math.floor(pointsWithTime.length / 15));
+    } else if (zoom <= 13) {
+      step = Math.max(1, Math.floor(pointsWithTime.length / 35));
+    } else if (zoom <= 16) {
+      step = Math.max(1, Math.floor(pointsWithTime.length / 80));
+    } else {
+      step = 1; // Zoom cercano -> mostrar todos los puntos con tiempo
+    }
+
+    for (let i = 0; i < pointsWithTime.length; i += step) {
+      const { pt, originalIdx } = pointsWithTime[i];
+
+      // Formatear texto de hora
+      let horaText = '';
+      let fechaFull = '';
+      if (pt.time) {
+        const dateObj = new Date(pt.time);
+        const hh = dateObj.getHours().toString().padStart(2, '0');
+        const mm = dateObj.getMinutes().toString().padStart(2, '0');
+        const ss = dateObj.getSeconds().toString().padStart(2, '0');
+        horaText = `${hh}:${mm}:${ss}`;
+        fechaFull = dateObj.toLocaleString();
+      } else if (pt.timeAcum !== undefined) {
+        const totalSec = Math.floor(pt.timeAcum);
+        const hh = Math.floor(totalSec / 3600).toString().padStart(2, '0');
+        const mm = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0');
+        const ss = (totalSec % 60).toString().padStart(2, '0');
+        horaText = `+${hh}:${mm}:${ss}`;
+        fechaFull = `Tiempo acumulado: +${hh}:${mm}:${ss}`;
+      }
+
+      if (!horaText) continue;
+
+      const icon = L.divIcon({
+        className: 'gpx-time-badge-container',
+        html: `<div class="gpx-time-badge">⏱️ ${horaText}</div>`,
+        iconSize: [95, 24],
+        iconAnchor: [47, 12]
+      });
+
+      const marker = L.marker([pt.lat, pt.lng], { icon });
+
+      const distKm = pt.distAcum !== undefined ? (pt.distAcum / 1000).toFixed(2) : '0.00';
+      const modoNorm = pt.mode || pt.hfMode || 'walking';
+
+      const popupContent = `
+        <div style="font-family: sans-serif; font-size: 13px; line-height: 1.4; color: #1e293b; padding: 4px;">
+          <div style="font-weight: 700; color: #0284c7; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 6px;">
+            ⏱️ Punto GPX #${originalIdx + 1}
+          </div>
+          <div><strong>Hora:</strong> ${fechaFull || horaText}</div>
+          <div><strong>Distancia:</strong> ${distKm} km</div>
+          <div><strong>Modo:</strong> ${this.getModeName(modoNorm)}</div>
+        </div>
+      `;
+
+      marker.bindPopup(popupContent);
+      this.timeMarkersGroup.addLayer(marker);
+    }
+  }
+
+  public getModeName(mode: string | null | undefined): string {
+    if (!mode) return 'Andando';
+    const m = mode.toLowerCase();
+    if (m.includes('walk') || m.includes('camin') || m.includes('andan')) return 'Andando';
+    if (m.includes('car') || m.includes('coch') || m.includes('driv')) return 'Coche';
+    if (m.includes('bic') || m.includes('cycl')) return 'Bicicleta';
+    if (m.includes('run') || m.includes('corr')) return 'Corriendo';
+    if (m.includes('bus')) return 'Autobús';
+    if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return 'Barco';
+    if (m.includes('plane') || m.includes('avion')) return 'Avión';
+    if (m.includes('train') || m.includes('tren')) return 'Tren';
+    return mode;
   }
 }

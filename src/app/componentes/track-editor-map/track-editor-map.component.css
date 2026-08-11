@@ -8,3 +8,37 @@
 ::ng-deep .preview-blink {
   animation: blinkLine 1s infinite;
 }
+
+::ng-deep .gpx-time-badge-container {
+  background: transparent !important;
+  border: none !important;
+}
+
+::ng-deep .gpx-time-badge {
+  background: #0f172a;
+  color: #38bdf8;
+  border: 1.5px solid #0284c7;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: monospace, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: transform 0.15s, background-color 0.15s;
+  display: inline-block;
+}
+
+::ng-deep .gpx-time-badge:hover {
+  transform: scale(1.15);
+  background: #1e293b;
+  color: #7dd3fc;
+  border-color: #38bdf8;
+  z-index: 9999;
+}
+
+.btn-time-float.active {
+  background: #0369a1 !important;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.4) !important;
+}

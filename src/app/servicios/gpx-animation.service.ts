@@ -9,7 +9,7 @@ export interface GpxPoint {
   timeAcum: number; // Tiempo acumulado en segundos
   mode?: string;    // Modo de transporte en este punto (e.g., 'walking', 'driving')
   event?: any;      // Evento multimedia asociado (opcional)
-  
+
   // Propiedades de Alta Fidelidad (hf)
   hfColor?: string;
   hfOpacity?: number;
@@ -76,9 +76,9 @@ export class GpxAnimationService {
       }
 
       const modeEl = trkpts[i].getElementsByTagName('transportMode')[0] ||
-                     trkpts[i].getElementsByTagName('profileId')[0] ||
-                     trkpts[i].getElementsByTagName('mode')[0] ||
-                     trkpts[i].getElementsByTagName('profileName')[0];
+        trkpts[i].getElementsByTagName('profileId')[0] ||
+        trkpts[i].getElementsByTagName('mode')[0] ||
+        trkpts[i].getElementsByTagName('profileName')[0];
 
       // Si hay etiqueta de modo, actualizamos lastKnownMode; si no, propagamos el anterior
       if (modeEl && modeEl.textContent) {
@@ -204,7 +204,7 @@ export class GpxAnimationService {
    */
   applyTransportSegments(points: GpxPoint[], segments: any[]): GpxPoint[] {
     console.log('🔍 [GpxAnimationService] Procesando segmentos:', segments?.length || 0);
-    
+
     if (points.length === 0) return points;
 
     // ✨ Asegurar que todos los puntos tengan distAcum calculada si falta
@@ -219,7 +219,7 @@ export class GpxAnimationService {
         accumulatedDistance = points[i].distAcum!;
       }
     }
-    
+
     // ✨ Preservar modos específicos ya existentes (como boat, walking, driving asignados por replaySegments)
     const hasSpecificModes = points.some(p => p.mode && p.mode !== 'walking');
 
@@ -245,7 +245,7 @@ export class GpxAnimationService {
     // Preparar distancias de segmentos en metros con parseo robusto
     const segmentThresholds = segments.map((seg, idx) => {
       let rawDist = seg.distanciaMetros || seg.distance || 0;
-      
+
       // Si no hay metros, intentar con km (que puede ser string "5.68" o "5,68")
       if (!rawDist && seg.distanciaKm) {
         const cleanKm = String(seg.distanciaKm).replace(',', '.');
@@ -255,11 +255,11 @@ export class GpxAnimationService {
       }
 
       accumulatedSegmentDist += Number(rawDist);
-      
+
       // Normalizar el nombre del modo para facilitar el mapeo posterior
       let rawMode = (seg.tipo || seg.profileName || seg.nombre || seg.mode || 'walking').toLowerCase();
       const fullSegText = `${seg.nombre || ''} ${seg.profileName || ''} ${seg.tipo || ''} ${seg.mode || ''}`.toLowerCase();
-      
+
       if (fullSegText.includes('coche') || fullSegText.includes('driving') || fullSegText.includes('car') || fullSegText.includes('auto')) {
         rawMode = 'driving';
       } else if (fullSegText.includes('boat') || fullSegText.includes('barco') || fullSegText.includes('ship') || fullSegText.includes('ferry') || fullSegText.includes('crucero')) {
@@ -273,7 +273,7 @@ export class GpxAnimationService {
       } else if (fullSegText.includes('andando') || fullSegText.includes('walking') || fullSegText.includes('caminar')) {
         rawMode = 'walking';
       }
-      
+
       console.log(`📏 Segmento ${idx}: ${rawMode} - Acumulado: ${accumulatedSegmentDist}m`);
 
       return {
@@ -382,7 +382,7 @@ export class GpxAnimationService {
    */
   private interpolateTimesForOsrm(p1: GpxPoint, p2: GpxPoint, coords: [number, number][], targetNumPoints?: number): GpxPoint[] {
     if (!p1.time || !p2.time || coords.length === 0) return [];
-    
+
     // ✨ DOWNSAMPLING: Reducir (o mantener) la cantidad de puntos de OSRM para que coincida con la densidad original
     let sampledCoords = coords;
     if (targetNumPoints && targetNumPoints > 0 && coords.length > targetNumPoints) {
@@ -396,7 +396,7 @@ export class GpxAnimationService {
     const t1 = p1.time.getTime();
     const t2 = p2.time.getTime();
     const timeSpan = t2 - t1;
-    
+
     // Calcular distancia total del tramo OSRM para interpolación proporcional
     const totalDist = sampledCoords.reduce((acc, curr, i) => {
       if (i === 0) return 0;
@@ -411,17 +411,17 @@ export class GpxAnimationService {
       const d = this.getDistance(sampledCoords[i - 1][0], sampledCoords[i - 1][1], sampledCoords[i][0], sampledCoords[i][1]);
       distSum += d;
       const ratio = totalDist > 0 ? (distSum / totalDist) : 0;
-      
+
       const newTime = new Date(t1 + timeSpan * ratio);
-      
+
       // ✨ INTERPOLACIÓN PURA DE MÉTRICAS (Basado en P1 y P2 originales, sin recalcular geográficamente los globales)
-      const newDistAcum = p1.distAcum !== undefined && p2.distAcum !== undefined 
-          ? p1.distAcum + (p2.distAcum - p1.distAcum) * ratio 
-          : 0;
-          
+      const newDistAcum = p1.distAcum !== undefined && p2.distAcum !== undefined
+        ? p1.distAcum + (p2.distAcum - p1.distAcum) * ratio
+        : 0;
+
       const newTimeAcum = p1.timeAcum !== undefined && p2.timeAcum !== undefined
-          ? p1.timeAcum + (p2.timeAcum - p1.timeAcum) * ratio
-          : 0;
+        ? p1.timeAcum + (p2.timeAcum - p1.timeAcum) * ratio
+        : 0;
 
       newPoints.push({
         lat: sampledCoords[i][0],
@@ -460,7 +460,7 @@ export class GpxAnimationService {
       const url = 'https://router.project-osrm.org/route/v1/driving/' + p1.lng + ',' + p1.lat + ';' + p2.lng + ',' + p2.lat + '?overview=full';
       const res = await fetch(url);
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      
+
       const data = await res.json();
       const t1 = performance.now();
       console.log('🌐 [OSRM] Response ' + Math.round(t1 - t0) + 'ms -> Cache MISS');
@@ -482,7 +482,7 @@ export class GpxAnimationService {
    */
   recalculateAccumulators(points: GpxPoint[]): GpxPoint[] {
     if (points.length === 0) return points;
-    
+
     let distAcum = 0;
     let startTime = points[0].time ? points[0].time.getTime() : null;
     let prev = points[0];

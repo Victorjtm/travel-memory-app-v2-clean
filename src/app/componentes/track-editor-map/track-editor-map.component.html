@@ -34,6 +34,9 @@
       <button class="btn-location-float" (click)="startGetLocationMode()" style="background: #eab308; margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
         📍 Obtener Coordenada
       </button>
+      <button class="btn-time-float" [class.active]="mostrarTiempos" (click)="toggleMostrarTiempos()" style="background: #0284c7; margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); transition: all 0.2s;">
+        ⏱️ Tiempos {{ mostrarTiempos ? '(ON)' : '' }}
+      </button>
     </div>
   </div>
 
