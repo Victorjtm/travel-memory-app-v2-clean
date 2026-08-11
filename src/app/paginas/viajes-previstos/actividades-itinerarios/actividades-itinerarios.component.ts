@@ -131,6 +131,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   gpxPointsEditor: GpxPoint[] = [];
   editsEditor: TrackEdit[] = [];
   actividadEditorId: number | null = null;
+  archivosActividadActual: any[] = [];
 
   // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚Â¨ MODO ALTA FIDELIDAD (visual_session.json)
   visualSessionData: any = null;
@@ -1903,6 +1904,12 @@ export class ActividadesItinerariosComponent implements OnInit {
     this.editsEditor = [];
     this.cargarYAnadirFotos(actividadId);
 
+    // Cargar archivos asociados para calibración de tiempo en el editor
+    this.http.get<any[]>(`${environment.apiUrl}/archivos?actividadId=${actividadId}`).subscribe({
+      next: (files) => { this.archivosActividadActual = files || []; },
+      error: () => { this.archivosActividadActual = []; }
+    });
+
     const continuarCargaEditor = () => {
       this.trackEditorService.getSegments(actividadId).subscribe({
         next: (segments) => {
@@ -2037,6 +2044,19 @@ export class ActividadesItinerariosComponent implements OnInit {
               'user-override'
             ));
           }
+        } else if (edit.type === 'assign_timestamps' && edit.data?.points) {
+          const points = edit.data.points.map((p: any) => ({
+            lat: p.lat,
+            lng: p.lng,
+            time: p.time ? new Date(p.time).toISOString() : undefined,
+            mode: p.mode
+          }));
+
+          await firstValueFrom(this.trackEditorService.createSegment(
+            this.actividadEditorId,
+            points,
+            'user-override'
+          ));
         }
       }
 

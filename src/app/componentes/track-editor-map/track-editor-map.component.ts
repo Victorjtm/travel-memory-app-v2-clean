@@ -43,9 +43,16 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   @Output() saveAllEdits = new EventEmitter<any[]>(); // Emits pendingEdits
   @Output() close = new EventEmitter<void>();
 
+  @Input() archivosMedia: any[] = []; // Fotos de la actividad para calibración de anclas
+
   // In-memory edits tracking
   pendingEdits: any[] = [];
   previewingEditId: string | null = null;
+
+  // Herramienta de Asignación de Tiempos
+  showCustomTimeInputs: boolean = false;
+  customStartTime: string = '10:00:00';
+  customEndTime: string = '10:30:00';
 
   // Visualizador de marcas de tiempo GPX
   mostrarTiempos: boolean = false;
@@ -235,6 +242,21 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     deletes.forEach(applyEditToVisuals);
     overrides.forEach(applyEditToVisuals);
+
+    // Aplicar asignaciones de tiempo pendientes en memoria sobre gpxPoints
+    const timeOverrides = this.pendingEdits.filter(e => e.type === 'assign_timestamps');
+    timeOverrides.forEach(edit => {
+      const startIdx = this.trackEditorService.resolveAnchor(edit.data.startAnchor, this.gpxPoints);
+      const endIdx = this.trackEditorService.resolveAnchor(edit.data.endAnchor, this.gpxPoints);
+      if (startIdx !== -1 && endIdx !== -1 && edit.data.points) {
+        const min = Math.min(startIdx, endIdx);
+        edit.data.points.forEach((p: any, idx: number) => {
+          if (this.gpxPoints[min + idx]) {
+            this.gpxPoints[min + idx].time = p.time ? new Date(p.time) : undefined;
+          }
+        });
+      }
+    });
 
     // 3. Agrupar puntos contiguos que comparten el mismo estado visual
     let currentSegment: any[] = [];
@@ -629,6 +651,89 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     this.clearSelection();
     this.drawBaseAndEdits();
+  }
+
+  onAssignTimestamps(mode: 'auto' | 'manual'): void {
+    if (!this.anchorA || !this.anchorB || !this.gpxPoints || this.gpxPoints.length === 0) return;
+
+    const startIdx = this.trackEditorService.resolveAnchor(this.anchorA, this.gpxPoints);
+    const endIdx = this.trackEditorService.resolveAnchor(this.anchorB, this.gpxPoints);
+
+    if (startIdx === -1 || endIdx === -1) return;
+
+    const min = Math.min(startIdx, endIdx);
+    const max = Math.max(startIdx, endIdx);
+
+    // Clonar los puntos del tramo A-B
+    const targetSegment = this.gpxPoints.slice(min, max + 1).map(p => ({ ...p }));
+
+    if (mode === 'auto') {
+      // 1. Intentar calibrar con fotos del viaje
+      if (this.archivosMedia && this.archivosMedia.length > 0) {
+        this.trackEditorService.calibratePointsWithMedia(targetSegment, this.archivosMedia);
+      } else {
+        // 2. Si no hay fotos en el tramo, extrapolar por velocidad del medio de transporte
+        const baseMode = targetSegment[0]?.mode || targetSegment[0]?.hfMode || 'walking';
+        const speedMps = this.trackEditorService.getModeSpeedMps(baseMode);
+        let prevPt = targetSegment[0];
+        if (!prevPt.time) prevPt.time = new Date();
+
+        for (let i = 1; i < targetSegment.length; i++) {
+          const curr = targetSegment[i];
+          const dist = this.trackEditorService.getDistance(prevPt.lat, prevPt.lng, curr.lat, curr.lng);
+          const dtSec = Math.max(1, dist / speedMps);
+          curr.time = new Date(prevPt.time.getTime() + dtSec * 1000);
+          prevPt = curr;
+        }
+      }
+    } else {
+      // Modo manual por rango HH:mm:ss
+      const todayStr = new Date().toISOString().split('T')[0];
+      const startMs = new Date(`${todayStr}T${this.customStartTime}`).getTime();
+      const endMs = new Date(`${todayStr}T${this.customEndTime}`).getTime();
+
+      if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+        const totalDist = targetSegment.reduce((acc, curr, idx) => {
+          if (idx === 0) return 0;
+          return acc + this.trackEditorService.getDistance(targetSegment[idx - 1].lat, targetSegment[idx - 1].lng, curr.lat, curr.lng);
+        }, 0);
+
+        let currentDist = 0;
+        targetSegment.forEach((pt, idx) => {
+          if (idx === 0) {
+            pt.time = new Date(startMs);
+          } else {
+            const d = this.trackEditorService.getDistance(targetSegment[idx - 1].lat, targetSegment[idx - 1].lng, pt.lat, pt.lng);
+            currentDist += d;
+            const ratio = totalDist > 0 ? currentDist / totalDist : (idx / (targetSegment.length - 1));
+            pt.time = new Date(startMs + (endMs - startMs) * ratio);
+          }
+        });
+      }
+    }
+
+    const editId = Math.random().toString(36).substring(2, 9);
+    const descTime = mode === 'manual'
+      ? `Tiempos (${this.customStartTime} - ${this.customEndTime})`
+      : `Sincro Tiempos (${targetSegment[0]?.mode || 'Auto'})`;
+
+    this.pendingEdits.push({
+      id: editId,
+      type: 'assign_timestamps',
+      description: `${this.pendingEdits.length + 1} - ${descTime}`,
+      data: {
+        startAnchor: this.anchorA,
+        endAnchor: this.anchorB,
+        points: targetSegment
+      }
+    });
+
+    this.showCustomTimeInputs = false;
+    this.clearSelection();
+    this.drawBaseAndEdits();
+    if (this.mostrarTiempos) {
+      this.updateTimeMarkers();
+    }
   }
 
   // --- MODO GEOMETRÍA SINTÉTICA ---

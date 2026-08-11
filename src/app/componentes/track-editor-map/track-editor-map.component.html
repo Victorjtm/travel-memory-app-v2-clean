@@ -127,6 +127,35 @@
       <hr>
 
       <div class="action-group">
+        <h4>Sincronizar / Asignar Tiempos</h4>
+        <p class="warning-text">Calcula e inyecta horas al tramo A-B (con fotos, velocidad o rango manual).</p>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <button class="btn-primary" style="flex: 1; background: #0284c7; padding: 10px; font-size: 13px;" (click)="onAssignTimestamps('auto')">
+            ⏱️ Fotos / Velocidad
+          </button>
+          <button class="btn-secondary" style="flex: 1; padding: 10px; font-size: 13px;" (click)="showCustomTimeInputs = !showCustomTimeInputs">
+            🕒 Horas Manuales
+          </button>
+        </div>
+
+        <div *ngIf="showCustomTimeInputs" style="background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; margin-bottom: 10px;">
+          <div style="margin-bottom: 6px;">
+            <label style="font-size: 11px; font-weight: 600; color: #475569;">Hora Inicio (HH:mm:ss):</label>
+            <input type="time" step="1" [(ngModel)]="customStartTime" style="width: 100%; padding: 5px; border-radius: 4px; border: 1px solid #94a3b8; font-size: 12px;">
+          </div>
+          <div style="margin-bottom: 6px;">
+            <label style="font-size: 11px; font-weight: 600; color: #475569;">Hora Fin (HH:mm:ss):</label>
+            <input type="time" step="1" [(ngModel)]="customEndTime" style="width: 100%; padding: 5px; border-radius: 4px; border: 1px solid #94a3b8; font-size: 12px;">
+          </div>
+          <button class="btn-primary" style="width: 100%; background: #4f46e5; margin-top: 4px; padding: 8px; font-size: 12px;" (click)="onAssignTimestamps('manual')">
+            ✔️ Aplicar Rango Manual
+          </button>
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="action-group">
         <h4>Reemplazar Geometría</h4>
         <p class="warning-text">Sustituye la ruta original por un trazado manual.</p>
         <button class="btn-action" (click)="startReplaceGeometry()">
