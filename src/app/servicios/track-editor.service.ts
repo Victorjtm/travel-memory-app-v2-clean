@@ -277,37 +277,179 @@ export class TrackEditorService {
    * Recalcula la distancia acumulada y el tiempo acumulado (desde cero) 
    * del array final para asegurar coherencia en el HUD del reproductor.
    */
-  private recalculateAccumulators(points: GpxPoint[]): GpxPoint[] {
+  /**
+   * Devuelve la velocidad esperada en metros por segundo según el modo de transporte.
+   */
+  public getModeSpeedMps(mode: string | null | undefined): number {
+    if (!mode) return 1.39; // 5 km/h por defecto
+    const m = mode.toLowerCase();
+    if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return 5.55; // 20 km/h
+    if (m.includes('car') || m.includes('coch') || m.includes('driv')) return 16.67; // 60 km/h
+    if (m.includes('bus') || m.includes('autobus')) return 12.5; // 45 km/h
+    if (m.includes('train') || m.includes('tren')) return 19.44; // 70 km/h
+    if (m.includes('plane') || m.includes('avion')) return 83.33; // 300 km/h
+    if (m.includes('bic') || m.includes('cycl')) return 4.17; // 15 km/h
+    if (m.includes('run') || m.includes('corr')) return 2.78; // 10 km/h
+    if (m.includes('walk') || m.includes('camin') || m.includes('andan')) return 1.39; // 5 km/h
+    return 1.39;
+  }
+
+  /**
+   * Calibra los timestamps de los puntos GPX (incluyendo tramos prolongados)
+   * utilizando los timestamps reales de las fotos asociadas como anclas maestras.
+   */
+  public calibratePointsWithMedia(points: GpxPoint[], mediaList: any[]): GpxPoint[] {
+    if (!points || points.length === 0 || !mediaList || mediaList.length === 0) {
+      return points;
+    }
+
+    // 1. Extraer anclas válidas de fotos con coordenadas y hora de captura
+    const photoAnchors: { lat: number; lng: number; timeMs: number }[] = [];
+    for (const item of mediaList) {
+      const lat = item.latitud || item.lat;
+      const lng = item.longitud || item.lng || item.lon;
+      const horaRaw = item.horaCaptura || item.fechaCreacion || item.time;
+      if (lat && lng && horaRaw) {
+        const timeMs = new Date(horaRaw).getTime();
+        if (!isNaN(timeMs)) {
+          photoAnchors.push({ lat: Number(lat), lng: Number(lng), timeMs });
+        }
+      }
+    }
+
+    if (photoAnchors.length === 0) return points;
+
+    // Ordenar fotos cronológicamente
+    photoAnchors.sort((a, b) => a.timeMs - b.timeMs);
+
+    // 2. Mapear cada foto a su punto GPX espacialmente más cercano
+    const gpxAnchors: { gpxIdx: number; timeMs: number; distAcum: number }[] = [];
+    for (const photo of photoAnchors) {
+      let closestIdx = -1;
+      let minDistance = Infinity;
+
+      for (let i = 0; i < points.length; i++) {
+        const d = this.getDistance(photo.lat, photo.lng, points[i].lat, points[i].lng);
+        if (d < minDistance) {
+          minDistance = d;
+          closestIdx = i;
+        }
+      }
+
+      if (closestIdx !== -1 && minDistance < 500) {
+        gpxAnchors.push({
+          gpxIdx: closestIdx,
+          timeMs: photo.timeMs,
+          distAcum: points[closestIdx].distAcum || 0
+        });
+      }
+    }
+
+    if (gpxAnchors.length === 0) return points;
+
+    // Ordenar anclas por índice GPX y asegurar estricta monotonicidad
+    gpxAnchors.sort((a, b) => a.gpxIdx - b.gpxIdx);
+    const validAnchors: { gpxIdx: number; timeMs: number; distAcum: number }[] = [];
+    for (const a of gpxAnchors) {
+      if (validAnchors.length === 0 || a.timeMs > validAnchors[validAnchors.length - 1].timeMs) {
+        validAnchors.push(a);
+      }
+    }
+
+    if (validAnchors.length === 0) return points;
+
+    // 3. Extrapolar ancla inicial (punto 0) si el primer ancla es posterior
+    const firstA = validAnchors[0];
+    if (firstA.gpxIdx > 0) {
+      const p0 = points[0];
+      const speedMps = this.getModeSpeedMps(p0.mode || p0.hfMode);
+      const p0TimeMs = firstA.timeMs - ((firstA.distAcum - (p0.distAcum || 0)) / speedMps) * 1000;
+      validAnchors.unshift({ gpxIdx: 0, timeMs: p0TimeMs, distAcum: p0.distAcum || 0 });
+    }
+
+    // Extrapolar ancla final (último punto) si el último ancla es anterior
+    const lastA = validAnchors[validAnchors.length - 1];
+    const lastPt = points[points.length - 1];
+    const totalDist = lastPt.distAcum || 0;
+    if (lastA.gpxIdx < points.length - 1) {
+      const speedMps = this.getModeSpeedMps(lastPt.mode || lastPt.hfMode);
+      const pLastTimeMs = lastA.timeMs + ((totalDist - lastA.distAcum) / speedMps) * 1000;
+      validAnchors.push({ gpxIdx: points.length - 1, timeMs: pLastTimeMs, distAcum: totalDist });
+    }
+
+    // 4. Interpolación lineal a tramos entre anclas
+    const startTimeMs = validAnchors[0].timeMs;
+
+    for (let k = 0; k < validAnchors.length - 1; k++) {
+      const aStart = validAnchors[k];
+      const aEnd = validAnchors[k + 1];
+      const distDiff = aEnd.distAcum - aStart.distAcum;
+      const timeDiffMs = aEnd.timeMs - aStart.timeMs;
+
+      for (let i = aStart.gpxIdx; i <= aEnd.gpxIdx; i++) {
+        const pt = points[i];
+        const ptDist = (pt.distAcum || 0) - aStart.distAcum;
+        const ratio = distDiff > 0 ? ptDist / distDiff : 0;
+        const currentMs = aStart.timeMs + timeDiffMs * ratio;
+
+        pt.time = new Date(currentMs);
+        pt.timeAcum = (currentMs - startTimeMs) / 1000;
+      }
+    }
+
+    return points;
+  }
+
+  /**
+   * Recalcula la distancia acumulada y el tiempo acumulado (desde cero) 
+   * del array final para asegurar coherencia en el HUD del reproductor y editor.
+   */
+  public recalculateAccumulators(points: GpxPoint[]): GpxPoint[] {
     if (!points || points.length === 0) return points;
 
     let distAcum = 0;
-    let timeAcum = 0;
     let prevPoint: GpxPoint | null = null;
     let startTimeMs: number | null = null;
 
+    // Buscar primer punto con fecha para fijar el instante inicial
+    const firstPointWithTime = points.find(p => p.time !== undefined && p.time !== null);
+    if (firstPointWithTime && firstPointWithTime.time) {
+      startTimeMs = firstPointWithTime.time.getTime();
+    } else {
+      startTimeMs = Date.now();
+    }
+
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
-      const currentTimeMs = p.time ? p.time.getTime() : null;
 
       if (i === 0) {
-        startTimeMs = currentTimeMs;
         p.distAcum = 0;
         p.timeAcum = 0;
+        if (!p.time) {
+          p.time = new Date(startTimeMs);
+        }
       } else {
         // Recalcular Distancia
         const d = this.getDistance(prevPoint!.lat, prevPoint!.lng, p.lat, p.lng);
         distAcum += d;
         p.distAcum = distAcum;
 
-        // Recalcular Tiempo
-        if (startTimeMs !== null && currentTimeMs !== null) {
-          // El tiempo sigue el flujo original absoluto. Un salto espacial por "delete" no comprime el tiempo del viaje.
-          timeAcum = (currentTimeMs - startTimeMs) / 1000;
-        } else if (prevPoint) {
-          // Fallback a velocidad media (5km/h = 1.38m/s) si el GPX original carecía de tags <time>
-          timeAcum += (d / (5 / 3.6));
+        // Recalcular Tiempo: si no tiene time, lo extrapolamos del anterior según velocidad del modo
+        if (!p.time) {
+          if (prevPoint!.time) {
+            const speedMps = this.getModeSpeedMps(p.mode || p.hfMode || prevPoint!.mode);
+            const dtSec = Math.max(1, d / speedMps);
+            p.time = new Date(prevPoint!.time.getTime() + dtSec * 1000);
+          } else {
+            p.time = new Date(startTimeMs + (i * 1000));
+          }
         }
-        p.timeAcum = timeAcum;
+
+        if (startTimeMs !== null && p.time) {
+          p.timeAcum = Math.max(0, (p.time.getTime() - startTimeMs) / 1000);
+        } else {
+          p.timeAcum = prevPoint!.timeAcum + 1;
+        }
       }
 
       prevPoint = p;

@@ -2083,18 +2083,23 @@ export class ActividadesItinerariosComponent implements OnInit {
   onAppendRequest(event: { points: { lat: number; lng: number }[] }): void {
     if (!this.actividadEditorId || !event.points || event.points.length === 0) return;
 
-    console.log('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¾ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Guardando Append:', event.points.length, 'puntos');
+    // Calcular timestamps monotónicos para los puntos de la prolongación
+    const appendedGpxPoints = this.trackEditorService.applyAppendWithTimestamps(
+      this.gpxPointsEditor,
+      event.points
+    );
 
-    this.trackEditorService.createSegment(this.actividadEditorId, event.points, 'user-append').subscribe({
+    // Formatear payload con ISO timestamps para que la BBDD guarde las horas
+    const payload = appendedGpxPoints.map(p => ({
+      lat: p.lat,
+      lng: p.lng,
+      time: p.time ? p.time.toISOString() : undefined,
+      mode: p.mode
+    }));
+
+    this.trackEditorService.createSegment(this.actividadEditorId, payload, 'user-append').subscribe({
       next: (resp) => {
-        console.log('ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Segment append guardado con id:', resp.id, 'order:', resp.segmentOrder);
-
-        // Calcular timestamps monotÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³nicos y concatenar al array local
-        const appendedGpxPoints = this.trackEditorService.applyAppendWithTimestamps(
-          this.gpxPointsEditor,
-          event.points
-        );
-
+        console.log('✅ Segment append guardado con id:', resp.id, 'order:', resp.segmentOrder);
         this.gpxPointsEditor = [...this.gpxPointsEditor, ...appendedGpxPoints];
         this.cdr.detectChanges();
       },
