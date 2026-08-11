@@ -169,8 +169,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // Evento de clic en el mapa para snap
     this.map.on('click', (e: L.LeafletMouseEvent) => this.handleMapClick(e));
 
-    // Escuchador de zoom para actualizar marcadores de tiempo adaptativamente
-    this.map.on('zoomend', () => {
+    // Escuchador de zoom y movimiento para actualizar marcadores de tiempo adaptativamente
+    this.map.on('zoomend moveend', () => {
       if (this.mostrarTiempos) {
         this.updateTimeMarkers();
       }
@@ -1248,32 +1248,26 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.clearTimeMarkers();
     if (!this.mostrarTiempos) return;
 
-    const zoom = this.map.getZoom();
+    const bounds = this.map.getBounds().pad(0.1); // Margen del área visible actual del mapa
 
-    // Filtrar puntos que tengan tiempo asignado (p.time o timeAcum)
-    const pointsWithTime: { pt: GpxPoint; originalIdx: number }[] = [];
+    // 1. Filtrar únicamente los puntos que tengan tiempo Y estén dentro del área visible en pantalla
+    const visiblePointsWithTime: { pt: GpxPoint; originalIdx: number }[] = [];
     this.gpxPoints.forEach((pt, originalIdx) => {
       if (pt.time || (pt.timeAcum !== undefined && pt.timeAcum !== null && pt.timeAcum > 0)) {
-        pointsWithTime.push({ pt, originalIdx });
+        if (bounds.contains([pt.lat, pt.lng])) {
+          visiblePointsWithTime.push({ pt, originalIdx });
+        }
       }
     });
 
-    if (pointsWithTime.length === 0) return;
+    if (visiblePointsWithTime.length === 0) return;
 
-    // Determinar paso de diezmado según el nivel de zoom
-    let step = 1;
-    if (zoom < 11) {
-      step = Math.max(1, Math.floor(pointsWithTime.length / 15));
-    } else if (zoom <= 13) {
-      step = Math.max(1, Math.floor(pointsWithTime.length / 35));
-    } else if (zoom <= 16) {
-      step = Math.max(1, Math.floor(pointsWithTime.length / 80));
-    } else {
-      step = 1; // Zoom cercano -> mostrar todos los puntos con tiempo
-    }
+    // 2. Limitar estrictamente el número máximo de marcadores a renderizar (máx. 60) para garantizar 0 cuelgues
+    const MAX_VISUAL_MARKERS = 60;
+    const step = Math.max(1, Math.ceil(visiblePointsWithTime.length / MAX_VISUAL_MARKERS));
 
-    for (let i = 0; i < pointsWithTime.length; i += step) {
-      const { pt, originalIdx } = pointsWithTime[i];
+    for (let i = 0; i < visiblePointsWithTime.length; i += step) {
+      const { pt, originalIdx } = visiblePointsWithTime[i];
 
       // Formatear texto de hora
       let horaText = '';
@@ -1299,8 +1293,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       const icon = L.divIcon({
         className: 'gpx-time-badge-container',
         html: `<div class="gpx-time-badge">⏱️ ${horaText}</div>`,
-        iconSize: [95, 24],
-        iconAnchor: [47, 12]
+        iconSize: [115, 30],
+        iconAnchor: [57, 15]
       });
 
       const marker = L.marker([pt.lat, pt.lng], { icon });
