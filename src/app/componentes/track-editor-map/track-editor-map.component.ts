@@ -671,19 +671,47 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       // 1. Intentar calibrar con fotos del viaje
       if (this.archivosMedia && this.archivosMedia.length > 0) {
         this.trackEditorService.calibratePointsWithMedia(targetSegment, this.archivosMedia);
-      } else {
-        // 2. Si no hay fotos en el tramo, extrapolar por velocidad del medio de transporte
+      }
+
+      // 2. Si no hay fotos en el tramo o faltan timestamps, extrapolar progresivamente por velocidad del medio de transporte
+      const hasUnassignedTimes = targetSegment.some(p => !p.time);
+      if (hasUnassignedTimes) {
+        // Buscar la hora del último punto previo conocido antes de startIdx
+        let startTimeMs: number | null = null;
+        for (let i = min - 1; i >= 0; i--) {
+          if (this.gpxPoints[i]?.time) {
+            let extraDist = 0;
+            let pPrev = this.gpxPoints[i];
+            for (let j = i + 1; j <= min; j++) {
+              extraDist += this.trackEditorService.getDistance(pPrev.lat, pPrev.lng, this.gpxPoints[j].lat, this.gpxPoints[j].lng);
+              pPrev = this.gpxPoints[j];
+            }
+            const speedMps = this.trackEditorService.getModeSpeedMps(this.gpxPoints[i].mode || this.gpxPoints[i].hfMode);
+            startTimeMs = this.gpxPoints[i].time!.getTime() + (extraDist / speedMps) * 1000;
+            break;
+          }
+        }
+
+        if (!startTimeMs) {
+          startTimeMs = targetSegment[0]?.time?.getTime() ?? Date.now();
+        }
+
         const baseMode = targetSegment[0]?.mode || targetSegment[0]?.hfMode || 'walking';
         const speedMps = this.trackEditorService.getModeSpeedMps(baseMode);
+
         let prevPt = targetSegment[0];
-        if (!prevPt.time) prevPt.time = new Date();
+        if (!prevPt.time) {
+          prevPt.time = new Date(startTimeMs);
+        }
 
         for (let i = 1; i < targetSegment.length; i++) {
           const curr = targetSegment[i];
-          const dist = this.trackEditorService.getDistance(prevPt.lat, prevPt.lng, curr.lat, curr.lng);
-          const dtSec = Math.max(1, dist / speedMps);
-          const prevTimeMs = prevPt.time?.getTime() ?? Date.now();
-          curr.time = new Date(prevTimeMs + dtSec * 1000);
+          if (!curr.time) {
+            const dist = this.trackEditorService.getDistance(prevPt.lat, prevPt.lng, curr.lat, curr.lng);
+            const dtSec = Math.max(1, dist / speedMps);
+            const prevTimeMs = prevPt.time?.getTime() ?? startTimeMs;
+            curr.time = new Date(prevTimeMs + dtSec * 1000);
+          }
           prevPt = curr;
         }
       }

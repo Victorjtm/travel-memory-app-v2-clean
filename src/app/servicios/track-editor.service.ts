@@ -345,7 +345,10 @@ export class TrackEditorService {
       }
     }
 
-    if (gpxAnchors.length === 0) return points;
+    if (gpxAnchors.length === 0) {
+      this.recalculateAccumulators(points);
+      return points;
+    }
 
     // Ordenar anclas por índice GPX y asegurar estricta monotonicidad
     gpxAnchors.sort((a, b) => a.gpxIdx - b.gpxIdx);
@@ -356,7 +359,10 @@ export class TrackEditorService {
       }
     }
 
-    if (validAnchors.length === 0) return points;
+    if (validAnchors.length === 0) {
+      this.recalculateAccumulators(points);
+      return points;
+    }
 
     // 3. Extrapolar ancla inicial (punto 0) si el primer ancla es posterior
     const firstA = validAnchors[0];
