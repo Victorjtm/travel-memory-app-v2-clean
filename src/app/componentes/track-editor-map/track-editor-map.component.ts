@@ -682,7 +682,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
           const curr = targetSegment[i];
           const dist = this.trackEditorService.getDistance(prevPt.lat, prevPt.lng, curr.lat, curr.lng);
           const dtSec = Math.max(1, dist / speedMps);
-          curr.time = new Date(prevPt.time.getTime() + dtSec * 1000);
+          const prevTimeMs = prevPt.time?.getTime() ?? Date.now();
+          curr.time = new Date(prevTimeMs + dtSec * 1000);
           prevPt = curr;
         }
       }
