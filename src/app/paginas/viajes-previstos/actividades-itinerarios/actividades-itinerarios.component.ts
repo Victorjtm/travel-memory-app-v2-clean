@@ -1904,9 +1904,17 @@ export class ActividadesItinerariosComponent implements OnInit {
     this.editsEditor = [];
     this.cargarYAnadirFotos(actividadId);
 
-    // Cargar archivos asociados para calibración de tiempo en el editor
+    // Cargar archivos principales y asociados para calibración de tiempo en el editor
     this.http.get<any[]>(`${environment.apiUrl}/archivos?actividadId=${actividadId}`).subscribe({
-      next: (files) => { this.archivosActividadActual = files || []; },
+      next: (files) => {
+        const principales = files || [];
+        this.http.get<any[]>(`${environment.apiUrl}/archivos-asociados`).subscribe({
+          next: (asociados) => {
+            this.archivosActividadActual = [...principales, ...(asociados || [])];
+          },
+          error: () => { this.archivosActividadActual = principales; }
+        });
+      },
       error: () => { this.archivosActividadActual = []; }
     });
 

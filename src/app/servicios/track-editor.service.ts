@@ -298,6 +298,69 @@ export class TrackEditorService {
    * Calibra los timestamps de los puntos GPX (incluyendo tramos prolongados)
    * utilizando los timestamps reales de las fotos asociadas como anclas maestras.
    */
+  private parseFlexibleDate(raw: any, filename?: string): number | null {
+    if (!raw && !filename) return null;
+
+    if (raw) {
+      if (typeof raw === 'number' && !isNaN(raw)) return raw;
+      if (raw instanceof Date && !isNaN(raw.getTime())) return raw.getTime();
+
+      const str = String(raw).trim();
+      let d = new Date(str);
+      if (!isNaN(d.getTime())) return d.getTime();
+
+      // Formato europeo: DD/MM/YYYY HH:mm:ss o DD-MM-YYYY HH:mm:ss
+      const euroMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+|,?\s*)(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+      if (euroMatch) {
+        const day = parseInt(euroMatch[1], 10);
+        const month = parseInt(euroMatch[2], 10) - 1;
+        const year = parseInt(euroMatch[3], 10);
+        const hours = parseInt(euroMatch[4] || '0', 10);
+        const minutes = parseInt(euroMatch[5] || '0', 10);
+        const seconds = parseInt(euroMatch[6] || '0', 10);
+        d = new Date(year, month, day, hours, minutes, seconds);
+        if (!isNaN(d.getTime())) return d.getTime();
+      }
+    }
+
+    // Fallback: extraer timestamp del nombre de archivo (ej: JPEG_20260628_115836_17826...)
+    if (filename) {
+      const nameMatch = String(filename).match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+      if (nameMatch) {
+        const year = parseInt(nameMatch[1], 10);
+        const month = parseInt(nameMatch[2], 10) - 1;
+        const day = parseInt(nameMatch[3], 10);
+        const hours = parseInt(nameMatch[4], 10);
+        const minutes = parseInt(nameMatch[5], 10);
+        const seconds = parseInt(nameMatch[6], 10);
+        const d = new Date(year, month, day, hours, minutes, seconds);
+        if (!isNaN(d.getTime())) return d.getTime();
+      }
+    }
+
+    return null;
+  }
+
+  private ensureAccumulators(points: GpxPoint[]): void {
+    if (!points || points.length === 0) return;
+    let accum = 0;
+    for (let i = 0; i < points.length; i++) {
+      if (i === 0) {
+        if (points[i].distAcum === undefined) points[i].distAcum = 0;
+      } else {
+        const d = this.getDistance(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
+        accum += d;
+        if (points[i].distAcum === undefined || points[i].distAcum === 0) {
+          points[i].distAcum = (points[i - 1].distAcum || 0) + d;
+        }
+      }
+    }
+  }
+
+  /**
+   * Calibra las marcas de tiempo (time / timeAcum) de una lista de puntos GPX 
+   * utilizando las coordenadas y fechas de captura de los archivos multimedia disponibles.
+   */
   public calibratePointsWithMedia(points: GpxPoint[], mediaList: any[]): GpxPoint[] {
     if (!points || points.length === 0 || !mediaList || mediaList.length === 0) {
       return points;
@@ -306,24 +369,57 @@ export class TrackEditorService {
     // 1. Extraer anclas válidas de fotos con coordenadas y hora de captura
     const photoAnchors: { lat: number; lng: number; timeMs: number }[] = [];
     for (const item of mediaList) {
-      const lat = item.latitud || item.lat;
-      const lng = item.longitud || item.lng || item.lon;
-      const horaRaw = item.horaCaptura || item.fechaCreacion || item.time;
-      if (lat && lng && horaRaw) {
-        const timeMs = new Date(horaRaw).getTime();
-        if (!isNaN(timeMs)) {
-          photoAnchors.push({ lat: Number(lat), lng: Number(lng), timeMs });
+      let lat: number | null = item.latitud || item.lat || null;
+      let lng: number | null = item.longitud || item.lng || item.lon || null;
+      let horaRaw = item.timestampReal || item.horaCaptura || item.fechaCreacion || item.fecha || item.time || item.timestamp;
+
+      if ((!lat || !lng || !horaRaw) && item.geolocalizacion) {
+        try {
+          const geoData = typeof item.geolocalizacion === 'string'
+            ? JSON.parse(item.geolocalizacion)
+            : item.geolocalizacion;
+          lat = lat ?? (geoData?.latitud ?? geoData?.latitude ?? geoData?.lat ?? null);
+          lng = lng ?? (geoData?.longitud ?? geoData?.longitude ?? geoData?.lng ?? geoData?.lon ?? null);
+          horaRaw = horaRaw || geoData?.timestampReal || geoData?.timestamp || geoData?.time || geoData?.fecha;
+        } catch (e) {
+          if (typeof item.geolocalizacion === 'string' && item.geolocalizacion.includes(',')) {
+            const parts = item.geolocalizacion.split(',').map((s: string) => parseFloat(s.trim()));
+            if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+              lat = lat ?? parts[0];
+              lng = lng ?? parts[1];
+            }
+          }
         }
+      }
+
+      if ((!lat || !lng || !horaRaw) && item.metadatos) {
+        try {
+          const metaData = typeof item.metadatos === 'string'
+            ? JSON.parse(item.metadatos)
+            : item.metadatos;
+          lat = lat ?? (metaData?.latitud ?? metaData?.latitude ?? metaData?.lat ?? null);
+          lng = lng ?? (metaData?.longitud ?? metaData?.longitude ?? metaData?.lng ?? null);
+          horaRaw = horaRaw || metaData?.timestampReal || metaData?.timestamp || metaData?.dateTimeOriginal;
+        } catch (e) {}
+      }
+
+      const filename = item.nombreArchivo || item.rutaArchivo;
+      const timeMs = this.parseFlexibleDate(horaRaw, filename);
+
+      if (lat !== null && lng !== null && timeMs !== null && !isNaN(lat) && !isNaN(lng)) {
+        photoAnchors.push({ lat: Number(lat), lng: Number(lng), timeMs });
       }
     }
 
     if (photoAnchors.length === 0) return points;
 
-    // Ordenar fotos cronológicamente
-    photoAnchors.sort((a, b) => a.timeMs - b.timeMs);
+    // Asegurar que distAcum está bien calculada en el tramo
+    this.ensureAccumulators(points);
 
-    // 2. Mapear cada foto a su punto GPX espacialmente más cercano
-    const gpxAnchors: { gpxIdx: number; timeMs: number; distAcum: number }[] = [];
+    // 2. Mapear cada foto a su punto GPX espacialmente más cercano (MÁXIMO 80 Metros)
+    const MAX_PHOTO_DISTANCE_METERS = 80;
+    const rawGpxAnchors: { gpxIdx: number; timeMs: number; distAcum: number; distMeters: number }[] = [];
+
     for (const photo of photoAnchors) {
       let closestIdx = -1;
       let minDistance = Infinity;
@@ -336,26 +432,44 @@ export class TrackEditorService {
         }
       }
 
-      if (closestIdx !== -1 && minDistance < 500) {
-        gpxAnchors.push({
+      // Requerir que la foto esté a menos de 80 metros del punto del recorrido
+      if (closestIdx !== -1 && minDistance <= MAX_PHOTO_DISTANCE_METERS) {
+        rawGpxAnchors.push({
           gpxIdx: closestIdx,
           timeMs: photo.timeMs,
-          distAcum: points[closestIdx].distAcum || 0
+          distAcum: points[closestIdx].distAcum || 0,
+          distMeters: minDistance
         });
       }
     }
 
-    if (gpxAnchors.length === 0) {
+    if (rawGpxAnchors.length === 0) {
       this.recalculateAccumulators(points);
       return points;
     }
 
-    // Ordenar anclas por índice GPX y asegurar estricta monotonicidad
-    gpxAnchors.sort((a, b) => a.gpxIdx - b.gpxIdx);
+    // Ordenar anclas por índice GPX
+    rawGpxAnchors.sort((a, b) => a.gpxIdx - b.gpxIdx);
+
+    // Desduplicar anclas que caen en el mismo punto GPX (mantener la más cercana en distancia)
+    const deduplicatedAnchors: typeof rawGpxAnchors = [];
+    for (const anchor of rawGpxAnchors) {
+      const existing = deduplicatedAnchors.find(a => a.gpxIdx === anchor.gpxIdx);
+      if (existing) {
+        if (anchor.distMeters < existing.distMeters) {
+          existing.timeMs = anchor.timeMs;
+          existing.distMeters = anchor.distMeters;
+        }
+      } else {
+        deduplicatedAnchors.push(anchor);
+      }
+    }
+
+    // Filtrar anclas para asegurar estricta monotonicidad temporal (timeMs creciente)
     const validAnchors: { gpxIdx: number; timeMs: number; distAcum: number }[] = [];
-    for (const a of gpxAnchors) {
+    for (const a of deduplicatedAnchors) {
       if (validAnchors.length === 0 || a.timeMs > validAnchors[validAnchors.length - 1].timeMs) {
-        validAnchors.push(a);
+        validAnchors.push({ gpxIdx: a.gpxIdx, timeMs: a.timeMs, distAcum: a.distAcum });
       }
     }
 
@@ -364,22 +478,26 @@ export class TrackEditorService {
       return points;
     }
 
-    // 3. Extrapolar ancla inicial (punto 0) si el primer ancla es posterior
+    // 3. Extrapolar ancla inicial (punto 0) si el primer ancla no es el punto 0
     const firstA = validAnchors[0];
     if (firstA.gpxIdx > 0) {
       const p0 = points[0];
       const speedMps = this.getModeSpeedMps(p0.mode || p0.hfMode);
-      const p0TimeMs = firstA.timeMs - ((firstA.distAcum - (p0.distAcum || 0)) / speedMps) * 1000;
+      const distDiff = firstA.distAcum - (p0.distAcum || 0);
+      const dtSec = distDiff > 0 ? distDiff / speedMps : 0;
+      const p0TimeMs = firstA.timeMs - dtSec * 1000;
       validAnchors.unshift({ gpxIdx: 0, timeMs: p0TimeMs, distAcum: p0.distAcum || 0 });
     }
 
-    // Extrapolar ancla final (último punto) si el último ancla es anterior
+    // Extrapolar ancla final (último punto) si el último ancla no es el punto final
     const lastA = validAnchors[validAnchors.length - 1];
     const lastPt = points[points.length - 1];
     const totalDist = lastPt.distAcum || 0;
     if (lastA.gpxIdx < points.length - 1) {
       const speedMps = this.getModeSpeedMps(lastPt.mode || lastPt.hfMode);
-      const pLastTimeMs = lastA.timeMs + ((totalDist - lastA.distAcum) / speedMps) * 1000;
+      const distDiff = totalDist - lastA.distAcum;
+      const dtSec = distDiff > 0 ? distDiff / speedMps : 0;
+      const pLastTimeMs = lastA.timeMs + dtSec * 1000;
       validAnchors.push({ gpxIdx: points.length - 1, timeMs: pLastTimeMs, distAcum: totalDist });
     }
 
@@ -399,7 +517,7 @@ export class TrackEditorService {
         const currentMs = aStart.timeMs + timeDiffMs * ratio;
 
         pt.time = new Date(currentMs);
-        pt.timeAcum = (currentMs - startTimeMs) / 1000;
+        pt.timeAcum = Math.max(0, (currentMs - startTimeMs) / 1000);
       }
     }
 
