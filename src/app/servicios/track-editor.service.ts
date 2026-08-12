@@ -742,11 +742,30 @@ export class TrackEditorService {
       if (seg.source === 'original' || seg.source === 'user-append') {
         accumulatedPoints.push(...segPoints);
       } else if (seg.source === 'user-insert' || seg.source === 'user-override') {
-        const anchorA = segPoints[0];
-        const anchorB = segPoints[segPoints.length - 1];
+        const pFirst = segPoints[0];
+        const pLast = segPoints[segPoints.length - 1];
 
-        const idxA = accumulatedPoints.findIndex(p => isMatch(p, anchorA));
-        const idxB = accumulatedPoints.findIndex(p => isMatch(p, anchorB));
+        const getAnchorObject = (anchorProp: any, ptFallback: GpxPoint): TrackAnchor => {
+          if (anchorProp) {
+            return {
+              lat: anchorProp.lat ?? ptFallback.lat,
+              lng: anchorProp.lng ?? ptFallback.lng,
+              time: anchorProp.time ? (typeof anchorProp.time === 'string' ? anchorProp.time : anchorProp.time.toISOString()) : (ptFallback.time ? ptFallback.time.toISOString() : undefined),
+              index: anchorProp.index
+            };
+          }
+          return {
+            lat: ptFallback.lat,
+            lng: ptFallback.lng,
+            time: ptFallback.time ? ptFallback.time.toISOString() : undefined
+          };
+        };
+
+        const anchorA = getAnchorObject(seg.startAnchor, pFirst);
+        const anchorB = getAnchorObject(seg.endAnchor, pLast);
+
+        const idxA = this.resolveAnchor(anchorA, accumulatedPoints);
+        const idxB = this.resolveAnchor(anchorB, accumulatedPoints);
 
         if (idxA === -1 || idxB === -1) {
           console.warn(`[TrackEditor] Anclas no encontradas para ${seg.source} (A: ${idxA}, B: ${idxB}). Saltando.`);
@@ -760,25 +779,43 @@ export class TrackEditorService {
           actualB = idxA;
         }
 
-        // Fase 2.1.b / Fase 2.2: Splicing inyectando el tramo intermedio
+        // Splicing inyectando el tramo intermedio
         accumulatedPoints.splice(actualA, (actualB - actualA) + 1, ...segPoints);
-        // user-override mantiene los timestamps originales.
+
         if (seg.source === 'user-insert') {
-          this.interpolateTimeBetweenAnchors(anchorA, anchorB, segPoints);
+          this.interpolateTimeBetweenAnchors(pFirst, pLast, segPoints);
         }
       } else if (seg.source === 'user-delete') {
-        const anchorA = segPoints[0];
-        const anchorB = segPoints[1];
+        const pFirst = segPoints[0];
+        const pLast = segPoints[1] || segPoints[segPoints.length - 1];
 
-        const idxA = accumulatedPoints.findIndex(p => isMatch(p, anchorA));
-        const idxB = accumulatedPoints.findIndex(p => isMatch(p, anchorB));
+        const getAnchorObject = (anchorProp: any, ptFallback: GpxPoint): TrackAnchor => {
+          if (anchorProp) {
+            return {
+              lat: anchorProp.lat ?? ptFallback.lat,
+              lng: anchorProp.lng ?? ptFallback.lng,
+              time: anchorProp.time ? (typeof anchorProp.time === 'string' ? anchorProp.time : anchorProp.time.toISOString()) : (ptFallback.time ? ptFallback.time.toISOString() : undefined),
+              index: anchorProp.index
+            };
+          }
+          return {
+            lat: ptFallback.lat,
+            lng: ptFallback.lng,
+            time: ptFallback.time ? ptFallback.time.toISOString() : undefined
+          };
+        };
+
+        const anchorA = getAnchorObject(seg.startAnchor, pFirst);
+        const anchorB = getAnchorObject(seg.endAnchor, pLast);
+
+        const idxA = this.resolveAnchor(anchorA, accumulatedPoints);
+        const idxB = this.resolveAnchor(anchorB, accumulatedPoints);
 
         if (idxA === -1 || idxB === -1) {
           console.warn(`[TrackEditor] Anclas no encontradas para user-delete (A: ${idxA}, B: ${idxB}). Saltando.`);
           continue;
         }
 
-        // Semántica: eliminamos el segmento completo (inclusivo A y B), igual que delete_segment antiguo
         let actualA = idxA;
         let actualB = idxB;
         if (idxB < idxA) {
