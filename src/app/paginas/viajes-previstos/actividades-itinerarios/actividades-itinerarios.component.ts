@@ -402,26 +402,36 @@ export class ActividadesItinerariosComponent implements OnInit {
     this.actividadSeleccionada = actividadId;
 
     const continuarCargaVisualYModal = () => {
-      this.actividadService.obtenerVisualSession(actividadId).subscribe({
-        next: (sessionData) => {
-          const layers = sessionData?.layers || sessionData?.mapState?.layers;
-          if (layers && layers.length > 0) {
-            sessionData.layers = layers;
-            this.visualSessionData = sessionData;
-            this.isHighFidelityMode = true;
-            console.log(`🎨 [Alta Fidelidad] visual_session.json cargado. Capas: ${layers.length}`);
+      this.trackEditorService.getSegments(actividadId).subscribe({
+        next: (segments) => {
+          const hasUserEdits = segments && segments.some((s: any) => s.source === 'user-delete' || s.source === 'user-override' || s.source === 'user-append');
+          if (hasUserEdits) {
+            console.log('ℹ️ [TrackEditor] Ediciones manuales detectadas en segments. Omitiendo visual_session desfasado.');
+            this.isHighFidelityMode = false;
+            this.visualSessionData = null;
+            this.cargarGPXYAbrirModal(actividadId);
           } else {
-            console.warn('⚠️ [Alta Fidelidad] JSON sin capas válidas. Activando modo Legacy.');
+            this.actividadService.obtenerVisualSession(actividadId).subscribe({
+              next: (sessionData) => {
+                const layers = sessionData?.layers || sessionData?.mapState?.layers;
+                if (layers && layers.length > 0) {
+                  sessionData.layers = layers;
+                  this.visualSessionData = sessionData;
+                  this.isHighFidelityMode = true;
+                  console.log(`🎨 [Alta Fidelidad] visual_session.json cargado. Capas: ${layers.length}`);
+                } else {
+                  console.warn('⚠️ [Alta Fidelidad] JSON sin capas válidas. Activando modo Legacy.');
+                }
+                this.cargarGPXYAbrirModal(actividadId);
+              },
+              error: (err) => {
+                this.isHighFidelityMode = false;
+                this.cargarGPXYAbrirModal(actividadId);
+              }
+            });
           }
-          this.cargarGPXYAbrirModal(actividadId);
         },
-        error: (err) => {
-          const statusCode = err?.status;
-          if (statusCode === 404) {
-            console.log('ℹ️ [Legacy] No hay visual_session.json para esta actividad. Usando GPX.');
-          } else {
-            console.warn('⚠️ [Legacy] Error descargando visual_session.json:', err?.message);
-          }
+        error: () => {
           this.isHighFidelityMode = false;
           this.cargarGPXYAbrirModal(actividadId);
         }
@@ -504,17 +514,33 @@ export class ActividadesItinerariosComponent implements OnInit {
           tiempos: stats.tiempos || { enMarcha: '00:00:00', parado: '00:00:00', pausado: '00:00:00' }
         };
 
-        // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ NUEVO: Intentar cargar visual_session.json antes de lanzar la animaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n
-        this.actividadService.obtenerVisualSession(actividadId).subscribe({
-          next: (sessionData) => {
-            const layers = sessionData?.layers || sessionData?.mapState?.layers;
-            if (layers && layers.length > 0) {
-              sessionData.layers = layers;
-              this.visualSessionData = sessionData;
-              this.isHighFidelityMode = true;
-              console.log('ðŸŽ¨ [Animación] Modo Alta Fidelidad activado.');
+        this.trackEditorService.getSegments(actividadId).subscribe({
+          next: (segments) => {
+            const hasUserEdits = segments && segments.some((s: any) => s.source === 'user-delete' || s.source === 'user-override' || s.source === 'user-append');
+            if (hasUserEdits) {
+              console.log('ℹ️ [Animación] Ediciones manuales detectadas. Omitiendo visual_session desfasado.');
+              this.isHighFidelityMode = false;
+              this.visualSessionData = null;
+              this.continuarCargaAnimacion(actividadId);
+            } else {
+              this.actividadService.obtenerVisualSession(actividadId).subscribe({
+                next: (sessionData) => {
+                  const layers = sessionData?.layers || sessionData?.mapState?.layers;
+                  if (layers && layers.length > 0) {
+                    sessionData.layers = layers;
+                    this.visualSessionData = sessionData;
+                    this.isHighFidelityMode = true;
+                    console.log('🎨 [Animación] Modo Alta Fidelidad activado.');
+                  }
+                  this.continuarCargaAnimacion(actividadId);
+                },
+                error: () => {
+                  this.isHighFidelityMode = false;
+                  this.visualSessionData = null;
+                  this.continuarCargaAnimacion(actividadId);
+                }
+              });
             }
-            this.continuarCargaAnimacion(actividadId);
           },
           error: () => {
             this.isHighFidelityMode = false;

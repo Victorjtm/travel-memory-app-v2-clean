@@ -225,6 +225,8 @@ export class TrackEditorService {
    * Regla de cascada: 1. Time -> 2. Index verificado -> 3. Búsqueda Espacial -> 4. Conflicto
    */
   public resolveAnchor(anchor: TrackAnchor, points: GpxPoint[]): number {
+    if (!points || points.length === 0) return -1;
+
     // 1. Resolución Temporal Precisa (Prioridad #1)
     if (anchor.time) {
       const anchorTimeMs = new Date(anchor.time).getTime();
@@ -232,35 +234,24 @@ export class TrackEditorService {
       if (idx !== -1) return idx;
     }
 
-    // 2. Resolución por Índice con Verificación Espacial (Fallback si hay pequeñas mutaciones)
+    // 2. Resolución por Índice con Verificación Espacial (Fallback si el índice es válido)
     if (anchor.index !== undefined && anchor.index >= 0 && anchor.index < points.length) {
       const pointAtIndex = points[anchor.index];
       const dist = this.getDistance(anchor.lat, anchor.lng, pointAtIndex.lat, pointAtIndex.lng);
-      if (dist < 15) { // Tolerancia espacial
+      if (dist < 20) { // Tolerancia espacial de 20m
         return anchor.index;
       }
     }
 
-    // 3. Resolución Espacial de Emergencia (Desempate por índice si hay múltiples muy cerca)
+    // 3. Resolución Espacial de Precisión (Desempate geográfico directo)
     let closestIdx = -1;
     let minDistance = Infinity;
 
-    // Si hay ancla index, lo usamos para desempatar, si no, 0
-    const expectedLogicalIndex = anchor.index !== undefined ? anchor.index : 0;
-    let bestScore = Infinity;
-
     for (let i = 0; i < points.length; i++) {
       const dist = this.getDistance(anchor.lat, anchor.lng, points[i].lat, points[i].lng);
-
-      if (dist < 50) { // Candidato viable
-        // Puntuación: la distancia espacial + castigo por distancia lógica
-        const score = dist + Math.abs(i - expectedLogicalIndex) * 0.1; // El index lógico desempataría
-
-        if (score < bestScore) {
-          bestScore = score;
-          minDistance = dist;
-          closestIdx = i;
-        }
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestIdx = i;
       }
     }
 
@@ -268,7 +259,6 @@ export class TrackEditorService {
       return closestIdx;
     }
 
-    // 4. Conflicto Crítico
     console.warn('⚠️ [TrackEditor] Conflicto resolviendo anchor. Edit ignorado para proteger integridad.', anchor);
     return -1;
   }
@@ -801,13 +791,14 @@ export class TrackEditorService {
               lat: anchorProp.lat ?? ptFallback.lat,
               lng: anchorProp.lng ?? ptFallback.lng,
               time: anchorProp.time ? (typeof anchorProp.time === 'string' ? anchorProp.time : anchorProp.time.toISOString()) : (ptFallback.time ? ptFallback.time.toISOString() : undefined),
-              index: anchorProp.index
+              index: anchorProp.index ?? (ptFallback as any).index
             };
           }
           return {
             lat: ptFallback.lat,
             lng: ptFallback.lng,
-            time: ptFallback.time ? ptFallback.time.toISOString() : undefined
+            time: ptFallback.time ? ptFallback.time.toISOString() : undefined,
+            index: (ptFallback as any).index
           };
         };
 
@@ -827,6 +818,16 @@ export class TrackEditorService {
         if (idxB < idxA) {
           actualA = idxB;
           actualB = idxA;
+        }
+
+        // Si el borrado deja 4 o menos puntos residuales al principio, extender al inicio
+        if (actualA <= 4) {
+          actualA = 0;
+        }
+
+        // Si el borrado deja 4 o menos puntos residuales al final, extender hasta el final
+        if (accumulatedPoints.length - 1 - actualB <= 4) {
+          actualB = accumulatedPoints.length - 1;
         }
 
         const deleteLength = (actualB - actualA) + 1;
