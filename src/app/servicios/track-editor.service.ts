@@ -227,14 +227,29 @@ export class TrackEditorService {
   public resolveAnchor(anchor: TrackAnchor, points: GpxPoint[]): number {
     if (!points || points.length === 0) return -1;
 
-    // 1. Resolución Temporal Precisa (Prioridad #1)
+    // 1. Resolución Temporal Precisa: Buscar el punto con la diferencia de tiempo mínima absoluta (< 2s)
     if (anchor.time) {
       const anchorTimeMs = new Date(anchor.time).getTime();
-      const idx = points.findIndex(p => p.time && Math.abs(p.time.getTime() - anchorTimeMs) < 2000); // 2 segundos de tolerancia
-      if (idx !== -1) return idx;
+      let bestIdx = -1;
+      let minDiff = Infinity;
+
+      for (let i = 0; i < points.length; i++) {
+        const ptTime = points[i].time;
+        if (ptTime) {
+          const diff = Math.abs(ptTime.getTime() - anchorTimeMs);
+          if (diff < minDiff) {
+            minDiff = diff;
+            bestIdx = i;
+          }
+        }
+      }
+
+      if (bestIdx !== -1 && minDiff < 2000) {
+        return bestIdx;
+      }
     }
 
-    // 2. Resolución por Índice con Verificación Espacial (Fallback si el índice es válido)
+    // 2. Resolución por Índice con Verificación Espacial (Fallback si el índice original es válido)
     if (anchor.index !== undefined && anchor.index >= 0 && anchor.index < points.length) {
       const pointAtIndex = points[anchor.index];
       const dist = this.getDistance(anchor.lat, anchor.lng, pointAtIndex.lat, pointAtIndex.lng);
@@ -243,14 +258,38 @@ export class TrackEditorService {
       }
     }
 
-    // 3. Resolución Espacial de Precisión (Desempate geográfico directo)
+    // 3. Inferir expectedLogicalIndex usando el tiempo más cercano si el índice es indefinido (para históricos)
+    let expectedLogicalIndex = anchor.index;
+    if (expectedLogicalIndex === undefined && anchor.time) {
+      const anchorTimeMs = new Date(anchor.time).getTime();
+      let closestTimeIdx = 0;
+      let minTimeDiff = Infinity;
+
+      for (let i = 0; i < points.length; i++) {
+        const ptTime = points[i].time;
+        if (ptTime) {
+          const diff = Math.abs(ptTime.getTime() - anchorTimeMs);
+          if (diff < minTimeDiff) {
+            minTimeDiff = diff;
+            closestTimeIdx = i;
+          }
+        }
+      }
+      expectedLogicalIndex = closestTimeIdx;
+    }
+    if (expectedLogicalIndex === undefined) {
+      expectedLogicalIndex = 0;
+    }
+
+    // 4. Resolución Espacial de Precisión con Penalización de Índice Lógico (Evita saltar entre ida y vuelta)
     let closestIdx = -1;
-    let minDistance = Infinity;
+    let minScore = Infinity;
 
     for (let i = 0; i < points.length; i++) {
       const dist = this.getDistance(anchor.lat, anchor.lng, points[i].lat, points[i].lng);
-      if (dist < minDistance) {
-        minDistance = dist;
+      const score = dist + Math.abs(i - expectedLogicalIndex) * 5.0; // Multiplicador de 5.0 para penalizar saltos grandes
+      if (score < minScore) {
+        minScore = score;
         closestIdx = i;
       }
     }
