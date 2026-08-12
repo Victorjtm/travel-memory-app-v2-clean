@@ -62,7 +62,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   targetScrollId: number | null = null;
   mapaGPX: any = null;
   coordenadasGPX: any[] = [];
-  puntosGPXConModo: { lat: number; lng: number; mode: string }[] = [];
+  puntosGPXConModo: { lat: number; lng: number; mode: string; isGap?: boolean }[] = [];
 
   // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ NUEVAS PROPIEDADES: Panel de estadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas
   showSidePanel = true;
@@ -600,9 +600,14 @@ export class ActividadesItinerariosComponent implements OnInit {
             lastKnownMode = modeEl.textContent.toLowerCase();
             hasXmlTransportModes = true;
           }
-          // Si modeEl no existe, lastKnownMode conserva el valor del punto anterior
 
-          this.puntosGPXConModo.push({ lat, lng: lon, mode: lastKnownMode });
+          const isGapEl = trkpts[i].getElementsByTagName('isGap')[0];
+          const isGapExplicit = isGapEl ? isGapEl.textContent === 'true' : false;
+          const parentSeg = trkpts[i].parentElement;
+          const isFirstInTrkseg = parentSeg && parentSeg.tagName === 'trkseg' && parentSeg.firstElementChild === trkpts[i];
+          const isGap = (i > 0 && isFirstInTrkseg) || isGapExplicit;
+
+          this.puntosGPXConModo.push({ lat, lng: lon, mode: lastKnownMode, isGap: isGap || undefined });
         }
       }
 
@@ -626,7 +631,8 @@ export class ActividadesItinerariosComponent implements OnInit {
           this.puntosGPXConModo = mappedPoints.map(p => ({
             lat: p.lat,
             lng: p.lng,
-            mode: p.mode || 'walking'
+            mode: p.mode || 'walking',
+            isGap: p.isGap
           }));
         }
       } else if ((!hasXmlTransportModes || isAllWalking) && this.puntosGPXConModo.length > 0) {
@@ -838,13 +844,19 @@ export class ActividadesItinerariosComponent implements OnInit {
       const pt = puntos[i];
       const ptCoords: [number, number] = [pt.lat, pt.lng];
 
-      if (pt.mode !== currentMode) {
-        // Conectar tramos añadiendo el primer punto del nuevo tramo al tramo anterior
-        currentSegment.push(ptCoords);
-        drawPolyline(currentSegment, currentMode);
+      if (pt.isGap || pt.mode !== currentMode) {
+        if (pt.isGap) {
+          drawPolyline(currentSegment, currentMode);
+          currentMode = pt.mode;
+          currentSegment = [ptCoords];
+        } else {
+          // Conectar tramos añadiendo el primer punto del nuevo tramo al tramo anterior
+          currentSegment.push(ptCoords);
+          drawPolyline(currentSegment, currentMode);
 
-        currentMode = pt.mode;
-        currentSegment = [ptCoords];
+          currentMode = pt.mode;
+          currentSegment = [ptCoords];
+        }
       } else {
         currentSegment.push(ptCoords);
       }
@@ -1998,17 +2010,19 @@ export class ActividadesItinerariosComponent implements OnInit {
     try {
       for (const edit of pendingEdits) {
         if (edit.type === 'delete_segment') {
-          // Extraer los puntos en formato simple {lat, lng, time}
+          // Extraer los puntos en formato simple {lat, lng, time, index}
           const points = [
             {
               lat: edit.data.startAnchor.lat,
               lng: edit.data.startAnchor.lng,
-              time: edit.data.startAnchor.time ? new Date(edit.data.startAnchor.time).toISOString() : undefined
+              time: edit.data.startAnchor.time ? new Date(edit.data.startAnchor.time).toISOString() : undefined,
+              index: edit.data.startAnchor.index
             },
             {
               lat: edit.data.endAnchor.lat,
               lng: edit.data.endAnchor.lng,
-              time: edit.data.endAnchor.time ? new Date(edit.data.endAnchor.time).toISOString() : undefined
+              time: edit.data.endAnchor.time ? new Date(edit.data.endAnchor.time).toISOString() : undefined,
+              index: edit.data.endAnchor.index
             }
           ];
 

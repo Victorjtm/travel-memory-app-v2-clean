@@ -9,6 +9,7 @@ export interface GpxPoint {
   timeAcum: number; // Tiempo acumulado en segundos
   mode?: string;    // Modo de transporte en este punto (e.g., 'walking', 'driving')
   event?: any;      // Evento multimedia asociado (opcional)
+  isGap?: boolean;  // Indica que este punto abre un salto/ruptura sin línea continua
 
   // Propiedades de Alta Fidelidad (hf)
   hfColor?: string;
@@ -61,15 +62,22 @@ export class GpxAnimationService {
         startTime = currentTime;
       }
 
-      if (prevPoint) {
-        // Cálculo de distancia (fórmula Haversine simplificada o delegar en Leaflet si es posible)
+      const isGapEl = trkpts[i].getElementsByTagName('isGap')[0];
+      const isGapExplicit = isGapEl ? isGapEl.textContent === 'true' : false;
+
+      const parentSeg = trkpts[i].parentElement;
+      const isFirstInTrkseg = parentSeg && parentSeg.tagName === 'trkseg' && parentSeg.firstElementChild === trkpts[i];
+      const isGap = (i > 0 && isFirstInTrkseg) || isGapExplicit;
+
+      if (prevPoint && !isGap) {
+        // Cálculo de distancia (fórmula Haversine simplificada)
         const d = this.getDistance(prevPoint.lat, prevPoint.lng, lat, lng);
         distAcum += d;
       }
 
       if (startTime !== null && currentTime !== null) {
         timeAcum = (currentTime - startTime) / 1000;
-      } else if (prevPoint) {
+      } else if (prevPoint && !isGap) {
         // Si no hay timestamps, simulamos un tiempo basado en una velocidad media (5 km/h)
         const d = this.getDistance(prevPoint.lat, prevPoint.lng, lat, lng);
         timeAcum += (d / (5 / 3.6)); // v = d/t => t = d/v (5 km/h = 1.38 m/s)
@@ -94,7 +102,8 @@ export class GpxAnimationService {
         distAcum,
         timeAcum,
         mode: transportMode,
-        hfMode: transportMode
+        hfMode: transportMode,
+        isGap: isGap || undefined
       });
 
       prevPoint = currentLatLng as any;

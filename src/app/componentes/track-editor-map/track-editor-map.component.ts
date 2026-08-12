@@ -210,7 +210,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       visualMode: p.mode || p.hfMode || 'walking', 
       isDeleted: false,
       isHidden: false,
-      isPreviewing: false
+      isPreviewing: false,
+      isGap: !!p.isGap
     }));
 
     // 2. Aplicar Edits EN MEMORIA para marcar el estado visual
@@ -306,10 +307,15 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     for (let i = 0; i < visualPoints.length; i++) {
       const p = visualPoints[i];
       
-      if (p.visualMode !== currentMode || p.isDeleted !== currentIsDeleted || p.isHidden !== currentIsHidden || p.isPreviewing !== currentIsPreviewing) {
-        currentSegment.push(p); 
-        flushSegment();
-        currentSegment = [p];
+      if (p.isGap || p.visualMode !== currentMode || p.isDeleted !== currentIsDeleted || p.isHidden !== currentIsHidden || p.isPreviewing !== currentIsPreviewing) {
+        if (p.isGap && currentSegment.length > 0) {
+          flushSegment();
+          currentSegment = [p];
+        } else {
+          currentSegment.push(p); 
+          flushSegment();
+          currentSegment = [p];
+        }
         currentMode = p.visualMode;
         currentIsDeleted = p.isDeleted;
         currentIsHidden = p.isHidden;

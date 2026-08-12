@@ -642,8 +642,13 @@ export class TrackEditorService {
     xml += '  <trk>\n';
 
     for (const seg of segments) {
-      xml += '    <trkseg>\n';
+      let inSubSeg = false;
       for (const p of seg) {
+        if (p.isGap || !inSubSeg) {
+          if (inSubSeg) xml += '    </trkseg>\n';
+          xml += '    <trkseg>\n';
+          inSubSeg = true;
+        }
         xml += `      <trkpt lat="${p.lat}" lon="${p.lng}">\n`;
         if (p.ele !== undefined) {
           xml += `        <ele>${p.ele}</ele>\n`;
@@ -653,14 +658,15 @@ export class TrackEditorService {
           xml += `        <time>${timeStr}</time>\n`;
         }
         const mode = p.mode || p.hfMode;
-        if (mode) {
+        if (mode || p.isGap) {
           xml += `        <extensions>\n`;
-          xml += `          <transportMode>${mode}</transportMode>\n`;
+          if (mode) xml += `          <transportMode>${mode}</transportMode>\n`;
+          if (p.isGap) xml += `          <isGap>true</isGap>\n`;
           xml += `        </extensions>\n`;
         }
         xml += '      </trkpt>\n';
       }
-      xml += '    </trkseg>\n';
+      if (inSubSeg) xml += '    </trkseg>\n';
     }
 
     xml += '  </trk>\n</gpx>';
@@ -826,6 +832,9 @@ export class TrackEditorService {
         const deleteLength = (actualB - actualA) + 1;
         if (deleteLength > 0) {
           accumulatedPoints.splice(actualA, deleteLength);
+          if (actualA > 0 && actualA < accumulatedPoints.length) {
+            accumulatedPoints[actualA].isGap = true;
+          }
         }
       }
     }

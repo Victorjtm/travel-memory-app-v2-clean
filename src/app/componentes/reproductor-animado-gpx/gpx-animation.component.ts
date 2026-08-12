@@ -853,7 +853,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
           }
         }
 
-        if (newMode !== this.currentMode || newColor !== this.currentHfColor || newPhase !== this.currentHfPhase) {
+        if (p.isGap || newMode !== this.currentMode || newColor !== this.currentHfColor || newPhase !== this.currentHfPhase) {
           // Volcar puntos acumulados en la polilínea actual antes de cambiar de modo
           if (coordsBatch.length > 0) {
             this.addLatLngsToCurrentPolylines(coordsBatch);
