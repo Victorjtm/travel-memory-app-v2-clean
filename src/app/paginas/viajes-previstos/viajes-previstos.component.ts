@@ -317,4 +317,9 @@ export class ViajesPrevistosComponent implements OnInit {
       this.router.navigate(['/itinerarios', viajeId]);
     }
   }
+
+  irAMapaViaje(viajeId: number): void {
+    console.log('[NAVIGATE] Ir a mapa GPX de viaje completo:', viajeId);
+    this.router.navigate(['/viajes-previstos', viajeId, 'mapa-gpx']);
+  }
 }

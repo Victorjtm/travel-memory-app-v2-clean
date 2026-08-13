@@ -47,6 +47,13 @@ export const routes: Routes = [
   // ⚠️ MANTENER POR COMPATIBILIDAD: Viajes previstos (ruta antigua)
   { path: 'viajes-previstos', component: ViajesPrevistosComponent },
   { path: 'viajes-previstos/mapa', component: ViajesMapaComponent },
+  {
+    path: 'viajes-previstos/:viajeId/mapa-gpx',
+    loadComponent: () =>
+      import('./paginas/viajes-previstos/mapa-viaje-gpx/mapa-viaje-gpx.component').then(
+        (m) => m.MapaViajeGpxComponent
+      )
+  },
   { path: 'viajes-previstos/:id/itinerario', redirectTo: 'itinerarios/:id', pathMatch: 'full' },
   { path: 'viajes-previstos/:id', redirectTo: 'formulario-viaje-previsto/:id', pathMatch: 'full' },
 

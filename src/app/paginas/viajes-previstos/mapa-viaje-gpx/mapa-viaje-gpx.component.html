@@ -1,0 +1,202 @@
+<div class="mapa-viaje-fullscreen-page">
+
+  <!-- Barra Superior / Header de la Página -->
+  <header class="top-nav-bar">
+    <div class="nav-left">
+      <button class="btn-volver" (click)="volver()" title="Volver a viajes previstos">
+        <i class="fa fa-arrow-left"></i>
+        <span>Volver a Viajes</span>
+      </button>
+    </div>
+
+    <div class="nav-center">
+      <h1 class="viaje-titulo">{{ viaje?.destino || viaje?.nombre || 'Mapa del Viaje' }}</h1>
+      <span class="viaje-subtitulo">Recorrido unificado con todos sus itinerarios y actividades</span>
+    </div>
+
+    <div class="nav-right">
+      <!-- Estadísticas rápidas en el header -->
+      <div class="header-stat-chip" *ngIf="!cargando && estadisticasGPX.distanciaKm !== '0.00'">
+        <span class="chip-label">Distancia:</span>
+        <span class="chip-val">{{ estadisticasGPX.distanciaKm }} km</span>
+      </div>
+      <div class="header-stat-chip" *ngIf="!cargando && fotosViaje.length > 0">
+        <span class="chip-label">Fotos:</span>
+        <span class="chip-val">{{ fotosViaje.length }}</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Indicador de Carga Inicial -->
+  <div class="loading-overlay" *ngIf="cargando">
+    <div class="spinner"></div>
+    <p class="loading-text">{{ mensajeProgreso }}</p>
+  </div>
+
+  <!-- Contenedor Principal del Mapa y Panel Lateral (100% alto y ancho) -->
+  <div class="map-view-container" [class.panel-open]="showSidePanel">
+    
+    <!-- Mapa Leaflet -->
+    <div id="mapa-viaje-gpx-fullscreen" class="mapa-gpx-interactive"></div>
+
+    <!-- Panel Lateral Colapsable -->
+    <aside class="side-panel" *ngIf="showSidePanel">
+      <!-- Pestañas -->
+      <div class="side-panel-tabs">
+        <button class="tab-btn" [class.active]="activeSideTab === 'fotos'" (click)="activeSideTab = 'fotos'">
+          📷 Fotos ({{ fotosViaje.length }})
+        </button>
+        <button class="tab-btn" [class.active]="activeSideTab === 'estadisticas'" (click)="activeSideTab = 'estadisticas'">
+          📊 Estadísticas
+        </button>
+      </div>
+
+      <!-- Contenido del Panel -->
+      <div class="side-panel-content">
+        
+        <!-- Pestaña 1: FOTOS -->
+        <div *ngIf="activeSideTab === 'fotos'" class="tab-content-fotos">
+          <div class="photo-grid" *ngIf="fotosViaje && fotosViaje.length > 0">
+            <div class="photo-card" *ngFor="let foto of fotosViaje" (click)="centrarEnFoto(foto)" [class.is-video]="esVideo(foto)">
+              <img *ngIf="!esVideo(foto)" [src]="getThumbnailUrl(foto)" loading="lazy" [alt]="foto.nombreArchivo">
+              <video *ngIf="esVideo(foto)" [src]="getThumbnailUrl(foto)" preload="metadata" muted playsinline></video>
+
+              <!-- Badge Numérico -->
+              <div class="number-badge" *ngIf="foto.numeroSecuencial">
+                #{{ foto.numeroSecuencial }}
+              </div>
+
+              <!-- Badge Vídeo -->
+              <div class="video-badge" *ngIf="esVideo(foto)">
+                <i class="fa fa-play-circle"></i>
+              </div>
+            </div>
+          </div>
+          <div *ngIf="!fotosViaje || fotosViaje.length === 0" class="empty-state">
+            No hay fotos geolocalizadas para este viaje.
+          </div>
+        </div>
+
+        <!-- Pestaña 2: ESTADÍSTICAS -->
+        <div *ngIf="activeSideTab === 'estadisticas'" class="tab-content-estadisticas">
+          
+          <!-- 1. RESUMEN GLOBAL -->
+          <div class="stats-section">
+            <h4 class="section-title">🌍 Resumen del Viaje</h4>
+            <div class="stats-grid-2">
+              <div class="stat-card">
+                <span class="stat-label">Distancia Total</span>
+                <span class="stat-value">{{ estadisticasGPX.distanciaKm }} <small>km</small></span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Tiempo Total</span>
+                <span class="stat-value">{{ estadisticasGPX.duracion.formateada || '00:00:00' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. RENDIMIENTO -->
+          <div class="stats-section">
+            <h4 class="section-title">⚡ Rendimiento</h4>
+            <div class="stats-grid-2">
+              <div class="stat-item">
+                <span class="label">V. Media</span>
+                <span class="value">{{ estadisticasGPX.velocidad.media }} <small>km/h</small></span>
+              </div>
+              <div class="stat-item">
+                <span class="label">V. Máxima</span>
+                <span class="value">{{ estadisticasGPX.velocidad.maxima }} <small>km/h</small></span>
+              </div>
+              <div class="stat-item" *ngIf="estadisticasGPX.tiempos.enMarcha && estadisticasGPX.tiempos.enMarcha !== '00:00:00'">
+                <span class="label">En Marcha</span>
+                <span class="value">{{ estadisticasGPX.tiempos.enMarcha }}</span>
+              </div>
+              <div class="stat-item" *ngIf="estadisticasGPX.tiempos.parado && estadisticasGPX.tiempos.parado !== '00:00:00'">
+                <span class="label">Parado</span>
+                <span class="value">{{ estadisticasGPX.tiempos.parado }}</span>
+              </div>
+              <div class="stat-item" *ngIf="estadisticasGPX.tiempos.pausado && estadisticasGPX.tiempos.pausado !== '00:00:00'">
+                <span class="label">Pausado</span>
+                <span class="value">{{ estadisticasGPX.tiempos.pausado }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="label">Puntos GPS</span>
+                <span class="value">{{ estadisticasGPX.tracking.puntosGPS }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. COMPOSICIÓN DEL VIAJE -->
+          <div class="stats-section">
+            <h4 class="section-title">📂 Estructura del Viaje</h4>
+            <div class="stats-grid-2">
+              <div class="stat-item">
+                <span class="label">Itinerarios</span>
+                <span class="value">{{ estadisticasGPX.tracking.totalItinerarios }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="label">Actividades</span>
+                <span class="value">{{ estadisticasGPX.tracking.totalActividades }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="label">Fotos en Ruta</span>
+                <span class="value">{{ estadisticasGPX.multimedia.fotos }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="label">Vídeos en Ruta</span>
+                <span class="value">{{ estadisticasGPX.multimedia.videos }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. ACTIVIDAD FÍSICA -->
+          <div class="stats-section" *ngIf="estadisticasGPX.energia.calorias > 0 || estadisticasGPX.energia.pasos > 0">
+            <h4 class="section-title">🔥 Actividad Física</h4>
+            <div class="stats-grid-2">
+              <div class="stat-item" *ngIf="estadisticasGPX.energia.calorias > 0">
+                <span class="label">Calorías</span>
+                <span class="value">{{ estadisticasGPX.energia.calorias }} <small>kcal</small></span>
+              </div>
+              <div class="stat-item" *ngIf="estadisticasGPX.energia.pasos > 0">
+                <span class="label">Pasos</span>
+                <span class="value">{{ estadisticasGPX.energia.pasos }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. DESGLOSE POR TRANSPORTE -->
+          <div class="stats-section" *ngIf="estadisticasGPX.desgloseTransporte && estadisticasGPX.desgloseTransporte.length > 0">
+            <h4 class="section-title">🚶 Desglose por Transporte</h4>
+            <div class="transport-list">
+              <div class="transport-row" *ngFor="let item of estadisticasGPX.desgloseTransporte">
+                <div class="transport-name">{{ item?.nombre || 'Desconocido' }}</div>
+                <div class="transport-data">
+                  <span class="t-dist">{{ item?.distanciaKm || '0.00' }} km</span>
+                  <span class="t-time">{{ item?.duracionFormateada || '00:00:00' }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- FABs Flotantes -->
+    <div class="fab-container">
+      <!-- FAB: Ajustar vista -->
+      <button class="fab fab-success" (click)="fitMapToTrack()" title="Ajustar vista al viaje completo">
+        <span class="fab-icon">🔍</span>
+      </button>
+
+      <!-- FAB: Toggle panel -->
+      <button class="fab" [class.fab-primary]="showSidePanel" [class.fab-medium]="!showSidePanel"
+        (click)="toggleSidePanel()" title="Toggle Panel Lateral">
+        <span class="fab-icon">{{ showSidePanel ? '▶️' : '◀️' }}</span>
+      </button>
+    </div>
+
+  </div>
+
+</div>
