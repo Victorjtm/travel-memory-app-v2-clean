@@ -1,13 +1,14 @@
 <!-- ========================================= -->
 <!-- CONTENEDOR PRINCIPAL DEL ÁLBUM MULTIMEDIA -->
 <!-- ========================================= -->
-<div class="libro-container" [class.portada-abierta]="estado === 'abierto'" role="main" aria-label="Álbum multimedia">
+<div class="libro-container" [class.portada-abierta]="estado === 'abierto'" [class.modo-recuerdo]="modoRecuerdoActivo"
+  [class.audio-bloqueado]="audioAutoplayBloqueado" role="main" aria-label="Album multimedia">
 
   <!-- ========================================= -->
   <!-- BLOQUE: PORTADA DEL LIBRO -->
   <!-- ========================================= -->
-  <div class="portada" *ngIf="estado === 'portada'" (click)="abrirLibro()" role="button" tabindex="0"
-    aria-label="Abrir álbum" (keydown.enter)="abrirLibro()" (keydown.space)="abrirLibro()">
+  <div class="portada" *ngIf="estado === 'portada'" (click)="iniciarModoRecuerdo($event)" role="button" tabindex="0"
+    aria-label="Reproducir album" (keydown.enter)="iniciarModoRecuerdo($event)" (keydown.space)="iniciarModoRecuerdo($event)">
 
     <!-- --- Elemento visual del lomo --- -->
     <div class="lomo" aria-hidden="true"></div>
@@ -43,10 +44,33 @@
       </ng-template>
 
       <!-- --- Descripción del álbum --- -->
-      <p>{{ getDescripcionContextual() }}</p>
+      <p class="album-subtitle">{{ getDescripcionContextual() }}</p>
 
       <!-- --- Instrucción para abrir --- -->
-      <p class="instruccion">Haz clic para abrir</p>
+      <div class="portada-stats" aria-label="Resumen del album">
+        <span>
+          <strong>{{ totalRecuerdosDisplay }}</strong>
+          recuerdos
+        </span>
+        <span *ngIf="audioViaje">
+          <strong>Audio</strong>
+          ambiente
+        </span>
+        <span>
+          <strong>{{ listaItinerarios.length || 1 }}</strong>
+          itinerarios
+        </span>
+      </div>
+
+      <button class="btn-play-recuerdo" type="button" (click)="iniciarModoRecuerdo($event)">
+        <span class="play-ring" aria-hidden="true"></span>
+        <i class="fas fa-play" aria-hidden="true"></i>
+        <span>Vivir recuerdo</span>
+      </button>
+
+      <button class="btn-abrir-simple" type="button" (click)="abrirLibro(); $event.stopPropagation()">
+        Abrir sin modo cine
+      </button>
 
     </div>
   </div>
@@ -58,7 +82,51 @@
     *ngIf="estado === 'abierto'">
 
     <!-- --- Botón cerrar álbum --- -->
-    <button class="btn-cerrar" (click)="volver()" title="Cerrar álbum y volver"
+    <header class="album-toolbar" aria-label="Controles del album">
+      <div class="album-toolbar-main">
+        <button class="toolbar-icon" (click)="volver()" title="Cerrar album" aria-label="Cerrar album">
+          <i class="fas fa-arrow-left" aria-hidden="true"></i>
+        </button>
+
+        <div class="album-now">
+          <span class="now-kicker">{{ modoRecuerdoActivo ? 'Modo recuerdo activo' : getNivelContexto() }}</span>
+          <strong>{{ paginaActualData?.titulo || infoViaje?.nombre || getTituloContextual() }}</strong>
+        </div>
+      </div>
+
+      <div class="album-progress" aria-hidden="true">
+        <span [style.width.%]="progresoAlbum"></span>
+      </div>
+
+      <div class="album-toolbar-actions">
+        <button class="toolbar-pill primary" [class.active]="modoRecuerdoActivo" (click)="toggleModoRecuerdo($event)"
+          [title]="modoRecuerdoActivo ? 'Pausar modo recuerdo' : 'Entrar en modo recuerdo'">
+          <i class="fas" [class.fa-pause]="modoRecuerdoActivo" [class.fa-play]="!modoRecuerdoActivo"></i>
+          <span>{{ modoRecuerdoActivo ? 'Pausar' : 'Play recuerdo' }}</span>
+        </button>
+
+        <button class="toolbar-icon" *ngIf="audioViaje" [class.active]="audioReproduciendo" (click)="toggleAudioViaje()"
+          [title]="audioReproduciendo ? 'Pausar musica' : 'Reproducir musica'">
+          <i class="fas" [class.fa-volume-high]="audioReproduciendo" [class.fa-music]="!audioReproduciendo"></i>
+        </button>
+
+        <button class="toolbar-icon" (click)="mostrarDialogoVideo()" title="Crear video" [disabled]="generandoVideo">
+          <i class="fas fa-video" aria-hidden="true"></i>
+        </button>
+
+        <button class="toolbar-icon" [class.active]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
+          title="Mapas animados">
+          <i class="fas fa-route" aria-hidden="true"></i>
+        </button>
+      </div>
+    </header>
+
+    <div class="audio-autoplay-hint" *ngIf="audioAutoplayBloqueado && audioViaje">
+      <i class="fas fa-music" aria-hidden="true"></i>
+      El navegador ha pedido un toque extra para iniciar la musica.
+      <button type="button" (click)="toggleAudioViaje()">Activar musica</button>
+    </div>
+    <button class="btn-cerrar legacy-floating-control" (click)="volver()" title="Cerrar álbum y volver"
       aria-label="Cerrar álbum y volver al contexto anterior">
       <i class="fas fa-times" aria-hidden="true"></i>
     </button>
@@ -491,6 +559,13 @@
   <!-- ========================================= -->
   <div class="modo-pantalla-completa" [class.activo]="mostrarFullscreen" (click)="cerrarFullscreen()" role="dialog"
     aria-modal="true" aria-label="Contenido en pantalla completa" *ngIf="mostrarFullscreen">
+
+    <div class="recuerdo-ambient" *ngIf="modoRecuerdoActivo" aria-hidden="true"></div>
+    <div class="memory-status" *ngIf="modoRecuerdoActivo">
+      <span class="memory-dot" [class.sound-on]="audioReproduciendo"></span>
+      <strong>Modo recuerdo</strong>
+      <small>{{ audioReproduciendo ? 'musica ambiente activa' : 'diapositivas activas' }}</small>
+    </div>
 
     <!-- --- Contenido multimedia --- -->
     <div class="media-fullscreen-wrapper" [class]="'transition-' + transicionActual">

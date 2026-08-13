@@ -109,6 +109,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   audioReproduciendo = false;
   audioDisponible = false;
   volumenOriginal = 1;
+  modoRecuerdoActivo = false;
+  audioAutoplayBloqueado = false;
 
   // ==========================================
   // PROPIEDADES DE CONTEXTO Y DATOS
@@ -989,7 +991,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   toggleAudioViaje(): void {
-    if (!this.audioViaje || !this.audioDisponible) {
+    if (!this.audioViaje) {
       console.warn('⚠️ Audio no disponible');
       return;
     }
@@ -997,10 +999,22 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     if (this.audioReproduciendo) {
       this.audioViaje.pause();
     } else {
-      this.audioViaje.play().catch(error => {
-        console.error('❌ Error al reproducir audio:', error);
-      });
+      this.intentarReproducirAudioViaje();
     }
+  }
+
+  private intentarReproducirAudioViaje(): void {
+    if (!this.audioViaje) return;
+
+    this.audioAutoplayBloqueado = false;
+    this.audioViaje.volume = this.volumenOriginal || 0.72;
+
+    this.audioViaje.play().catch(error => {
+      console.warn('El navegador bloqueo el inicio automatico del audio:', error);
+      this.audioAutoplayBloqueado = true;
+      this.audioReproduciendo = false;
+      this.cdr.detectChanges();
+    });
   }
 
   private limpiarAudioViaje(): void {
@@ -2209,15 +2223,68 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // MÉTODOS DE NAVEGACIÓN DEL ÁLBUM
   // ==========================================
 
-  abrirLibro(): void {
+  abrirLibro(activarModoRecuerdo = false): void {
     console.log('📖 Abriendo libro...');
     if (this.paginas.length === 0) return;
 
     this.estado = 'abierto';
+    this.modoRecuerdoActivo = activarModoRecuerdo;
 
     // Siempre abrir en la página de índice (página 0)
-    this.paginaActual = 0;
+    this.paginaActual = activarModoRecuerdo ? this.obtenerPrimeraPaginaMemoria() : 0;
+    if (activarModoRecuerdo) {
+      this.intentarReproducirAudioViaje();
+      setTimeout(() => {
+        this.abrirPaginaActualEnFullscreen();
+        this.iniciarSlideshow();
+      }, 120);
+    }
     console.log('✅ Libro abierto en el índice, página actual:', this.paginaActual);
+  }
+
+  iniciarModoRecuerdo(event?: Event): void {
+    event?.stopPropagation();
+    this.abrirLibro(true);
+  }
+
+  toggleModoRecuerdo(event?: Event): void {
+    event?.stopPropagation();
+
+    if (this.modoRecuerdoActivo) {
+      this.modoRecuerdoActivo = false;
+      this.detenerSlideshow();
+      return;
+    }
+
+    this.modoRecuerdoActivo = true;
+    this.intentarReproducirAudioViaje();
+
+    if (this.paginaActualData?.esIndice) {
+      this.paginaActual = this.obtenerPrimeraPaginaMemoria();
+    }
+
+    this.abrirPaginaActualEnFullscreen();
+    this.iniciarSlideshow();
+  }
+
+  private obtenerPrimeraPaginaMemoria(): number {
+    const index = this.paginas.findIndex(pagina => !pagina.esIndice);
+    return index >= 0 ? index : 0;
+  }
+
+  private abrirPaginaActualEnFullscreen(): void {
+    const pagina = this.paginaActualData;
+    if (!pagina || pagina.esIndice) return;
+
+    if (pagina.esCartaManuscrita) {
+      this.abrirFullscreen('', 'carta-manuscrita', {
+        titulo: pagina.titulo,
+        descripcion: pagina.descripcion
+      });
+      return;
+    }
+
+    this.abrirFullscreen(pagina.url || '', pagina.tipoMedia);
   }
 
   cambiarPagina(direccion: number): void {
@@ -2393,6 +2460,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   private detenerSlideshow(): void {
     console.log('⏸️ Deteniendo slideshow...');
     this.reproduciendoSlideshow = false;
+    this.modoRecuerdoActivo = false;
     this.limpiarTimerSlideshow();
   }
 
@@ -2656,6 +2724,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   get paginaActualData(): PaginaMedia | null {
     return this.paginas[this.paginaActual] || null;
+  }
+
+  get progresoAlbum(): number {
+    if (!this.paginas.length) return 0;
+    return Math.round(((this.paginaActual + 1) / this.paginas.length) * 100);
+  }
+
+  get totalRecuerdosDisplay(): number {
+    return Math.max(this.paginas.filter(pagina => !pagina.esIndice).length, 0);
   }
 
   get numeroPaginaDisplay(): string {
