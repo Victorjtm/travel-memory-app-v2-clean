@@ -1,9 +1,51 @@
 :host {
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 50;
+  left: 0;
+  right: 0;
+  z-index: 1000;
   display: block;
-  padding: 14px var(--app-page-pad) 0;
+  padding: 12px var(--app-page-pad) 14px;
+  transform: translateY(-90%);
+  opacity: 0;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+  pointer-events: auto;
+
+  /* Área invisible sensible al cursor en el borde superior */
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 35px;
+    z-index: 1;
+  }
+
+  /* Pestaña indicadora discreta en el centro cuando está oculta */
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 44px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    transition: opacity 0.2s ease;
+  }
+
+  &:hover,
+  &:focus-within {
+    transform: translateY(0);
+    opacity: 1;
+
+    &::after {
+      opacity: 0;
+    }
+  }
 }
 
 .cabecera {
@@ -15,10 +57,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  background: rgba(255, 255, 255, 0.74);
-  border: 1px solid rgba(255, 255, 255, 0.68);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.75);
   border-radius: var(--app-radius-lg);
-  box-shadow: 0 16px 48px rgba(18, 20, 23, 0.1);
+  box-shadow: 0 20px 50px rgba(18, 20, 23, 0.25);
   backdrop-filter: var(--app-blur);
 }
 
