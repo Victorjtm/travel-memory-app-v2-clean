@@ -2363,6 +2363,22 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }, 50);
   }
 
+  desplazarCarrusel(direccion: -1 | 1): void {
+    const contenedor = document.querySelector('.indicadores-container') as HTMLElement;
+    if (contenedor) {
+      const offset = 280 * direccion;
+      contenedor.scrollBy({ left: offset, behavior: 'smooth' });
+    }
+  }
+
+  onCarruselWheel(event: WheelEvent): void {
+    const contenedor = document.querySelector('.indicadores-container') as HTMLElement;
+    if (contenedor && event.deltaY !== 0) {
+      event.preventDefault();
+      contenedor.scrollLeft += event.deltaY;
+    }
+  }
+
   async verAlbumItinerario(itinerarioId: number): Promise<void> {
     console.log(`🖱️ Clic en itinerario ID: ${itinerarioId}`);
 
