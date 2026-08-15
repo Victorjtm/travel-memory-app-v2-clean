@@ -542,7 +542,7 @@
             [attr.data-tipo]="pagina.tipoMedia"
             (click)="irAPagina(i)"
             [attr.aria-label]="obtenerDescripcionAccesibilidad(pagina)"
-            [title]="pagina.esIndice ? 'Índice del Viaje' : (pagina.titulo || 'Recuerdo #' + i)">
+            [title]="pagina.esMapaAnimado ? obtenerTooltipRecorrido(pagina) : (pagina.esIndice ? 'Índice del Viaje' : (pagina.titulo || 'Recuerdo #' + i))">
             
             <!-- Badge Número de orden cronológico -->
             <span class="badge-orden" [class.badge-especial]="pagina.esIndice || pagina.esCartaManuscrita || pagina.esMapaAnimado">
@@ -565,7 +565,7 @@
 
               <!-- 3. Mapa Animado -->
               <div class="thumb-fallback thumb-mapa" *ngIf="pagina.esMapaAnimado">
-                <i class="fas fa-route"></i>
+                <i [class]="obtenerIconoTransporte(pagina.tipoTransporteTramo)"></i>
                 <span class="fallback-label">{{ pagina.distanciaTramoKm ? (pagina.distanciaTramoKm | number:'1.0-1') + ' km' : 'RUTA' }}</span>
               </div>
 
@@ -599,7 +599,8 @@
 
             <!-- Pie de miniatura: Hora o fecha -->
             <div class="thumb-info-bar" *ngIf="!pagina.esIndice">
-              <span class="thumb-time">{{ pagina.archivo?.horaCaptura || (pagina.fecha | date:'dd/MM') || '' }}</span>
+              <span class="thumb-time" *ngIf="pagina.esMapaAnimado">{{ (pagina.horaInicioTramo && pagina.horaFinTramo) ? (pagina.horaInicioTramo + ' - ' + pagina.horaFinTramo) : (pagina.horaInicioTramo || (pagina.distanciaTramoKm ? (pagina.distanciaTramoKm | number:'1.0-1') + ' km' : '')) }}</span>
+              <span class="thumb-time" *ngIf="!pagina.esMapaAnimado">{{ pagina.archivo?.horaCaptura || (pagina.fecha | date:'dd/MM') || '' }}</span>
             </div>
           </button>
         </div>

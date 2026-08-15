@@ -49,6 +49,9 @@ interface PaginaMedia {
   visualSessionData?: any;
   isHighFidelityMode?: boolean;
   actividadId?: number;
+  horaInicioTramo?: string;
+  horaFinTramo?: string;
+  tipoTransporteTramo?: string;
   coordenadas?: {
     latitud: number;
     longitud: number;
@@ -1747,6 +1750,26 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
                 const gpxParcial = this.trackEditorService.pointsToGpxXml(subPointsRelativos);
 
+                const ptInicio = subSegmentPoints[0];
+                const ptFin = subSegmentPoints[subSegmentPoints.length - 1];
+
+                let horaInicioTramo = '';
+                let horaFinTramo = '';
+
+                if (ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime())) {
+                  horaInicioTramo = ptInicio.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                }
+                if (ptFin?.time instanceof Date && !isNaN(ptFin.time.getTime())) {
+                  horaFinTramo = ptFin.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                }
+
+                if (!horaInicioTramo && pag.archivo?.horaCaptura) {
+                  horaInicioTramo = pag.archivo.horaCaptura;
+                }
+
+                const tiposUnicos = Array.from(new Set(subTransportSegments.map(t => t.tipo || t.nombre).filter(Boolean)));
+                const tipoTransporteTramo = tiposUnicos.length > 0 ? tiposUnicos.join(', ') : modoBaseNorm;
+
                 const paginaMapa: PaginaMedia = {
                   archivo: {} as Archivo,
                   url: '',
@@ -1762,10 +1785,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   actividadId: actId,
                   transportSegments: subTransportSegments,
                   visualSessionData: visualSessionData,
-                  isHighFidelityMode: !!visualSessionData
+                  isHighFidelityMode: !!visualSessionData,
+                  horaInicioTramo: horaInicioTramo,
+                  horaFinTramo: horaFinTramo,
+                  tipoTransporteTramo: tipoTransporteTramo
                 };
 
-                console.log(`  ✅ Mapa animado generado: Tramo ${s + 1}, ${distKm.toFixed(1)} km, modos: ${subTransportSegments.map(t => t.tipo).join(', ')}`);
+                console.log(`  ✅ Mapa animado generado: Tramo ${s + 1}, ${distKm.toFixed(1)} km, horas: ${horaInicioTramo}-${horaFinTramo}, modos: ${tipoTransporteTramo}`);
 
                 // Identificar archivo/foto de destino para intercalar mapa
                 const targetEvent = points[endIdx]?.event;
@@ -3144,6 +3170,86 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   esArchivoVisualizableEnNavegador(tipo: TipoMedia): boolean {
     return ['imagen', 'video', 'audio', 'pdf'].includes(tipo);
+  }
+
+  obtenerTooltipRecorrido(pagina: PaginaMedia): string {
+    if (!pagina.esMapaAnimado) return pagina.titulo || '';
+
+    const dist = pagina.distanciaTramoKm ? `${pagina.distanciaTramoKm.toFixed(1)} km` : '';
+    const dia = pagina.fecha ? this.formatearFechaLarga(pagina.fecha) : 'Día del itinerario';
+    const horario = (pagina.horaInicioTramo && pagina.horaFinTramo)
+      ? `${pagina.horaInicioTramo} - ${pagina.horaFinTramo}`
+      : (pagina.horaInicioTramo ? `Desde las ${pagina.horaInicioTramo}` : 'Horario del día');
+    const transporte = this.formatearTextoTransporte(pagina.tipoTransporteTramo);
+
+    return `📍 Recorrido animado: ${dist}\n📅 Día: ${dia}\n⏰ Horario: ${horario}\n🚗 Transporte: ${transporte}`;
+  }
+
+  formatearFechaLarga(fecha: string): string {
+    if (!fecha) return '';
+    try {
+      const d = new Date(fecha);
+      return d.toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {
+      return fecha;
+    }
+  }
+
+  formatearTextoTransporte(tipo?: string): string {
+    if (!tipo) return 'A pie';
+    const norm = tipo.toLowerCase();
+    if (norm.includes('coche') || norm.includes('driving') || norm.includes('car') || norm.includes('auto') || norm.includes('taxi')) {
+      return 'En coche / vehículo';
+    }
+    if (norm.includes('barco') || norm.includes('boat') || norm.includes('ship') || norm.includes('ferry') || norm.includes('crucero') || norm.includes('embarc')) {
+      return 'En barco / crucero';
+    }
+    if (norm.includes('bici') || norm.includes('cycling') || norm.includes('bicycle')) {
+      return 'En bicicleta';
+    }
+    if (norm.includes('bus') || norm.includes('autobus')) {
+      return 'En autobús';
+    }
+    if (norm.includes('tren') || norm.includes('train')) {
+      return 'En tren';
+    }
+    if (norm.includes('avion') || norm.includes('plane') || norm.includes('flight')) {
+      return 'En avión';
+    }
+    if (norm.includes('run') || norm.includes('correr')) {
+      return 'Corriendo';
+    }
+    if (norm.includes('andando') || norm.includes('walking') || norm.includes('caminar') || norm.includes('pie')) {
+      return 'A pie / caminando';
+    }
+    return tipo.charAt(0).toUpperCase() + tipo.slice(1);
+  }
+
+  obtenerIconoTransporte(tipo?: string): string {
+    if (!tipo) return 'fas fa-route';
+    const norm = tipo.toLowerCase();
+    if (norm.includes('coche') || norm.includes('driving') || norm.includes('car') || norm.includes('auto') || norm.includes('taxi')) {
+      return 'fas fa-car';
+    }
+    if (norm.includes('barco') || norm.includes('boat') || norm.includes('ship') || norm.includes('ferry') || norm.includes('crucero')) {
+      return 'fas fa-ship';
+    }
+    if (norm.includes('bici') || norm.includes('cycling') || norm.includes('bicycle')) {
+      return 'fas fa-bicycle';
+    }
+    if (norm.includes('bus') || norm.includes('autobus')) {
+      return 'fas fa-bus';
+    }
+    if (norm.includes('tren') || norm.includes('train')) {
+      return 'fas fa-train';
+    }
+    if (norm.includes('avion') || norm.includes('plane')) {
+      return 'fas fa-plane';
+    }
+    if (norm.includes('run') || norm.includes('correr') || norm.includes('walking') || norm.includes('pie') || norm.includes('andando')) {
+      return 'fas fa-walking';
+    }
+    return 'fas fa-route';
   }
 
   obtenerIconoTipo(tipo: TipoMedia): string {
