@@ -509,18 +509,84 @@
     </nav>
 
     <!-- ======================================= -->
-    <!-- SUB-BLOQUE: NAVEGACIÓN RÁPIDA -->
+    <!-- SUB-BLOQUE: TIRA DE MINIATURAS FOTOGRÁFICAS (FILMSTRIP) -->
     <!-- ======================================= -->
-    <div class="navegacion-rapida" *ngIf="paginas && paginas.length > 1">
-      <h3 class="sr-only">Navegación rápida</h3>
+    <div class="navegacion-rapida" *ngIf="paginas && paginas.length > 1" aria-label="Tira de fotos y recuerdos">
+      <div class="filmstrip-header">
+        <span class="filmstrip-title"><i class="fas fa-film"></i> Secuencia cronológica</span>
+        <span class="filmstrip-counter">{{ paginaActual + 1 }} de {{ paginas.length }}</span>
+      </div>
+
       <div class="indicadores-container">
-        <button *ngFor="let pagina of paginas; let i = index" class="indicador-pagina"
-          [class.activo]="i === paginaActual" [class.indice]="pagina.esIndice" [class.cargado]="pagina.cargado"
-          [attr.data-tipo]="pagina.tipoMedia" (click)="irAPagina(i)"
+        <button *ngFor="let pagina of paginas; let i = index" 
+          [id]="'thumb-item-' + i"
+          class="miniatura-card"
+          [class.activo]="i === paginaActual"
+          [class.indice]="pagina.esIndice"
+          [class.carta]="pagina.esCartaManuscrita"
+          [class.mapa]="pagina.esMapaAnimado"
+          [attr.data-tipo]="pagina.tipoMedia"
+          (click)="irAPagina(i)"
           [attr.aria-label]="obtenerDescripcionAccesibilidad(pagina)"
-          [title]="pagina.esIndice ? 'Índice' : pagina.titulo">
-          <i *ngIf="pagina.esIndice" class="fas fa-list" aria-hidden="true"></i>
-          <i *ngIf="!pagina.esIndice" [class]="obtenerIconoTipo(pagina.tipoMedia)" aria-hidden="true"></i>
+          [title]="pagina.esIndice ? 'Índice del Viaje' : (pagina.titulo || 'Recuerdo #' + i)">
+          
+          <!-- Badge Número de orden cronológico -->
+          <span class="badge-orden" [class.badge-especial]="pagina.esIndice || pagina.esCartaManuscrita || pagina.esMapaAnimado">
+            {{ pagina.esIndice ? 'Índice' : (pagina.esCartaManuscrita ? 'Diario' : (pagina.esMapaAnimado ? 'Ruta' : '#' + i)) }}
+          </span>
+
+          <!-- Vista previa del contenido -->
+          <div class="thumb-media-wrapper">
+            <!-- 1. Índice -->
+            <div class="thumb-fallback thumb-indice" *ngIf="pagina.esIndice">
+              <i class="fas fa-list-ul"></i>
+              <span class="fallback-label">ÍNDICE</span>
+            </div>
+
+            <!-- 2. Carta Manuscrita -->
+            <div class="thumb-fallback thumb-carta" *ngIf="pagina.esCartaManuscrita">
+              <i class="fas fa-envelope-open-text"></i>
+              <span class="fallback-label">DIARIO</span>
+            </div>
+
+            <!-- 3. Mapa Animado -->
+            <div class="thumb-fallback thumb-mapa" *ngIf="pagina.esMapaAnimado">
+              <i class="fas fa-route"></i>
+              <span class="fallback-label">{{ pagina.distanciaTramoKm ? (pagina.distanciaTramoKm | number:'1.0-1') + ' km' : 'RUTA' }}</span>
+            </div>
+
+            <!-- 4. Imagen -->
+            <img *ngIf="pagina.tipoMedia === 'imagen' && !pagina.esIndice && !pagina.esCartaManuscrita && !pagina.esMapaAnimado" 
+              [src]="pagina.url" 
+              [alt]="pagina.titulo || 'Foto ' + i" 
+              class="thumb-img"
+              loading="lazy"
+              (error)="onMediaError($event)" />
+
+            <!-- 5. Video -->
+            <div class="thumb-video-wrapper" *ngIf="pagina.tipoMedia === 'video'">
+              <video [src]="pagina.url + '#t=0.5'" class="thumb-video" preload="metadata"></video>
+              <i class="fas fa-play-circle video-play-badge"></i>
+            </div>
+
+            <!-- 6. Audio -->
+            <div class="thumb-fallback thumb-audio" *ngIf="pagina.tipoMedia === 'audio'">
+              <i class="fas fa-music"></i>
+              <span class="fallback-label">AUDIO</span>
+            </div>
+
+            <!-- 7. PDF / Documento -->
+            <div class="thumb-fallback thumb-pdf" *ngIf="pagina.tipoMedia === 'pdf' || pagina.tipoMedia === 'documento'">
+              <i class="fas fa-file-pdf" *ngIf="pagina.tipoMedia === 'pdf'"></i>
+              <i class="fas fa-file-alt" *ngIf="pagina.tipoMedia !== 'pdf'"></i>
+              <span class="fallback-label">{{ pagina.tipoMedia | uppercase }}</span>
+            </div>
+          </div>
+
+          <!-- Pie de miniatura: Hora o fecha -->
+          <div class="thumb-info-bar" *ngIf="!pagina.esIndice">
+            <span class="thumb-time">{{ pagina.archivo?.horaCaptura || (pagina.fecha | date:'dd/MM') || '' }}</span>
+          </div>
         </button>
       </div>
     </div>

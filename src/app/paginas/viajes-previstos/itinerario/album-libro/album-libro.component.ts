@@ -1903,7 +1903,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     };
     paginasFinales.push(paginaIndice);
 
-    // Agrupar archivos por itinerario usando actividadId
+    // Agrupar archivos por itinerario (usando itinerarioId directo o buscando su actividadId)
     const archivosPorItinerario = new Map<number, PaginaMedia[]>();
     const archivosSinItinerario: PaginaMedia[] = [];
 
@@ -1911,14 +1911,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     const actividadesPorItinerario = await this.cargarActividadesPorItinerario();
 
     archivos.forEach(archivo => {
-      const actividadId = archivo.archivo.actividadId;
-      let itinerarioId: number | undefined;
+      let itinerarioId: number | undefined = archivo.archivo?.itinerarioId;
 
-      // Buscar a qué itinerario pertenece esta actividad
-      for (const [itId, actividades] of actividadesPorItinerario.entries()) {
-        if (actividades.some((act: any) => act.id === actividadId)) {
-          itinerarioId = itId;
-          break;
+      if (!itinerarioId && archivo.archivo?.actividadId) {
+        const actividadId = archivo.archivo.actividadId;
+        // Buscar a qué itinerario pertenece esta actividad
+        for (const [itId, actividades] of actividadesPorItinerario.entries()) {
+          if (actividades.some((act: any) => act.id === actividadId)) {
+            itinerarioId = itId;
+            break;
+          }
         }
       }
 
@@ -2295,13 +2297,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.paginaActual = nuevaPagina;
       console.log('✅ Nueva página:', this.paginaActual);
 
-      // 👇 AÑADIR ESTO
+      // 👇 Manejo de audio al cambiar página
       const pagina = this.paginas[this.paginaActual];
       if (pagina?.tipoMedia === 'video') {
         this.bajarVolumenAudioViaje();
       } else {
         this.restaurarVolumenAudioViaje();
       }
+
+      this.centrarMiniaturaActiva(this.paginaActual);
     } else if (nuevaPagina >= this.paginas.length && this.contextoViaje?.itinerarioId && !this.contextoViaje.actividadId) {
       console.log('📈 Fin del itinerario, cambiando a nivel viaje...');
       this.cambiarANivelViaje();
@@ -2326,6 +2330,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     this.estado = 'abierto';
     this.paginaActual = 0;
+    this.centrarMiniaturaActiva(0);
 
     console.log('✅ Cambiado a nivel viaje completo');
   }
@@ -2339,7 +2344,23 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   irAPagina(index: number): void {
     if (index >= 0 && index < this.paginas.length) {
       this.paginaActual = index;
+      const pagina = this.paginas[this.paginaActual];
+      if (pagina?.tipoMedia === 'video') {
+        this.bajarVolumenAudioViaje();
+      } else {
+        this.restaurarVolumenAudioViaje();
+      }
+      this.centrarMiniaturaActiva(index);
     }
+  }
+
+  centrarMiniaturaActiva(index: number): void {
+    setTimeout(() => {
+      const el = document.getElementById(`thumb-item-${index}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
+    }, 50);
   }
 
   async verAlbumItinerario(itinerarioId: number): Promise<void> {

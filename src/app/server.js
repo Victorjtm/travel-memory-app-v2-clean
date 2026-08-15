@@ -4534,14 +4534,15 @@ app.get('/archivos/viaje/:viajeId', (req, res) => {
   console.log('🎯 Obteniendo archivos para viajeId:', viajeId);
 
   const sql = `
-    SELECT a.* 
+    SELECT DISTINCT a.* 
     FROM archivos a
-    INNER JOIN actividades act ON a.actividadId = act.id
-    WHERE act.viajePrevistoId = ?
-    ORDER BY a.fechaCreacion
+    LEFT JOIN actividades act ON a.actividadId = act.id
+    LEFT JOIN itinerarios it ON act.itinerarioId = it.id OR a.itinerarioId = it.id
+    WHERE act.viajePrevistoId = ? OR it.viajePrevistoId = ?
+    ORDER BY a.fechaCreacion ASC, a.horaCaptura ASC
   `;
 
-  db.all(sql, [viajeId], (err, rows) => {
+  db.all(sql, [viajeId, viajeId], (err, rows) => {
     if (err) {
       console.error('❌ Error obteniendo archivos por viaje:', err.message);
       return res.status(500).json({ error: err.message });
