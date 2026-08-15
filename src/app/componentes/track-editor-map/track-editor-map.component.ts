@@ -662,16 +662,27 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   onAssignTimestamps(mode: 'auto' | 'manual'): void {
     if (!this.anchorA || !this.anchorB || !this.gpxPoints || this.gpxPoints.length === 0) return;
 
-    const startIdx = this.trackEditorService.resolveAnchor(this.anchorA, this.gpxPoints);
-    const endIdx = this.trackEditorService.resolveAnchor(this.anchorB, this.gpxPoints);
+    let startIdx = this.trackEditorService.resolveAnchor(this.anchorA, this.gpxPoints);
+    let endIdx = this.trackEditorService.resolveAnchor(this.anchorB, this.gpxPoints);
 
-    if (startIdx === -1 || endIdx === -1) return;
+    if (startIdx === -1 && this.anchorA.index !== undefined && this.anchorA.index >= 0 && this.anchorA.index < this.gpxPoints.length) {
+      startIdx = this.anchorA.index;
+    }
+    if (endIdx === -1 && this.anchorB.index !== undefined && this.anchorB.index >= 0 && this.anchorB.index < this.gpxPoints.length) {
+      endIdx = this.anchorB.index;
+    }
+
+    if (startIdx === -1 || endIdx === -1) {
+      console.warn('⚠️ [TrackEditor] No se pudieron resolver los puntos ancla seleccionados:', this.anchorA, this.anchorB);
+      return;
+    }
 
     const min = Math.min(startIdx, endIdx);
     const max = Math.max(startIdx, endIdx);
 
-    // Clonar los puntos del tramo A-B
-    const targetSegment = this.gpxPoints.slice(min, max + 1).map(p => ({ ...p }));
+    // Clonar y densificar los puntos del tramo A-B (crea puntos intermedios cada ~300m si es una línea larga en el mar)
+    let rawSegment = this.gpxPoints.slice(min, max + 1).map(p => ({ ...p }));
+    let targetSegment = this.trackEditorService.densifyPoints(rawSegment, 300);
 
     if (mode === 'auto') {
       // 1. Intentar calibrar con fotos del viaje
@@ -680,42 +691,67 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
 
       // 2. Si no hay fotos en el tramo o faltan timestamps, extrapolar progresivamente por velocidad del medio de transporte
-      const hasUnassignedTimes = targetSegment.some(p => !p.time);
+      const hasUnassignedTimes = targetSegment.some(p => !p.time || isNaN(new Date(p.time as any).getTime()));
       if (hasUnassignedTimes) {
         // Buscar la hora del último punto previo conocido antes de startIdx
         let startTimeMs: number | null = null;
         for (let i = min - 1; i >= 0; i--) {
-          if (this.gpxPoints[i]?.time) {
-            let extraDist = 0;
-            let pPrev = this.gpxPoints[i];
-            for (let j = i + 1; j <= min; j++) {
-              extraDist += this.trackEditorService.getDistance(pPrev.lat, pPrev.lng, this.gpxPoints[j].lat, this.gpxPoints[j].lng);
-              pPrev = this.gpxPoints[j];
+          const t = this.gpxPoints[i]?.time;
+          if (t) {
+            const tMs = t instanceof Date ? t.getTime() : new Date(t).getTime();
+            if (!isNaN(tMs)) {
+              let extraDist = 0;
+              let pPrev = this.gpxPoints[i];
+              for (let j = i + 1; j <= min; j++) {
+                extraDist += this.trackEditorService.getDistance(pPrev.lat, pPrev.lng, this.gpxPoints[j].lat, this.gpxPoints[j].lng);
+                pPrev = this.gpxPoints[j];
+              }
+              const speedMps = this.trackEditorService.getModeSpeedMps(this.gpxPoints[i].mode || this.gpxPoints[i].hfMode || targetSegment[0]?.mode);
+              startTimeMs = tMs + (extraDist / speedMps) * 1000;
+              break;
             }
-            const speedMps = this.trackEditorService.getModeSpeedMps(this.gpxPoints[i].mode || this.gpxPoints[i].hfMode);
-            startTimeMs = this.gpxPoints[i].time!.getTime() + (extraDist / speedMps) * 1000;
-            break;
+          }
+        }
+
+        // Si no hay punto previo con hora, intentar con el primer punto que sí tenga hora en targetSegment
+        if (!startTimeMs) {
+          const firstWithTime = targetSegment.find(p => p.time && !isNaN(new Date(p.time as any).getTime()));
+          if (firstWithTime && firstWithTime.time) {
+            startTimeMs = firstWithTime.time instanceof Date ? firstWithTime.time.getTime() : new Date(firstWithTime.time as any).getTime();
+          }
+        }
+
+        // Si no hay hora previa, buscar en las fotos del viaje (archivosMedia)
+        if (!startTimeMs && this.archivosMedia && this.archivosMedia.length > 0) {
+          for (const a of this.archivosMedia) {
+            const raw = a.timestampReal || a.horaCaptura || a.fechaCreacion || a.fecha;
+            const parsed = (this.trackEditorService as any)['parseFlexibleDate']?.(raw, a.nombreArchivo);
+            if (parsed) {
+              startTimeMs = parsed;
+              break;
+            }
           }
         }
 
         if (!startTimeMs) {
-          startTimeMs = targetSegment[0]?.time?.getTime() ?? Date.now();
+          startTimeMs = Date.now();
         }
 
-        const baseMode = targetSegment[0]?.mode || targetSegment[0]?.hfMode || 'walking';
+        const baseMode = targetSegment[0]?.mode || targetSegment[0]?.hfMode || (this.gpxPoints[min]?.mode) || 'boat';
         const speedMps = this.trackEditorService.getModeSpeedMps(baseMode);
 
         let prevPt = targetSegment[0];
-        if (!prevPt.time) {
+        if (!prevPt.time || isNaN(new Date(prevPt.time as any).getTime())) {
           prevPt.time = new Date(startTimeMs);
         }
 
         for (let i = 1; i < targetSegment.length; i++) {
           const curr = targetSegment[i];
-          if (!curr.time) {
+          const currTimeMs = curr.time ? (curr.time instanceof Date ? curr.time.getTime() : new Date(curr.time as any).getTime()) : NaN;
+          if (isNaN(currTimeMs)) {
             const dist = this.trackEditorService.getDistance(prevPt.lat, prevPt.lng, curr.lat, curr.lng);
             const dtSec = Math.max(1, dist / speedMps);
-            const prevTimeMs = prevPt.time?.getTime() ?? startTimeMs;
+            const prevTimeMs = prevPt.time ? (prevPt.time instanceof Date ? prevPt.time.getTime() : new Date(prevPt.time as any).getTime()) : startTimeMs;
             curr.time = new Date(prevTimeMs + dtSec * 1000);
           }
           prevPt = curr;
@@ -747,6 +783,9 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
     }
 
+    // Inyectar los puntos densificados y con tiempos directamente en this.gpxPoints
+    this.gpxPoints.splice(min, (max - min) + 1, ...targetSegment);
+
     const editId = Math.random().toString(36).substring(2, 9);
     const descTime = mode === 'manual'
       ? `Tiempos (${this.customStartTime} - ${this.customEndTime})`
@@ -764,11 +803,10 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     });
 
     this.showCustomTimeInputs = false;
+    this.mostrarTiempos = true;
     this.clearSelection();
     this.drawBaseAndEdits();
-    if (this.mostrarTiempos) {
-      this.updateTimeMarkers();
-    }
+    this.updateTimeMarkers();
   }
 
   // --- MODO GEOMETRÍA SINTÉTICA ---
@@ -1032,11 +1070,14 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     const appliedMode = mode || this.selectedMode;
 
-    const fullPointsArray = [
-      { lat: this.insertAnchorA.lat, lng: this.insertAnchorA.lng, time: this.insertAnchorA.time, mode: appliedMode },
-      ...this.insertPoints.map(p => ({ ...p, mode: appliedMode })),
-      { lat: this.insertAnchorB.lat, lng: this.insertAnchorB.lng, time: this.insertAnchorB.time, mode: appliedMode }
+    let fullPointsArray: any[] = [
+      { lat: this.insertAnchorA.lat, lng: this.insertAnchorA.lng, time: this.insertAnchorA.time, mode: appliedMode, distAcum: 0, timeAcum: 0 },
+      ...this.insertPoints.map(p => ({ ...p, mode: appliedMode, distAcum: 0, timeAcum: 0 })),
+      { lat: this.insertAnchorB.lat, lng: this.insertAnchorB.lng, time: this.insertAnchorB.time, mode: appliedMode, distAcum: 0, timeAcum: 0 }
     ];
+
+    // Densificar automáticamente tramos largos (ej. en el mar o vuelos) para tener puntos cada ~300m
+    fullPointsArray = this.trackEditorService.densifyPoints(fullPointsArray, 300);
 
     if (this.activeFlow === 'APPEND') {
       const editId = Math.random().toString(36).substring(2, 9);

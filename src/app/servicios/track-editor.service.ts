@@ -236,10 +236,13 @@ export class TrackEditorService {
       for (let i = 0; i < points.length; i++) {
         const ptTime = points[i].time;
         if (ptTime) {
-          const diff = Math.abs(ptTime.getTime() - anchorTimeMs);
-          if (diff < minDiff) {
-            minDiff = diff;
-            bestIdx = i;
+          const ptTimeMs = ptTime instanceof Date ? ptTime.getTime() : new Date(ptTime).getTime();
+          if (!isNaN(ptTimeMs)) {
+            const diff = Math.abs(ptTimeMs - anchorTimeMs);
+            if (diff < minDiff) {
+              minDiff = diff;
+              bestIdx = i;
+            }
           }
         }
       }
@@ -268,10 +271,13 @@ export class TrackEditorService {
       for (let i = 0; i < points.length; i++) {
         const ptTime = points[i].time;
         if (ptTime) {
-          const diff = Math.abs(ptTime.getTime() - anchorTimeMs);
-          if (diff < minTimeDiff) {
-            minTimeDiff = diff;
-            closestTimeIdx = i;
+          const ptTimeMs = ptTime instanceof Date ? ptTime.getTime() : new Date(ptTime).getTime();
+          if (!isNaN(ptTimeMs)) {
+            const diff = Math.abs(ptTimeMs - anchorTimeMs);
+            if (diff < minTimeDiff) {
+              minTimeDiff = diff;
+              closestTimeIdx = i;
+            }
           }
         }
       }
@@ -930,5 +936,54 @@ export class TrackEditorService {
       const interpolatedTime = new Date(tA + totalTimeDelta * ratio);
       newPoints[i].time = interpolatedTime;
     }
+  }
+
+  /**
+   * Densifica (subdivide) tramos largos de línea recta insertando puntos intermedios
+   * cada maxStepMeters (por defecto 300 metros) para permitir asignación de tiempos,
+   * marcadores periódicos y animación fluida.
+   */
+  public densifyPoints(points: GpxPoint[], maxStepMeters: number = 300): GpxPoint[] {
+    if (!points || points.length < 2) return points || [];
+
+    const densified: GpxPoint[] = [];
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      densified.push(p1);
+
+      const d = this.getDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+      if (d > maxStepMeters) {
+        const steps = Math.min(500, Math.floor(d / maxStepMeters)); // Máx 500 puntos por sub-tramo para proteger rendimiento
+        const t1 = p1.time ? (p1.time instanceof Date ? p1.time.getTime() : new Date(p1.time as any).getTime()) : null;
+        const t2 = p2.time ? (p2.time instanceof Date ? p2.time.getTime() : new Date(p2.time as any).getTime()) : null;
+
+        for (let s = 1; s <= steps; s++) {
+          const ratio = s / (steps + 1);
+          const interpLat = p1.lat + (p2.lat - p1.lat) * ratio;
+          const interpLng = p1.lng + (p2.lng - p1.lng) * ratio;
+          let interpTime: Date | undefined = undefined;
+
+          if (t1 !== null && t2 !== null && !isNaN(t1) && !isNaN(t2)) {
+            interpTime = new Date(t1 + (t2 - t1) * ratio);
+          }
+
+          densified.push({
+            lat: interpLat,
+            lng: interpLng,
+            time: interpTime,
+            distAcum: 0,
+            timeAcum: 0,
+            mode: p1.mode || p2.mode || 'boat',
+            hfMode: p1.hfMode || p2.hfMode || p1.mode || p2.mode || 'boat'
+          });
+        }
+      }
+    }
+
+    densified.push(points[points.length - 1]);
+    this.ensureAccumulators(densified);
+    return densified;
   }
 }
