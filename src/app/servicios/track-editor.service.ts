@@ -376,7 +376,7 @@ export class TrackEditorService {
     return null;
   }
 
-  private ensureAccumulators(points: GpxPoint[]): void {
+  public ensureAccumulators(points: GpxPoint[]): void {
     if (!points || points.length === 0) return;
     let accum = 0;
     for (let i = 0; i < points.length; i++) {

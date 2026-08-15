@@ -69,7 +69,9 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
   // Herramienta de Asignación de Tiempos
   showCustomTimeInputs: boolean = false;
+  customStartDate: string = '';
   customStartTime: string = '10:00:00';
+  customEndDate: string = '';
   customEndTime: string = '10:30:00';
 
   // Visualizador de marcas de tiempo GPX
@@ -562,6 +564,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }).addTo(this.map).bindTooltip('Fin (B)', { permanent: true, direction: 'right' }).openTooltip();
       
       this.updateHighlight();
+      this.initCustomTimeFields();
     } else {
       // Si ya hay A y B, reiniciar selección
       this.clearSelection();
@@ -950,29 +953,31 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         }
       }
     } else {
-      // Modo manual por rango HH:mm:ss
-      const todayStr = new Date().toISOString().split('T')[0];
-      const startMs = new Date(`${todayStr}T${this.customStartTime}`).getTime();
-      const endMs = new Date(`${todayStr}T${this.customEndTime}`).getTime();
+      // Modo manual por fecha y rango HH:mm:ss
+      const startMs = this.obtenerTimestampManual(this.customStartDate, this.customStartTime);
+      const endMs = this.obtenerTimestampManual(this.customEndDate, this.customEndTime);
 
-      if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
-        const totalDist = targetSegment.reduce((acc, curr, idx) => {
-          if (idx === 0) return 0;
-          return acc + this.trackEditorService.getDistance(targetSegment[idx - 1].lat, targetSegment[idx - 1].lng, curr.lat, curr.lng);
-        }, 0);
-
-        let currentDist = 0;
-        targetSegment.forEach((pt, idx) => {
-          if (idx === 0) {
-            pt.time = new Date(startMs);
-          } else {
-            const d = this.trackEditorService.getDistance(targetSegment[idx - 1].lat, targetSegment[idx - 1].lng, pt.lat, pt.lng);
-            currentDist += d;
-            const ratio = totalDist > 0 ? currentDist / totalDist : (idx / (targetSegment.length - 1));
-            pt.time = new Date(startMs + (endMs - startMs) * ratio);
-          }
-        });
+      if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) {
+        alert('⚠️ La fecha/hora de fin debe ser posterior a la fecha/hora de inicio.');
+        return;
       }
+
+      this.trackEditorService.ensureAccumulators(targetSegment);
+      const totalDist = targetSegment[targetSegment.length - 1]?.distAcum || 1;
+
+      let currentDist = 0;
+      targetSegment.forEach((pt, idx) => {
+        if (idx === 0) {
+          pt.time = new Date(startMs);
+        } else if (idx === targetSegment.length - 1) {
+          pt.time = new Date(endMs);
+        } else {
+          const d = this.trackEditorService.getDistance(targetSegment[idx - 1].lat, targetSegment[idx - 1].lng, pt.lat, pt.lng);
+          currentDist += d;
+          const ratio = totalDist > 0 ? Math.min(1, currentDist / totalDist) : (idx / (targetSegment.length - 1));
+          pt.time = new Date(startMs + (endMs - startMs) * ratio);
+        }
+      });
     }
 
     // Inyectar los puntos densificados y con tiempos directamente en this.gpxPoints
@@ -980,7 +985,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     const editId = Math.random().toString(36).substring(2, 9);
     const descTime = mode === 'manual'
-      ? `Tiempos (${this.customStartTime} - ${this.customEndTime})`
+      ? `Horario (${this.customStartTime} - ${this.customEndTime})`
       : `Sincro Tiempos (${targetSegment[0]?.mode || 'Auto'})`;
 
     this.pendingEdits.push({
@@ -999,6 +1004,80 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.clearSelection();
     this.drawBaseAndEdits();
     this.updateTimeMarkers();
+  }
+
+  public initCustomTimeFields(): void {
+    if (!this.anchorA || !this.anchorB || !this.gpxPoints) return;
+
+    const startIdx = this.anchorA.index ?? this.trackEditorService.resolveAnchor(this.anchorA, this.gpxPoints);
+    const endIdx = this.anchorB.index ?? this.trackEditorService.resolveAnchor(this.anchorB, this.gpxPoints);
+
+    if (startIdx === -1 || endIdx === -1) return;
+
+    const min = Math.min(startIdx, endIdx);
+    const max = Math.max(startIdx, endIdx);
+
+    const ptA = this.gpxPoints[min];
+    const ptB = this.gpxPoints[max];
+
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    if (ptA?.time) {
+      const dtA = new Date(ptA.time as any);
+      if (!isNaN(dtA.getTime())) {
+        this.customStartDate = dtA.toISOString().split('T')[0];
+        const hh = dtA.getHours().toString().padStart(2, '0');
+        const mm = dtA.getMinutes().toString().padStart(2, '0');
+        const ss = dtA.getSeconds().toString().padStart(2, '0');
+        this.customStartTime = `${hh}:${mm}:${ss}`;
+      }
+    }
+    if (!this.customStartDate) {
+      this.customStartDate = todayStr;
+    }
+
+    if (ptB?.time) {
+      const dtB = new Date(ptB.time as any);
+      if (!isNaN(dtB.getTime())) {
+        this.customEndDate = dtB.toISOString().split('T')[0];
+        const hh = dtB.getHours().toString().padStart(2, '0');
+        const mm = dtB.getMinutes().toString().padStart(2, '0');
+        const ss = dtB.getSeconds().toString().padStart(2, '0');
+        this.customEndTime = `${hh}:${mm}:${ss}`;
+      }
+    }
+    if (!this.customEndDate) {
+      this.customEndDate = this.customStartDate;
+    }
+  }
+
+  public getDuracionManualTexto(): string {
+    const startMs = this.obtenerTimestampManual(this.customStartDate, this.customStartTime);
+    const endMs = this.obtenerTimestampManual(this.customEndDate, this.customEndTime);
+
+    if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) {
+      return 'Hora fin debe ser posterior a inicio';
+    }
+
+    const diffSeg = Math.floor((endMs - startMs) / 1000);
+    const h = Math.floor(diffSeg / 3600);
+    const m = Math.floor((diffSeg % 3600) / 60);
+    const s = diffSeg % 60;
+
+    if (h > 0) {
+      return `${h}h ${m}m ${s > 0 ? s + 's' : ''}`;
+    }
+    return `${m}m ${s}s`;
+  }
+
+  public obtenerTimestampManual(fechaStr: string, horaStr: string): number {
+    if (!fechaStr || !horaStr) return NaN;
+    const partesHora = horaStr.split(':');
+    const hh = (partesHora[0] || '00').padStart(2, '0');
+    const mm = (partesHora[1] || '00').padStart(2, '0');
+    const ss = (partesHora[2] || '00').padStart(2, '0');
+    const isoString = `${fechaStr}T${hh}:${mm}:${ss}`;
+    return new Date(isoString).getTime();
   }
 
   // --- MODO GEOMETRÍA SINTÉTICA ---

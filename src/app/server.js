@@ -4537,7 +4537,7 @@ app.get('/archivos/viaje/:viajeId', (req, res) => {
     SELECT DISTINCT a.* 
     FROM archivos a
     LEFT JOIN actividades act ON a.actividadId = act.id
-    LEFT JOIN itinerarios it ON act.itinerarioId = it.id OR a.itinerarioId = it.id
+    LEFT JOIN ItinerarioGeneral it ON act.itinerarioId = it.id OR a.itinerarioId = it.id
     WHERE act.viajePrevistoId = ? OR it.viajePrevistoId = ?
     ORDER BY a.fechaCreacion ASC, a.horaCaptura ASC
   `;
