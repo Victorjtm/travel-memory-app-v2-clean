@@ -600,7 +600,7 @@
             <!-- Pie de miniatura: Hora o fecha -->
             <div class="thumb-info-bar" *ngIf="!pagina.esIndice">
               <span class="thumb-time" *ngIf="pagina.esMapaAnimado">{{ (pagina.horaInicioTramo && pagina.horaFinTramo) ? (pagina.horaInicioTramo + ' - ' + pagina.horaFinTramo) : (pagina.horaInicioTramo || (pagina.distanciaTramoKm ? (pagina.distanciaTramoKm | number:'1.0-1') + ' km' : '')) }}</span>
-              <span class="thumb-time" *ngIf="!pagina.esMapaAnimado">{{ pagina.archivo?.horaCaptura || (pagina.fecha | date:'dd/MM') || '' }}</span>
+              <span class="thumb-time" *ngIf="!pagina.esMapaAnimado">{{ pagina.archivo.horaCaptura || (pagina.fecha | date:'dd/MM') || '' }}</span>
             </div>
           </button>
         </div>

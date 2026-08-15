@@ -7,6 +7,20 @@ import { TrackAnchor, EditAction, TrackEdit } from '../../modelos/track-edit.mod
 import { TrackEditorService } from '../../servicios/track-editor.service';
 import { RoutingService, RoutingResult } from '../../servicios/routing.service';
 
+export interface TramoEditor {
+  id: string;
+  nombre: string;
+  origenNombre: string;
+  destinoNombre: string;
+  startIdx: number;
+  endIdx: number;
+  distanciaKm: number;
+  horaInicio?: string;
+  horaFin?: string;
+  modo: string;
+  iconoModo: string;
+}
+
 @Component({
   selector: 'app-track-editor-map',
   standalone: true,
@@ -19,7 +33,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
   @Input() gpxPoints: GpxPoint[] = [];
   @Input() trackEdits: TrackEdit[] = [];
-  @Input() mediaGroups: { lat: number, lng: number }[] = [];
+  @Input() mediaGroups: { lat: number, lng: number; nombre?: string; titulo?: string }[] = [];
   @Output() editRequest = new EventEmitter<{
     action: EditAction, 
     startAnchor: TrackAnchor, 
@@ -48,6 +62,10 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   // In-memory edits tracking
   pendingEdits: any[] = [];
   previewingEditId: string | null = null;
+
+  // Selector inteligente de tramos A-B
+  tramosDisponibles: TramoEditor[] = [];
+  selectedTramoId: string = '';
 
   // Herramienta de Asignación de Tiempos
   showCustomTimeInputs: boolean = false;
@@ -418,7 +436,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       });
     }
 
-    // 4. Se ha eliminado el pintado manual heredado de replaces
+    // 4. Actualizar lista de tramos disponibles para el selector
+    this.actualizarTramosDisponibles();
   }
 
   private handleMapClick(e: L.LeafletMouseEvent) {
@@ -577,9 +596,182 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   clearSelection() {
     this.anchorA = null;
     this.anchorB = null;
+    this.selectedTramoId = '';
     if (this.markerA) { this.markerA.remove(); this.markerA = null; }
     if (this.markerB) { this.markerB.remove(); this.markerB = null; }
     if (this.highlightPolyline) { this.highlightPolyline.remove(); this.highlightPolyline = null; }
+  }
+
+  public actualizarTramosDisponibles(): void {
+    if (!this.gpxPoints || this.gpxPoints.length < 2) {
+      this.tramosDisponibles = [];
+      return;
+    }
+
+    // 1. Recopilar puntos clave (Índice 0, Fotos / MediaGroups, Cambios de Modo, Índice N-1)
+    interface PuntoClave {
+      gpxIdx: number;
+      nombre: string;
+      tipo: 'inicio' | 'foto' | 'modo' | 'fin';
+    }
+
+    const puntosClave: PuntoClave[] = [
+      { gpxIdx: 0, nombre: 'Inicio (#0)', tipo: 'inicio' }
+    ];
+
+    // Mapear cada mediaGroup a su gpxIdx más cercano
+    if (this.mediaGroups && this.mediaGroups.length > 0) {
+      this.mediaGroups.forEach((grupo, index) => {
+        const num = index + 1;
+        let closestIdx = 0;
+        let minDist = Infinity;
+        for (let i = 0; i < this.gpxPoints.length; i++) {
+          const d = this.trackEditorService.getDistance(grupo.lat, grupo.lng, this.gpxPoints[i].lat, this.gpxPoints[i].lng);
+          if (d < minDist) {
+            minDist = d;
+            closestIdx = i;
+          }
+        }
+        const label = grupo.nombre || grupo.titulo || `Foto #${num}`;
+        puntosClave.push({
+          gpxIdx: closestIdx,
+          nombre: `#${num} ${label}`,
+          tipo: 'foto'
+        });
+      });
+    }
+
+    // Detectar cambios de modo de transporte
+    for (let i = 1; i < this.gpxPoints.length; i++) {
+      const prevMode = this.gpxPoints[i - 1].mode || this.gpxPoints[i - 1].hfMode || 'walking';
+      const currMode = this.gpxPoints[i].mode || this.gpxPoints[i].hfMode || 'walking';
+      if (currMode !== prevMode) {
+        puntosClave.push({
+          gpxIdx: i,
+          nombre: `Cambio a ${this.getModeName(currMode)}`,
+          tipo: 'modo'
+        });
+      }
+    }
+
+    // Punto final
+    puntosClave.push({
+      gpxIdx: this.gpxPoints.length - 1,
+      nombre: 'Fin del recorrido',
+      tipo: 'fin'
+    });
+
+    // Ordenar y eliminar duplicados
+    puntosClave.sort((a, b) => a.gpxIdx - b.gpxIdx);
+    const puntosClaveUnicos: PuntoClave[] = [];
+    for (const p of puntosClave) {
+      const last = puntosClaveUnicos[puntosClaveUnicos.length - 1];
+      if (!last || p.gpxIdx > last.gpxIdx) {
+        puntosClaveUnicos.push(p);
+      }
+    }
+
+    // 2. Construir los tramos consecutivos entre puntos clave
+    const tramos: TramoEditor[] = [];
+    for (let i = 0; i < puntosClaveUnicos.length - 1; i++) {
+      const pA = puntosClaveUnicos[i];
+      const pB = puntosClaveUnicos[i + 1];
+
+      const startPt = this.gpxPoints[pA.gpxIdx];
+      const endPt = this.gpxPoints[pB.gpxIdx];
+
+      // Calcular distancia acumulada entre ambos puntos
+      let distMetros = 0;
+      for (let j = pA.gpxIdx; j < pB.gpxIdx; j++) {
+        distMetros += this.trackEditorService.getDistance(
+          this.gpxPoints[j].lat, this.gpxPoints[j].lng,
+          this.gpxPoints[j + 1].lat, this.gpxPoints[j + 1].lng
+        );
+      }
+      const distKm = distMetros / 1000;
+
+      // Extraer horas si existen
+      let horaInicio = '';
+      let horaFin = '';
+      if (startPt && startPt.time) {
+        const dt = new Date(startPt.time as any);
+        if (!isNaN(dt.getTime())) {
+          horaInicio = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        }
+      }
+      if (endPt && endPt.time) {
+        const dt = new Date(endPt.time as any);
+        if (!isNaN(dt.getTime())) {
+          horaFin = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        }
+      }
+
+      const modo = (startPt && (startPt.mode || startPt.hfMode)) || 'walking';
+      const iconoModo = this.getModeIcon(modo);
+
+      tramos.push({
+        id: `tramo-${i}`,
+        nombre: `Tramo ${i + 1}: ${pA.nombre} ➔ ${pB.nombre}`,
+        origenNombre: pA.nombre,
+        destinoNombre: pB.nombre,
+        startIdx: pA.gpxIdx,
+        endIdx: pB.gpxIdx,
+        distanciaKm: distKm,
+        horaInicio: horaInicio,
+        horaFin: horaFin,
+        modo: modo,
+        iconoModo: iconoModo
+      });
+    }
+
+    this.tramosDisponibles = tramos;
+  }
+
+  public onSelectTramoFromDropdown(tramoId: string): void {
+    this.selectedTramoId = tramoId;
+    if (!tramoId) {
+      this.clearSelection();
+      return;
+    }
+
+    const tramo = this.tramosDisponibles.find(t => t.id === tramoId);
+    if (!tramo) return;
+
+    this.clearSelection();
+    this.selectedTramoId = tramoId;
+
+    // Establecer ancla A y ancla B
+    this.setAnchor(tramo.startIdx);
+    this.setAnchor(tramo.endIdx);
+
+    // Ajustar zoom y vista del mapa para encuadrar el tramo
+    if (this.map && this.gpxPoints) {
+      const pA = this.gpxPoints[tramo.startIdx];
+      const pB = this.gpxPoints[tramo.endIdx];
+      if (pA && pB) {
+        const bounds = L.latLngBounds([
+          [pA.lat, pA.lng],
+          [pB.lat, pB.lng]
+        ]);
+        this.map.fitBounds(bounds.pad(0.2), {
+          maxZoom: 16,
+          animate: true,
+          duration: 0.6
+        });
+      }
+    }
+  }
+
+  public getModeIcon(mode: string): string {
+    const m = (mode || '').toLowerCase();
+    if (m.includes('boat') || m.includes('barco') || m.includes('crucero') || m.includes('ship') || m.includes('ferry')) return '🚢';
+    if (m.includes('car') || m.includes('coche') || m.includes('driving') || m.includes('auto') || m.includes('taxi')) return '🚗';
+    if (m.includes('bus') || m.includes('autobus')) return '🚌';
+    if (m.includes('train') || m.includes('tren')) return '🚂';
+    if (m.includes('plane') || m.includes('avion') || m.includes('flight')) return '✈️';
+    if (m.includes('bic') || m.includes('cycl')) return '🚲';
+    if (m.includes('run') || m.includes('corr')) return '🏃';
+    return '🚶';
   }
 
   onDeleteSegment() {

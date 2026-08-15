@@ -23,6 +23,25 @@
       ⬅ Volver
     </button>
 
+    <!-- Selector flotante inteligente de Tramos A ➔ B -->
+    <div class="tramo-selector-float" *ngIf="tramosDisponibles.length > 0 && editorState === 'SELECTING'">
+      <div class="tramo-select-box">
+        <label for="tramoSelect">
+          <i class="fa-solid fa-route"></i>
+          <span>Tramo:</span>
+        </label>
+        <select id="tramoSelect" [(ngModel)]="selectedTramoId" (ngModelChange)="onSelectTramoFromDropdown($event)">
+          <option value="">-- Seleccionar tramo de la ruta (Punto A ➔ B) --</option>
+          <option *ngFor="let t of tramosDisponibles" [value]="t.id">
+            {{ t.iconoModo }} {{ t.nombre }} ({{ t.distanciaKm | number:'1.1-2' }} km{{ t.horaInicio ? ' | ' + t.horaInicio + ' - ' + t.horaFin : '' }})
+          </option>
+        </select>
+        <button *ngIf="selectedTramoId" class="btn-clear-tramo" (click)="onSelectTramoFromDropdown('')" title="Deseleccionar tramo">
+          ✖
+        </button>
+      </div>
+    </div>
+
     <!-- Botón flotante para Append (visible cuando NO hay anclas seleccionadas y estamos en SELECTING) -->
     <div class="floating-tools" *ngIf="editorState === 'SELECTING' && !anchorA && !anchorB">
       <button class="btn-append-float" (click)="startAppendMode()">
@@ -84,15 +103,26 @@
   <div class="editor-sidebar" *ngIf="anchorA && editorState === 'SELECTING'">
     <div class="sidebar-header">
       <h3>Modo Edición</h3>
-      <p class="subtitle">Selecciona el tramo en el mapa</p>
+      <p class="subtitle">Tramo seleccionado en el mapa</p>
+    </div>
+
+    <!-- Selector rápido dentro del panel lateral -->
+    <div class="sidebar-tramo-picker" *ngIf="tramosDisponibles.length > 0">
+      <label for="sidebarTramoSelect"><i class="fa-solid fa-list-ol"></i> <span>Cambiar a otro tramo:</span></label>
+      <select id="sidebarTramoSelect" [(ngModel)]="selectedTramoId" (ngModelChange)="onSelectTramoFromDropdown($event)">
+        <option value="">-- Elige un tramo --</option>
+        <option *ngFor="let t of tramosDisponibles" [value]="t.id">
+          {{ t.iconoModo }} {{ t.nombre }} ({{ t.distanciaKm | number:'1.1-2' }} km)
+        </option>
+      </select>
     </div>
 
     <div class="anchors-status">
       <div class="anchor-item" [class.active]="anchorA">
         <span class="dot green"></span>
         <div class="info">
-          <strong>Punto A</strong>
-          <span *ngIf="anchorA">{{ anchorA.time | date:'HH:mm:ss' }}</span>
+          <strong>Punto A (Inicio)</strong>
+          <span *ngIf="anchorA">{{ anchorA.time ? (anchorA.time | date:'HH:mm:ss') : 'Lat: ' + anchorA.lat.toFixed(4) }}</span>
           <span *ngIf="!anchorA">Haz clic en la ruta</span>
         </div>
       </div>
@@ -102,8 +132,8 @@
       <div class="anchor-item" [class.active]="anchorB">
         <span class="dot red"></span>
         <div class="info">
-          <strong>Punto B</strong>
-          <span *ngIf="anchorB">{{ anchorB.time | date:'HH:mm:ss' }}</span>
+          <strong>Punto B (Fin)</strong>
+          <span *ngIf="anchorB">{{ anchorB.time ? (anchorB.time | date:'HH:mm:ss') : 'Lat: ' + anchorB.lat.toFixed(4) }}</span>
           <span *ngIf="!anchorB">Haz clic en la ruta</span>
         </div>
       </div>
