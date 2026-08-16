@@ -1621,7 +1621,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
 
     const resultado: PaginaMedia[] = [];
-    const mapasPorArchivoId = new Map<number, PaginaMedia[]>();
+    const mapasPorArchivoId = new Map<number, string[]>();          // archivoId → [grupoId, ...]
+    const mapasPorGrupoPI = new Map<string, PaginaMedia>();         // grupoId → paginaMapa (único)
     const mapasInicioActividad = new Map<number, PaginaMedia[]>();
     const mapasFinActividad = new Map<number, PaginaMedia[]>();
     const actividadesProcesadas = new Set<number>();
@@ -1793,15 +1794,27 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
                 console.log(`  ✅ Mapa animado generado: Tramo ${s + 1}, ${distKm.toFixed(1)} km, horas: ${horaInicioTramo}-${horaFinTramo}, modos: ${tipoTransporteTramo}`);
 
-                // Identificar archivo/foto de destino para intercalar mapa
+                // Identificar TODOS los archivos/fotos del PI de destino para intercalar mapa
                 const targetEvent = points[endIdx]?.event;
-                const targetArchivoId = targetEvent?.archivos?.[0]?.id;
+                const targetArchivos: any[] = targetEvent?.archivos || [];
 
-                if (targetArchivoId) {
-                  if (!mapasPorArchivoId.has(targetArchivoId)) {
-                    mapasPorArchivoId.set(targetArchivoId, []);
+                if (targetArchivos.length > 0) {
+                  // Generar un ID de grupo único para este tramo
+                  const grupoId = `act${actId}_tramo${s}`;
+                  
+                  // Registrar TODOS los archivoIds del grupo PI como disparadores del mapa
+                  for (const arch of targetArchivos) {
+                    if (arch.id) {
+                      if (!mapasPorArchivoId.has(arch.id)) {
+                        mapasPorArchivoId.set(arch.id, []);
+                      }
+                      // Almacenar referencia al grupoId en vez de duplicar mapas
+                      if (!mapasPorGrupoPI.has(grupoId)) {
+                        mapasPorGrupoPI.set(grupoId, paginaMapa);
+                      }
+                      mapasPorArchivoId.get(arch.id)!.push(grupoId);
+                    }
                   }
-                  mapasPorArchivoId.get(targetArchivoId)!.push(paginaMapa);
                 } else if (s === 0) {
                   // Tramo inicial sin foto objetivo -> colocar al inicio de la actividad
                   if (!mapasInicioActividad.has(actId)) {
@@ -1826,8 +1839,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
     }
 
-    // 2. Intercalación fluida: mapas de ida antes de la foto destino, mapas de vuelta al final de la actividad
+    // 2. Intercalación fluida: mapas de ida antes de la PRIMERA foto del grupo PI destino, mapas de vuelta al final de la actividad
     const actividadesInsertadasInicio = new Set<number>();
+    const gruposYaInsertados = new Set<string>(); // Para no duplicar mapas de un mismo grupo PI
 
     for (let i = 0; i < paginasInput.length; i++) {
       const pag = paginasInput[i];
@@ -1844,11 +1858,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         mapasInicioActividad.delete(actId);
       }
 
-      // Si este archivo es la foto objetivo de uno o más mapas de tramo, insertarlos justo ANTES de esta foto
+      // Si este archivo pertenece a un grupo PI con mapa pendiente, insertar el mapa ANTES de esta foto (solo la primera vez)
       if (archivoId && mapasPorArchivoId.has(archivoId)) {
-        const mapasDestino = mapasPorArchivoId.get(archivoId)!;
-        resultado.push(...mapasDestino);
-        mapasPorArchivoId.delete(archivoId);
+        const grupoIds = mapasPorArchivoId.get(archivoId)!;
+        for (const grupoId of grupoIds) {
+          if (!gruposYaInsertados.has(grupoId) && mapasPorGrupoPI.has(grupoId)) {
+            gruposYaInsertados.add(grupoId);
+            resultado.push(mapasPorGrupoPI.get(grupoId)!);
+            console.log(`  🗺️ Mapa de tramo insertado antes de foto #${archivoId} (grupo: ${grupoId})`);
+          }
+        }
       }
 
       resultado.push(pag);
