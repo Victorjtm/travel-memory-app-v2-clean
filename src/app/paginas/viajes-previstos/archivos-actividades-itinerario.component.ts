@@ -7,7 +7,7 @@ import { ActividadService } from '../../servicios/actividades.service';
 import { ItinerarioService } from '../../servicios/itinerario.service';
 import { Actividad } from '../../modelos/actividad.model';
 import { Itinerario } from '../../modelos/itinerario.model';
-import { forkJoin } from 'rxjs';
+import { forkJoin, firstValueFrom } from 'rxjs';
 import { Archivo } from '../../modelos/archivo';
 import { ArchivoAsociado, ArchivoEncontrado } from '../../modelos/archivo-asociado.model';
 import { HttpClientModule } from '@angular/common/http';
@@ -46,6 +46,20 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   estadoCarga: { [key: number]: 'cargando' | 'listo' | 'error' } = {};
   targetScrollId: number | null = null;
   modoGaleria = false; // ✨ NUEVA PROPIEDAD PARA VISTA GALERÍA
+
+  // 📍 Modo Asignación de Localización por Proximidad Temporal
+  modoAsignandoLocalizacion = false;
+  cambiosLocalizacionPendientes: {
+    archivoId: number;
+    nombreArchivo: string;
+    horaCaptura?: string;
+    fechaCreacion?: string;
+    geoOriginal?: string;
+    geoPropuesta: string;
+    fotoReferenciaNombre: string;
+    diferenciaMinutos: number;
+  }[] = [];
+  guardandoLocalizacion = false;
 
   // ✨ NUEVAS PROPIEDADES PARA GPX INDIVIDUAL
   mostrarModalGPXIndividual = false;
@@ -1465,6 +1479,151 @@ Formatos soportados:
           `• 1767698649281_archivo.jpg`);
       }
     });
+  }
+
+  // ============================================
+  // 📍 ASIGNACIÓN AUTOMÁTICA DE LOCALIZACIÓN
+  // ============================================
+
+  private getTimestampArchivo(archivo: Archivo): number {
+    if (!archivo.fechaCreacion) return 0;
+    const fecha = new Date(archivo.fechaCreacion);
+    if (isNaN(fecha.getTime())) return 0;
+    if (archivo.horaCaptura) {
+      const partes = archivo.horaCaptura.split(':').map(Number);
+      const horas = partes[0];
+      const minutos = partes[1];
+      const segundos = partes[2];
+      if (!isNaN(horas) && !isNaN(minutos)) {
+        fecha.setHours(horas, minutos, !isNaN(segundos) ? segundos : 0, 0);
+      }
+    }
+    return fecha.getTime();
+  }
+
+  private tieneGeolocalizacionValida(archivo: Archivo): boolean {
+    const geo = archivo.geolocalizacion;
+    if (!geo) return false;
+    const trimmed = String(geo).trim();
+    if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'No disponible' || trimmed === 'Coordenadas inválidas' || trimmed === 'Formato inválido') return false;
+    return true;
+  }
+
+  /**
+   * Asigna coordenadas GPS a todas las fotos sin geolocalización
+   * buscando la foto con GPS más cercana en el tiempo (hacia adelante y hacia atrás).
+   * Deja los cambios en estado de previsualización para poder guardar o retroceder.
+   */
+  asignarLocalizacionAuto(): void {
+    if (!this.archivos || this.archivos.length === 0) {
+      alert('⚠️ No hay archivos en esta actividad para procesar.');
+      return;
+    }
+
+    const conGeo = this.archivos.filter(a => this.tieneGeolocalizacionValida(a));
+    const sinGeo = this.archivos.filter(a => !this.tieneGeolocalizacionValida(a));
+
+    if (sinGeo.length === 0) {
+      alert('ℹ️ Todos los archivos de esta actividad ya disponen de localización GPS.');
+      return;
+    }
+
+    if (conGeo.length === 0) {
+      alert('⚠️ No se encontró ningún archivo con coordenadas GPS en esta actividad para usar como referencia.');
+      return;
+    }
+
+    this.cambiosLocalizacionPendientes = [];
+
+    for (const archivoSinGeo of sinGeo) {
+      const tSin = this.getTimestampArchivo(archivoSinGeo);
+
+      // Buscar en conGeo el archivo con menor diferencia absoluta de tiempo
+      let mejorRef: Archivo = conGeo[0];
+      let menorDiff = Math.abs(tSin - this.getTimestampArchivo(conGeo[0]));
+
+      for (let i = 1; i < conGeo.length; i++) {
+        const diff = Math.abs(tSin - this.getTimestampArchivo(conGeo[i]));
+        if (diff < menorDiff) {
+          menorDiff = diff;
+          mejorRef = conGeo[i];
+        }
+      }
+
+      const diffMinutos = Math.round(menorDiff / 60000);
+
+      this.cambiosLocalizacionPendientes.push({
+        archivoId: archivoSinGeo.id,
+        nombreArchivo: archivoSinGeo.nombreArchivo,
+        horaCaptura: archivoSinGeo.horaCaptura,
+        fechaCreacion: archivoSinGeo.fechaCreacion,
+        geoOriginal: archivoSinGeo.geolocalizacion,
+        geoPropuesta: mejorRef.geolocalizacion!,
+        fotoReferenciaNombre: mejorRef.nombreArchivo,
+        diferenciaMinutos: diffMinutos
+      });
+
+      // Aplicar temporalmente en memoria para previsualización inmediata en la vista
+      archivoSinGeo.geolocalizacion = mejorRef.geolocalizacion;
+    }
+
+    this.modoAsignandoLocalizacion = true;
+    this.cargarDireccionesProgresivamente();
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Guarda de forma permanente en la base de datos las localizaciones propuestas.
+   */
+  async guardarCambiosLocalizacion(): Promise<void> {
+    if (!this.cambiosLocalizacionPendientes || this.cambiosLocalizacionPendientes.length === 0) {
+      this.modoAsignandoLocalizacion = false;
+      return;
+    }
+
+    this.guardandoLocalizacion = true;
+    this.cdr.detectChanges();
+
+    try {
+      let actualizados = 0;
+      for (const cambio of this.cambiosLocalizacionPendientes) {
+        await firstValueFrom(
+          this.archivoService.actualizarArchivo(cambio.archivoId, {
+            geolocalizacion: cambio.geoPropuesta
+          })
+        );
+        actualizados++;
+      }
+
+      alert(`✅ Localización guardada exitosamente en ${actualizados} archivo(s).`);
+      this.modoAsignandoLocalizacion = false;
+      this.cambiosLocalizacionPendientes = [];
+      this.cargarArchivos();
+    } catch (error: any) {
+      console.error('Error guardando localizaciones:', error);
+      alert(`❌ Error al guardar las localizaciones: ${error.message || error}`);
+    } finally {
+      this.guardandoLocalizacion = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  /**
+   * Descarta la previsualización y restaura las localizaciones originales de las fotos.
+   */
+  cancelarCambiosLocalizacion(): void {
+    // Revertir en memoria las geolocalizaciones propuestas
+    for (const cambio of this.cambiosLocalizacionPendientes) {
+      const arch = this.archivos.find(a => a.id === cambio.archivoId);
+      if (arch) {
+        arch.geolocalizacion = cambio.geoOriginal;
+      }
+    }
+
+    this.modoAsignandoLocalizacion = false;
+    this.cambiosLocalizacionPendientes = [];
+    this.cdr.detectChanges();
+    alert('↩️ Se han descartado los cambios de localización propuestos.');
   }
 
   // ============================================

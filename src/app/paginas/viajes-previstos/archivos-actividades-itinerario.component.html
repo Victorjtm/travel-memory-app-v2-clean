@@ -31,9 +31,16 @@
   </button>
 
   <!-- ✨ NUEVO BOTÓN: Separar por días -->
-  <button (click)="separarPorDias()" class="btn-separar-dias" [disabled]="!archivos || archivos.length === 0"
+  <button (click)="separarPorDias()" class="btn-separar-dias" [disabled]="!archivos || archivos.length === 0 || modoAsignandoLocalizacion"
     title="Crea un itinerario y actividad por cada día detectado en los archivos">
     <i class="fa fa-calendar-day"></i> Separar por Días
+  </button>
+
+  <!-- 📍 NUEVO BOTÓN: Asignar localización automáticamente -->
+  <button (click)="asignarLocalizacionAuto()" class="btn-asignar-localizacion"
+    [disabled]="!archivos || archivos.length === 0 || modoAsignandoLocalizacion"
+    title="Asigna coordenadas GPS a fotos sin localización basándose en la foto más cercana en el tiempo">
+    <i class="fa fa-map-marker-alt"></i> Asignar Localización
   </button>
 
   <!-- 🎨 SELECTOR DE VISTA: Lista / Galería -->
@@ -48,6 +55,25 @@
 
   <router-outlet></router-outlet>
   <hr>
+
+  <!-- 📍 BARRA DE CAMBIOS DE LOCALIZACIÓN PENDIENTES (PREVISUALIZACIÓN) -->
+  <div class="banner-cambios-localizacion" *ngIf="modoAsignandoLocalizacion">
+    <div class="banner-info">
+      <i class="fa fa-map-marker-alt"></i>
+      <div>
+        <strong>Previsualizando asignación de localización:</strong>
+        <p>{{ cambiosLocalizacionPendientes.length }} foto(s) sin coordenadas han recibido la ubicación de la foto más cercana en el tiempo.</p>
+      </div>
+    </div>
+    <div class="banner-actions">
+      <button class="btn-guardar-loc" (click)="guardarCambiosLocalizacion()" [disabled]="guardandoLocalizacion">
+        <i class="fa fa-save"></i> {{ guardandoLocalizacion ? 'Guardando...' : 'Guardar Cambios' }}
+      </button>
+      <button class="btn-cancelar-loc" (click)="cancelarCambiosLocalizacion()" [disabled]="guardandoLocalizacion">
+        <i class="fa fa-undo"></i> Retroceder / Descartar
+      </button>
+    </div>
+  </div>
 
   <!-- 📁 LISTA DE ARCHIVOS O MENSAJE DE LISTA VACÍA -->
   <div *ngIf="archivos && archivos.length > 0; else sinArchivos" 
