@@ -4537,19 +4537,18 @@ app.get('/archivos/viaje/:viajeId', (req, res) => {
     SELECT DISTINCT a.* 
     FROM archivos a
     LEFT JOIN actividades act ON a.actividadId = act.id
-    LEFT JOIN ItinerarioGeneral it ON act.itinerarioId = it.id OR a.itinerarioId = it.id
-    WHERE act.viajePrevistoId = ? OR it.viajePrevistoId = ?
+    WHERE act.viajePrevistoId = ?
     ORDER BY a.fechaCreacion ASC, a.horaCaptura ASC
   `;
 
-  db.all(sql, [viajeId, viajeId], (err, rows) => {
+  db.all(sql, [viajeId], (err, rows) => {
     if (err) {
       console.error('❌ Error obteniendo archivos por viaje:', err.message);
       return res.status(500).json({ error: err.message });
     }
 
     // ✅ NORMALIZACIÓN
-    const rowsNormalizadas = rows.map(r => ({
+    const rowsNormalizadas = (rows || []).map(r => ({
       ...r,
       actividadId: r.actividadId === null ? 0 : r.actividadId
     }));
