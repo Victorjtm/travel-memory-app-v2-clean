@@ -42,10 +42,13 @@
       </div>
     </div>
 
-    <!-- Botón flotante para Append (visible cuando NO hay anclas seleccionadas y estamos en SELECTING) -->
+    <!-- Botones flotantes para Prepend / Append / Insert (visible cuando NO hay anclas seleccionadas y estamos en SELECTING) -->
     <div class="floating-tools" *ngIf="editorState === 'SELECTING' && !anchorA && !anchorB">
+      <button class="btn-prepend-float" (click)="startPrependMode()" style="background: #059669; color: white; padding: 12px 18px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        ⏪ Prolongar inicio
+      </button>
       <button class="btn-append-float" (click)="startAppendMode()">
-        ➕ Prolongar recorrido
+        ➕ Prolongar final
       </button>
       <button class="btn-insert-float" (click)="startInsertMode()" style="background: #8b5cf6; margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
         ✏️ Insertar Tramo
@@ -282,13 +285,14 @@
     </div>
   </div>
 
-  <!-- Panel de Insert (Fase 2.1.b + 2.2 Routing Asistido) -->
-  <div class="editor-sidebar insert-mode" *ngIf="editorState === 'SELECTING_A' || editorState === 'SELECTING_B' || editorState === 'SELECTING_MODE' || editorState === 'DRAWING_INSERT' || editorState === 'PREVIEW_INSERT' || editorState === 'CALCULATING_ROUTE' || editorState === 'PREVIEW_ROUTE'">
-    <div class="sidebar-header" style="background: #8b5cf6;">
-      <h3>Insertar Tramo</h3>
+  <!-- Panel de Insert / Append / Prepend (Fase 2.1.b + 2.2 Routing Asistido) -->
+  <div class="editor-sidebar insert-mode" *ngIf="editorState === 'PREPEND_SELECTING_A' || editorState === 'SELECTING_A' || editorState === 'SELECTING_B' || editorState === 'SELECTING_MODE' || editorState === 'DRAWING_INSERT' || editorState === 'PREVIEW_INSERT' || editorState === 'CALCULATING_ROUTE' || editorState === 'PREVIEW_ROUTE'">
+    <div class="sidebar-header" [style.background]="activeFlow === 'PREPEND' ? '#059669' : (activeFlow === 'APPEND' ? '#0d9488' : '#8b5cf6')">
+      <h3>{{ activeFlow === 'PREPEND' ? 'Prolongar Inicio' : (activeFlow === 'APPEND' ? 'Prolongar Final' : 'Insertar Tramo') }}</h3>
       <p class="subtitle" *ngIf="editorState === 'SELECTING_A'">Paso 1: Haz clic en la ruta para seleccionar Inicio (A)</p>
+      <p class="subtitle" *ngIf="editorState === 'PREPEND_SELECTING_A'">Paso 1: Haz clic en el mapa para fijar el nuevo punto de inicio (A)</p>
       <p class="subtitle" *ngIf="editorState === 'SELECTING_B'">Paso 2: Haz clic en la ruta para seleccionar Fin (B)</p>
-      <p class="subtitle" *ngIf="editorState === 'SELECTING_MODE'">Paso 3: Elige cómo crear el tramo</p>
+      <p class="subtitle" *ngIf="editorState === 'SELECTING_MODE'">Paso {{ activeFlow ? '2' : '3' }}: Elige medio de transporte o dibujo manual</p>
       <p class="subtitle" *ngIf="editorState === 'DRAWING_INSERT'">Dibuja la nueva trayectoria</p>
       <p class="subtitle" *ngIf="editorState === 'CALCULATING_ROUTE'">Calculando ruta...</p>
       <p class="subtitle" *ngIf="editorState === 'PREVIEW_ROUTE'">Ruta propuesta</p>

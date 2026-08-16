@@ -780,7 +780,9 @@ export class TrackEditorService {
         return Math.abs(p1.lat - p2.lat) < 0.00005 && Math.abs(p1.lng - p2.lng) < 0.00005;
       };
 
-      if (seg.source === 'original' || seg.source === 'user-append') {
+      if (seg.source === 'user-prepend') {
+        accumulatedPoints.unshift(...segPoints);
+      } else if (seg.source === 'original' || seg.source === 'user-append') {
         accumulatedPoints.push(...segPoints);
       } else if (seg.source === 'user-insert' || seg.source === 'user-override') {
         const pFirst = segPoints[0];

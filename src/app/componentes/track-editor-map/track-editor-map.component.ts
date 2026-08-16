@@ -88,8 +88,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   anchorA: TrackAnchor | null = null;
   anchorB: TrackAnchor | null = null;
 
-  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' | 'APPEND_SELECTING_B' | 'IDLE' | 'SELECTING_A' | 'SELECTING_B' | 'SELECTING_MODE' | 'DRAWING_INSERT' | 'PREVIEW_INSERT' | 'CALCULATING_ROUTE' | 'PREVIEW_ROUTE' | 'GET_LOCATION' = 'SELECTING';
-  activeFlow: 'INSERT' | 'APPEND' | null = null;
+  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' | 'APPEND_SELECTING_B' | 'PREPEND_SELECTING_A' | 'IDLE' | 'SELECTING_A' | 'SELECTING_B' | 'SELECTING_MODE' | 'DRAWING_INSERT' | 'PREVIEW_INSERT' | 'CALCULATING_ROUTE' | 'PREVIEW_ROUTE' | 'GET_LOCATION' = 'SELECTING';
+  activeFlow: 'INSERT' | 'APPEND' | 'PREPEND' | null = null;
 
   // --- Routing asistido (Fase 2.2) ---
   routingProfile: string = 'driving';
@@ -509,6 +509,12 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     if (this.editorState === 'APPEND_SELECTING_B') {
       // Para prolongar, permitimos pinchar en cualquier parte del mapa, no hace falta que sea un punto existente
       this.setInsertAnchorBVirtual(e.latlng);
+      return;
+    }
+
+    if (this.editorState === 'PREPEND_SELECTING_A') {
+      // Para anteponer, permitimos pinchar en cualquier parte del mapa para fijar el nuevo inicio
+      this.setInsertAnchorAVirtual(e.latlng);
       return;
     }
 
@@ -1275,6 +1281,19 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.editorState = 'SELECTING_MODE';
   }
 
+  private setInsertAnchorAVirtual(latlng: L.LatLng) {
+    if (!this.map || !this.insertAnchorB) return;
+    
+    // Asignar punto arbitrario seleccionado por el usuario para el nuevo origen (Prepend)
+    this.insertAnchorA = { index: -1, time: undefined, lat: latlng.lat, lng: latlng.lng };
+    
+    this.insertMarkerA = L.circleMarker([latlng.lat, latlng.lng], {
+      color: 'white', fillColor: '#22c55e', fillOpacity: 1, radius: 8, weight: 2
+    }).addTo(this.map).bindTooltip('Nuevo Origen (A)', { permanent: true, direction: 'right' }).openTooltip();
+
+    this.editorState = 'SELECTING_MODE';
+  }
+
   private transitionToDrawingInsert() {
     if (!this.map || !this.insertAnchorA || !this.insertAnchorB) return;
     
@@ -1355,12 +1374,63 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       this.pendingEdits.push({
         id: editId,
         type: 'append_segment',
-        description: `${this.pendingEdits.length + 1} - Prolongación`,
+        description: `${this.pendingEdits.length + 1} - Prolongación final`,
         data: {
           points: fullPointsArray
         },
         isHidden: false // Los puntos añadidos sí se dibujan
       });
+      this.drawBaseAndEdits();
+    } else if (this.activeFlow === 'PREPEND') {
+      // Calcular tiempos hacia atrás si insertAnchorB tiene tiempo
+      if (this.insertAnchorB.time) {
+        const endMs = new Date(this.insertAnchorB.time).getTime();
+        if (!isNaN(endMs)) {
+          const speedMps = this.trackEditorService.getModeSpeedMps(appliedMode);
+          let totalDistMetros = 0;
+          for (let i = 0; i < fullPointsArray.length - 1; i++) {
+            totalDistMetros += this.trackEditorService.getDistance(
+              fullPointsArray[i].lat, fullPointsArray[i].lng,
+              fullPointsArray[i + 1].lat, fullPointsArray[i + 1].lng
+            );
+          }
+          const duracionSeg = Math.max(1, totalDistMetros / speedMps);
+          const startMs = endMs - (duracionSeg * 1000);
+
+          let currentDist = 0;
+          fullPointsArray.forEach((pt, idx) => {
+            if (idx === 0) {
+              pt.time = new Date(startMs);
+            } else if (idx === fullPointsArray.length - 1) {
+              pt.time = new Date(endMs);
+            } else {
+              const d = this.trackEditorService.getDistance(
+                fullPointsArray[idx - 1].lat, fullPointsArray[idx - 1].lng,
+                pt.lat, pt.lng
+              );
+              currentDist += d;
+              const ratio = totalDistMetros > 0 ? currentDist / totalDistMetros : (idx / (fullPointsArray.length - 1));
+              pt.time = new Date(startMs + (endMs - startMs) * ratio);
+            }
+          });
+        }
+      }
+
+      const editId = Math.random().toString(36).substring(2, 9);
+      this.pendingEdits.push({
+        id: editId,
+        type: 'prepend_segment',
+        description: `${this.pendingEdits.length + 1} - Prolongación inicio`,
+        data: {
+          points: fullPointsArray
+        },
+        isHidden: false
+      });
+
+      // Insertar los puntos al principio de this.gpxPoints (omitiendo el último punto que coincide con insertAnchorB)
+      const pointsToPrepend = fullPointsArray.slice(0, -1);
+      this.gpxPoints.unshift(...pointsToPrepend);
+
       this.drawBaseAndEdits();
     } else {
       this.insertRequest.emit({
@@ -1491,6 +1561,49 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     const m = Math.floor((seconds % 3600) / 60);
     if (h > 0) return `${h}h ${m}min`;
     return `${m} min`;
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // MODO PREPEND (Prolongación Inicio)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  startPrependMode() {
+    if (!this.map || this.gpxPoints.length === 0) return;
+
+    this.clearSelection();
+    this.cleanupInsertMode();
+    this.cleanupGeometryMode();
+
+    this.activeFlow = 'PREPEND';
+    this.editorState = 'PREPEND_SELECTING_A';
+
+    // Para Prepend, el ancla B es el primer punto de la ruta (real o virtual)
+    const firstPt = this.getVirtualFirstPoint();
+
+    this.insertAnchorB = {
+      index: 0,
+      time: (firstPt as any).time ? new Date((firstPt as any).time).toISOString() : undefined,
+      lat: firstPt.lat,
+      lng: firstPt.lng
+    };
+
+    // Pintar marcador visual en el punto inicial existente
+    this.insertMarkerB = L.circleMarker([firstPt.lat, firstPt.lng], {
+      color: 'white', fillColor: '#ef4444', fillOpacity: 1, radius: 8, weight: 2
+    }).addTo(this.map).bindTooltip('Inicio Grabado (B)', { permanent: true, direction: 'right' }).openTooltip();
+  }
+
+  getVirtualFirstPoint(): { lat: number, lng: number, time?: any } {
+    let firstPt = this.gpxPoints[0];
+    const prepends = this.pendingEdits.filter(e => e.type === 'prepend_segment');
+    if (prepends.length > 0) {
+      const firstPrepend = prepends[0];
+      const pts = firstPrepend.data.points;
+      if (pts && pts.length > 0) {
+        firstPt = pts[0];
+      }
+    }
+    return firstPt;
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

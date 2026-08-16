@@ -404,7 +404,7 @@ export class ActividadesItinerariosComponent implements OnInit {
     const continuarCargaVisualYModal = () => {
       this.trackEditorService.getSegments(actividadId).subscribe({
         next: (segments) => {
-          const hasUserEdits = segments && segments.some((s: any) => s.source === 'user-delete' || s.source === 'user-override' || s.source === 'user-append');
+          const hasUserEdits = segments && segments.some((s: any) => s.source === 'user-delete' || s.source === 'user-override' || s.source === 'user-append' || s.source === 'user-prepend');
           if (hasUserEdits) {
             console.log('ℹ️ [TrackEditor] Ediciones manuales detectadas en segments. Omitiendo visual_session desfasado.');
             this.isHighFidelityMode = false;
@@ -516,7 +516,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
         this.trackEditorService.getSegments(actividadId).subscribe({
           next: (segments) => {
-            const hasUserEdits = segments && segments.some((s: any) => s.source === 'user-delete' || s.source === 'user-override' || s.source === 'user-append');
+            const hasUserEdits = segments && segments.some((s: any) => s.source === 'user-delete' || s.source === 'user-override' || s.source === 'user-append' || s.source === 'user-prepend');
             if (hasUserEdits) {
               console.log('ℹ️ [Animación] Ediciones manuales detectadas. Omitiendo visual_session desfasado.');
               this.isHighFidelityMode = false;
@@ -2056,6 +2056,20 @@ export class ActividadesItinerariosComponent implements OnInit {
             this.actividadEditorId,
             points,
             'user-delete'
+          ));
+        } else if (edit.type === 'prepend_segment') {
+          // Evitamos duplicar el punto de anclaje B con slice(0, -1)
+          const points = edit.data.points.slice(0, -1).map((p: any) => ({
+            lat: p.lat,
+            lng: p.lng,
+            time: p.time ? new Date(p.time).toISOString() : undefined,
+            mode: p.mode
+          }));
+
+          await firstValueFrom(this.trackEditorService.createSegment(
+            this.actividadEditorId,
+            points,
+            'user-prepend'
           ));
         } else if (edit.type === 'append_segment') {
           // Evitamos duplicar el punto de anclaje A con slice(1)
