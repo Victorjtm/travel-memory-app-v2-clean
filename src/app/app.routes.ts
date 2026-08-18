@@ -19,6 +19,7 @@ import { FormularioArchivosComponent } from './paginas/viajes-previstos/formular
 
 // Importar componentes para archivos sin asignación
 import { CrudArchivosSinAsignacionComponent } from './paginas/configuracion/crud-archivos-sin-asignacion/crud-archivos-sin-asignacion/crud-archivos-sin-asignacion.component';
+import { EncontrarFotosComponent } from './paginas/configuracion/encontrar-fotos/encontrar-fotos.component';
 
 import { TestViajesFuturosComponent } from './paginas/test-viajes-futuros/test-viajes-futuros.component';
 import { ViajesMapaComponent } from './paginas/viajes-previstos/mapa/viajes-mapa.component';
@@ -86,10 +87,12 @@ export const routes: Routes = [
     path: 'configuracion/archivos-sin-asignacion',
     children: [
       { path: '', component: CrudArchivosSinAsignacionComponent }
-      // Puedes agregar más rutas hijas aquí si necesitas en el futuro
-      // { path: 'nuevo', component: FormularioArchivoSinAsignacionComponent },
-      // { path: 'editar/:id', component: FormularioArchivoSinAsignacionComponent }
     ]
+  },
+  // 📸 Nueva ruta para Encontrar Fotos (Explorador / Comparar con Itinerario)
+  {
+    path: 'configuracion/encontrar-fotos',
+    component: EncontrarFotosComponent
   },
 
   // Ruta para CREAR nueva actividad

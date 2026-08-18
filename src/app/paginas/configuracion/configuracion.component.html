@@ -22,6 +22,14 @@
       </span>
     </a>
 
+    <a routerLink="/configuracion/encontrar-fotos" class="opcion">
+      <i class="fa-solid fa-camera-retro"></i>
+      <span>
+        <strong>Encontrar fotos</strong>
+        <small>Compara fotos de tu ordenador con un itinerario y asigna las faltantes.</small>
+      </span>
+    </a>
+
     <button class="opcion opcion-procesamiento" (click)="procesarGeolocalizacionMasiva()" [disabled]="procesando">
       <i class="fa-solid" [ngClass]="procesando ? 'fa-spinner fa-spin' : 'fa-location-crosshairs'"></i>
       <span>

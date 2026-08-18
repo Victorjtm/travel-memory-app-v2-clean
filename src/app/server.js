@@ -8678,6 +8678,300 @@ app.delete('/api/segments/:id', (req, res) => {
   });
 });
 
+// ====================================================================
+// 📁 MÓDULO EXPLORADOR: ENCONTRAR FOTOS Y COMPARAR CON ITINERARIO
+// ====================================================================
+
+const EXTENSIONES_IMAGEN_EXP = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif', '.bmp', '.tiff']);
+const EXTENSIONES_VIDEO_EXP = new Set(['.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm', '.m4v']);
+
+// 1. Obtener todos los itinerarios con nombre completo de viaje y ordenados cronológicamente
+app.get('/api/explorador/itinerarios-completos', async (req, res) => {
+  try {
+    const sql = `
+      SELECT 
+        ig.id,
+        ig.viajePrevistoId,
+        ig.fechaInicio,
+        ig.fechaFin,
+        ig.destinosPorDia,
+        ig.descripcionGeneral,
+        ig.tipoDeViaje,
+        v.nombre AS viajeNombre,
+        v.destino AS viajeDestino
+      FROM ItinerarioGeneral ig
+      LEFT JOIN viajes v ON ig.viajePrevistoId = v.id
+      ORDER BY substr(ig.fechaInicio, 1, 10) ASC, ig.id ASC
+    `;
+    const itinerarios = await dbQuery.all(sql, []);
+
+    // Formatear cada itinerario con etiqueta legible
+    const resultado = (itinerarios || []).map(itin => {
+      const fecha = (itin.fechaInicio || '').substring(0, 10);
+      const viaje = itin.viajeNombre || itin.viajeDestino || `Viaje #${itin.viajePrevistoId}`;
+      const desc = itin.descripcionGeneral || itin.destinosPorDia || `Itinerario #${itin.id}`;
+      return {
+        ...itin,
+        etiquetaCompleta: `${fecha} - ${viaje} - ${desc}`
+      };
+    });
+
+    res.json(resultado);
+  } catch (error) {
+    console.error('❌ Error obteniendo itinerarios completos:', error);
+    res.status(500).json({ error: 'Error al obtener itinerarios', detalles: error.message });
+  }
+});
+
+// 2. Vista previa de archivo local en disco
+app.get('/api/explorador/preview-local', (req, res) => {
+  try {
+    const ruta = req.query.ruta;
+    if (!ruta || typeof ruta !== 'string') {
+      return res.status(400).send('Ruta no proporcionada');
+    }
+    const resolvedPath = path.resolve(ruta);
+    if (!fs.existsSync(resolvedPath)) {
+      return res.status(404).send('Archivo no encontrado en disco');
+    }
+    res.sendFile(resolvedPath);
+  } catch (error) {
+    console.error('❌ Error sirviendo preview local:', error);
+    res.status(500).send('Error al cargar vista previa');
+  }
+});
+
+// Helper para escanear recursivamente carpetas
+function escanearCarpetaLocal(dirPath, maxDepth = 4, currentDepth = 0) {
+  let archivosEncontrados = [];
+  if (currentDepth > maxDepth || !fs.existsSync(dirPath)) return archivosEncontrados;
+
+  const carpetasIgnoradas = new Set(['$recycle.bin', 'system volume information', 'node_modules', '.git']);
+
+  try {
+    const items = fs.readdirSync(dirPath, { withFileTypes: true });
+
+    for (const item of items) {
+      const nombreLower = item.name.toLowerCase();
+      if (carpetasIgnoradas.has(nombreLower)) continue;
+
+      const rutaItem = path.join(dirPath, item.name);
+
+      if (item.isDirectory()) {
+        const subArchivos = escanearCarpetaLocal(rutaItem, maxDepth, currentDepth + 1);
+        archivosEncontrados = archivosEncontrados.concat(subArchivos);
+      } else if (item.isFile()) {
+        const ext = path.extname(item.name).toLowerCase();
+        const esImg = EXTENSIONES_IMAGEN_EXP.has(ext);
+        const esVid = EXTENSIONES_VIDEO_EXP.has(ext);
+
+        if (esImg || esVid) {
+          let tamano = 0;
+          let fechaMod = new Date();
+          try {
+            const stats = fs.statSync(rutaItem);
+            tamano = stats.size;
+            fechaMod = stats.birthtime && stats.birthtime.getTime() > 0 ? stats.birthtime : stats.mtime;
+          } catch (e) {}
+
+          archivosEncontrados.push({
+            nombre: item.name,
+            rutaCompleta: rutaItem,
+            tamano,
+            fechaCreacion: fechaMod instanceof Date ? fechaMod.toISOString() : new Date().toISOString(),
+            extension: ext.replace('.', ''),
+            tipo: esImg ? 'imagen' : 'video'
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`⚠️ No se pudo leer carpeta: ${dirPath}`, err.message);
+  }
+
+  return archivosEncontrados;
+}
+
+// 3. Comparar archivos de la carpeta local con los de un itinerario
+app.post('/api/explorador/comparar-itinerario', async (req, res) => {
+  try {
+    const { rutaCarpeta, itinerarioId } = req.body;
+
+    if (!rutaCarpeta || typeof rutaCarpeta !== 'string') {
+      return res.status(400).json({ error: 'Debes proporcionar una ruta de carpeta válida.' });
+    }
+
+    if (!itinerarioId) {
+      return res.status(400).json({ error: 'Debes seleccionar un itinerario.' });
+    }
+
+    const resolvedCarpeta = path.resolve(rutaCarpeta.trim());
+    if (!fs.existsSync(resolvedCarpeta)) {
+      return res.status(404).json({ error: `La carpeta "${rutaCarpeta}" no existe o no se puede acceder a ella.` });
+    }
+
+    console.log(`🔍 [EXPLORADOR] Escaneando carpeta: ${resolvedCarpeta} para Itinerario ID: ${itinerarioId}`);
+
+    // 1. Escanear todos los archivos en disco
+    const archivosEnDisco = escanearCarpetaLocal(resolvedCarpeta);
+    console.log(`📁 [EXPLORADOR] Archivos encontrados en disco: ${archivosEnDisco.length}`);
+
+    // 2. Obtener nombres de todos los archivos existentes en el itinerario
+    const sqlArchivosItinerario = `
+      SELECT ar.id, ar.nombreArchivo, ar.rutaArchivo
+      FROM archivos ar
+      JOIN actividades ac ON ar.actividadId = ac.id
+      WHERE ac.itinerarioId = ?
+    `;
+    const archivosItinerario = await dbQuery.all(sqlArchivosItinerario, [itinerarioId]);
+
+    // Crear un Set con los nombres de archivos existentes (normalizados en minúsculas)
+    const nombresExistentes = new Set(
+      (archivosItinerario || []).map(a => (a.nombreArchivo || '').toLowerCase().trim())
+    );
+
+    // 3. Filtrar los que NO están en el itinerario
+    const archivosFaltantes = archivosEnDisco.filter(archivo => {
+      const nombreNorm = archivo.nombre.toLowerCase().trim();
+      return !nombresExistentes.has(nombreNorm);
+    });
+
+    console.log(`✨ [EXPLORADOR] Archivos nuevos/faltantes en el itinerario: ${archivosFaltantes.length}`);
+
+    // Obtener también las actividades del itinerario para que el cliente las use en el selector
+    const actividades = await dbQuery.all(
+      `SELECT ac.id, ac.nombre, ac.horaInicio, ac.horaFin, ta.nombre AS tipoActividad 
+       FROM actividades ac 
+       LEFT JOIN TiposActividad ta ON ac.tipoActividadId = ta.id 
+       WHERE ac.itinerarioId = ? 
+       ORDER BY ac.horaInicio ASC, ac.id ASC`,
+      [itinerarioId]
+    );
+
+    res.json({
+      totalEnDisco: archivosEnDisco.length,
+      totalEnItinerario: archivosItinerario.length,
+      totalFaltantes: archivosFaltantes.length,
+      archivos: archivosFaltantes,
+      actividades: actividades || []
+    });
+
+  } catch (error) {
+    console.error('❌ Error comparando itinerario con carpeta:', error);
+    res.status(500).json({ error: 'Error al comparar archivos', detalles: error.message });
+  }
+});
+
+// 4. Importar archivos seleccionados y asignarlos a una actividad
+app.post('/api/explorador/importar-y-asignar', async (req, res) => {
+  try {
+    const { archivos, actividadId } = req.body;
+
+    if (!archivos || !Array.isArray(archivos) || archivos.length === 0) {
+      return res.status(400).json({ error: 'No se enviaron archivos para importar.' });
+    }
+
+    if (!actividadId) {
+      return res.status(400).json({ error: 'Debes seleccionar una actividad destino.' });
+    }
+
+    // Verificar que la actividad existe
+    const actividad = await dbQuery.get('SELECT * FROM actividades WHERE id = ?', [actividadId]);
+    if (!actividad) {
+      return res.status(404).json({ error: 'Actividad no encontrada.' });
+    }
+
+    let importados = 0;
+    let errores = [];
+
+    for (const archivo of archivos) {
+      try {
+        if (!fs.existsSync(archivo.rutaCompleta)) {
+          errores.push(`No existe: ${archivo.nombre}`);
+          continue;
+        }
+
+        // Generar nombre de destino único en carpeta uploads
+        const ext = path.extname(archivo.nombre);
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const nombreArchivoDestino = `${uniqueSuffix}${ext}`;
+        const rutaDestinoAbsoluta = path.join(uploadsPath, nombreArchivoDestino);
+
+        // Copiar archivo a uploads
+        fs.copyFileSync(archivo.rutaCompleta, rutaDestinoAbsoluta);
+
+        // Mime-type
+        const extClean = (archivo.extension || ext.replace('.', '')).toLowerCase();
+        let mimeType = 'application/octet-stream';
+        if (['jpg', 'jpeg'].includes(extClean)) mimeType = 'image/jpeg';
+        else if (extClean === 'png') mimeType = 'image/png';
+        else if (extClean === 'webp') mimeType = 'image/webp';
+        else if (extClean === 'gif') mimeType = 'image/gif';
+        else if (extClean === 'mp4') mimeType = 'video/mp4';
+        else if (extClean === 'mov') mimeType = 'video/quicktime';
+        else if (extClean === 'webm') mimeType = 'video/webm';
+
+        const tipo = EXTENSIONES_IMAGEN_EXP.has('.' + extClean) ? 'imagen' : 'video';
+        const fechaCreacion = archivo.fechaCreacion || new Date().toISOString();
+        const horaCaptura = new Date(fechaCreacion).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        const sqlInsert = `
+          INSERT INTO archivos (
+            nombreArchivo,
+            rutaArchivo,
+            tipo,
+            fechaCreacion,
+            fechaActualizacion,
+            horaCaptura,
+            actividadId,
+            descripcion,
+            metadatos,
+            version
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        `;
+
+        const metadatos = JSON.stringify({
+          rutaOriginal: archivo.rutaCompleta,
+          origen: 'encontrar-fotos-explorador',
+          fechaImportacion: new Date().toISOString(),
+          tamano: archivo.tamano || 0,
+          tipoMime: mimeType
+        });
+
+        await dbQuery.run(sqlInsert, [
+          archivo.nombre,
+          `uploads/${nombreArchivoDestino}`,
+          tipo,
+          fechaCreacion,
+          fechaCreacion,
+          horaCaptura,
+          actividadId,
+          `Importado desde ${path.dirname(archivo.rutaCompleta)}`,
+          metadatos
+        ]);
+
+        importados++;
+      } catch (err) {
+        console.error(`❌ Error importando archivo ${archivo.nombre}:`, err);
+        errores.push(`${archivo.nombre}: ${err.message}`);
+      }
+    }
+
+    console.log(`✅ [EXPLORADOR] Importación finalizada: ${importados} importados a Actividad #${actividadId}`);
+
+    res.json({
+      exito: true,
+      importados,
+      totalSolicitados: archivos.length,
+      errores
+    });
+
+  } catch (error) {
+    console.error('❌ Error en importar-y-asignar:', error);
+    res.status(500).json({ error: 'Error durante la importación', detalles: error.message });
+  }
+});
+
 // ========================================
 // 🛡️ MANEJADOR GLOBAL DE ERRORES (CORS SAFE)
 // ========================================

@@ -1,0 +1,254 @@
+<div class="contenedor">
+  <!-- Botones de acción superior -->
+  <div class="acciones-principales">
+    <button class="btn-volver" (click)="volverAConfiguracion()">
+      <i class="fa fa-arrow-left"></i> Volver a Configuración
+    </button>
+  </div>
+
+  <div class="header-seccion">
+    <h2><i class="fa-solid fa-camera-retro"></i> Encontrar Fotos en Disco</h2>
+    <p class="subtitulo">Compara cualquier carpeta de tu ordenador con un itinerario y encuentra qué fotos y vídeos aún no están añadidos.</p>
+  </div>
+
+  <!-- Formulario de Configuración de Búsqueda -->
+  <div class="caja-formulario app-card">
+    <div class="form-grid">
+      <!-- 1. Ruta de la carpeta -->
+      <div class="form-group">
+        <label for="rutaCarpeta">
+          <i class="fa-solid fa-folder-open"></i> <strong>Ruta de la carpeta en disco:</strong>
+        </label>
+        <div class="input-con-boton">
+          <input 
+            type="text" 
+            id="rutaCarpeta" 
+            [(ngModel)]="rutaCarpeta" 
+            placeholder="Ej: C:\recorridos\Recorrido_20260630"
+            class="input-ruta"
+            [disabled]="buscando || asignando"
+          />
+          <button 
+            type="button" 
+            class="btn-explorar" 
+            (click)="seleccionarCarpetaNavegador()" 
+            title="Seleccionar carpeta con el explorador">
+            📁 Explorar
+          </button>
+        </div>
+        <small class="ayuda">Introduce la ruta absoluta donde se encuentran tus fotos (ej: C:\recorridos\Recorrido_20260630).</small>
+      </div>
+
+      <!-- 2. Selector de Itinerario -->
+      <div class="form-group">
+        <label for="itinerarioSelect">
+          <i class="fa-solid fa-route"></i> <strong>Seleccionar Itinerario:</strong>
+        </label>
+        <select 
+          id="itinerarioSelect" 
+          [(ngModel)]="itinerarioIdSeleccionado" 
+          class="select-itinerario"
+          [disabled]="cargandoItinerarios || buscando || asignando">
+          <option [ngValue]="null">-- Selecciona un itinerario ordenado por fecha --</option>
+          <option *ngFor="let itin of itinerariosDisponibles" [ngValue]="itin.id">
+            📅 {{ itin.etiquetaCompleta }}
+          </option>
+        </select>
+        <small class="ayuda" *ngIf="cargandoItinerarios">Cargando lista de itinerarios...</small>
+        <small class="ayuda" *ngIf="!cargandoItinerarios">Mostrando {{ itinerariosDisponibles.length }} itinerarios ordenados cronológicamente.</small>
+      </div>
+    </div>
+
+    <!-- Botón de acción Buscar -->
+    <div class="form-acciones">
+      <button 
+        class="btn-buscar" 
+        (click)="buscarFotos()" 
+        [disabled]="buscando || !rutaCarpeta || !itinerarioIdSeleccionado">
+        <i class="fa-solid" [ngClass]="buscando ? 'fa-spinner fa-spin' : 'fa-magnifying-glass'"></i>
+        {{ buscando ? 'Escaneando y comparando...' : 'Buscar Fotos y Comparar' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Resumen de Resultados -->
+  <div *ngIf="busquedaRealizada" class="resumen-comparacion app-card">
+    <div class="metricas-grid">
+      <div class="metrica-item">
+        <span class="metrica-valor">{{ totalEnDisco }}</span>
+        <span class="metrica-label"><i class="fa-solid fa-hard-drive"></i> Encontradas en Carpeta</span>
+      </div>
+      <div class="metrica-item">
+        <span class="metrica-valor">{{ totalEnItinerario }}</span>
+        <span class="metrica-label"><i class="fa-solid fa-check-double"></i> Ya en el Itinerario</span>
+      </div>
+      <div class="metrica-item metrica-destacada">
+        <span class="metrica-valor">{{ archivosFaltantes.length }}</span>
+        <span class="metrica-label"><i class="fa-solid fa-star"></i> Pendientes de Asignar</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barra de Filtros y Acciones Masivas -->
+  <div *ngIf="busquedaRealizada && archivosFaltantes.length > 0" class="filtros">
+    <input 
+      type="text" 
+      placeholder="Filtrar por nombre de archivo..." 
+      [(ngModel)]="terminoBusqueda" 
+      (input)="filtrarArchivos()"
+      class="buscador" 
+    />
+
+    <!-- Filtro por tipo -->
+    <select [(ngModel)]="filtroTipo" (change)="filtrarArchivos()" class="filtro-select">
+      <option value="">Todos los tipos ({{ archivosFaltantes.length }})</option>
+      <option value="imagen">Solo Imágenes</option>
+      <option value="video">Solo Vídeos</option>
+    </select>
+
+    <!-- Botón Seleccionar Todos -->
+    <button class="btn-seleccionar-todos" (click)="seleccionarTodos()">
+      <i class="fa fa-check-square-o"></i> Seleccionar todos ({{ archivosFiltrados.length }})
+    </button>
+
+    <!-- Botón limpiar selección -->
+    <button 
+      class="btn-limpiar-seleccion" 
+      (click)="deseleccionarTodos()"
+      [disabled]="archivosSeleccionados.size === 0" 
+      *ngIf="archivosSeleccionados.size > 0">
+      <i class="fa fa-times"></i> Limpiar ({{ archivosSeleccionados.size }})
+    </button>
+
+    <!-- Botón Maestro de Asignar -->
+    <button 
+      class="btn-asignar-destacado" 
+      (click)="abrirModalAsignacion()"
+      [disabled]="archivosSeleccionados.size === 0">
+      <i class="fa-solid fa-link"></i> Asignar ({{ archivosSeleccionados.size }}) a Actividad
+    </button>
+  </div>
+
+  <!-- Mensaje cuando no hay archivos faltantes -->
+  <div *ngIf="busquedaRealizada && archivosFaltantes.length === 0" class="sin-archivos app-card">
+    <i class="fa-solid fa-circle-check icono-exito"></i>
+    <h3>¡Todas las fotos de esta carpeta ya están en el itinerario!</h3>
+    <p>No se encontraron fotos o vídeos nuevos pendientes de asignar.</p>
+  </div>
+
+  <!-- Grid de Archivos Faltantes (Idéntico a Archivos sin Asignación) -->
+  <div *ngIf="busquedaRealizada && archivosFiltrados.length > 0" class="grid-archivos">
+    <div 
+      *ngFor="let archivo of archivosFiltrados" 
+      class="archivo-item"
+      [class.archivo-seleccionado]="estaSeleccionado(archivo)"
+      (click)="toggleSeleccion(archivo)">
+      
+      <!-- Checkbox -->
+      <div class="checkbox-container" (click)="$event.stopPropagation()">
+        <input 
+          type="checkbox" 
+          [id]="'chk-' + archivo.nombre" 
+          [checked]="estaSeleccionado(archivo)" 
+          (change)="toggleSeleccion(archivo)"
+          class="archivo-checkbox" 
+        />
+        <label [for]="'chk-' + archivo.nombre"></label>
+      </div>
+
+      <!-- Preview de Imagen o Vídeo -->
+      <div class="preview-container">
+        <div *ngIf="archivo.tipo === 'imagen'" class="image-preview">
+          <img 
+            [src]="getPreviewUrl(archivo.rutaCompleta)" 
+            [alt]="archivo.nombre"
+            (click)="$event.stopPropagation(); abrirModal(archivo)" 
+            class="clickable-media" 
+            loading="lazy"
+          />
+        </div>
+
+        <div *ngIf="archivo.tipo === 'video'" class="video-preview">
+          <video 
+            [src]="getPreviewUrl(archivo.rutaCompleta)" 
+            (click)="$event.stopPropagation(); abrirModal(archivo)" 
+            class="clickable-media"
+            preload="metadata">
+          </video>
+          <span class="badge-video"><i class="fa-solid fa-play"></i> VÍDEO</span>
+        </div>
+      </div>
+
+      <!-- Info del archivo -->
+      <div class="info-archivo">
+        <h4 class="nombre-archivo" [title]="archivo.nombre">{{ archivo.nombre }}</h4>
+        <p class="tamano-archivo"><strong>Tamaño:</strong> {{ formatBytes(archivo.tamano) }}</p>
+        <p class="fecha-archivo"><strong>Fecha:</strong> {{ archivo.fechaCreacion | date:'dd/MM/yyyy HH:mm' }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== MODAL DE ASIGNACIÓN A ACTIVIDAD ========== -->
+  <div class="modal-backdrop" *ngIf="mostrarModalAsignacion" (click)="cerrarModalAsignacion()">
+    <div class="modal-content modal-asignacion-box" (click)="$event.stopPropagation()">
+      <button class="btn-cerrar-modal" (click)="cerrarModalAsignacion()">
+        <i class="fa fa-times"></i>
+      </button>
+
+      <h3><i class="fa-solid fa-link"></i> Asignar {{ archivosSeleccionados.size }} archivo(s)</h3>
+      <p class="sub-modal">Selecciona la actividad del itinerario a la que deseas añadir estos archivos:</p>
+
+      <div class="selector-actividad">
+        <label for="actividadDestinoSelect"><strong>Actividad destino:</strong></label>
+        <select 
+          id="actividadDestinoSelect" 
+          [(ngModel)]="actividadDestinoId" 
+          class="select-actividad">
+          <option *ngFor="let act of actividadesItinerario" [ngValue]="act.id">
+            📍 {{ act.horaInicio ? act.horaInicio + ' - ' : '' }}{{ act.nombre }} ({{ act.tipoActividad || 'Actividad' }})
+          </option>
+        </select>
+      </div>
+
+      <div class="modal-acciones">
+        <button class="btn-cancelar" (click)="cerrarModalAsignacion()" [disabled]="asignando">
+          Cancelar
+        </button>
+        <button 
+          class="btn-confirmar" 
+          (click)="confirmarAsignacion()"
+          [disabled]="!actividadDestinoId || asignando">
+          <i class="fa-solid" [ngClass]="asignando ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+          {{ asignando ? 'Importando y asignando...' : 'Confirmar Asignación' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== MODAL VISUALIZACIÓN A PANTALLA COMPLETA ========== -->
+  <div class="modal-backdrop" *ngIf="archivoModal" (click)="cerrarModal()">
+    <div class="modal-content modal-viewer" (click)="$event.stopPropagation()">
+      <button class="btn-cerrar-modal" (click)="cerrarModal()">
+        <i class="fa fa-times"></i>
+      </button>
+
+      <div *ngIf="archivoModal.tipo === 'imagen'" class="visor-imagen">
+        <img [src]="getPreviewUrl(archivoModal.rutaCompleta)" [alt]="archivoModal.nombre" />
+      </div>
+
+      <div *ngIf="archivoModal.tipo === 'video'" class="visor-video">
+        <video controls autoplay>
+          <source [src]="getPreviewUrl(archivoModal.rutaCompleta)" />
+          Tu navegador no soporta la reproducción de este vídeo.
+        </video>
+      </div>
+
+      <div class="modal-info">
+        <h3>{{ archivoModal.nombre }}</h3>
+        <p><strong>Ruta en disco:</strong> {{ archivoModal.rutaCompleta }}</p>
+        <p><strong>Tamaño:</strong> {{ formatBytes(archivoModal.tamano) }} &nbsp;·&nbsp; <strong>Fecha:</strong> {{ archivoModal.fechaCreacion | date:'dd/MM/yyyy HH:mm:ss' }}</p>
+      </div>
+    </div>
+  </div>
+
+</div>
