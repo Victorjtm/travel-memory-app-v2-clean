@@ -16,7 +16,10 @@ export interface RoutingResult {
 @Injectable({ providedIn: 'root' })
 export class RoutingService {
 
-  private readonly OSRM_BASE = 'https://router.project-osrm.org/route/v1';
+  private readonly OSM_FOOT_BASE = 'https://routing.openstreetmap.de/routed-foot/route/v1/driving';
+  private readonly OSM_BIKE_BASE = 'https://routing.openstreetmap.de/routed-bike/route/v1/driving';
+  private readonly OSM_CAR_BASE = 'https://routing.openstreetmap.de/routed-car/route/v1/driving';
+  private readonly OSRM_FALLBACK_BASE = 'https://router.project-osrm.org/route/v1/driving';
 
   private readonly SUPPORTED_PROFILES = ['driving', 'walking', 'cycling', 'bus', 'boat', 'plane', 'train'];
 
@@ -105,7 +108,7 @@ export class RoutingService {
         return {
           points,
           distanceMeters,
-          durationSeconds: 0, // Podría estimarse a 900km/h
+          durationSeconds: 0,
           profile
         };
       }
@@ -124,21 +127,47 @@ export class RoutingService {
         };
       }
 
-      // ── OSRM (driving, walking, cycling, bus) ────────────────
-      const osrmProfile = profile === 'bus' ? 'driving' : profile;
-      const url = `${this.OSRM_BASE}/${osrmProfile}/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
+      // ── ENRUTAMIENTO PEATONAL, CICLISTA Y VEHICULAR ───────────
+      // Seleccionar los endpoints adecuados según el perfil real
+      const candidateUrls: string[] = [];
+      const coords = `${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
 
-      const response: any = await this.http.get(url).toPromise();
+      if (profile === 'walking') {
+        // Enrutador peatonal dedicado de OpenStreetMap (routed-foot)
+        candidateUrls.push(`${this.OSM_FOOT_BASE}/${coords}`);
+      } else if (profile === 'cycling') {
+        // Enrutador ciclista dedicado de OpenStreetMap (routed-bike)
+        candidateUrls.push(`${this.OSM_BIKE_BASE}/${coords}`);
+      } else {
+        // Coche y autobús (routed-car con fallback a OSRM demo)
+        candidateUrls.push(`${this.OSM_CAR_BASE}/${coords}`);
+        candidateUrls.push(`${this.OSRM_FALLBACK_BASE}/${coords}`);
+      }
+
+      let response: any = null;
+      let lastError: any = null;
+
+      for (const url of candidateUrls) {
+        try {
+          response = await this.http.get(url).toPromise();
+          if (response && response.code === 'Ok' && response.routes && response.routes.length > 0) {
+            break;
+          }
+        } catch (err) {
+          lastError = err;
+          console.warn(`[RoutingService] Fallo endpoint ${url}:`, err);
+        }
+      }
 
       if (!response || response.code !== 'Ok' || !response.routes || response.routes.length === 0) {
-        throw new Error('OSRM devolvió respuesta inválida');
+        throw lastError || new Error(`No se pudo calcular la ruta para el perfil ${profile}`);
       }
 
       const route = response.routes[0];
       const coordinates: number[][] = route.geometry?.coordinates;
 
       if (!coordinates || coordinates.length < 2) {
-        throw new Error('Respuesta OSRM con coordenadas insuficientes');
+        throw new Error('Respuesta de ruta con coordenadas insuficientes');
       }
 
       const points = coordinates.map((coord: number[]) => ({ lat: coord[1], lng: coord[0] }));

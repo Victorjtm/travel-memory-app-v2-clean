@@ -2212,11 +2212,12 @@ export class ActividadesItinerariosComponent implements OnInit {
       this.trackEditorService.interpolateTimeBetweenAnchors(anchorA, anchorB, gpxPoints);
     }
 
-    // 3. Volver a serializar a formato plano JSON con los timestamps ISO
+    // 3. Volver a serializar a formato plano JSON con los timestamps ISO y modo de transporte
     const payload = gpxPoints.map(p => ({
       lat: p.lat,
       lng: p.lng,
-      time: p.time ? p.time.toISOString() : undefined
+      time: p.time ? p.time.toISOString() : undefined,
+      mode: p.mode
     }));
 
     // 4. Guardar
