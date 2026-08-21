@@ -114,10 +114,33 @@
           <i class="fas fa-video" aria-hidden="true"></i>
         </button>
 
-        <button class="toolbar-icon" [class.active]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
-          title="Mapas animados">
-          <i class="fas fa-route" aria-hidden="true"></i>
-        </button>
+        <div class="toolbar-animacion-container">
+          <button class="toolbar-icon" [class.active]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
+            title="Activar/Desactivar mapas animados por tramos">
+            <i class="fas fa-route" aria-hidden="true"></i>
+          </button>
+
+          <!-- Selector de distancia mínima visible cuando los mapas animados están activos -->
+          <div class="toolbar-distancia-selector" *ngIf="incluirAnimacionesMapa">
+            <span class="distancia-label">Tramos &gt;</span>
+            <select [ngModel]="modoDistanciaPersonalizada ? 'custom' : distanciaMinimaAnimacionKm" (ngModelChange)="onCambioSelectDistancia($event)" class="select-distancia-tb" title="Filtrar tramos por distancia mínima">
+              <option [ngValue]="0.05">50 m</option>
+              <option [ngValue]="0.1">100 m</option>
+              <option [ngValue]="0.2">200 m</option>
+              <option [ngValue]="0.3">300 m</option>
+              <option [ngValue]="0.5">500 m</option>
+              <option [ngValue]="1">1 km</option>
+              <option [ngValue]="2">2 km</option>
+              <option [ngValue]="5">5 km</option>
+              <option [ngValue]="10">10 km</option>
+              <option value="custom">✏️ Personalizado (m)...</option>
+            </select>
+            <div class="input-metros-custom-tb" *ngIf="modoDistanciaPersonalizada">
+              <input type="number" min="10" step="10" [(ngModel)]="distanciaMinimaMetros" (change)="onCambioDistanciaMetrosInput()" class="input-distancia-tb" placeholder="Metros" title="Escribe metros mínimos">
+              <span class="unit-m">m</span>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
 

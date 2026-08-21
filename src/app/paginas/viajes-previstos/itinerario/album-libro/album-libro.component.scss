@@ -4470,6 +4470,111 @@
   color: #07100d;
 }
 
+/* 🗺️ GRUPO DE CONTROL DE MAPAS ANIMADOS Y SELECTOR DE DISTANCIA */
+.toolbar-animacion-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  padding: 2px 4px 2px 2px;
+  transition: all 0.2s ease;
+
+  .toolbar-icon {
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.85);
+    height: 38px;
+    min-height: 38px;
+    width: 38px;
+    border-radius: 12px;
+
+    &.active {
+      color: #07100d;
+      background: linear-gradient(180deg, #7df2be, var(--album-memory));
+    }
+  }
+
+  .toolbar-distancia-selector {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 0 2px;
+    animation: fadeInSelector 0.25s ease-out;
+
+    .distancia-label {
+      font-size: 0.74rem;
+      font-weight: 750;
+      color: rgba(255, 255, 255, 0.75);
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .select-distancia-tb {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #ffffff;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 8px;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s ease;
+
+      &:hover, &:focus {
+        border-color: #7df2be;
+      }
+
+      option {
+        background: #1e293b;
+        color: #ffffff;
+      }
+    }
+
+    .input-metros-custom-tb {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+
+      .input-distancia-tb {
+        width: 65px;
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        color: #ffffff;
+        font-size: 0.82rem;
+        font-weight: 600;
+        padding: 4px 6px;
+        border-radius: 8px;
+        outline: none;
+
+        &:focus {
+          border-color: #7df2be;
+        }
+      }
+
+      .unit-m {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #7df2be;
+      }
+    }
+  }
+}
+
+@keyframes fadeInSelector {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .audio-autoplay-hint {
   display: flex;
   align-items: center;
