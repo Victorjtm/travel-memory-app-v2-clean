@@ -5015,6 +5015,37 @@ app.put('/archivos/:id', async (req, res) => {
 });
 
 
+app.post('/archivos/actualizar-descripciones-masivas', async (req, res) => {
+  const { items } = req.body;
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'No se enviaron elementos para actualizar' });
+  }
+
+  try {
+    let actualizados = 0;
+    for (const item of items) {
+      if (item.id && item.descripcion !== undefined) {
+        const result = await dbQuery.run(
+          `UPDATE archivos SET descripcion = ?, fechaActualizacion = datetime('now') WHERE id = ?`,
+          [item.descripcion, item.id]
+        );
+        actualizados += result.changes;
+      } else if (item.nombreArchivo && item.descripcion !== undefined) {
+        const result = await dbQuery.run(
+          `UPDATE archivos SET descripcion = ?, fechaActualizacion = datetime('now') WHERE nombreArchivo = ?`,
+          [item.descripcion, item.nombreArchivo]
+        );
+        actualizados += result.changes;
+      }
+    }
+    console.log(`✅ [DESC MASIVAS] ${actualizados} descripciones actualizadas correctamente.`);
+    res.json({ actualizados });
+  } catch (error) {
+    console.error('❌ Error en actualización masiva de descripciones:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
   const { actividadId, tipo, descripcion, horaCaptura, geolocalizacion, fechaCreacion, actividadesCoincidentes, actividadSeleccionada } = req.body;
   const archivos = req.files;

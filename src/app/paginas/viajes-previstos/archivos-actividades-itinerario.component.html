@@ -38,9 +38,16 @@
 
   <!-- 📍 NUEVO BOTÓN: Asignar localización automáticamente -->
   <button (click)="asignarLocalizacionAuto()" class="btn-asignar-localizacion"
-    [disabled]="!archivos || archivos.length === 0 || modoAsignandoLocalizacion"
+    [disabled]="!archivos || archivos.length === 0 || modoAsignandoLocalizacion || modoAsignandoDescripciones"
     title="Asigna coordenadas GPS a fotos sin localización basándose en la foto más cercana en el tiempo">
     <i class="fa fa-map-marker-alt"></i> Asignar Localización
+  </button>
+
+  <!-- 📋 NUEVO BOTÓN: Importar Descripciones (JSON) -->
+  <button (click)="abrirModalImportarDescripciones()" class="btn-importar-descripciones"
+    [disabled]="!archivos || archivos.length === 0 || modoAsignandoDescripciones"
+    title="Pega un JSON con las descripciones identificadas para aplicarlas a las fotos">
+    <i class="fa fa-clipboard-list"></i> Importar Descripciones (JSON)
   </button>
 
   <!-- 🎨 SELECTOR DE VISTA: Lista / Galería -->
@@ -70,6 +77,25 @@
         <i class="fa fa-save"></i> {{ guardandoLocalizacion ? 'Guardando...' : 'Guardar Cambios' }}
       </button>
       <button class="btn-cancelar-loc" (click)="cancelarCambiosLocalizacion()" [disabled]="guardandoLocalizacion">
+        <i class="fa fa-undo"></i> Retroceder / Descartar
+      </button>
+    </div>
+  </div>
+
+  <!-- 📋 BARRA DE CAMBIOS DE DESCRIPCIONES PENDIENTES (PREVISUALIZACIÓN) -->
+  <div class="banner-cambios-descripciones" *ngIf="modoAsignandoDescripciones">
+    <div class="banner-info">
+      <i class="fa fa-clipboard-list"></i>
+      <div>
+        <strong>Previsualizando actualización de descripciones:</strong>
+        <p>{{ cambiosDescripcionesPendientes.length }} foto(s) recibirán nuevas descripciones asignadas desde el JSON.</p>
+      </div>
+    </div>
+    <div class="banner-actions">
+      <button class="btn-guardar-desc" (click)="guardarCambiosDescripciones()" [disabled]="guardandoDescripciones">
+        <i class="fa fa-save"></i> {{ guardandoDescripciones ? 'Guardando...' : 'Guardar Cambios' }}
+      </button>
+      <button class="btn-cancelar-desc" (click)="cancelarCambiosDescripciones()" [disabled]="guardandoDescripciones">
         <i class="fa fa-undo"></i> Retroceder / Descartar
       </button>
     </div>
@@ -281,6 +307,57 @@
       <small>La primera vez puede tardar más mientras se carga el modelo.</small>
     </div>
   </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <!-- 📋 MODAL 5: PEGAR / IMPORTAR DESCRIPCIONES JSON -->
+  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <div class="modal-backdrop" *ngIf="mostrarModalImportarDescripciones" (click)="cerrarModalImportarDescripciones()" role="dialog"
+    aria-label="Importar descripciones JSON">
+
+    <div class="modal-content modal-importar-json" (click)="$event.stopPropagation()">
+
+      <!-- Botón cerrar -->
+      <button class="btn-cerrar-modal" (click)="cerrarModalImportarDescripciones()" title="Cerrar modal">
+        <i class="fa fa-times"></i>
+      </button>
+
+      <h2 style="margin-top: 0; color: #3f51b5; display: flex; align-items: center; gap: 10px;">
+        <i class="fa fa-clipboard-list"></i> Importar Descripciones (JSON)
+      </h2>
+      <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+        Pega el JSON con las descripciones de los lugares turísticos generadas para esta actividad.
+      </p>
+
+      <!-- Textarea para el JSON -->
+      <textarea
+        [(ngModel)]="jsonDescripcionesInput"
+        (ngModelChange)="onJsonDescripcionesInputChange()"
+        placeholder='[\n  {\n    "id": 3962,\n    "descripcion": "Terminal de Cruceros de Livorno"\n  }\n]'
+        rows="11"
+        class="textarea-json-desc">
+      </textarea>
+
+      <!-- Estado de validación -->
+      <div *ngIf="elementosDetectadosJson.length > 0" class="status-json-ok">
+        <i class="fa fa-check-circle"></i> Se detectaron <strong>{{ elementosDetectadosJson.length }}</strong> elemento(s) válido(s) listos para previsualizar.
+      </div>
+      <div *ngIf="errorJsonDescripciones" class="status-json-error">
+        <i class="fa fa-exclamation-triangle"></i> {{ errorJsonDescripciones }}
+      </div>
+
+      <!-- Acciones del Modal -->
+      <div class="modal-acciones" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+        <button class="btn-volver" (click)="cerrarModalImportarDescripciones()">
+          Cancelar
+        </button>
+        <button class="btn-previsualizar-desc" (click)="previsualizarDescripcionesJson()" [disabled]="elementosDetectadosJson.length === 0">
+          <i class="fa fa-eye"></i> Previsualizar Cambios
+        </button>
+      </div>
+
+    </div>
+  </div>
+  <!-- FIN: Modal Importar Descripciones JSON -->
 
 </div>
 <!-- FIN: Contenedor principal -->

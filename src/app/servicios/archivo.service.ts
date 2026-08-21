@@ -389,4 +389,12 @@ export class ArchivoService extends BaseHttpService {
     return this.post<{ text: string, fromCache: boolean }>(`${this.apiUrl}/${id}/transcribir`, { force });
   }
 
+  /**
+   * Actualiza las descripciones de múltiples archivos en lote
+   * @param items - Array de objetos con id o nombreArchivo y su nueva descripción
+   */
+  actualizarDescripcionesMasivas(items: { id?: number; nombreArchivo?: string; descripcion: string }[]): Observable<{ actualizados: number }> {
+    return this.post<{ actualizados: number }>(`${this.apiUrl}/actualizar-descripciones-masivas`, { items });
+  }
+
 }

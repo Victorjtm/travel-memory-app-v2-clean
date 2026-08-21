@@ -61,6 +61,20 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   }[] = [];
   guardandoLocalizacion = false;
 
+  // 📋 Modo Importar / Asignar Descripciones (JSON) con Previsualización y Rollback
+  mostrarModalImportarDescripciones = false;
+  jsonDescripcionesInput = '';
+  elementosDetectadosJson: { id?: number; nombreArchivo?: string; descripcion: string }[] = [];
+  errorJsonDescripciones = '';
+  modoAsignandoDescripciones = false;
+  cambiosDescripcionesPendientes: {
+    archivoId: number;
+    nombreArchivo: string;
+    descOriginal?: string;
+    descPropuesta: string;
+  }[] = [];
+  guardandoDescripciones = false;
+
   // ✨ NUEVAS PROPIEDADES PARA GPX INDIVIDUAL
   mostrarModalGPXIndividual = false;
   mapaGPXIndividual: any = null;
@@ -1624,6 +1638,147 @@ Formatos soportados:
     this.cambiosLocalizacionPendientes = [];
     this.cdr.detectChanges();
     alert('↩️ Se han descartado los cambios de localización propuestos.');
+  }
+
+  // ============================================
+  // 📋 MÉTODOS: IMPORTAR DESCRIPCIONES (JSON)
+  // ============================================
+
+  abrirModalImportarDescripciones(): void {
+    this.jsonDescripcionesInput = '';
+    this.elementosDetectadosJson = [];
+    this.errorJsonDescripciones = '';
+    this.mostrarModalImportarDescripciones = true;
+    this.cdr.detectChanges();
+  }
+
+  cerrarModalImportarDescripciones(): void {
+    this.mostrarModalImportarDescripciones = false;
+    this.cdr.detectChanges();
+  }
+
+  onJsonDescripcionesInputChange(): void {
+    this.errorJsonDescripciones = '';
+    this.elementosDetectadosJson = [];
+
+    const texto = this.jsonDescripcionesInput.trim();
+    if (!texto) {
+      this.cdr.detectChanges();
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(texto);
+      if (!Array.isArray(parsed)) {
+        this.errorJsonDescripciones = 'El JSON debe ser un array [ ... ] de elementos.';
+        this.cdr.detectChanges();
+        return;
+      }
+
+      const validos = parsed.filter(item => item && (item.id !== undefined || item.nombreArchivo) && item.descripcion !== undefined);
+      if (validos.length === 0) {
+        this.errorJsonDescripciones = 'No se detectaron elementos válidos con "id" o "nombreArchivo" y "descripcion".';
+      } else {
+        this.elementosDetectadosJson = validos;
+      }
+    } catch (e: any) {
+      this.errorJsonDescripciones = 'Sintaxis JSON inválida: ' + (e.message || e);
+    }
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Aplica en memoria las descripciones del JSON para previsualización
+   */
+  previsualizarDescripcionesJson(): void {
+    if (this.elementosDetectadosJson.length === 0) {
+      alert('⚠️ No hay descripciones válidas para aplicar.');
+      return;
+    }
+
+    this.cambiosDescripcionesPendientes = [];
+
+    for (const item of this.elementosDetectadosJson) {
+      let archivoEncontrado: Archivo | undefined;
+      if (item.id !== undefined) {
+        archivoEncontrado = this.archivos.find(a => a.id === Number(item.id));
+      }
+      if (!archivoEncontrado && item.nombreArchivo) {
+        archivoEncontrado = this.archivos.find(a => a.nombreArchivo === item.nombreArchivo);
+      }
+
+      if (archivoEncontrado) {
+        this.cambiosDescripcionesPendientes.push({
+          archivoId: archivoEncontrado.id,
+          nombreArchivo: archivoEncontrado.nombreArchivo,
+          descOriginal: archivoEncontrado.descripcion,
+          descPropuesta: item.descripcion
+        });
+
+        // Aplicar temporalmente en memoria
+        archivoEncontrado.descripcion = item.descripcion;
+      }
+    }
+
+    if (this.cambiosDescripcionesPendientes.length === 0) {
+      alert('⚠️ Ningún elemento del JSON coincidió con los archivos de esta actividad (por ID o nombre de archivo).');
+      return;
+    }
+
+    this.mostrarModalImportarDescripciones = false;
+    this.modoAsignandoDescripciones = true;
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Guarda de forma permanente en la base de datos las descripciones propuestas
+   */
+  async guardarCambiosDescripciones(): Promise<void> {
+    if (!this.cambiosDescripcionesPendientes || this.cambiosDescripcionesPendientes.length === 0) {
+      this.modoAsignandoDescripciones = false;
+      return;
+    }
+
+    this.guardandoDescripciones = true;
+    this.cdr.detectChanges();
+
+    try {
+      const itemsToUpdate = this.cambiosDescripcionesPendientes.map(c => ({
+        id: c.archivoId,
+        nombreArchivo: c.nombreArchivo,
+        descripcion: c.descPropuesta
+      }));
+
+      const res = await firstValueFrom(this.archivoService.actualizarDescripcionesMasivas(itemsToUpdate));
+      alert(`✅ Se han actualizado las descripciones de ${res?.actualizados ?? itemsToUpdate.length} foto(s) correctamente.`);
+
+      this.modoAsignandoDescripciones = false;
+      this.cambiosDescripcionesPendientes = [];
+      this.cargarArchivos();
+    } catch (error: any) {
+      console.error('Error guardando descripciones masivas:', error);
+      alert(`❌ Error al guardar las descripciones: ${error.message || error}`);
+    } finally {
+      this.guardandoDescripciones = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  /**
+   * Descarta la previsualización y restaura las descripciones originales
+   */
+  cancelarCambiosDescripciones(): void {
+    for (const cambio of this.cambiosDescripcionesPendientes) {
+      const arch = this.archivos.find(a => a.id === cambio.archivoId);
+      if (arch) {
+        arch.descripcion = cambio.descOriginal;
+      }
+    }
+
+    this.modoAsignandoDescripciones = false;
+    this.cambiosDescripcionesPendientes = [];
+    this.cdr.detectChanges();
+    alert('↩️ Se han descartado los cambios de descripción propuestos.');
   }
 
   // ============================================
