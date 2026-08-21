@@ -118,9 +118,24 @@ export class GpxAnimationService {
    * Asocia cada archivo al punto más cercano por coordenadas o tiempo.
    */
   syncMultimedia(points: GpxPoint[], multimedia: any[]): GpxPoint[] {
-    if (!multimedia || multimedia.length === 0) return points;
+    if (!multimedia || multimedia.length === 0 || !points || points.length === 0) return points;
 
-    multimedia.forEach(item => {
+    // 1. Ordenar fotos cronológicamente
+    const sortedMedia = [...multimedia].sort((a, b) => {
+      const getMs = (item: any) => {
+        let t = item.timestampReal || item.horaCaptura || item.fechaCreacion || item.fecha;
+        if (t) {
+          const d = new Date(t);
+          if (!isNaN(d.getTime())) return d.getTime();
+        }
+        return 0;
+      };
+      return getMs(a) - getMs(b);
+    });
+
+    let lastMatchedTrackIdx = 0;
+
+    sortedMedia.forEach(item => {
       let geoData: any;
       try {
         geoData = typeof item.geolocalizacion === 'string'
@@ -132,70 +147,57 @@ export class GpxAnimationService {
 
       const mLat = geoData?.latitud ?? geoData?.latitude;
       const mLng = geoData?.longitud ?? geoData?.longitude;
-      const mTimeString = geoData?.timestamp || item.fechaCreacion;
+      const mTimeString = geoData?.timestamp || item.timestampReal || item.horaCaptura || item.fechaCreacion;
       const mTime = mTimeString ? new Date(mTimeString).getTime() : null;
 
+      if (!mLat || !mLng || isNaN(mLat) || isNaN(mLng)) return;
+
       let bestIdx = -1;
-      let minDistance = Infinity;
-      let minTimeDiff = Infinity;
+      let minScore = Infinity;
 
-      // Usar lógica de "Sincronización Inteligente" (Coincidencia Combinada de Espacio y Tiempo)
-      if (mLat && mLng) {
-        let bestCandidateIdx = -1;
-        let minScore = Infinity;
+      // Evaluar todos los puntos del track
+      points.forEach((p, idx) => {
+        const d = this.getDistance(p.lat, p.lng, mLat, mLng);
 
+        let timeDiffMinutes = 0;
+        if (mTime && p.time) {
+          const ptTime = p.time.getTime();
+          const diffMs = Math.min(
+            Math.abs(ptTime - mTime),
+            Math.abs(ptTime - (mTime + 3600000)),
+            Math.abs(ptTime - (mTime - 3600000)),
+            Math.abs(ptTime - (mTime + 7200000)),
+            Math.abs(ptTime - (mTime - 7200000))
+          );
+          timeDiffMinutes = diffMs / 60000;
+        }
+
+        // Ponderar distancia + diferencia de tiempo + coherencia de avance cronológico
+        const chronologicalPenalty = idx < lastMatchedTrackIdx ? 250 : 0;
+        const timePenalty = (mTime && p.time) ? timeDiffMinutes * 15.0 : 0;
+        const score = d + timePenalty + chronologicalPenalty;
+
+        if (score < minScore) {
+          minScore = score;
+          bestIdx = idx;
+        }
+      });
+
+      // Fallback: Si no encajó por score, asignar al punto más cercano puro
+      if (bestIdx === -1) {
+        let minD = Infinity;
         points.forEach((p, idx) => {
           const d = this.getDistance(p.lat, p.lng, mLat, mLng);
-
-          // Evaluar candidatos a menos de 100 metros del punto GPS
-          if (d < 100) {
-            let timeDiffMinutes = 0;
-
-            if (mTime && p.time) {
-              const ptTime = p.time.getTime();
-              // Evaluar posible desfase horario (+-1h, +-2h)
-              const diffMs = Math.min(
-                Math.abs(ptTime - mTime),
-                Math.abs(ptTime - (mTime + 3600000)),
-                Math.abs(ptTime - (mTime - 3600000)),
-                Math.abs(ptTime - (mTime + 7200000)),
-                Math.abs(ptTime - (mTime - 7200000))
-              );
-              timeDiffMinutes = diffMs / 60000;
-            }
-
-            // Score combinado: ponderar distancia espacial (m) + diferencia temporal (min)
-            // Usamos un peso de 25m por minuto para priorizar la coherencia temporal frente a variaciones de unos pocos metros en paradas repetidas o tramos cercanos
-            const score = d + (mTime && p.time ? timeDiffMinutes * 25.0 : 0);
-
-            if (score < minScore) {
-              minScore = score;
-              bestCandidateIdx = idx;
-              minDistance = d;
-            }
+          if (d < minD) {
+            minD = d;
+            bestIdx = idx;
           }
         });
-
-        if (bestCandidateIdx !== -1) {
-          bestIdx = bestCandidateIdx;
-        }
-      }
-
-      // 3. Fallback Espacial Grueso: Si nada encajó bien pero estamos a < 50m (margen máximo de error)
-      if (bestIdx === -1 && minDistance < 50) {
-        let fallbackIdx = -1;
-        let dMin = Infinity;
-        points.forEach((p, idx) => {
-          if (mLat && mLng) {
-            const d = this.getDistance(p.lat, p.lng, mLat, mLng);
-            if (d < dMin) { dMin = d; fallbackIdx = idx; }
-          }
-        });
-        bestIdx = fallbackIdx;
       }
 
       // Asociar evento al punto ganador
       if (bestIdx !== -1) {
+        lastMatchedTrackIdx = Math.max(lastMatchedTrackIdx, bestIdx);
         if (!points[bestIdx].event) points[bestIdx].event = { archivos: [] };
         points[bestIdx].event.archivos.push(item);
         const orden = item.ordenVisita !== undefined ? item.ordenVisita : (item.orden !== undefined ? item.orden : null);
