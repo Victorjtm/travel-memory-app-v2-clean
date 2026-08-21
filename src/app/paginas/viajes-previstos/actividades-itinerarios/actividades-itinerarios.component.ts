@@ -2029,6 +2029,11 @@ export class ActividadesItinerariosComponent implements OnInit {
     this.cdr.detectChanges();
   }
 
+  onRutaOriginalGuardada(): void {
+    this.cerrarEditorTrack();
+    this.cargarActividades();
+  }
+
   async onSaveAllEdits(pendingEdits: any[]): Promise<void> {
     if (!this.actividadEditorId || !pendingEdits || pendingEdits.length === 0) return;
 

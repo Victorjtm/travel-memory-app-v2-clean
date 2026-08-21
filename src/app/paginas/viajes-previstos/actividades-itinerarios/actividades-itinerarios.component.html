@@ -535,6 +535,7 @@
 <!-- ✏️ EDITOR DE RECORRIDO GPX (Fase 1) -->
 <div class="editor-overlay" *ngIf="mostrarEditorTrack">
   <app-track-editor-map
+    [actividadId]="actividadEditorId!"
     [gpxPoints]="gpxPointsEditor"
     [trackEdits]="editsEditor"
     [mediaGroups]="gruposEditor"
@@ -543,6 +544,7 @@
     (appendRequest)="onAppendRequest($event)"
     (insertRequest)="onInsertRequest($event)"
     (saveAllEdits)="onSaveAllEdits($event)"
+    (rutaOriginalGuardada)="onRutaOriginalGuardada()"
     (close)="cerrarEditorTrack()">
   </app-track-editor-map>
 </div>

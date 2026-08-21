@@ -8709,6 +8709,53 @@ app.delete('/api/segments/:id', (req, res) => {
   });
 });
 
+// 4. Restaurar ruta original eliminando ediciones manuales
+app.post('/api/actividades/:id/restaurar-ruta-original', async (req, res) => {
+  const actividadId = parseInt(req.params.id, 10);
+  if (!actividadId) {
+    return res.status(400).json({ error: 'ID de actividad inválido' });
+  }
+
+  try {
+    // 1. Obtener los puntos originales desde segments (source = 'original')
+    const originalSeg = await dbQuery.get(
+      'SELECT * FROM segments WHERE actividadId = ? AND source = "original" ORDER BY segmentOrder ASC LIMIT 1',
+      [actividadId]
+    );
+
+    let originalPoints = [];
+    if (originalSeg && originalSeg.points_json) {
+      try {
+        originalPoints = JSON.parse(originalSeg.points_json);
+      } catch (e) {
+        console.warn('⚠️ Error parseando points_json original:', e.message);
+      }
+    }
+
+    // 2. Eliminar todas las modificaciones manuales de segments y track_edits
+    const delSegResult = await dbQuery.run(
+      'DELETE FROM segments WHERE actividadId = ? AND source != "original"',
+      [actividadId]
+    );
+    const delEditsResult = await dbQuery.run(
+      'DELETE FROM track_edits WHERE actividadId = ?',
+      [actividadId]
+    );
+
+    console.log(`🧹 [RESTAURAR ORIGINAL] Actividad ${actividadId}: Eliminados ${delSegResult.changes} segmentos manuales y ${delEditsResult.changes} track_edits.`);
+
+    res.json({
+      success: true,
+      message: 'Ruta original restaurada correctamente. Se eliminaron las ediciones manuales.',
+      puntos: originalPoints
+    });
+  } catch (error) {
+    console.error('❌ Error restaurando ruta original:', error.message);
+    res.status(500).json({ error: 'Error restaurando ruta original', detalle: error.message });
+  }
+});
+
+
 // ====================================================================
 // 📁 MÓDULO EXPLORADOR: ENCONTRAR FOTOS Y COMPARAR CON ITINERARIO
 // ====================================================================

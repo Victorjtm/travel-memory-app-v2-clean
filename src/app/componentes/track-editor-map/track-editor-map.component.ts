@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, ElementRef, ViewChild, AfterViewInit, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, ElementRef, ViewChild, AfterViewInit, OnChanges, SimpleChanges, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as L from 'leaflet';
@@ -31,6 +31,7 @@ export interface TramoEditor {
 export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy, OnChanges {
   @ViewChild('mapContainer', { static: true }) mapContainer!: ElementRef;
 
+  @Input() actividadId?: number;
   @Input() gpxPoints: GpxPoint[] = [];
   @Input() trackEdits: TrackEdit[] = [];
   @Input() mediaGroups: { lat: number, lng: number; nombre?: string; titulo?: string }[] = [];
@@ -55,9 +56,15 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     points: { lat: number; lng: number }[]
   }>();
   @Output() saveAllEdits = new EventEmitter<any[]>(); // Emits pendingEdits
+  @Output() rutaOriginalGuardada = new EventEmitter<void>();
   @Output() close = new EventEmitter<void>();
 
   @Input() archivosMedia: any[] = []; // Fotos de la actividad para calibración de anclas
+
+  // 🔄 Modo Previsualización de Ruta Original con Retroceso
+  modoPrevisualizandoOriginal: boolean = false;
+  puntosGpxAntesDeOriginal: GpxPoint[] = [];
+  guardandoOriginal: boolean = false;
 
   // In-memory edits tracking
   pendingEdits: any[] = [];
@@ -130,7 +137,11 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     original: '#FF0000' // Red (igual que ver-gpx)
   };
 
-  constructor(private trackEditorService: TrackEditorService, private routingService: RoutingService) {}
+  constructor(
+    private trackEditorService: TrackEditorService,
+    private routingService: RoutingService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit() {}
 
@@ -1896,4 +1907,98 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     if (m.includes('train') || m.includes('tren')) return 'Tren';
     return mode;
   }
+
+  // ====================================================================
+  // 🔄 MÉTODOS: RUTA ORIGINAL (PREVISUALIZACIÓN, GUARDADO Y RETROCESO)
+  // ====================================================================
+
+  /**
+   * Activa el modo previsualización de la ruta original.
+   * Guarda el estado actual en memoria para permitir retroceder.
+   */
+  activarModoRutaOriginal(): void {
+    if (!this.actividadId) {
+      alert('⚠️ No se identificó la actividad para buscar la ruta original.');
+      return;
+    }
+
+    // 1. Guardar copia exacta del trazado actual para rollback
+    this.puntosGpxAntesDeOriginal = [...this.gpxPoints];
+
+    // 2. Limpiar selección de anclas si las hubiera
+    this.clearSelection();
+
+    // 3. Consultar los puntos originales
+    this.trackEditorService.getOriginalGpxPoints(this.actividadId).subscribe({
+      next: (originalPoints) => {
+        if (!originalPoints || originalPoints.length === 0) {
+          alert('⚠️ No se encontraron puntos para la ruta original de esta actividad.');
+          return;
+        }
+
+        // 4. Asignar puntos originales a la vista
+        this.gpxPoints = originalPoints;
+        this.modoPrevisualizandoOriginal = true;
+        this.drawBaseAndEdits();
+
+        if (this.polylinesGroup && this.map && this.polylinesGroup.getLayers().length > 0) {
+          this.map.fitBounds(this.polylinesGroup.getBounds());
+        }
+
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('❌ Error obteniendo ruta original:', err);
+        alert('❌ Error al consultar la ruta original del recorrido.');
+      }
+    });
+  }
+
+  /**
+   * Retrocede al estado exacto previo a pulsar "Ruta Original"
+   */
+  descartarModoRutaOriginal(): void {
+    if (this.puntosGpxAntesDeOriginal && this.puntosGpxAntesDeOriginal.length > 0) {
+      this.gpxPoints = [...this.puntosGpxAntesDeOriginal];
+    }
+    this.modoPrevisualizandoOriginal = false;
+    this.puntosGpxAntesDeOriginal = [];
+    this.drawBaseAndEdits();
+
+    if (this.polylinesGroup && this.map && this.polylinesGroup.getLayers().length > 0) {
+      this.map.fitBounds(this.polylinesGroup.getBounds());
+    }
+
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Confirma y guarda la ruta original de forma permanente en la base de datos
+   */
+  confirmarGuardarRutaOriginal(): void {
+    if (!this.actividadId) return;
+
+    this.guardandoOriginal = true;
+    this.cdr.detectChanges();
+
+    this.trackEditorService.restaurarRutaOriginal(this.actividadId).subscribe({
+      next: (resp) => {
+        this.guardandoOriginal = false;
+        this.modoPrevisualizandoOriginal = false;
+        this.puntosGpxAntesDeOriginal = [];
+        this.pendingEdits = [];
+
+        alert('✅ Ruta original guardada y sincronizada con éxito en todos los módulos.');
+        this.rutaOriginalGuardada.emit();
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.guardandoOriginal = false;
+        console.error('❌ Error guardando ruta original:', err);
+        alert('❌ Error al guardar la ruta original: ' + (err.error?.detalle || err.message || err));
+        this.cdr.detectChanges();
+      }
+    });
+  }
 }
+

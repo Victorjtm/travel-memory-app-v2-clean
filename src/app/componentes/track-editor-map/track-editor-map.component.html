@@ -42,8 +42,27 @@
       </div>
     </div>
 
-    <!-- Botones flotantes para Prepend / Append / Insert (visible cuando NO hay anclas seleccionadas y estamos en SELECTING) -->
-    <div class="floating-tools" *ngIf="editorState === 'SELECTING' && !anchorA && !anchorB">
+    <!-- 🔄 Banner de Previsualización y Control de Ruta Original -->
+    <div class="banner-ruta-original-preview" *ngIf="modoPrevisualizandoOriginal">
+      <div class="banner-orig-info">
+        <span class="pulse-icon">🔄</span>
+        <div>
+          <strong>Previsualizando Ruta Original</strong>
+          <p>Se muestra el trazado GPS original sin modificaciones manuales. Las fotos y su orden se mantienen intactos.</p>
+        </div>
+      </div>
+      <div class="banner-orig-actions">
+        <button class="btn-guardar-original" (click)="confirmarGuardarRutaOriginal()" [disabled]="guardandoOriginal">
+          <i class="fa fa-save"></i> {{ guardandoOriginal ? 'Guardando...' : 'Guardar Ruta Original' }}
+        </button>
+        <button class="btn-volver-ultimo-gps" (click)="descartarModoRutaOriginal()" [disabled]="guardandoOriginal" title="Volver al trazado antes de pulsar Ruta Original">
+          <i class="fa fa-undo"></i> ⏪ Volver Último GPS
+        </button>
+      </div>
+    </div>
+
+    <!-- Botones flotantes para Prepend / Append / Insert / Ruta Original (visible cuando NO hay anclas seleccionadas y estamos en SELECTING) -->
+    <div class="floating-tools" *ngIf="editorState === 'SELECTING' && !anchorA && !anchorB && !modoPrevisualizandoOriginal">
       <button class="btn-prepend-float" (click)="startPrependMode()" style="background: #059669; color: white; padding: 12px 18px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
         ⏪ Prolongar inicio
       </button>
@@ -58,6 +77,9 @@
       </button>
       <button class="btn-time-float" [class.active]="mostrarTiempos" (click)="toggleMostrarTiempos()" style="background: #0284c7; margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); transition: all 0.2s;">
         ⏱️ Tiempos {{ mostrarTiempos ? '(ON)' : '' }}
+      </button>
+      <button class="btn-ruta-original-float" (click)="activarModoRutaOriginal()" style="background: linear-gradient(135deg, #4f46e5, #7c3aed); margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3); transition: all 0.2s;" title="Ver y recuperar el recorrido GPS original de esta actividad">
+        🔄 Ruta Original
       </button>
     </div>
   </div>

@@ -460,3 +460,137 @@ button {
     }
   }
 }
+
+/* ====================================================================
+   🔄 BANNER DE CONTROL Y PREVISUALIZACIÓN: RUTA ORIGINAL
+   ==================================================================== */
+
+.banner-ruta-original-preview {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  border: 2px solid #818cf8;
+  border-radius: 12px;
+  padding: 12px 20px;
+  box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.35);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 90vw;
+  animation: slideDownBanner 0.3s ease-out;
+
+  .banner-orig-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .pulse-icon {
+      font-size: 1.8rem;
+      animation: rotateIcon 4s linear infinite;
+    }
+
+    strong {
+      display: block;
+      font-size: 1rem;
+      color: #312e81;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 2px 0 0 0;
+      font-size: 0.82rem;
+      color: #4338ca;
+    }
+  }
+
+  .banner-orig-actions {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+
+    button {
+      padding: 9px 16px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .btn-guardar-original {
+      background: #4f46e5;
+      color: white;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
+
+      &:hover:not(:disabled) {
+        background: #4338ca;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 14px rgba(79, 70, 229, 0.4);
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+    }
+
+    .btn-volver-ultimo-gps {
+      background: #ffffff;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+
+      &:hover:not(:disabled) {
+        background: #f1f5f9;
+        color: #0f172a;
+        transform: translateY(-1px);
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+    }
+  }
+}
+
+@keyframes slideDownBanner {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes rotateIcon {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  .banner-ruta-original-preview {
+    flex-direction: column;
+    align-items: stretch;
+    width: 92%;
+    padding: 12px;
+
+    .banner-orig-actions {
+      margin-top: 8px;
+      button {
+        flex: 1;
+        justify-content: center;
+      }
+    }
+  }
+}
+

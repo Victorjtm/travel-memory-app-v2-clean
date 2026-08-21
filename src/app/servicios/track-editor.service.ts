@@ -988,4 +988,78 @@ export class TrackEditorService {
     this.ensureAccumulators(densified);
     return densified;
   }
+
+  /**
+   * Obtiene exclusivamente los puntos originales del recorrido
+   * buscando en segments (source = 'original') o desde el GPX físico
+   */
+  getOriginalGpxPoints(actividadId: number): Observable<GpxPoint[]> {
+    return new Observable<GpxPoint[]>(subscriber => {
+      this.getSegments(actividadId).subscribe({
+        next: (segments) => {
+          const origSeg = segments.find(s => s.source === 'original');
+          if (origSeg && origSeg.points && origSeg.points.length > 0) {
+            const points: GpxPoint[] = origSeg.points.map((p: any) => ({
+              ...p,
+              time: p.time ? new Date(p.time) : undefined
+            }));
+            subscriber.next(this.recalculateAccumulators(points));
+            subscriber.complete();
+          } else {
+            // Fallback al GPX físico si no está en segments
+            this.http.get(`${this.baseUrl}/api/actividades/${actividadId}/gpx`, { responseType: 'blob' }).subscribe({
+              next: (blob) => {
+                const reader = new FileReader();
+                reader.onload = (e: any) => {
+                  const xmlText = e.target.result as string;
+                  const parser = new DOMParser();
+                  const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+                  const trkpts = xmlDoc.getElementsByTagName('trkpt');
+                  const points: GpxPoint[] = [];
+
+                  for (let i = 0; i < trkpts.length; i++) {
+                    const pt = trkpts[i];
+                    const lat = parseFloat(pt.getAttribute('lat') || '0');
+                    const lng = parseFloat(pt.getAttribute('lon') || '0');
+                    const timeEl = pt.getElementsByTagName('time')[0];
+                    const time = timeEl ? new Date(timeEl.textContent || '') : undefined;
+                    const modeEl = pt.getElementsByTagName('transportMode')[0] || pt.getElementsByTagName('mode')[0];
+                    const mode = modeEl ? modeEl.textContent || undefined : undefined;
+
+                    points.push({
+                      lat,
+                      lng,
+                      time,
+                      mode,
+                      hfMode: mode,
+                      distAcum: 0,
+                      timeAcum: 0
+                    });
+                  }
+
+                  subscriber.next(this.recalculateAccumulators(points));
+                  subscriber.complete();
+                };
+                reader.onerror = err => subscriber.error(err);
+                reader.readAsText(blob);
+              },
+              error: err => subscriber.error(err)
+            });
+          }
+        },
+        error: err => subscriber.error(err)
+      });
+    });
+  }
+
+  /**
+   * Restaura la ruta original eliminando todas las ediciones manuales en BD
+   */
+  restaurarRutaOriginal(actividadId: number): Observable<{ success: boolean; message: string; puntos?: any[] }> {
+    return this.http.post<{ success: boolean; message: string; puntos?: any[] }>(
+      `${this.baseUrl}/api/actividades/${actividadId}/restaurar-ruta-original`,
+      {}
+    );
+  }
 }
+
