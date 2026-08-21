@@ -1061,5 +1061,16 @@ export class TrackEditorService {
       {}
     );
   }
+
+  /**
+   * Guarda una ruta probable o generada como el nuevo trazado canónico de la actividad
+   */
+  guardarRutaGenerada(actividadId: number, points: GpxPoint[]): Observable<{ success: boolean; message: string; totalPuntos?: number }> {
+    return this.http.post<{ success: boolean; message: string; totalPuntos?: number }>(
+      `${this.baseUrl}/api/actividades/${actividadId}/guardar-ruta-generada`,
+      { points }
+    );
+  }
 }
+
 

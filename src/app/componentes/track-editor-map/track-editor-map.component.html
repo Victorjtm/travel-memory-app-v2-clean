@@ -61,25 +61,56 @@
       </div>
     </div>
 
-    <!-- Botones flotantes para Prepend / Append / Insert / Ruta Original (visible cuando NO hay anclas seleccionadas y estamos en SELECTING) -->
-    <div class="floating-tools" *ngIf="editorState === 'SELECTING' && !anchorA && !anchorB && !modoPrevisualizandoOriginal">
-      <button class="btn-prepend-float" (click)="startPrependMode()" style="background: #059669; color: white; padding: 12px 18px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-        ⏪ Prolongar inicio
+    <!-- 🗺️ Banner de Previsualización y Control de Ruta Probable -->
+    <div class="banner-ruta-probable-preview" *ngIf="modoPrevisualizandoProbable">
+      <div class="banner-prob-info">
+        <span class="pulse-icon">🗺️</span>
+        <div>
+          <strong>Previsualizando Ruta Probable</strong>
+          <p>Generada automáticamente conectando fotos (a pie &lt; 2.5 km, en coche &ge; 2.5 km). Las fotos se mantienen intactas.</p>
+        </div>
+      </div>
+      <div class="banner-prob-actions">
+        <button class="btn-guardar-probable" (click)="confirmarGuardarRutaProbable()" [disabled]="guardandoProbable">
+          <i class="fa fa-save"></i> {{ guardandoProbable ? 'Guardando...' : 'Guardar Ruta Probable' }}
+        </button>
+        <button class="btn-volver-ultimo-gps" (click)="descartarModoRutaProbable()" [disabled]="guardandoProbable" title="Volver al trazado anterior">
+          <i class="fa fa-undo"></i> ⏪ Volver Último GPS
+        </button>
+      </div>
+    </div>
+
+    <!-- ⏳ Overlay de progreso al calcular la Ruta Probable -->
+    <div class="overlay-calculando-probable" *ngIf="generandoProbable">
+      <div class="card-progreso-probable">
+        <div class="spinner-probable"></div>
+        <h4>Calculando Ruta Probable</h4>
+        <p>{{ progresoGeneracionProbable }}</p>
+      </div>
+    </div>
+
+    <!-- Botones flotantes para Prepend / Append / Insert / Ruta Original / Ruta Probable -->
+    <div class="floating-tools" *ngIf="editorState === 'SELECTING' && !anchorA && !anchorB && !modoPrevisualizandoOriginal && !modoPrevisualizandoProbable">
+      <button class="btn-tool btn-prepend-float" (click)="startPrependMode()" title="Prolongar el inicio del recorrido">
+        ⏪ Prolongar Inicio
       </button>
-      <button class="btn-append-float" (click)="startAppendMode()">
-        ➕ Prolongar final
+      <button class="btn-tool btn-append-float" (click)="startAppendMode()" title="Prolongar el final del recorrido">
+        ➕ Prolongar Final
       </button>
-      <button class="btn-insert-float" (click)="startInsertMode()" style="background: #8b5cf6; margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+      <button class="btn-tool btn-insert-float" (click)="startInsertMode()" title="Insertar o redibujar un tramo">
         ✏️ Insertar Tramo
       </button>
-      <button class="btn-location-float" (click)="startGetLocationMode()" style="background: #eab308; margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+      <button class="btn-tool btn-location-float" (click)="startGetLocationMode()" title="Obtener coordenadas GPS al hacer clic">
         📍 Obtener Coordenada
       </button>
-      <button class="btn-time-float" [class.active]="mostrarTiempos" (click)="toggleMostrarTiempos()" style="background: #0284c7; margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); transition: all 0.2s;">
+      <button class="btn-tool btn-time-float" [class.active]="mostrarTiempos" (click)="toggleMostrarTiempos()" title="Mostrar horas en cada punto">
         ⏱️ Tiempos {{ mostrarTiempos ? '(ON)' : '' }}
       </button>
-      <button class="btn-ruta-original-float" (click)="activarModoRutaOriginal()" style="background: linear-gradient(135deg, #4f46e5, #7c3aed); margin-left: 10px; color: white; padding: 12px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3); transition: all 0.2s;" title="Ver y recuperar el recorrido GPS original de esta actividad">
+      <button class="btn-tool btn-ruta-original-float" (click)="activarModoRutaOriginal()" title="Ver y recuperar el recorrido GPS original de esta actividad">
         🔄 Ruta Original
+      </button>
+      <button class="btn-tool btn-ruta-probable-float" (click)="generarRutaProbable()" title="Generar ruta probable calculada a partir de la posición de las fotos">
+        🗺️ Ruta Probable
       </button>
     </div>
   </div>

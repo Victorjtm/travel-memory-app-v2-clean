@@ -66,6 +66,13 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   puntosGpxAntesDeOriginal: GpxPoint[] = [];
   guardandoOriginal: boolean = false;
 
+  // 🗺️ Modo Previsualización de Ruta Probable con Retroceso
+  modoPrevisualizandoProbable: boolean = false;
+  puntosGpxAntesDeProbable: GpxPoint[] = [];
+  generandoProbable: boolean = false;
+  guardandoProbable: boolean = false;
+  progresoGeneracionProbable: string = '';
+
   // In-memory edits tracking
   pendingEdits: any[] = [];
   previewingEditId: string | null = null;
@@ -2000,5 +2007,268 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
     });
   }
+
+  // ====================================================================
+  // 🗺️ MÉTODOS: RUTA PROBABLE (GENERACIÓN BASADA EN FOTOS, ENRUTAMIENTO, ROLLBACK)
+  // ====================================================================
+
+  /**
+   * Genera la ruta probable conectando las fotos de la actividad
+   * ordenadas cronológicamente, usando walking (< 2.5 km) y driving (>= 2.5 km)
+   */
+  async generarRutaProbable(): Promise<void> {
+    if (!this.archivosMedia || this.archivosMedia.length === 0) {
+      alert('⚠️ No hay fotos cargadas en esta actividad para generar la ruta.');
+      return;
+    }
+
+    // 1. Extraer fotos con coordenadas válidas
+    const fotosValidas: { lat: number; lng: number; timeMs: number; nombre: string }[] = [];
+
+    for (const item of this.archivosMedia) {
+      let lat: number | null = item.latitud ?? item.lat ?? null;
+      let lng: number | null = item.longitud ?? item.lng ?? item.lon ?? null;
+      let horaRaw = item.timestampReal || item.horaCaptura || item.fechaCreacion || item.fecha || item.time || item.timestamp;
+
+      if ((!lat || !lng || !horaRaw) && item.geolocalizacion) {
+        try {
+          const geoData = typeof item.geolocalizacion === 'string'
+            ? JSON.parse(item.geolocalizacion)
+            : item.geolocalizacion;
+          lat = lat ?? (geoData?.latitud ?? geoData?.latitude ?? geoData?.lat ?? null);
+          lng = lng ?? (geoData?.longitud ?? geoData?.longitude ?? geoData?.lng ?? geoData?.lon ?? null);
+          horaRaw = horaRaw || geoData?.timestampReal || geoData?.timestamp || geoData?.time || geoData?.fecha;
+        } catch (e) {
+          if (typeof item.geolocalizacion === 'string' && item.geolocalizacion.includes(',')) {
+            const parts = item.geolocalizacion.split(',').map((s: string) => parseFloat(s.trim()));
+            if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+              lat = lat ?? parts[0];
+              lng = lng ?? parts[1];
+            }
+          }
+        }
+      }
+
+      if ((!lat || !lng || !horaRaw) && item.metadatos) {
+        try {
+          const metaData = typeof item.metadatos === 'string'
+            ? JSON.parse(item.metadatos)
+            : item.metadatos;
+          lat = lat ?? (metaData?.latitud ?? metaData?.latitude ?? metaData?.lat ?? null);
+          lng = lng ?? (metaData?.longitud ?? metaData?.longitude ?? metaData?.lng ?? null);
+          horaRaw = horaRaw || metaData?.timestampReal || metaData?.timestamp || metaData?.dateTimeOriginal;
+        } catch (e) {}
+      }
+
+      const filename = item.nombreArchivo || item.rutaArchivo || '';
+      let timeMs: number | null = null;
+      if (horaRaw) {
+        const d = new Date(horaRaw);
+        if (!isNaN(d.getTime())) timeMs = d.getTime();
+      }
+      if (!timeMs && filename) {
+        const nameMatch = String(filename).match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+        if (nameMatch) {
+          const d = new Date(
+            parseInt(nameMatch[1], 10),
+            parseInt(nameMatch[2], 10) - 1,
+            parseInt(nameMatch[3], 10),
+            parseInt(nameMatch[4], 10),
+            parseInt(nameMatch[5], 10),
+            parseInt(nameMatch[6], 10)
+          );
+          if (!isNaN(d.getTime())) timeMs = d.getTime();
+        }
+      }
+      if (!timeMs) timeMs = Date.now();
+
+      if (lat !== null && lng !== null && !isNaN(Number(lat)) && !isNaN(Number(lng)) && Number(lat) !== 0 && Number(lng) !== 0) {
+        fotosValidas.push({
+          lat: Number(lat),
+          lng: Number(lng),
+          timeMs,
+          nombre: filename
+        });
+      }
+    }
+
+    if (fotosValidas.length < 2) {
+      alert('⚠️ Se requieren al menos 2 fotos con coordenadas GPS para trazar una ruta probable.');
+      return;
+    }
+
+    // 2. Ordenar cronológicamente
+    fotosValidas.sort((a, b) => a.timeMs - b.timeMs);
+
+    // 3. Agrupar waypoints consecutivos cercanos (< 25 metros)
+    const waypoints: { lat: number; lng: number; startTimeMs: number; endTimeMs: number }[] = [];
+    for (const f of fotosValidas) {
+      if (waypoints.length === 0) {
+        waypoints.push({ lat: f.lat, lng: f.lng, startTimeMs: f.timeMs, endTimeMs: f.timeMs });
+      } else {
+        const lastW = waypoints[waypoints.length - 1];
+        const dist = this.trackEditorService.getDistance(lastW.lat, lastW.lng, f.lat, f.lng);
+        if (dist < 25) {
+          lastW.endTimeMs = Math.max(lastW.endTimeMs, f.timeMs);
+        } else {
+          waypoints.push({ lat: f.lat, lng: f.lng, startTimeMs: f.timeMs, endTimeMs: f.timeMs });
+        }
+      }
+    }
+
+    if (waypoints.length < 2) {
+      alert('⚠️ Todas las fotos se encuentran en el mismo punto (menos de 25m de distancia). No se puede trazar una ruta entre diferentes puntos.');
+      return;
+    }
+
+    this.generandoProbable = true;
+    this.progresoGeneracionProbable = `Calculando 0 de ${waypoints.length - 1} tramos...`;
+    this.cdr.detectChanges();
+
+    // 4. Guardar copia del estado previo
+    this.puntosGpxAntesDeProbable = [...this.gpxPoints];
+    this.clearSelection();
+
+    const allRoutePoints: GpxPoint[] = [];
+
+    try {
+      const UMBRAL_DISTANCIA_COCHE = 2500; // 2.5 km (Opción B)
+
+      for (let i = 0; i < waypoints.length - 1; i++) {
+        const wStart = waypoints[i];
+        const wEnd = waypoints[i + 1];
+        const distDirect = this.trackEditorService.getDistance(wStart.lat, wStart.lng, wEnd.lat, wEnd.lng);
+        const profile = distDirect >= UMBRAL_DISTANCIA_COCHE ? 'driving' : 'walking';
+
+        this.progresoGeneracionProbable = `Calculando tramo ${i + 1} de ${waypoints.length - 1} (${profile === 'driving' ? '🚗 Coche' : '🚶 A pie'})...`;
+        this.cdr.detectChanges();
+
+        // Solicitar trazado a RoutingService
+        let legPoints: { lat: number; lng: number }[] = [];
+        try {
+          const routeResult = await this.routingService.getRoute(wStart.lat, wStart.lng, wEnd.lat, wEnd.lng, profile);
+          if (routeResult && routeResult.points && routeResult.points.length >= 2) {
+            legPoints = routeResult.points;
+          }
+        } catch (routeErr) {
+          console.warn(`[Ruta Probable] Fallo enrutamiento para tramo ${i}, usando interpolación directa:`, routeErr);
+        }
+
+        // Fallback si no hubo puntos de ruta
+        if (legPoints.length < 2) {
+          const steps = Math.max(2, Math.min(100, Math.floor(distDirect / 30)));
+          legPoints = [];
+          for (let s = 0; s <= steps; s++) {
+            const ratio = s / steps;
+            legPoints.push({
+              lat: wStart.lat + (wEnd.lat - wStart.lat) * ratio,
+              lng: wStart.lng + (wEnd.lng - wStart.lng) * ratio
+            });
+          }
+        }
+
+        // Asignar timestamps y modo de transporte a los puntos del tramo
+        const startTime = wStart.endTimeMs || wStart.startTimeMs;
+        const endTime = wEnd.startTimeMs;
+        const totalTimeDiff = endTime > startTime ? endTime - startTime : (distDirect / (profile === 'driving' ? 12.5 : 1.39)) * 1000;
+
+        // Calcular distancia total del subtramo para interpolación temporal proporcional
+        let legDistances: number[] = [0];
+        let legDistTotal = 0;
+        for (let j = 1; j < legPoints.length; j++) {
+          const d = this.trackEditorService.getDistance(legPoints[j - 1].lat, legPoints[j - 1].lng, legPoints[j].lat, legPoints[j].lng);
+          legDistTotal += d;
+          legDistances.push(legDistTotal);
+        }
+
+        // Evitar duplicar el primer punto si ya tenemos puntos acumulados
+        const startIndex = allRoutePoints.length > 0 ? 1 : 0;
+
+        for (let j = startIndex; j < legPoints.length; j++) {
+          const pt = legPoints[j];
+          const distRatio = legDistTotal > 0 ? legDistances[j] / legDistTotal : j / legPoints.length;
+          const ptTimeMs = startTime + totalTimeDiff * distRatio;
+
+          allRoutePoints.push({
+            lat: pt.lat,
+            lng: pt.lng,
+            time: new Date(ptTimeMs),
+            mode: profile,
+            hfMode: profile,
+            distAcum: 0,
+            timeAcum: 0
+          });
+        }
+      }
+
+      // 5. Asignar ruta generada en memoria
+      this.gpxPoints = this.trackEditorService.recalculateAccumulators(allRoutePoints);
+      this.modoPrevisualizandoProbable = true;
+      this.drawBaseAndEdits();
+
+      if (this.polylinesGroup && this.map && this.polylinesGroup.getLayers().length > 0) {
+        this.map.fitBounds(this.polylinesGroup.getBounds());
+      }
+
+    } catch (err: any) {
+      console.error('❌ Error generando ruta probable:', err);
+      alert('❌ Error al generar la ruta probable: ' + (err.message || err));
+      if (this.puntosGpxAntesDeProbable && this.puntosGpxAntesDeProbable.length > 0) {
+        this.gpxPoints = [...this.puntosGpxAntesDeProbable];
+      }
+    } finally {
+      this.generandoProbable = false;
+      this.progresoGeneracionProbable = '';
+      this.cdr.detectChanges();
+    }
+  }
+
+  /**
+   * Descarta la previsualización de la ruta probable y restaura el trazado anterior
+   */
+  descartarModoRutaProbable(): void {
+    if (this.puntosGpxAntesDeProbable && this.puntosGpxAntesDeProbable.length > 0) {
+      this.gpxPoints = [...this.puntosGpxAntesDeProbable];
+    }
+    this.modoPrevisualizandoProbable = false;
+    this.puntosGpxAntesDeProbable = [];
+    this.drawBaseAndEdits();
+
+    if (this.polylinesGroup && this.map && this.polylinesGroup.getLayers().length > 0) {
+      this.map.fitBounds(this.polylinesGroup.getBounds());
+    }
+
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Guarda de forma permanente en base de datos la ruta probable generada
+   */
+  confirmarGuardarRutaProbable(): void {
+    if (!this.actividadId) return;
+
+    this.guardandoProbable = true;
+    this.cdr.detectChanges();
+
+    this.trackEditorService.guardarRutaGenerada(this.actividadId, this.gpxPoints).subscribe({
+      next: (resp) => {
+        this.guardandoProbable = false;
+        this.modoPrevisualizandoProbable = false;
+        this.puntosGpxAntesDeProbable = [];
+        this.pendingEdits = [];
+
+        alert('✅ Ruta probable guardada y sincronizada con éxito en todos los módulos.');
+        this.rutaOriginalGuardada.emit();
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.guardandoProbable = false;
+        console.error('❌ Error guardando ruta probable:', err);
+        alert('❌ Error al guardar la ruta probable: ' + (err.error?.detalle || err.message || err));
+        this.cdr.detectChanges();
+      }
+    });
+  }
 }
+
 

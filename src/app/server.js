@@ -8755,6 +8755,87 @@ app.post('/api/actividades/:id/restaurar-ruta-original', async (req, res) => {
   }
 });
 
+// 5. Guardar una ruta probable o generada como el nuevo trazado canónico de la actividad
+app.post('/api/actividades/:id/guardar-ruta-generada', async (req, res) => {
+  const actividadId = parseInt(req.params.id, 10);
+  const { points } = req.body;
+
+  if (!actividadId || !points || !Array.isArray(points) || points.length === 0) {
+    return res.status(400).json({ error: 'Faltan campos requeridos (actividadId, points[])' });
+  }
+
+  try {
+    const actRow = await dbQuery.get(
+      'SELECT id, viajePrevistoId, itinerarioId, rutaGpxCompleto FROM actividades WHERE id = ?',
+      [actividadId]
+    );
+
+    if (!actRow) {
+      return res.status(404).json({ error: 'Actividad no encontrada' });
+    }
+
+    // 1. Limpiar todos los segments y track_edits previos
+    await dbQuery.run('DELETE FROM segments WHERE actividadId = ?', [actividadId]);
+    await dbQuery.run('DELETE FROM track_edits WHERE actividadId = ?', [actividadId]);
+
+    // 2. Insertar los nuevos puntos como el segmento base original (segmentOrder = 0)
+    const points_json = JSON.stringify(points);
+    await dbQuery.run(
+      `INSERT INTO segments (actividadId, source, segmentOrder, points_json) VALUES (?, 'original', 0, ?)`,
+      [actividadId, points_json]
+    );
+
+    // 3. Escribir/sincronizar el archivo GPX físico en disco
+    let relGpxPath = actRow.rutaGpxCompleto || `${actRow.viajePrevistoId}/${actRow.id}/gpx/recorrido.gpx`;
+    const fullGpxPath = path.join(uploadsPath, relGpxPath);
+    const gpxDir = path.dirname(fullGpxPath);
+    if (!fs.existsSync(gpxDir)) {
+      fs.mkdirSync(gpxDir, { recursive: true });
+    }
+
+    // Construir XML GPX
+    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+    xml += '<gpx version="1.1" creator="TravelMemoryApp" xmlns="http://www.topografix.com/GPX/1/1">\n';
+    xml += '  <metadata><name>Recorrido_Probable</name></metadata>\n';
+    xml += '  <trk>\n    <trkseg>\n';
+
+    for (const p of points) {
+      xml += `      <trkpt lat="${p.lat}" lon="${p.lng}">\n`;
+      if (p.ele !== undefined && p.ele !== null) xml += `        <ele>${p.ele}</ele>\n`;
+      if (p.time) {
+        const timeStr = p.time instanceof Date ? p.time.toISOString() : p.time;
+        xml += `        <time>${timeStr}</time>\n`;
+      }
+      const mode = p.mode || p.hfMode;
+      if (mode) {
+        xml += `        <extensions><transportMode>${mode}</transportMode></extensions>\n`;
+      }
+      xml += '      </trkpt>\n';
+    }
+
+    xml += '    </trkseg>\n  </trk>\n</gpx>';
+    fs.writeFileSync(fullGpxPath, xml, 'utf8');
+
+    // 4. Actualizar rutaGpxCompleto en actividades si no existía
+    if (!actRow.rutaGpxCompleto) {
+      await dbQuery.run('UPDATE actividades SET rutaGpxCompleto = ? WHERE id = ?', [relGpxPath, actividadId]);
+    }
+
+    console.log(`✅ [GUARDAR RUTA PROBABLE] Actividad ${actividadId}: ${points.length} puntos guardados en BD y GPX sincronizado.`);
+
+    res.json({
+      success: true,
+      message: 'Ruta probable guardada y sincronizada con éxito en todos los módulos.',
+      totalPuntos: points.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error guardando ruta generada:', error.message);
+    res.status(500).json({ error: 'Error guardando ruta generada', detalle: error.message });
+  }
+});
+
+
 
 // ====================================================================
 // 📁 MÓDULO EXPLORADOR: ENCONTRAR FOTOS Y COMPARAR CON ITINERARIO
