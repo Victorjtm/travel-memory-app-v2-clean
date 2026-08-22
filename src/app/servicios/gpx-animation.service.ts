@@ -120,18 +120,48 @@ export class GpxAnimationService {
   syncMultimedia(points: GpxPoint[], multimedia: any[]): GpxPoint[] {
     if (!multimedia || multimedia.length === 0 || !points || points.length === 0) return points;
 
-    // 1. Ordenar fotos cronológicamente
-    const sortedMedia = [...multimedia].sort((a, b) => {
-      const getMs = (item: any) => {
-        let t = item.timestampReal || item.horaCaptura || item.fechaCreacion || item.fecha;
-        if (t) {
-          const d = new Date(t);
-          if (!isNaN(d.getTime())) return d.getTime();
-        }
-        return 0;
-      };
-      return getMs(a) - getMs(b);
-    });
+    // Helper robusto para calcular el timestamp real (ms) de un archivo
+    const getMediaTimestamp = (item: any): number => {
+      let datePart = '';
+      if (item.fechaCreacion) {
+        datePart = item.fechaCreacion.split('T')[0];
+      } else if (item.fecha) {
+        datePart = item.fecha.split('T')[0];
+      }
+      if (!datePart) datePart = '1970-01-01';
+
+      let timePart = item.horaCaptura;
+      if (!timePart && item.fechaCreacion && item.fechaCreacion.includes('T')) {
+        timePart = item.fechaCreacion.split('T')[1].split('.')[0];
+      }
+      if (!timePart && item.timestampReal) {
+        timePart = item.timestampReal;
+      }
+      if (!timePart) timePart = '12:00:00';
+
+      const fullIso = `${datePart}T${timePart}Z`;
+      const dt = new Date(fullIso);
+      return !isNaN(dt.getTime()) ? dt.getTime() : 0;
+    };
+
+    // 1. Asegurar que los puntos del track tengan timestamps coherentes
+    let lastKnownTime = points[0]?.time ? points[0].time.getTime() : 0;
+    for (let i = 0; i < points.length; i++) {
+      const pTime = points[i]?.time;
+      if (pTime && !isNaN(pTime.getTime())) {
+        lastKnownTime = pTime.getTime();
+      } else if (lastKnownTime > 0) {
+        const prevPt = i > 0 ? points[i - 1] : null;
+        const stepDist = (prevPt && points[i].distAcum !== undefined && prevPt.distAcum !== undefined)
+          ? Math.max(0, points[i].distAcum - prevPt.distAcum)
+          : 0;
+        lastKnownTime += (stepDist / 14) * 1000;
+        points[i].time = new Date(lastKnownTime);
+      }
+    }
+
+    // 2. Ordenar archivos multimedia estrictamente por su timestamp real
+    const sortedMedia = [...multimedia].sort((a, b) => getMediaTimestamp(a) - getMediaTimestamp(b));
 
     let lastMatchedTrackIdx = 0;
 
@@ -147,8 +177,7 @@ export class GpxAnimationService {
 
       const mLat = geoData?.latitud ?? geoData?.latitude;
       const mLng = geoData?.longitud ?? geoData?.longitude;
-      const mTimeString = geoData?.timestamp || item.timestampReal || item.horaCaptura || item.fechaCreacion;
-      const mTime = mTimeString ? new Date(mTimeString).getTime() : null;
+      const mTime = getMediaTimestamp(item);
 
       if (!mLat || !mLng || isNaN(mLat) || isNaN(mLng)) return;
 
@@ -160,22 +189,20 @@ export class GpxAnimationService {
         const d = this.getDistance(p.lat, p.lng, mLat, mLng);
 
         let timeDiffMinutes = 0;
-        if (mTime && p.time) {
+        if (mTime > 0 && p.time) {
           const ptTime = p.time.getTime();
           const diffMs = Math.min(
             Math.abs(ptTime - mTime),
             Math.abs(ptTime - (mTime + 3600000)),
-            Math.abs(ptTime - (mTime - 3600000)),
-            Math.abs(ptTime - (mTime + 7200000)),
-            Math.abs(ptTime - (mTime - 7200000))
+            Math.abs(ptTime - (mTime - 3600000))
           );
           timeDiffMinutes = diffMs / 60000;
         }
 
-        // Ponderar distancia + diferencia de tiempo + coherencia de avance cronológico
-        const chronologicalPenalty = idx < lastMatchedTrackIdx ? 250 : 0;
-        const timePenalty = (mTime && p.time) ? timeDiffMinutes * 15.0 : 0;
-        const score = d + timePenalty + chronologicalPenalty;
+        // Ponderar distancia + diferencia de tiempo + avance cronológico coherente
+        const backwardPenalty = idx < lastMatchedTrackIdx ? (lastMatchedTrackIdx - idx) * 1.5 : 0;
+        const timePenalty = (mTime > 0 && p.time) ? timeDiffMinutes * 20.0 : 0;
+        const score = d + timePenalty + backwardPenalty;
 
         if (score < minScore) {
           minScore = score;

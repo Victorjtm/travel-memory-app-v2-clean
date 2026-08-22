@@ -1436,20 +1436,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     if (this.contextoViaje?.itinerarioId && !this.contextoViaje?.actividadId) {
       // NIVEL ITINERARIO: Solo descripción del itinerario actual
-      // Ordenar fotos por fecha y hora (más antiguas primero)
-      paginasNormales.sort((a, b) => {
-        const fechaA = new Date(a.fecha || 0);
-        const fechaB = new Date(b.fecha || 0);
-        if (fechaA.getTime() !== fechaB.getTime()) {
-          return fechaA.getTime() - fechaB.getTime();
-        }
-        const horaA = a.archivo.horaCaptura || '';
-        const horaB = b.archivo.horaCaptura || '';
-        if (horaA && horaB) {
-          return horaA.localeCompare(horaB);
-        }
-        return 0;
-      });
+      // Ordenar fotos por fecha y hora reales (más antiguas primero)
+      paginasNormales.sort((a, b) => this.obtenerTimestampReal(a) - this.obtenerTimestampReal(b));
       const paginaDescripcion: PaginaMedia = {
         archivo: {} as Archivo,
         url: '',
@@ -1467,26 +1455,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     } else {
       // NIVEL ACTIVIDAD: Solo página de índice normal
-      // Ordenar fotos por fecha y hora (más antiguas primero)
-      paginasNormales.sort((a, b) => {
-        const fechaA = new Date(a.fecha || 0);
-        const fechaB = new Date(b.fecha || 0);
-
-        // Si tienen fecha diferente, ordenar por fecha
-        if (fechaA.getTime() !== fechaB.getTime()) {
-          return fechaA.getTime() - fechaB.getTime(); // Más antiguas primero
-        }
-
-        // Si tienen la misma fecha, ordenar por hora de captura
-        const horaA = a.archivo.horaCaptura || '';
-        const horaB = b.archivo.horaCaptura || '';
-
-        if (horaA && horaB) {
-          return horaA.localeCompare(horaB);
-        }
-
-        return 0;
-      });
+      // Ordenar fotos por fecha y hora reales (más antiguas primero)
+      paginasNormales.sort((a, b) => this.obtenerTimestampReal(a) - this.obtenerTimestampReal(b));
 
       const paginaIndice: PaginaMedia = {
         archivo: {} as Archivo,
@@ -2002,29 +1972,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     console.log(`📊 Archivos agrupados: ${archivosPorItinerario.size} itinerarios con fotos, ${archivosSinItinerario.length} fotos sin itinerario`);
 
-    // Ordenar las fotos de cada itinerario por fecha y hora (más antiguas primero)
+    // Ordenar las fotos de cada itinerario por fecha y hora reales (más antiguas primero)
     archivosPorItinerario.forEach((fotos, itinerarioId) => {
-      fotos.sort((a, b) => {
-        const fechaA = new Date(a.fecha || 0);
-        const fechaB = new Date(b.fecha || 0);
-
-        // Si tienen fecha, ordenar por fecha
-        if (fechaA.getTime() !== fechaB.getTime()) {
-          return fechaA.getTime() - fechaB.getTime(); // Más antiguas primero
-        }
-
-        // Si tienen la misma fecha, ordenar por hora de captura si está disponible
-        const horaA = a.archivo.horaCaptura || '';
-        const horaB = b.archivo.horaCaptura || '';
-
-        if (horaA && horaB) {
-          return horaA.localeCompare(horaB);
-        }
-
-        return 0;
-      });
-
-      console.log(`📅 Ordenadas ${fotos.length} fotos del itinerario ${itinerarioId} por fecha y hora`);
+      fotos.sort((a, b) => this.obtenerTimestampReal(a) - this.obtenerTimestampReal(b));
+      console.log(`📅 Ordenadas ${fotos.length} fotos del itinerario ${itinerarioId} por timestamp real`);
     });
 
     // Ordenar itinerarios por fecha de inicio (más antiguos primero)
@@ -2093,11 +2044,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     // Añadir fotos sin itinerario al final (también ordenadas)
     if (archivosSinItinerario.length > 0) {
       // Ordenar fotos sin itinerario
-      archivosSinItinerario.sort((a, b) => {
-        const fechaA = new Date(a.fecha || 0);
-        const fechaB = new Date(b.fecha || 0);
-        return fechaA.getTime() - fechaB.getTime();
-      });
+      archivosSinItinerario.sort((a, b) => this.obtenerTimestampReal(a) - this.obtenerTimestampReal(b));
 
       const paginaSinItinerario: PaginaMedia = {
         archivo: {} as Archivo,
@@ -2773,6 +2720,37 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     } catch (error) {
       return 'Fecha inválida';
     }
+  }
+
+  /**
+   * Obtiene el timestamp numérico real (ms) combinando fecha y hora de captura de forma precisa
+   */
+  obtenerTimestampReal(pagina: PaginaMedia | any): number {
+    if (!pagina) return 0;
+    const arch = pagina.archivo || pagina;
+    let datePart = '';
+
+    if (pagina.fecha) {
+      datePart = pagina.fecha.split('T')[0];
+    } else if (arch.fechaCreacion) {
+      datePart = arch.fechaCreacion.split('T')[0];
+    }
+
+    if (!datePart) {
+      datePart = '1970-01-01';
+    }
+
+    let timePart = arch.horaCaptura;
+    if (!timePart && arch.fechaCreacion && arch.fechaCreacion.includes('T')) {
+      timePart = arch.fechaCreacion.split('T')[1].split('.')[0];
+    }
+    if (!timePart) {
+      timePart = '12:00:00';
+    }
+
+    const fullIso = `${datePart}T${timePart}Z`;
+    const dt = new Date(fullIso);
+    return !isNaN(dt.getTime()) ? dt.getTime() : (new Date(pagina.fecha || 0).getTime() || 0);
   }
 
   // ==========================================
