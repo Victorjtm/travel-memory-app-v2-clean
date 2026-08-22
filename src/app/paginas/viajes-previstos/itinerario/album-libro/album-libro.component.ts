@@ -2094,16 +2094,26 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   private determinarTipoMedia(archivo: Archivo): TipoMedia {
-    if (archivo.tipo === 'foto' || archivo.tipo === 'imagen') {
+    const tipoStr = (archivo.tipo as string) || '';
+    if (tipoStr === 'video') {
+      return 'video';
+    }
+    if (tipoStr === 'foto' || tipoStr === 'imagen') {
       return 'imagen';
+    }
+    if (tipoStr === 'audio') {
+      return 'audio';
+    }
+    if (tipoStr === 'pdf') {
+      return 'pdf';
     }
 
     const extension = this.obtenerExtension(archivo.nombreArchivo || '').toLowerCase();
 
-    if (this.EXTENSIONES_IMAGEN.includes(extension)) {
-      return 'imagen';
-    } else if (this.EXTENSIONES_VIDEO.includes(extension)) {
+    if (this.EXTENSIONES_VIDEO.includes(extension)) {
       return 'video';
+    } else if (this.EXTENSIONES_IMAGEN.includes(extension)) {
+      return 'imagen';
     } else if (this.EXTENSIONES_AUDIO.includes(extension)) {
       return 'audio';
     } else if (this.EXTENSIONES_PDF.includes(extension)) {

@@ -59,7 +59,7 @@
           <div class="photo-grid" *ngIf="fotosViaje && fotosViaje.length > 0">
             <div class="photo-card" *ngFor="let foto of fotosViaje" (click)="centrarEnFoto(foto)" [class.is-video]="esVideo(foto)">
               <img *ngIf="!esVideo(foto)" [src]="getThumbnailUrl(foto)" loading="lazy" [alt]="foto.nombreArchivo">
-              <video *ngIf="esVideo(foto)" [src]="getThumbnailUrl(foto)" preload="metadata" muted playsinline></video>
+              <video *ngIf="esVideo(foto)" [src]="getThumbnailUrl(foto) + '#t=0.5'" preload="metadata" muted playsinline></video>
 
               <!-- Badge Numérico -->
               <div class="number-badge" *ngIf="foto.numeroSecuencial">
@@ -67,7 +67,7 @@
               </div>
 
               <!-- Badge Vídeo -->
-              <div class="video-badge" *ngIf="esVideo(foto)">
+              <div class="video-badge" *ngIf="esVideo(foto)" (click)="abrirModal(foto); $event.stopPropagation()">
                 <i class="fa fa-play-circle"></i>
               </div>
             </div>
@@ -197,6 +197,32 @@
       </button>
     </div>
 
+  </div>
+
+  <!-- Modal Lightbox de Visualización de Foto / Video -->
+  <div class="media-lightbox-overlay" *ngIf="archivoModal" (click)="cerrarModal()">
+    <div class="media-lightbox-container" (click)="$event.stopPropagation()">
+      <button class="btn-close-lightbox" (click)="cerrarModal()" title="Cerrar (Esc)">✕</button>
+      
+      <div class="lightbox-header">
+        <div class="header-titles">
+          <h3>{{ esVideo(archivoModal) ? '🎬 Vídeo' : '📷 Foto' }} #{{ archivoModal.numeroSecuencial || '' }}</h3>
+          <span class="lightbox-filename">{{ archivoModal.nombreArchivo }}</span>
+        </div>
+        <span class="lightbox-date" *ngIf="archivoModal.fechaCreacion">
+          <i class="fa fa-clock-o"></i> {{ (archivoModal.timestampReal || archivoModal.fechaCreacion) | date:'dd/MM/yyyy HH:mm:ss' }}
+        </span>
+      </div>
+      
+      <div class="lightbox-media-wrapper">
+        <img *ngIf="!esVideo(archivoModal)" [src]="getThumbnailUrl(archivoModal)" [alt]="archivoModal.nombreArchivo" />
+        <video *ngIf="esVideo(archivoModal)" [src]="getThumbnailUrl(archivoModal)" controls autoplay playsinline></video>
+      </div>
+
+      <div class="lightbox-footer" *ngIf="archivoModal.descripcion">
+        <p class="lightbox-desc">{{ archivoModal.descripcion }}</p>
+      </div>
+    </div>
   </div>
 
 </div>

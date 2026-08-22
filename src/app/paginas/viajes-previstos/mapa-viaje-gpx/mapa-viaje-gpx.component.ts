@@ -82,6 +82,15 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
     tiempos: { enMarcha: '00:00:00', parado: '00:00:00', pausado: '00:00:00' }
   };
 
+  archivoModal: any = null;
+  private onAbrirMediaHandler = (event: any) => {
+    const archId = Number(event.detail);
+    const arch = this.fotosViaje.find(f => f.id === archId);
+    if (arch) {
+      this.ngZone.run(() => this.abrirModal(arch));
+    }
+  };
+
   constructor(
     private route: ActivatedRoute,
     private router: Router,
@@ -97,6 +106,7 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    window.addEventListener('tm-abrir-media', this.onAbrirMediaHandler);
     const idParam = this.route.snapshot.paramMap.get('viajeId');
     if (idParam) {
       this.viajeId = Number(idParam);
@@ -114,12 +124,17 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    window.removeEventListener('tm-abrir-media', this.onAbrirMediaHandler);
     this.limpiarMapa();
   }
 
   @HostListener('document:keydown.escape')
   onEscapePress(): void {
-    this.volver();
+    if (this.archivoModal) {
+      this.cerrarModal();
+    } else {
+      this.volver();
+    }
   }
 
   volver(): void {
@@ -720,9 +735,13 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
       const numeroSecuencial = primerArchivo.numeroSecuencial || 1;
       const thumbUrl = this.getThumbnailUrl(primerArchivo);
 
+      const esVid = this.esVideo(primerArchivo);
       const htmlBadge = `
         <div class="photo-marker-pin" style="position: relative; width: 44px; height: 44px; cursor: pointer; transition: transform 0.2s;">
-          <img src="${thumbUrl}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);" />
+          ${esVid
+            ? `<video src="${thumbUrl}#t=0.5" preload="metadata" muted playsinline style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #3b82f6; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></video><span style="position: absolute; bottom: 0; left: 0; background: rgba(0,0,0,0.75); color: white; border-radius: 50%; width: 15px; height: 15px; display: flex; align-items: center; justify-content: center; font-size: 8px;">▶</span>`
+            : `<img src="${thumbUrl}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);" />`
+          }
           <span style="position: absolute; top: -4px; right: -4px; background: #3b82f6; color: white; border-radius: 10px; padding: 1px 5px; font-size: 10px; font-weight: bold; border: 1px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">
             #${numeroSecuencial}${tieneMultiples ? ` (${items.length})` : ''}
           </span>
@@ -786,16 +805,19 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
       const descTag = archivo.descripcion ? `<div style="font-size: 12px; color: #475569; margin-top: 6px; font-style: italic;">"${archivo.descripcion}"</div>` : '';
 
       const mediaTag = esVid
-        ? `<video src="${thumbUrl}#t=0.1" preload="metadata" muted playsinline style="width: 100px; height: 75px; object-fit: cover; border-radius: 6px; border: 2px solid #e2e8f0;"></video>`
-        : `<img src="${thumbUrl}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 6px; border: 2px solid #e2e8f0;" />`;
+        ? `<div class="media-thumb-preview" style="position: relative; width: 100px; height: 75px; cursor: pointer; flex-shrink: 0; border-radius: 6px; overflow: hidden; border: 2px solid #3b82f6;" onclick="window.dispatchEvent(new CustomEvent('tm-abrir-media', { detail: '${archivo.id}' }))" title="Clic para reproducir vídeo">
+             <video src="${thumbUrl}#t=0.5" preload="metadata" muted playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+             <span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.4); color: white; font-size: 20px;">▶</span>
+           </div>`
+        : `<div class="media-thumb-preview" style="position: relative; width: 100px; height: 75px; cursor: pointer; flex-shrink: 0; border-radius: 6px; overflow: hidden; border: 2px solid #e2e8f0;" onclick="window.dispatchEvent(new CustomEvent('tm-abrir-media', { detail: '${archivo.id}' }))" title="Clic para ampliar foto">
+             <img src="${thumbUrl}" style="width: 100%; height: 100%; object-fit: cover;" />
+           </div>`;
 
       popupContent += `
-        <div class="archivo-item-popup" style="display: flex; gap: 10px; padding: 6px; background: #f8fafc; border-radius: 8px;">
-          <div style="position: relative; flex-shrink: 0;">
-            ${mediaTag}
-          </div>
+        <div class="archivo-item-popup" style="display: flex; gap: 10px; padding: 6px; background: #f8fafc; border-radius: 8px; align-items: center;">
+          ${mediaTag}
           <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden;">
-            <strong style="font-size: 12px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${archivo.nombreArchivo}">${archivo.nombreArchivo}</strong>
+            <strong style="font-size: 12px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;" onclick="window.dispatchEvent(new CustomEvent('tm-abrir-media', { detail: '${archivo.id}' }))" title="${archivo.nombreArchivo}">${archivo.nombreArchivo}</strong>
             ${locationTag}
             ${dateTag}
             ${descTag}
@@ -890,6 +912,16 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  abrirModal(archivo: any): void {
+    this.archivoModal = archivo;
+    this.cdr.detectChanges();
+  }
+
+  cerrarModal(): void {
+    this.archivoModal = null;
+    this.cdr.detectChanges();
+  }
+
   fitMapToTrack(): void {
     if (!this.mapaGPX || this.coordenadasGPX.length === 0) return;
     const bounds = L.latLngBounds(this.coordenadasGPX);
@@ -906,7 +938,26 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   getThumbnailUrl(foto: any): string {
-    return `${environment.apiUrl}/uploads/${foto.rutaArchivo}`;
+    if (!foto) return '';
+    let ruta = foto.rutaArchivo || foto.nombreArchivo || '';
+    if (!ruta) return '';
+
+    // Limpiar prefijo 'uploads/' o 'uploads\' si ya está presente
+    if (ruta.startsWith('uploads/') || ruta.startsWith('uploads\\')) {
+      ruta = ruta.substring(8);
+    }
+
+    // Si ya es URL completa
+    if (ruta.startsWith('http://') || ruta.startsWith('https://')) {
+      return ruta;
+    }
+
+    // Si es ruta legacy con barras invertidas
+    if (ruta.includes('\\')) {
+      ruta = ruta.substring(ruta.lastIndexOf('\\') + 1);
+    }
+
+    return `${environment.apiUrl}/uploads/${ruta}`;
   }
 
   esVideo(foto: any): boolean {

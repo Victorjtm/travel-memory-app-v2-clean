@@ -1798,8 +1798,27 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   getThumbnailUrl(foto: any): string {
+    if (!foto) return '';
+    let ruta = foto.rutaArchivo || foto.nombreArchivo || '';
+    if (!ruta) return '';
+
+    // Limpiar prefijo 'uploads/' o 'uploads\' si ya está presente
+    if (ruta.startsWith('uploads/') || ruta.startsWith('uploads\\')) {
+      ruta = ruta.substring(8);
+    }
+
+    // Si ya es URL completa
+    if (ruta.startsWith('http://') || ruta.startsWith('https://')) {
+      return ruta;
+    }
+
+    // Si es ruta legacy con barras invertidas
+    if (ruta.includes('\\')) {
+      ruta = ruta.substring(ruta.lastIndexOf('\\') + 1);
+    }
+
     const backendUrl = environment.apiUrl;
-    return `${backendUrl}/uploads/${foto.rutaArchivo}`;
+    return `${backendUrl}/uploads/${ruta}`;
   }
 
   // ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ NUEVO: FunciÃƒÆ’Ã‚Â³n para determinar si el archivo es un vÃƒÆ’Ã‚Â­deo

@@ -1451,7 +1451,18 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   }
 
   getMediaUrl(ruta: string): string {
-    return `${environment.apiUrl}/uploads/${ruta}`;
+    if (!ruta) return '';
+    let rutaLimpia = ruta;
+    if (rutaLimpia.startsWith('uploads/') || rutaLimpia.startsWith('uploads\\')) {
+      rutaLimpia = rutaLimpia.substring(8);
+    }
+    if (rutaLimpia.startsWith('http://') || rutaLimpia.startsWith('https://')) {
+      return rutaLimpia;
+    }
+    if (rutaLimpia.includes('\\')) {
+      rutaLimpia = rutaLimpia.substring(rutaLimpia.lastIndexOf('\\') + 1);
+    }
+    return `${environment.apiUrl}/uploads/${rutaLimpia}`;
   }
 
   abrirVisorFoto(archivo: any) {
