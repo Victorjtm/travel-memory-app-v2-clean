@@ -386,11 +386,14 @@
           <!-- ✅ HUD DE FECHA Y BOTÓN INFORMACIÓN (REUBICADO) -->
           <div class="hud-superior-album" *ngIf="!paginaActual.esIndice">
             <div class="hud-inner">
-              <!-- Botón ℹ️ (Info) -->
-              <button class="info-trigger-icon" [class.active]="mostrarInfoDetalle"
-                (click)="toggleInfoDetalle(); $event.stopPropagation()" aria-label="Información del archivo"
-                title="Ver información del archivo">
-                <i class="fas fa-info-circle"></i>
+              <!-- Botón ℹ️ (Info / Pin) -->
+              <button class="info-trigger-icon" [class.active]="mostrarInfoDetalle" [class.pinned]="infoDetalleFijado"
+                (click)="toggleInfoDetalle(); $event.stopPropagation()"
+                (mouseenter)="onHoverInfoTrigger(true)"
+                (mouseleave)="onHoverInfoTrigger(false)"
+                aria-label="Información del archivo"
+                [title]="infoDetalleFijado ? 'Desanclar información (Fijada)' : 'Ver o anclar información del archivo'">
+                <i class="fas" [class.fa-info-circle]="!infoDetalleFijado" [class.fa-thumbtack]="infoDetalleFijado"></i>
               </button>
 
               <!-- Texto Fecha/Hora -->
@@ -777,10 +780,13 @@
 
     <!-- --- Botón ℹ️ en pantalla completa --- -->
     <div class="info-wrapper-fullscreen" *ngIf="paginaActualData && !paginaActualData.esIndice && !paginaActualData.esCartaManuscrita">
-      <button class="info-trigger-fullscreen" [class.active]="mostrarInfoDetalle"
+      <button class="info-trigger-fullscreen" [class.active]="mostrarInfoDetalle" [class.pinned]="infoDetalleFijado"
         (click)="toggleInfoDetalle(); $event.stopPropagation()"
-        aria-label="Mostrar información del archivo" title="Ver información del archivo">
-        <i class="fas fa-info-circle"></i>
+        (mouseenter)="onHoverInfoTrigger(true)"
+        (mouseleave)="onHoverInfoTrigger(false)"
+        aria-label="Información del archivo"
+        [title]="infoDetalleFijado ? 'Desanclar información (Fijada)' : 'Ver o anclar información del archivo'">
+        <i class="fas" [class.fa-info-circle]="!infoDetalleFijado" [class.fa-thumbtack]="infoDetalleFijado"></i>
       </button>
       <div class="metadata-hud-fullscreen">
         <span class="fecha-hora">{{ obtenerFechaFormateada(paginaActualData!) }}</span>
@@ -1003,67 +1009,69 @@
   </div>
 </div>
 
-<!-- ✅ DEFINICIÓN DE PLANTILLA PARA EL PANEL DE INFORMACIÓN (GLOBAL EN EL COMPONENTE) -->
+<!-- ✅ DEFINICIÓN DE PLANTILLA PARA LA FRANJA INFERIOR PANORÁMICA DE INFORMACIÓN (OPCIÓN A) -->
 <ng-template #infoDetalleTemplate>
-  <div class="info-detalle" [class.visible]="mostrarInfoDetalle" [class.modal]="infoDetalleEsModal"
+  <div class="info-detalle-franja" [class.visible]="mostrarInfoDetalle" [class.pinned]="infoDetalleFijado" [class.modal]="infoDetalleEsModal"
     (mouseenter)="!infoDetalleEsModal && cancelarOcultarInfo()"
     (mouseleave)="!infoDetalleEsModal && ocultarInfoDetalle()"
     *ngIf="mostrarInfoDetalle && paginaActualData && !paginaActualData.esIndice && !paginaActualData.esCartaManuscrita">
 
     <!-- Overlay para modal (solo móvil) -->
-    <div class="info-overlay" *ngIf="infoDetalleEsModal" (click)="cerrarInfoDetalle()">
-    </div>
+    <div class="info-overlay" *ngIf="infoDetalleEsModal" (click)="cerrarInfoDetalle()"></div>
 
-    <!-- Contenedor de información -->
-    <div class="info-contenido">
+    <!-- Contenedor Franja Panorámica de Información -->
+    <div class="franja-hud-content">
 
-      <!-- Título del modal (solo móvil) -->
-      <div class="info-header" *ngIf="infoDetalleEsModal">
-        <h3>Información del archivo</h3>
-        <button class="close-button" (click)="cerrarInfoDetalle(); $event.stopPropagation()">
-          <i class="fas fa-times"></i>
-        </button>
+      <!-- Botón cerrar (móvil o si está fijado) -->
+      <button class="btn-hud-close" (click)="cerrarInfoDetalle(); $event.stopPropagation()" title="Cerrar información">
+        <i class="fas fa-times"></i>
+      </button>
+
+      <!-- 1. UBICACIÓN -->
+      <div class="hud-pill ubicacion" *ngIf="getNivelContexto()">
+        <div class="hud-icon">
+          <i class="fas fa-map-marker-alt"></i>
+        </div>
+        <div class="hud-text">
+          <span class="hud-label">Ubicación</span>
+          <span class="hud-value">{{ getNivelContexto() }}</span>
+        </div>
       </div>
 
-      <!-- Lista de información -->
-      <div class="info-lista">
+      <div class="hud-separator" *ngIf="getNivelContexto() && obtenerFechaFormateada(paginaActualData!)"></div>
 
-        <!-- 1. UBICACIÓN -->
-        <div class="info-item ubicacion">
-          <div class="info-icon">
-            <i class="fas fa-map-marker-alt"></i>
-          </div>
-          <div class="info-text">
-            <span class="info-label">Ubicación</span>
-            <span class="info-value">{{ getNivelContexto() }}</span>
-          </div>
+      <!-- 2. FECHA Y HORA -->
+      <div class="hud-pill fecha" *ngIf="obtenerFechaFormateada(paginaActualData!)">
+        <div class="hud-icon">
+          <i class="fas fa-calendar-alt"></i>
         </div>
-
-        <!-- 2. FECHA Y HORA -->
-        <div class="info-item fecha">
-          <div class="info-icon">
-            <i class="fas fa-calendar-alt"></i>
-          </div>
-          <div class="info-text">
-            <span class="info-label">Fecha y hora</span>
-            <span class="info-value">{{ obtenerFechaFormateada(paginaActualData!) }}</span>
-          </div>
+        <div class="hud-text">
+          <span class="hud-label">Fecha y hora</span>
+          <span class="hud-value">{{ obtenerFechaFormateada(paginaActualData!) }}</span>
         </div>
+      </div>
 
-        <!-- 3. DESCRIPCIÓN (si existe) -->
-        <div class="info-item descripcion" *ngIf="paginaActualData.descripcion">
-          <div class="info-icon">
-            <i class="fas fa-comment-alt"></i>
-          </div>
-          <div class="info-text">
-            <span class="info-label">Descripción</span>
-            <span class="info-value">{{ paginaActualData.descripcion }}</span>
-          </div>
+      <div class="hud-separator" *ngIf="(paginaActualData.descripcion || paginaActualData.titulo) && (getNivelContexto() || obtenerFechaFormateada(paginaActualData!))"></div>
+
+      <!-- 3. DESCRIPCIÓN / NOMBRE DEL LUGAR -->
+      <div class="hud-pill descripcion" *ngIf="paginaActualData.descripcion || paginaActualData.titulo">
+        <div class="hud-icon">
+          <i class="fas fa-camera"></i>
         </div>
+        <div class="hud-text">
+          <span class="hud-label">Detalle</span>
+          <span class="hud-value">{{ paginaActualData.descripcion || paginaActualData.titulo }}</span>
+        </div>
+      </div>
 
+      <!-- Badge indicador de PIN -->
+      <div class="hud-badge-pin" *ngIf="infoDetalleFijado" title="Información anclada de forma permanente">
+        <i class="fas fa-thumbtack"></i>
+        <span>Fijado</span>
       </div>
 
     </div>
 
   </div>
 </ng-template>
+

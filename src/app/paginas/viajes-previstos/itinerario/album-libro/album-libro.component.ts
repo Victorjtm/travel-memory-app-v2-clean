@@ -154,8 +154,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // PROPIEDADES PARA LA INFORMACIÓN DEL ARCHIVO
   // ==========================================
 
-  // Controla si se muestra el tooltip/modal de información
+  // Controla si se muestra la información del archivo y si está anclada por clic
   mostrarInfoDetalle: boolean = false;
+  infoDetalleFijado: boolean = false;
   timeoutOcultarInfo: any = null;
 
   // ==========================================
@@ -1123,47 +1124,67 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // ==========================================
 
   /**
-   * Alterna la visibilidad de la información detallada (para click/touch)
+   * Alterna la fijación (pin) de la información detallada al hacer clic
    */
   toggleInfoDetalle(): void {
-    this.mostrarInfoDetalle = !this.mostrarInfoDetalle;  // ✅ Toggle
-    this.cancelarOcultarInfo();  // ✅ Cancelar timeout de ocultamiento
+    this.infoDetalleFijado = !this.infoDetalleFijado;
+    this.mostrarInfoDetalle = this.infoDetalleFijado;
+    this.cancelarOcultarInfo();
 
     if (this.infoDetalleEsModal) {
       if (this.mostrarInfoDetalle) {
-        document.body.style.overflow = 'hidden';  // Bloquear scroll en móvil
+        document.body.style.overflow = 'hidden';
       } else {
-        document.body.style.overflow = '';  // Restaurar scroll
+        document.body.style.overflow = '';
       }
     }
+    this.cdr.detectChanges();
   }
 
+  /**
+   * Maneja el paso del cursor (hover) sobre el botón de información
+   */
+  onHoverInfoTrigger(hovering: boolean): void {
+    if (this.infoDetalleFijado) return; // Si está fijado por click, no alterar estado
+
+    if (hovering) {
+      this.cancelarOcultarInfo();
+      this.mostrarInfoDetalle = true;
+    } else {
+      this.ocultarInfoDetalle();
+    }
+    this.cdr.detectChanges();
+  }
 
   /**
-   * Cierra la información detallada
+   * Cierra y desancla la información detallada
    */
   cerrarInfoDetalle(): void {
+    this.infoDetalleFijado = false;
     this.mostrarInfoDetalle = false;
-    this.cancelarOcultarInfo();  // ✅ Limpiar timeout
+    this.cancelarOcultarInfo();
 
     if (this.infoDetalleEsModal) {
       document.body.style.overflow = '';
     }
+    this.cdr.detectChanges();
   }
-
 
   /**
-   * Oculta la información con delay para permitir hover sobre el tooltip
+   * Oculta la información con delay para permitir hover fluido si no está anclada
    */
   ocultarInfoDetalle(): void {
-    // ✅ SIMPLIFICADO: Solo ocultar si NO es modal
+    if (this.infoDetalleFijado) return; // No ocultar si está anclado por clic
     if (!this.infoDetalleEsModal) {
+      this.cancelarOcultarInfo();
       this.timeoutOcultarInfo = setTimeout(() => {
-        this.mostrarInfoDetalle = false;
-      }, 500);  // ✅ Aumentado a 500ms para dar tiempo
+        if (!this.infoDetalleFijado) {
+          this.mostrarInfoDetalle = false;
+          this.cdr.detectChanges();
+        }
+      }, 400);
     }
   }
-
 
   /**
    * Cancela el timeout si el usuario vuelve a hacer hover
