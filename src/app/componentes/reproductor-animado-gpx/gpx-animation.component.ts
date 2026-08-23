@@ -62,6 +62,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     correr: '#2196F3',
     bus: '#9C27B0',
     autobus: '#9C27B0',
+    train: '#D97706',
+    tren: '#D97706',
+    metro: '#D97706',
+    plane: '#7C3AED',
+    avion: '#7C3AED',
+    flight: '#7C3AED',
     boat: '#0284C7',
     barco: '#0284C7',
     ship: '#0284C7',
@@ -85,6 +91,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     correr: '#64B5F6',
     bus: '#E1BEE7',
     autobus: '#E1BEE7',
+    train: '#FDE68A',
+    tren: '#FDE68A',
+    metro: '#FDE68A',
+    plane: '#DDD6FE',
+    avion: '#DDD6FE',
+    flight: '#DDD6FE',
     boat: '#7DD3FC',
     barco: '#7DD3FC',
     ship: '#7DD3FC',
@@ -108,6 +120,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     correr: '🏃',
     bus: '🚌',
     autobus: '🚌',
+    train: '🚆',
+    tren: '🚆',
+    metro: '🚆',
+    plane: '✈️',
+    avion: '✈️',
+    flight: '✈️',
     boat: '🚢',
     barco: '🚢',
     ship: '🚢',
@@ -1504,10 +1522,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     
     // Mapeo flexible
     if (m.includes('walk') || m.includes('camin') || m.includes('andan')) return '🚶';
-    if (m.includes('car') || m.includes('coch') || m.includes('driv')) return '🚗';
+    if (m.includes('car') || m.includes('coch') || m.includes('driv') || m.includes('auto') || m.includes('taxi')) return '🚗';
     if (m.includes('bic') || m.includes('cycl')) return '🚲';
     if (m.includes('run') || m.includes('corr')) return '🏃';
-    if (m.includes('bus')) return '🚌';
+    if (m.includes('bus') || m.includes('autobus')) return '🚌';
+    if (m.includes('tren') || m.includes('train') || m.includes('metro') || m.includes('ferrocarril')) return '🚆';
+    if (m.includes('avion') || m.includes('plane') || m.includes('flight') || m.includes('vuelo')) return '✈️';
     if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return '🚢';
     
     return this.MODE_ICONS[m] || '📍';

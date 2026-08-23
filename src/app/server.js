@@ -4379,6 +4379,127 @@ app.get('/actividades/:id/estadisticas', (req, res) => {
         } catch (e) { console.warn('⚠️ [FALLBACK] Error contando puntos GPX:', e.message); }
       }
 
+      // 3.5. Si la actividad tiene segmentos con ediciones manuales (o modos específicos), calcular el desglose dinámico real
+      try {
+        const segRows = await dbQuery.all('SELECT * FROM segments WHERE actividadId = ? ORDER BY segmentOrder ASC', [id]);
+        if (segRows && segRows.length > 0 && segRows.some(s => s.source !== 'original')) {
+          function calcDistM(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const phi1 = (lat1 * Math.PI) / 180;
+            const phi2 = (lat2 * Math.PI) / 180;
+            const dphi = ((lat2 - lat1) * Math.PI) / 180;
+            const dlam = ((lon2 - lon1) * Math.PI) / 180;
+            const a = Math.sin(dphi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlam / 2) ** 2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          }
+          function resolveAnchorIdx(anchor, ptsList) {
+            if (!ptsList || ptsList.length === 0) return -1;
+            if (anchor && anchor.time) {
+              const aTime = new Date(anchor.time).getTime();
+              let bestIdx = -1, minDiff = Infinity;
+              for (let i = 0; i < ptsList.length; i++) {
+                if (ptsList[i].time) {
+                  const diff = Math.abs(new Date(ptsList[i].time).getTime() - aTime);
+                  if (diff < minDiff) { minDiff = diff; bestIdx = i; }
+                }
+              }
+              if (bestIdx !== -1 && minDiff < 2000) return bestIdx;
+            }
+            return -1;
+          }
+
+          let replayed = [];
+          for (const seg of segRows) {
+            const pts = JSON.parse(seg.points_json || '[]');
+            if (!pts || pts.length === 0) continue;
+            if (seg.source === 'original' || seg.source === 'user-append') {
+              replayed.push(...pts);
+            } else if (seg.source === 'user-prepend') {
+              replayed.unshift(...pts);
+            } else if (seg.source === 'user-override' || seg.source === 'user-insert') {
+              const idxA = resolveAnchorIdx(pts[0], replayed);
+              const idxB = resolveAnchorIdx(pts[pts.length - 1], replayed);
+              if (idxA !== -1 && idxB !== -1) {
+                replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1, ...pts);
+              }
+            } else if (seg.source === 'user-delete') {
+              const idxA = resolveAnchorIdx(pts[0], replayed);
+              const idxB = resolveAnchorIdx(pts[1] || pts[pts.length - 1], replayed);
+              if (idxA !== -1 && idxB !== -1) {
+                replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1);
+              }
+            }
+          }
+
+          if (replayed.length > 0) {
+            const modeMap = {
+              walking: { nombre: 'Caminar', icono: 'walk', tipo: 'walking' },
+              driving: { nombre: 'Coche', icono: 'car', tipo: 'driving' },
+              bus: { nombre: 'Autobús', icono: 'bus', tipo: 'bus' },
+              train: { nombre: 'Tren', icono: 'train', tipo: 'train' },
+              plane: { nombre: 'Avión', icono: 'plane', tipo: 'plane' },
+              boat: { nombre: 'Barco', icono: 'ship', tipo: 'boat' },
+              cycling: { nombre: 'Bicicleta', icono: 'bike', tipo: 'cycling' },
+              running: { nombre: 'Correr', icono: 'run', tipo: 'running' }
+            };
+
+            const dynDesglose = [];
+            let curMode = replayed[0]?.mode || 'walking';
+            let curDist = 0;
+            let curSecs = 0;
+
+            for (let i = 1; i < replayed.length; i++) {
+              const d = calcDistM(replayed[i - 1].lat, replayed[i - 1].lng, replayed[i].lat, replayed[i].lng);
+              const pMode = replayed[i].mode || curMode;
+              if (pMode !== curMode) {
+                const info = modeMap[curMode] || { nombre: curMode, icono: 'route', tipo: curMode };
+                dynDesglose.push({
+                  nombre: info.nombre,
+                  tipo: info.tipo,
+                  icono: info.icono,
+                  distanciaMetros: Math.round(curDist),
+                  distanciaKm: parseFloat((curDist / 1000).toFixed(2)),
+                  duracionSegundos: Math.round(curSecs),
+                  duracionFormateada: new Date(curSecs * 1000).toISOString().substr(11, 8)
+                });
+                curMode = pMode;
+                curDist = 0;
+                curSecs = 0;
+              }
+              curDist += d;
+              if (replayed[i - 1].time && replayed[i].time) {
+                curSecs += Math.max(0, (new Date(replayed[i].time).getTime() - new Date(replayed[i - 1].time).getTime()) / 1000);
+              }
+            }
+
+            if (curDist > 0 || dynDesglose.length === 0) {
+              const info = modeMap[curMode] || { nombre: curMode, icono: 'route', tipo: curMode };
+              dynDesglose.push({
+                nombre: info.nombre,
+                tipo: info.tipo,
+                icono: info.icono,
+                distanciaMetros: Math.round(curDist),
+                distanciaKm: parseFloat((curDist / 1000).toFixed(2)),
+                duracionSegundos: Math.round(curSecs),
+                duracionFormateada: new Date(curSecs * 1000).toISOString().substr(11, 8)
+              });
+            }
+
+            if (dynDesglose.length > 0) {
+              estadisticas.desgloseTransporte = dynDesglose;
+              const maxSeg = dynDesglose.reduce((max, s) => s.distanciaMetros > (max?.distanciaMetros || 0) ? s : max, null);
+              if (maxSeg) {
+                estadisticas.transportePrincipal = { id: maxSeg.tipo, nombre: maxSeg.nombre };
+                estadisticas.tracking.perfilTransporte = maxSeg.tipo;
+              }
+              estadisticas.tracking.puntosGPS = replayed.length;
+            }
+          }
+        }
+      } catch (segCalcErr) {
+        console.warn('⚠️ Error calculando desglose dinámico de segmentos:', segCalcErr.message);
+      }
+
       // 4. Normalizar Desglose (Evitar NaN en frontend y preservar tipos de transporte)
       if (estadisticas.desgloseTransporte && Array.isArray(estadisticas.desgloseTransporte)) {
         estadisticas.desgloseTransporte = estadisticas.desgloseTransporte.map(seg => ({
@@ -8691,6 +8812,14 @@ app.post('/api/actividades/:id/segments', (req, res) => {
         return res.status(500).json({ error: 'Error guardando segment' });
       }
       console.log(`✅ Segment creado: id=${this.lastID}, actividad=${actividadId}, order=${nextOrder}, source=${segSource}, puntos=${points.length}`);
+
+      // Actualizar perfilTransporte dominante en la actividad
+      const specificPt = points.find(p => p.mode && !['walking', 'walk', 'andando', 'caminar', 'pie', 'transport'].includes(p.mode.toLowerCase()));
+      const dominantMode = specificPt?.mode || points[0]?.mode;
+      if (dominantMode) {
+        db.run('UPDATE actividades SET perfilTransporte = ? WHERE id = ?', [dominantMode, actividadId]);
+      }
+
       res.json({ id: this.lastID, segmentOrder: nextOrder, message: 'Segment creado correctamente' });
     });
   });
@@ -8742,6 +8871,9 @@ app.post('/api/actividades/:id/restaurar-ruta-original', async (req, res) => {
       [actividadId]
     );
 
+    const origMode = (originalPoints && originalPoints[0]?.mode) || 'walking';
+    await dbQuery.run('UPDATE actividades SET perfilTransporte = ? WHERE id = ?', [origMode, actividadId]);
+
     console.log(`🧹 [RESTAURAR ORIGINAL] Actividad ${actividadId}: Eliminados ${delSegResult.changes} segmentos manuales y ${delEditsResult.changes} track_edits.`);
 
     res.json({
@@ -8784,6 +8916,9 @@ app.post('/api/actividades/:id/guardar-ruta-generada', async (req, res) => {
       `INSERT INTO segments (actividadId, source, segmentOrder, points_json) VALUES (?, 'original', 0, ?)`,
       [actividadId, points_json]
     );
+
+    const dominantMode = points.find(p => p.mode && !['walking', 'walk', 'andando', 'caminar', 'pie', 'transport'].includes(p.mode.toLowerCase()))?.mode || points[0]?.mode || 'walking';
+    await dbQuery.run('UPDATE actividades SET perfilTransporte = ? WHERE id = ?', [dominantMode, actividadId]);
 
     // 3. Escribir/sincronizar el archivo GPX físico en disco
     let relGpxPath = actRow.rutaGpxCompleto || `${actRow.viajePrevistoId}/${actRow.id}/gpx/recorrido.gpx`;

@@ -406,8 +406,10 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
         }
       }
 
+      const hasSpecificModes = puntos.some(p => p.mode && !['walking', 'walk', 'andando', 'caminar', 'pie', 'transport'].includes(p.mode.toLowerCase()));
+
       const desglose = estadisticas?.desgloseTransporte;
-      if (desglose && Array.isArray(desglose) && desglose.length > 0) {
+      if (!hasXmlTransportModes && desglose && Array.isArray(desglose) && desglose.length > 0) {
         const parsedPoints = this.gpxAnimationService.parseGpx(gpxText);
         if (parsedPoints && parsedPoints.length > 0) {
           const mappedPoints = this.gpxAnimationService.applyTransportSegments(parsedPoints, desglose);
@@ -419,7 +421,7 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
             actividadId: actividad.id
           }));
         }
-      } else if (!hasXmlTransportModes && puntos.length > 0) {
+      } else if (!hasXmlTransportModes && !hasSpecificModes && puntos.length > 0) {
         const perfil = (estadisticas?.tracking?.perfilTransporte || actividad?.perfilTransporte || actividad?.nombre || '').toLowerCase();
         let modeNorm = 'walking';
         if (perfil.includes('coche') || perfil.includes('car') || perfil.includes('auto') || perfil.includes('moto') || perfil.includes('taxi')) {
@@ -428,8 +430,12 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
           modeNorm = 'boat';
         } else if (perfil.includes('bici') || perfil.includes('cycl') || perfil.includes('bicycle')) {
           modeNorm = 'cycling';
-        } else if (perfil.includes('bus') || perfil.includes('autobus') || perfil.includes('tren') || perfil.includes('metro')) {
+        } else if (perfil.includes('bus') || perfil.includes('autobus') || perfil.includes('autocar')) {
           modeNorm = 'bus';
+        } else if (perfil.includes('tren') || perfil.includes('train') || perfil.includes('metro') || perfil.includes('ferrocarril')) {
+          modeNorm = 'train';
+        } else if (perfil.includes('avion') || perfil.includes('plane') || perfil.includes('vuelo') || perfil.includes('flight')) {
+          modeNorm = 'plane';
         } else if (perfil.includes('run') || perfil.includes('corr')) {
           modeNorm = 'running';
         }
@@ -513,11 +519,13 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!this.mapaGPX || !this.polylinesLayerGroup || this.puntosGPXConModo.length === 0) return;
 
     const modeColors: { [key: string]: string } = {
-      walking: '#059669', walk: '#059669', caminar: '#059669', andando: '#059669',
+      walking: '#059669', walk: '#059669', caminar: '#059669', andando: '#059669', pie: '#059669', hiking: '#059669',
       driving: '#DC2626', car: '#DC2626', coche: '#DC2626', auto: '#DC2626', vehiculo: '#DC2626', moto: '#DC2626', taxi: '#DC2626',
       cycling: '#FF9800', bici: '#FF9800', bicycle: '#FF9800', bicicleta: '#FF9800',
       running: '#2196F3', correr: '#2196F3',
-      bus: '#9C27B0', autobus: '#9C27B0', autocar: '#9C27B0', tren: '#9C27B0', metro: '#9C27B0',
+      bus: '#9C27B0', autobus: '#9C27B0', autocar: '#9C27B0',
+      train: '#D97706', tren: '#D97706', metro: '#D97706', ferrocarril: '#D97706',
+      plane: '#7C3AED', avion: '#7C3AED', vuelo: '#7C3AED', flight: '#7C3AED',
       boat: '#0284C7', barco: '#0284C7', ship: '#0284C7', ferry: '#0284C7', crucero: '#0284C7', kayak: '#0284C7', canoa: '#0284C7',
       transport: '#9E9E9E'
     };
@@ -528,7 +536,9 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
       if (m.includes('car') || m.includes('coch') || m.includes('driv') || m.includes('auto') || m.includes('vehic') || m.includes('moto') || m.includes('taxi')) return modeColors['driving'];
       if (m.includes('bic') || m.includes('cycl')) return modeColors['cycling'];
       if (m.includes('run') || m.includes('corr')) return modeColors['running'];
-      if (m.includes('bus') || m.includes('autobus') || m.includes('tren') || m.includes('metro') || m.includes('train')) return modeColors['bus'];
+      if (m.includes('bus') || m.includes('autobus') || m.includes('autocar')) return modeColors['bus'];
+      if (m.includes('tren') || m.includes('train') || m.includes('metro') || m.includes('ferrocarril')) return modeColors['train'];
+      if (m.includes('avion') || m.includes('plane') || m.includes('vuelo') || m.includes('flight')) return modeColors['plane'];
       if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero') || m.includes('kayak') || m.includes('canoa')) return modeColors['boat'];
       return modeColors['transport'];
     };

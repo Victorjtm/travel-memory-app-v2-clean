@@ -640,16 +640,17 @@ export class ActividadesItinerariosComponent implements OnInit {
       console.log(`✅ GPX parseado. ${this.coordenadasGPX.length} puntos extraídos (${this.puntosGPXConModo.length} con modo de transporte, etiquetas XML: ${hasXmlTransportModes}).`);
 
       // ✨ DESGLOSE Y FALLBACK POR TRANSPORTE:
-      // Verificar si los puntos GPX traen variedad de modos o si todos tienen el mismo modo
+      // Si el GPX XML ya contiene etiquetas explícitas de modo de transporte (de ediciones o importación rica),
+      // respetamos estrictamente los modos punto por punto del GPX.
       const uniqueModesInPoints = new Set(this.puntosGPXConModo.map(p => (p.mode || '').toLowerCase()));
-      const hasMultipleModesInXml = uniqueModesInPoints.size > 1;
-      const isAllWalking = this.puntosGPXConModo.length > 0 && this.puntosGPXConModo.every(p => !p.mode || ['walking', 'walk', 'andando', 'caminar', 'pie'].includes((p.mode || '').toLowerCase()));
+      const hasSpecificModesInXml = this.puntosGPXConModo.some(p => p.mode && !['walking', 'walk', 'andando', 'caminar', 'pie', 'transport'].includes(p.mode.toLowerCase()));
+      const isAllWalking = this.puntosGPXConModo.length > 0 && !hasSpecificModesInXml;
 
       const desglose = this.estadisticasGPX?.desgloseTransporte;
       const transportePrincipal = this.estadisticasGPX?.transportePrincipal;
 
-      // Si hay un desglose de transporte con segmentos (ej. Coche + Caminar), aplicar la división por distancias:
-      if (desglose && Array.isArray(desglose) && desglose.length > 0) {
+      // Solo si el XML NO trae modos específicos aplicamos el desglose por distancias:
+      if (!hasXmlTransportModes && desglose && Array.isArray(desglose) && desglose.length > 0) {
         console.log('🔄 [Desglose Transporte] Aplicando segmentos de transporte en mapa:', desglose.length, 'segmentos');
         const parsedPoints = this.gpxAnimationService.parseGpx(gpxText);
         if (parsedPoints && parsedPoints.length > 0) {
@@ -661,7 +662,7 @@ export class ActividadesItinerariosComponent implements OnInit {
             isGap: p.isGap
           }));
         }
-      } else if ((!hasXmlTransportModes || isAllWalking) && this.puntosGPXConModo.length > 0) {
+      } else if (!hasXmlTransportModes && isAllWalking && this.puntosGPXConModo.length > 0) {
         const actSel = this.actividades?.find((a: any) => a.id === this.actividadSeleccionada);
         const tpNombre = typeof transportePrincipal === 'string'
           ? transportePrincipal
@@ -675,8 +676,12 @@ export class ActividadesItinerariosComponent implements OnInit {
             modeNorm = 'boat';
           } else if (modeNorm.includes('bici') || modeNorm.includes('cycl') || modeNorm.includes('bicycle')) {
             modeNorm = 'cycling';
-          } else if (modeNorm.includes('bus') || modeNorm.includes('autobus') || modeNorm.includes('autocar') || modeNorm.includes('tren') || modeNorm.includes('metro') || modeNorm.includes('train')) {
+          } else if (modeNorm.includes('bus') || modeNorm.includes('autobus') || modeNorm.includes('autocar')) {
             modeNorm = 'bus';
+          } else if (modeNorm.includes('tren') || modeNorm.includes('train') || modeNorm.includes('metro') || modeNorm.includes('ferrocarril')) {
+            modeNorm = 'train';
+          } else if (modeNorm.includes('avion') || modeNorm.includes('plane') || modeNorm.includes('vuelo') || modeNorm.includes('flight')) {
+            modeNorm = 'plane';
           } else if (modeNorm.includes('run') || modeNorm.includes('corr')) {
             modeNorm = 'running';
           }
@@ -688,7 +693,6 @@ export class ActividadesItinerariosComponent implements OnInit {
         }
       }
 
-
       // Extraer Waypoints (Punto de Giro / Save Point)
       const wpts = gpxDoc.getElementsByTagName('wpt');
       this.turningPoint = null;
@@ -699,20 +703,20 @@ export class ActividadesItinerariosComponent implements OnInit {
           const lat = parseFloat(wpts[i].getAttribute('lat') || '0');
           const lon = parseFloat(wpts[i].getAttribute('lon') || '0');
           this.turningPoint = { lat, lon, name };
-          console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ Punto de giro detectado en GPX:', this.turningPoint);
+          console.log('📍 Punto de giro detectado en GPX:', this.turningPoint);
           break;
         }
       }
     } catch (e) {
-      console.error('ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ExcepciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n atrapada en parseGPX:', e);
+      console.error('❌ Excepción atrapada en parseGPX:', e);
       this.coordenadasGPX = [];
     }
   }
 
-  // Inicializar mapa Leaflet con satÃƒÆ’Ã‚Â©lite y fotos
+  // Inicializar mapa Leaflet con satélite y fotos
   inicializarMapaGPX(): void {
     if (this.coordenadasGPX.length === 0) {
-      console.warn('ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â No hay coordenadas para mostrar');
+      console.warn('⚠️ No hay coordenadas para mostrar');
       return;
     }
 
@@ -725,7 +729,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
       const container = document.getElementById('mapa-gpx-container');
       if (!container) {
-        console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ Contenedor del mapa no encontrado');
+        console.error('❌ Contenedor del mapa no encontrado');
         return;
       }
       container.innerHTML = '';
@@ -737,21 +741,21 @@ export class ActividadesItinerariosComponent implements OnInit {
           preferCanvas: true
         }).setView([this.coordenadasGPX[0][0], this.coordenadasGPX[0][1]], 13);
 
-        // --- CAPAS BASE (SATÃƒâ€°LITE Y MAPA) ---
+        // --- CAPAS BASE (SATÉLITE Y MAPA) ---
         const satellite = L.tileLayer(
           'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-          { attribution: 'Tiles &copy; Esri', maxZoom: 18 }
+          { attribution: 'Tiles © Esri', maxZoom: 18 }
         );
         const streets = L.tileLayer(
           'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          { attribution: '&copy; OpenStreetMap', maxZoom: 19 }
+          { attribution: '© OpenStreetMap', maxZoom: 19 }
         );
 
         satellite.addTo(this.mapaGPX); // Capa por defecto
 
         // Control de capas
         const layersControl = L.control.layers(
-          { 'SatÃƒÂ©lite': satellite, 'Mapa': streets },
+          { 'Satélite': satellite, 'Mapa': streets },
           {},
           { position: 'topleft' }
         ).addTo(this.mapaGPX);
@@ -774,7 +778,7 @@ export class ActividadesItinerariosComponent implements OnInit {
           iconSize: [14, 14],
           iconAnchor: [7, 7]
         });
-        L.marker(this.coordenadasGPX[0], { icon: inicioIcon }).bindPopup('ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â Inicio').addTo(this.mapaGPX);
+        L.marker(this.coordenadasGPX[0] as [number, number], { icon: inicioIcon }).bindPopup('📍 Inicio').addTo(this.mapaGPX);
 
         // Marcador de FIN (rojo)
         const finIcon = L.divIcon({
@@ -783,18 +787,18 @@ export class ActividadesItinerariosComponent implements OnInit {
           iconSize: [14, 14],
           iconAnchor: [7, 7]
         });
-        L.marker(this.coordenadasGPX[this.coordenadasGPX.length - 1], { icon: finIcon }).bindPopup('ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â Fin').addTo(this.mapaGPX);
+        L.marker(this.coordenadasGPX[this.coordenadasGPX.length - 1] as [number, number], { icon: finIcon }).bindPopup('📍 Fin').addTo(this.mapaGPX);
 
-        // Marcadores de fotos/vÃƒÆ’Ã‚Â­deos (Popups enriquecidos desde Phase 2.6)
+        // Marcadores de fotos/vídeos (Popups enriquecidos desde Phase 2.6)
         this.cargarYAnadirFotos();
 
-        const bounds = L.latLngBounds(this.coordenadasGPX);
+        const bounds = L.latLngBounds(this.coordenadasGPX as any);
         this.mapaGPX.fitBounds(bounds, { padding: [50, 50] });
 
         setTimeout(() => { if (this.mapaGPX) this.mapaGPX.invalidateSize(); }, 120);
 
       } catch (error) {
-        console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ Error inicializando Leaflet:', error);
+        console.error('❌ Error inicializando Leaflet:', error);
       }
     });
   }
@@ -814,11 +818,13 @@ export class ActividadesItinerariosComponent implements OnInit {
     }
 
     const modeColors: { [key: string]: string } = {
-      walking: '#059669', walk: '#059669', caminar: '#059669', andando: '#059669',
+      walking: '#059669', walk: '#059669', caminar: '#059669', andando: '#059669', pie: '#059669', hiking: '#059669',
       driving: '#DC2626', car: '#DC2626', coche: '#DC2626', auto: '#DC2626', vehiculo: '#DC2626', moto: '#DC2626', taxi: '#DC2626',
       cycling: '#FF9800', bici: '#FF9800', bicycle: '#FF9800', bicicleta: '#FF9800',
       running: '#2196F3', correr: '#2196F3',
-      bus: '#9C27B0', autobus: '#9C27B0', autocar: '#9C27B0', tren: '#9C27B0', metro: '#9C27B0',
+      bus: '#9C27B0', autobus: '#9C27B0', autocar: '#9C27B0',
+      train: '#D97706', tren: '#D97706', metro: '#D97706', ferrocarril: '#D97706',
+      plane: '#7C3AED', avion: '#7C3AED', vuelo: '#7C3AED', flight: '#7C3AED',
       boat: '#0284C7', barco: '#0284C7', ship: '#0284C7', ferry: '#0284C7', crucero: '#0284C7', kayak: '#0284C7', canoa: '#0284C7',
       transport: '#9E9E9E'
     };
@@ -829,7 +835,9 @@ export class ActividadesItinerariosComponent implements OnInit {
       if (m.includes('car') || m.includes('coch') || m.includes('driv') || m.includes('auto') || m.includes('vehic') || m.includes('moto') || m.includes('taxi')) return modeColors['driving'];
       if (m.includes('bic') || m.includes('cycl')) return modeColors['cycling'];
       if (m.includes('run') || m.includes('corr')) return modeColors['running'];
-      if (m.includes('bus') || m.includes('autobus') || m.includes('tren') || m.includes('metro') || m.includes('train')) return modeColors['bus'];
+      if (m.includes('bus') || m.includes('autobus') || m.includes('autocar')) return modeColors['bus'];
+      if (m.includes('tren') || m.includes('train') || m.includes('metro') || m.includes('ferrocarril')) return modeColors['train'];
+      if (m.includes('avion') || m.includes('plane') || m.includes('vuelo') || m.includes('flight')) return modeColors['plane'];
       if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero') || m.includes('kayak') || m.includes('canoa')) return modeColors['boat'];
       return modeColors['transport'];
     };

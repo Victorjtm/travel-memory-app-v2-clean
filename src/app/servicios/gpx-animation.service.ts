@@ -258,22 +258,16 @@ export class GpxAnimationService {
       }
     }
 
-    // ✨ Preservar modos específicos ya existentes (como boat, walking, driving asignados por replaySegments)
-    const hasSpecificModes = points.some(p => p.mode && p.mode !== 'walking');
+    // ✨ Preservar modos específicos ya existentes (como boat, walking, bus, train, driving asignados por replaySegments o etiquetas GPX)
+    const hasSpecificModes = points.some(p => p.mode && p.mode !== 'walking' && p.mode !== 'transport');
 
-    if (!segments || segments.length === 0) {
-      if (!hasSpecificModes) {
+    if (!segments || segments.length === 0 || hasSpecificModes) {
+      if (!hasSpecificModes && (!segments || segments.length === 0)) {
         console.warn('⚠️ No hay segmentos de transporte definidos. Usando modo por defecto: walking');
         points.forEach(p => p.mode = 'walking');
+      } else if (hasSpecificModes) {
+        console.log('✨ Preservando modos de transporte específicos existentes en los puntos GPX');
       }
-      return points;
-    }
-
-    // Si solo hay 1 segmento o acumulado = 0, y los puntos ya tienen modos específicos, respetarlos
-    let totalDist = 0;
-    segments.forEach(s => totalDist += (s.distanciaMetros || s.distance || 0));
-    if (hasSpecificModes && (segments.length <= 1 || totalDist === 0)) {
-      console.log('✨ Preservando modos de transporte específicos existentes en los puntos');
       return points;
     }
 
@@ -298,17 +292,21 @@ export class GpxAnimationService {
       let rawMode = (seg.tipo || seg.profileName || seg.nombre || seg.mode || 'walking').toLowerCase();
       const fullSegText = `${seg.nombre || ''} ${seg.profileName || ''} ${seg.tipo || ''} ${seg.mode || ''}`.toLowerCase();
 
-      if (fullSegText.includes('coche') || fullSegText.includes('driving') || fullSegText.includes('car') || fullSegText.includes('auto')) {
+      if (fullSegText.includes('coche') || fullSegText.includes('driving') || fullSegText.includes('car') || fullSegText.includes('auto') || fullSegText.includes('taxi')) {
         rawMode = 'driving';
       } else if (fullSegText.includes('boat') || fullSegText.includes('barco') || fullSegText.includes('ship') || fullSegText.includes('ferry') || fullSegText.includes('crucero')) {
         rawMode = 'boat';
       } else if (fullSegText.includes('bici') || fullSegText.includes('cycling') || fullSegText.includes('bicycle')) {
         rawMode = 'cycling';
-      } else if (fullSegText.includes('bus') || fullSegText.includes('autobus')) {
+      } else if (fullSegText.includes('bus') || fullSegText.includes('autobus') || fullSegText.includes('autocar')) {
         rawMode = 'bus';
+      } else if (fullSegText.includes('tren') || fullSegText.includes('train') || fullSegText.includes('metro') || fullSegText.includes('ferrocarril')) {
+        rawMode = 'train';
+      } else if (fullSegText.includes('avion') || fullSegText.includes('plane') || fullSegText.includes('vuelo') || fullSegText.includes('flight')) {
+        rawMode = 'plane';
       } else if (fullSegText.includes('run') || fullSegText.includes('correr')) {
         rawMode = 'running';
-      } else if (fullSegText.includes('andando') || fullSegText.includes('walking') || fullSegText.includes('caminar')) {
+      } else if (fullSegText.includes('andando') || fullSegText.includes('walking') || fullSegText.includes('caminar') || fullSegText.includes('pie')) {
         rawMode = 'walking';
       }
 

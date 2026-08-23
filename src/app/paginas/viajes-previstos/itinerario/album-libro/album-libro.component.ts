@@ -1594,8 +1594,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     if (norm.includes('bici') || norm.includes('cycling') || norm.includes('bicycle')) {
       return 'cycling';
     }
-    if (norm.includes('bus') || norm.includes('autobus')) {
+    if (norm.includes('bus') || norm.includes('autobus') || norm.includes('autocar')) {
       return 'bus';
+    }
+    if (norm.includes('tren') || norm.includes('train') || norm.includes('metro') || norm.includes('ferrocarril')) {
+      return 'train';
+    }
+    if (norm.includes('avion') || norm.includes('plane') || norm.includes('flight') || norm.includes('vuelo')) {
+      return 'plane';
     }
     if (norm.includes('run') || norm.includes('correr')) {
       return 'running';
@@ -1639,7 +1645,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             const { desglose, transportePrincipal, visualSessionData } = await this.obtenerInformacionTransporteActividad(actId);
             const modoBaseNorm = this.normalizarModoTransporte(transportePrincipal);
 
-            if (desglose && Array.isArray(desglose) && desglose.length > 0) {
+            const hasSpecificModes = points.some(p => p.mode && !['walking', 'walk', 'andando', 'caminar', 'pie', 'transport'].includes(p.mode.toLowerCase()));
+
+            if (!hasSpecificModes && desglose && Array.isArray(desglose) && desglose.length > 0) {
               points = this.gpxAnimationService.applyTransportSegments(points, desglose);
             } else {
               points.forEach(p => {
