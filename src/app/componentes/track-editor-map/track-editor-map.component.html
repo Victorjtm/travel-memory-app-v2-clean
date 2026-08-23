@@ -205,9 +205,19 @@
             <span class="name">{{ veh.name }}</span>
           </label>
         </div>
-        <button class="btn-primary" (click)="onOverrideMode()">
-          ✏️ Aplicar Cambio
-        </button>
+        <div style="display: flex; gap: 8px; margin-top: 8px;">
+          <button class="btn-secondary" style="flex: 1; padding: 10px; font-size: 13px;" (click)="onOverrideMode()" [disabled]="calculandoRutaReal" title="Cambiar solo el modo de transporte sobre la geometría actual">
+            ✏️ Solo Modo
+          </button>
+          <button class="btn-primary" style="flex: 1.4; padding: 10px; font-size: 13px; background: #059669; border-color: #059669; box-shadow: 0 4px 6px -1px rgba(5,150,105,0.3);" (click)="onRecalculateRealRoute()" [disabled]="calculandoRutaReal" title="Calcular la ruta real por carretera, mar o aire manteniendo las horas de salida y llegada">
+            <i class="fa fa-spinner fa-spin" *ngIf="calculandoRutaReal"></i>
+            <span *ngIf="!calculandoRutaReal">🛣️ Trazado Real</span>
+            <span *ngIf="calculandoRutaReal"> Calculando...</span>
+          </button>
+        </div>
+        <p style="font-size: 11px; color: #64748b; margin-top: 6px; margin-bottom: 0;">
+          <i class="fa-solid fa-circle-info"></i> <strong>Trazado Real:</strong> calcula la ruta real de navegación o carretera entre A y B respetando los tiempos de salida y llegada.
+        </p>
       </div>
 
       <hr>

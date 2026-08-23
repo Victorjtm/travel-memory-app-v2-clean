@@ -72,6 +72,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   generandoProbable: boolean = false;
   guardandoProbable: boolean = false;
   progresoGeneracionProbable: string = '';
+  calculandoRutaReal: boolean = false;
 
   // In-memory edits tracking
   pendingEdits: any[] = [];
@@ -255,6 +256,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // 2. Aplicar Edits EN MEMORIA para marcar el estado visual
     const deletes = this.pendingEdits.filter(e => e.type === 'delete_segment');
     const overrides = this.pendingEdits.filter(e => e.type === 'override_mode');
+    const recalculates = this.pendingEdits.filter(e => e.type === 'recalculate_route');
 
     const applyEditToVisuals = (edit: any) => {
       const startIdx = this.trackEditorService.resolveAnchor(edit.data.startAnchor, this.gpxPoints);
@@ -274,6 +276,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
              }
           } else if (edit.type === 'override_mode' && edit.data.newMode) {
              visualPoints[i].visualMode = edit.data.newMode;
+          } else if (edit.type === 'recalculate_route') {
+             visualPoints[i].isHidden = true; // La geometría anterior se oculta para dar paso a la nueva
           }
         }
       }
@@ -281,6 +285,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     deletes.forEach(applyEditToVisuals);
     overrides.forEach(applyEditToVisuals);
+    recalculates.forEach(applyEditToVisuals);
 
     // Aplicar asignaciones de tiempo pendientes en memoria sobre gpxPoints
     const timeOverrides = this.pendingEdits.filter(e => e.type === 'assign_timestamps');
@@ -400,6 +405,41 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       const lastP = points[points.length - 1];
       finalLat = lastP.lat;
       finalLng = lastP.lng;
+    });
+
+    // 4.b. Dibujar Rutas Reales Recalculadas (recalculate_route)
+    const recalculatedRoutes = this.pendingEdits.filter(e => e.type === 'recalculate_route');
+    recalculatedRoutes.forEach((recEdit) => {
+      const isPreviewing = this.previewingEditId === recEdit.id;
+      const points = recEdit.data.points;
+      if (!points || points.length === 0) return;
+
+      const latlngs = points.map((p: any) => [p.lat, p.lng] as L.LatLngExpression);
+      const mode = recEdit.data.mode || points[0].mode || 'driving';
+      const color = this.getModeColor(mode);
+      const weight = 5;
+      const opacity = 1;
+      const className = isPreviewing ? 'preview-blink' : '';
+
+      // Sombra blanca inferior
+      L.polyline(latlngs, {
+        color: '#FFFFFF',
+        weight: weight + 3,
+        opacity: 0.7,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(this.polylinesGroup!);
+
+      L.polyline(latlngs, {
+        color,
+        weight,
+        opacity,
+        className,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(this.polylinesGroup!);
+
+      this.addDirectionArrows(L, latlngs, color, opacity);
     });
 
     // Marcador de INICIO (verde)
@@ -862,11 +902,12 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     if (!this.anchorA || !this.anchorB) return;
 
     const editId = Math.random().toString(36).substring(2, 9);
+    const modeName = this.vehicleModes.find(v => v.id === this.selectedMode)?.name || this.selectedMode;
 
     this.pendingEdits.push({
       id: editId,
       type: 'override_mode',
-      description: `${this.pendingEdits.length + 1} - Cambio a ${this.selectedMode}`,
+      description: `${this.pendingEdits.length + 1} - Cambio a ${modeName}`,
       data: {
         startAnchor: this.anchorA,
         endAnchor: this.anchorB,
@@ -876,6 +917,143 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     this.clearSelection();
     this.drawBaseAndEdits();
+  }
+
+  async onRecalculateRealRoute(): Promise<void> {
+    if (!this.anchorA || !this.anchorB || !this.gpxPoints || this.gpxPoints.length === 0) return;
+
+    let startIdx = this.trackEditorService.resolveAnchor(this.anchorA, this.gpxPoints);
+    let endIdx = this.trackEditorService.resolveAnchor(this.anchorB, this.gpxPoints);
+
+    if (startIdx === -1 && this.anchorA.index !== undefined && this.anchorA.index >= 0 && this.anchorA.index < this.gpxPoints.length) {
+      startIdx = this.anchorA.index;
+    }
+    if (endIdx === -1 && this.anchorB.index !== undefined && this.anchorB.index >= 0 && this.anchorB.index < this.gpxPoints.length) {
+      endIdx = this.anchorB.index;
+    }
+
+    if (startIdx === -1 || endIdx === -1) {
+      console.warn('⚠️ [TrackEditor] No se pudieron resolver los puntos ancla seleccionados:', this.anchorA, this.anchorB);
+      alert('No se pudieron resolver los puntos seleccionados en el recorrido.');
+      return;
+    }
+
+    const min = Math.min(startIdx, endIdx);
+    const max = Math.max(startIdx, endIdx);
+
+    const ptStart = this.gpxPoints[min];
+    const ptEnd = this.gpxPoints[max];
+
+    // Extraer marcas de tiempo originales del tramo
+    const timeA = ptStart.time ? (ptStart.time instanceof Date ? ptStart.time.getTime() : new Date(ptStart.time).getTime()) : (this.anchorA.time ? new Date(this.anchorA.time).getTime() : null);
+    const timeB = ptEnd.time ? (ptEnd.time instanceof Date ? ptEnd.time.getTime() : new Date(ptEnd.time).getTime()) : (this.anchorB.time ? new Date(this.anchorB.time).getTime() : null);
+
+    this.calculandoRutaReal = true;
+    this.cdr.detectChanges();
+
+    try {
+      console.log(`🛣️ [TrackEditor] Calculando ruta real (${this.selectedMode}) entre [${ptStart.lat}, ${ptStart.lng}] y [${ptEnd.lat}, ${ptEnd.lng}]`);
+
+      const routeResult = await this.routingService.getRoute(
+        ptStart.lat, ptStart.lng,
+        ptEnd.lat, ptEnd.lng,
+        this.selectedMode
+      );
+
+      if (!routeResult || !routeResult.points || routeResult.points.length < 2) {
+        throw new Error('No se pudo obtener un trazado válido para el modo seleccionado.');
+      }
+
+      console.log(`✅ [TrackEditor] Ruta real obtenida: ${routeResult.points.length} puntos, ${(routeResult.distanceMeters / 1000).toFixed(2)} km`);
+
+      // Calcular distancias acumuladas a lo largo de la ruta calculada
+      const distAcum: number[] = [0];
+      let totalDist = 0;
+      for (let i = 1; i < routeResult.points.length; i++) {
+        const p1 = routeResult.points[i - 1];
+        const p2 = routeResult.points[i];
+        const d = this.trackEditorService.getDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+        totalDist += d;
+        distAcum.push(totalDist);
+      }
+
+      // Interpolar marcas de tiempo manteniendo exactamente las horas de salida (timeA) y llegada (timeB)
+      const newPointsWithTimes: GpxPoint[] = routeResult.points.map((p, idx) => {
+        const fraction = totalDist > 0 ? (distAcum[idx] / totalDist) : (idx / (routeResult.points.length - 1));
+        let pTime: Date | undefined = undefined;
+
+        if (timeA !== null && timeB !== null && timeB >= timeA && !isNaN(timeA) && !isNaN(timeB)) {
+          const interpolatedMs = Math.round(timeA + fraction * (timeB - timeA));
+          pTime = new Date(interpolatedMs);
+        } else if (timeA !== null && !isNaN(timeA)) {
+          let speedKmh = 50;
+          if (this.selectedMode === 'walking') speedKmh = 5;
+          else if (this.selectedMode === 'cycling') speedKmh = 18;
+          else if (this.selectedMode === 'boat') speedKmh = 25;
+          else if (this.selectedMode === 'plane') speedKmh = 700;
+          else if (this.selectedMode === 'train') speedKmh = 100;
+          else speedKmh = 70; // driving / bus
+
+          const speedMs = speedKmh / 3.6;
+          const elapsedSec = distAcum[idx] / speedMs;
+          pTime = new Date(timeA + Math.round(elapsedSec * 1000));
+        }
+
+        return {
+          lat: p.lat,
+          lng: p.lng,
+          time: pTime,
+          distAcum: distAcum[idx] || 0,
+          timeAcum: pTime && timeA ? Math.max(0, Math.round((pTime.getTime() - timeA) / 1000)) : 0,
+          mode: this.selectedMode,
+          hfMode: this.selectedMode
+        };
+      });
+
+      // Asegurar coincidencia exacta en los extremos con los puntos seleccionados
+      newPointsWithTimes[0].lat = ptStart.lat;
+      newPointsWithTimes[0].lng = ptStart.lng;
+      if (ptStart.time) newPointsWithTimes[0].time = ptStart.time;
+
+      newPointsWithTimes[newPointsWithTimes.length - 1].lat = ptEnd.lat;
+      newPointsWithTimes[newPointsWithTimes.length - 1].lng = ptEnd.lng;
+      if (ptEnd.time) newPointsWithTimes[newPointsWithTimes.length - 1].time = ptEnd.time;
+
+      const editId = Math.random().toString(36).substring(2, 9);
+      const modeName = this.vehicleModes.find(v => v.id === this.selectedMode)?.name || this.selectedMode;
+
+      this.pendingEdits.push({
+        id: editId,
+        type: 'recalculate_route',
+        description: `${this.pendingEdits.length + 1} - Ruta real ${modeName} (${(totalDist / 1000).toFixed(1)} km)`,
+        data: {
+          startAnchor: {
+            lat: ptStart.lat,
+            lng: ptStart.lng,
+            time: ptStart.time instanceof Date ? ptStart.time.toISOString() : (ptStart.time || undefined),
+            index: min
+          },
+          endAnchor: {
+            lat: ptEnd.lat,
+            lng: ptEnd.lng,
+            time: ptEnd.time instanceof Date ? ptEnd.time.toISOString() : (ptEnd.time || undefined),
+            index: max
+          },
+          mode: this.selectedMode,
+          points: newPointsWithTimes
+        }
+      });
+
+      this.clearSelection();
+      this.drawBaseAndEdits();
+
+    } catch (err: any) {
+      console.error('❌ [TrackEditor] Error calculando ruta real:', err);
+      alert('Error calculando la ruta real: ' + (err.message || err));
+    } finally {
+      this.calculandoRutaReal = false;
+      this.cdr.detectChanges();
+    }
   }
 
   onAssignTimestamps(mode: 'auto' | 'manual'): void {

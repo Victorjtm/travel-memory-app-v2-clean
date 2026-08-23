@@ -2143,6 +2143,19 @@ export class ActividadesItinerariosComponent implements OnInit {
             points,
             'user-override'
           ));
+        } else if (edit.type === 'recalculate_route' && edit.data?.points) {
+          const points = edit.data.points.map((p: any) => ({
+            lat: p.lat,
+            lng: p.lng,
+            time: p.time ? (p.time instanceof Date ? p.time.toISOString() : new Date(p.time).toISOString()) : undefined,
+            mode: edit.data.mode || p.mode
+          }));
+
+          await firstValueFrom(this.trackEditorService.createSegment(
+            this.actividadEditorId,
+            points,
+            'user-override'
+          ));
         }
       }
 
