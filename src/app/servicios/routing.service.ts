@@ -59,28 +59,51 @@ export class RoutingService {
     this._requestInFlight = true;
 
     try {
-      // ── BARCO (searoute-ts) ──────────────────────────────────
+      // ── BARCO (searoute-ts con fallback náutico/directo) ────
       if (profile === 'boat') {
         const origin = [startLng, startLat];
         const destination = [endLng, endLat];
-        
-        // seaRoute devuelve un GeoJSON Feature (LineString)
-        const result = seaRoute(origin, destination);
-        
-        if (!result || !result.geometry || !result.geometry.coordinates || result.geometry.coordinates.length < 2) {
-          throw new Error('No se pudo calcular la ruta marítima.');
+        let points: { lat: number; lng: number }[] = [];
+        let distanceMeters = 0;
+
+        try {
+          // seaRoute devuelve un GeoJSON Feature (LineString) con rutas marítimas oficiales
+          const result = seaRoute(origin, destination);
+          if (result && result.geometry && result.geometry.coordinates && result.geometry.coordinates.length >= 2) {
+            points = result.geometry.coordinates.map((coord: any) => ({
+              lat: coord[1], lng: coord[0]
+            }));
+            distanceMeters = (result.properties?.length || 0) * 1000;
+          }
+        } catch (seaErr) {
+          console.warn('[RoutingService] searoute-ts no encontró ruta en grafo estándar de rutas marítimas. Usando navegación directa:', seaErr);
         }
 
-        const points = result.geometry.coordinates.map((coord: any) => ({
-          lat: coord[1], lng: coord[0]
-        }));
-        
+        // Fallback: Si no hay ruta en el grafo internacional (ej. bahía, lago, costa o trayecto corto), trazar navegación directa
+        if (!points || points.length < 2) {
+          try {
+            const gc = greatCircle(origin, destination);
+            if (gc && gc.geometry && gc.geometry.coordinates && gc.geometry.coordinates.length >= 2) {
+              points = gc.geometry.coordinates.map((coord: any) => ({
+                lat: coord[1], lng: coord[0]
+              }));
+            }
+          } catch (gcErr) {
+            points = [
+              { lat: startLat, lng: startLng },
+              { lat: endLat, lng: endLng }
+            ];
+          }
+          distanceMeters = this.getDistance(startLat, startLng, endLat, endLng);
+        }
+
         // Asegurar que conectan exactamente con los anclajes del usuario
         points[0] = { lat: startLat, lng: startLng };
         points[points.length - 1] = { lat: endLat, lng: endLng };
 
-        // length devuelve longitud en km
-        const distanceMeters = (result.properties?.length || 0) * 1000;
+        if (!distanceMeters || distanceMeters === 0) {
+          distanceMeters = this.getDistance(startLat, startLng, endLat, endLng);
+        }
 
         return {
           points,
