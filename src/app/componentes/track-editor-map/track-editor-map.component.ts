@@ -256,7 +256,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // 2. Aplicar Edits EN MEMORIA para marcar el estado visual
     const deletes = this.pendingEdits.filter(e => e.type === 'delete_segment');
     const overrides = this.pendingEdits.filter(e => e.type === 'override_mode');
-    const recalculates = this.pendingEdits.filter(e => e.type === 'recalculate_route');
+    const recalculates = this.pendingEdits.filter(e => e.type === 'recalculate_route' || e.type === 'insert_segment');
 
     const applyEditToVisuals = (edit: any) => {
       const startIdx = this.trackEditorService.resolveAnchor(edit.data.startAnchor, this.gpxPoints);
@@ -276,7 +276,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
              }
           } else if (edit.type === 'override_mode' && edit.data.newMode) {
              visualPoints[i].visualMode = edit.data.newMode;
-          } else if (edit.type === 'recalculate_route') {
+          } else if (edit.type === 'recalculate_route' || edit.type === 'insert_segment') {
              visualPoints[i].isHidden = true; // La geometría anterior se oculta para dar paso a la nueva
           }
         }
@@ -407,8 +407,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       finalLng = lastP.lng;
     });
 
-    // 4.b. Dibujar Rutas Reales Recalculadas (recalculate_route)
-    const recalculatedRoutes = this.pendingEdits.filter(e => e.type === 'recalculate_route');
+    // 4.b. Dibujar Rutas Reales Recalculadas o Insertadas (recalculate_route / insert_segment)
+    const recalculatedRoutes = this.pendingEdits.filter(e => e.type === 'recalculate_route' || e.type === 'insert_segment');
     recalculatedRoutes.forEach((recEdit) => {
       const isPreviewing = this.previewingEditId === recEdit.id;
       const points = recEdit.data.points;
@@ -1552,7 +1552,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   saveInsert(mode?: string) {
-    if (!this.insertAnchorA || !this.insertAnchorB || this.insertPoints.length === 0) return;
+    if (!this.insertAnchorA || !this.insertAnchorB) return;
+    if (this.editorState === 'DRAWING_INSERT' && this.insertPoints.length === 0) return;
 
     const appliedMode = mode || this.selectedMode;
 
@@ -1566,11 +1567,45 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     fullPointsArray = this.trackEditorService.densifyPoints(fullPointsArray, 300);
 
     if (this.activeFlow === 'APPEND') {
+      // Calcular tiempos hacia adelante si insertAnchorA tiene tiempo
+      if (this.insertAnchorA.time) {
+        const startMs = new Date(this.insertAnchorA.time).getTime();
+        if (!isNaN(startMs)) {
+          const speedMps = this.trackEditorService.getModeSpeedMps(appliedMode);
+          let totalDistMetros = 0;
+          for (let i = 0; i < fullPointsArray.length - 1; i++) {
+            totalDistMetros += this.trackEditorService.getDistance(
+              fullPointsArray[i].lat, fullPointsArray[i].lng,
+              fullPointsArray[i + 1].lat, fullPointsArray[i + 1].lng
+            );
+          }
+          const duracionSeg = Math.max(1, totalDistMetros / speedMps);
+          const endMs = startMs + (duracionSeg * 1000);
+
+          let currentDist = 0;
+          fullPointsArray.forEach((pt, idx) => {
+            if (idx === 0) {
+              pt.time = new Date(startMs);
+            } else if (idx === fullPointsArray.length - 1) {
+              pt.time = new Date(endMs);
+            } else {
+              const d = this.trackEditorService.getDistance(
+                fullPointsArray[idx - 1].lat, fullPointsArray[idx - 1].lng,
+                pt.lat, pt.lng
+              );
+              currentDist += d;
+              const ratio = totalDistMetros > 0 ? currentDist / totalDistMetros : (idx / (fullPointsArray.length - 1));
+              pt.time = new Date(startMs + (endMs - startMs) * ratio);
+            }
+          });
+        }
+      }
+
       const editId = Math.random().toString(36).substring(2, 9);
       this.pendingEdits.push({
         id: editId,
         type: 'append_segment',
-        description: `${this.pendingEdits.length + 1} - Prolongación final`,
+        description: `${this.pendingEdits.length + 1} - Prolongación final (${appliedMode})`,
         data: {
           points: fullPointsArray
         },
@@ -1616,7 +1651,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       this.pendingEdits.push({
         id: editId,
         type: 'prepend_segment',
-        description: `${this.pendingEdits.length + 1} - Prolongación inicio`,
+        description: `${this.pendingEdits.length + 1} - Prolongación inicio (${appliedMode})`,
         data: {
           points: fullPointsArray
         },
@@ -1629,9 +1664,20 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
       this.drawBaseAndEdits();
     } else {
-      this.insertRequest.emit({
-        points: fullPointsArray as any
+      const editId = Math.random().toString(36).substring(2, 9);
+      this.pendingEdits.push({
+        id: editId,
+        type: 'insert_segment',
+        description: `${this.pendingEdits.length + 1} - Inserción tramo (${appliedMode})`,
+        data: {
+          startAnchor: this.insertAnchorA,
+          endAnchor: this.insertAnchorB,
+          mode: appliedMode,
+          points: fullPointsArray
+        },
+        isHidden: false
       });
+      this.drawBaseAndEdits();
     }
 
     this.cleanupInsertMode();
@@ -1718,11 +1764,12 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     const profile = this.routingProfile!;
 
     // Convertir el resultado a puntos de inserción internos
-    // Omitimos el primero y el último porque saveInsert() ya reinyecta insertAnchorA y insertAnchorB
-    const innerPoints = this.routingResult.points.slice(1, -1).map(p => ({
+    // Omitimos el primero y el último si hay intermedios porque saveInsert() ya reinyecta insertAnchorA y insertAnchorB
+    const pts = this.routingResult.points;
+    const innerPoints = pts && pts.length > 2 ? pts.slice(1, -1).map(p => ({
       lat: p.lat,
       lng: p.lng
-    }));
+    })) : [];
 
     this.insertPoints = innerPoints;
     
@@ -1822,7 +1869,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // Setear insertAnchorA al final (usamos un índice virtual -1 para indicar que es el final dinámico)
     this.insertAnchorA = { 
       index: -1, 
-      time: undefined, 
+      time: lastPt.time ? (lastPt.time instanceof Date ? lastPt.time.toISOString() : new Date(lastPt.time).toISOString()) : undefined, 
       lat: lastPt.lat, 
       lng: lastPt.lng 
     };
@@ -1833,7 +1880,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }).addTo(this.map).bindTooltip('Inicio Prolongación', { permanent: true, direction: 'right' }).openTooltip();
   }
 
-  getVirtualLastPoint(): { lat: number, lng: number } {
+  getVirtualLastPoint(): { lat: number, lng: number, time?: any } {
     let lastPt = this.gpxPoints[this.gpxPoints.length - 1];
     
     // Si hay appends en memoria, cogemos el último punto de la última prolongación
@@ -1845,7 +1892,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         lastPt = pts[pts.length - 1];
       }
     }
-    return { lat: lastPt.lat, lng: lastPt.lng };
+    return { lat: lastPt.lat, lng: lastPt.lng, time: (lastPt as any).time };
   }
 
   private addAppendVertex(latlng: L.LatLng) {

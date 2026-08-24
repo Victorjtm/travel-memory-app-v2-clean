@@ -2104,11 +2104,13 @@ export class ActividadesItinerariosComponent implements OnInit {
             'user-prepend'
           ));
         } else if (edit.type === 'append_segment') {
-          // Evitamos duplicar el punto de anclaje A con slice(1)
-          const points = edit.data.points.slice(1).map((p: any) => ({
+          // Si hay más de 1 punto, evitamos duplicar el punto de anclaje A con slice(1)
+          const rawPts = edit.data.points || [];
+          const ptsToSave = rawPts.length > 1 ? rawPts.slice(1) : rawPts;
+          const points = ptsToSave.map((p: any) => ({
             lat: p.lat,
             lng: p.lng,
-            time: p.time ? new Date(p.time).toISOString() : undefined,
+            time: p.time ? (p.time instanceof Date ? p.time.toISOString() : new Date(p.time).toISOString()) : undefined,
             mode: p.mode
           }));
 
@@ -2116,6 +2118,19 @@ export class ActividadesItinerariosComponent implements OnInit {
             this.actividadEditorId,
             points,
             'user-append'
+          ));
+        } else if (edit.type === 'insert_segment' && edit.data?.points) {
+          const points = edit.data.points.map((p: any) => ({
+            lat: p.lat,
+            lng: p.lng,
+            time: p.time ? (p.time instanceof Date ? p.time.toISOString() : new Date(p.time).toISOString()) : undefined,
+            mode: edit.data.mode || p.mode
+          }));
+
+          await firstValueFrom(this.trackEditorService.createSegment(
+            this.actividadEditorId,
+            points,
+            'user-insert'
           ));
         } else if (edit.type === 'override_mode') {
           const startIdx = this.trackEditorService.resolveAnchor(edit.data.startAnchor, this.gpxPointsEditor);
@@ -2174,6 +2189,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
       alert('Cambios guardados con éxito.');
       this.cerrarEditorTrack();
+      this.cargarActividades();
 
     } catch (err) {
       console.error('❌ Error guardando cambios:', err);
