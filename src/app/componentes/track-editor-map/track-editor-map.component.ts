@@ -667,6 +667,9 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     if (this.markerA) { this.markerA.remove(); this.markerA = null; }
     if (this.markerB) { this.markerB.remove(); this.markerB = null; }
     if (this.highlightPolyline) { this.highlightPolyline.remove(); this.highlightPolyline = null; }
+    if (this.mostrarTiempos) {
+      this.updateTimeMarkers();
+    }
   }
 
   public actualizarTramosDisponibles(): void {
@@ -810,6 +813,10 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // Establecer ancla A y ancla B
     this.setAnchor(tramo.startIdx);
     this.setAnchor(tramo.endIdx);
+
+    if (this.mostrarTiempos) {
+      this.updateTimeMarkers();
+    }
 
     // Ajustar zoom y vista del mapa para encuadrar el tramo
     if (this.map && this.gpxPoints) {
@@ -2058,12 +2065,29 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     const bounds = this.map.getBounds().pad(0.1); // Margen del área visible actual del mapa
 
-    // 1. Filtrar únicamente los puntos que tengan tiempo Y estén dentro del área visible en pantalla
+    // Determinar rango de puntos si hay un tramo seleccionado en el desplegable o anclas activas
+    let minIdx = 0;
+    let maxIdx = this.gpxPoints.length - 1;
+
+    if (this.selectedTramoId) {
+      const tramo = this.tramosDisponibles.find(t => t.id === this.selectedTramoId);
+      if (tramo) {
+        minIdx = Math.min(tramo.startIdx, tramo.endIdx);
+        maxIdx = Math.max(tramo.startIdx, tramo.endIdx);
+      }
+    } else if (this.anchorA && this.anchorB && this.anchorA.index !== undefined && this.anchorB.index !== undefined) {
+      minIdx = Math.min(this.anchorA.index, this.anchorB.index);
+      maxIdx = Math.max(this.anchorA.index, this.anchorB.index);
+    }
+
+    // 1. Filtrar únicamente los puntos que pertenezcan al tramo seleccionado, tengan tiempo Y estén dentro del área visible en pantalla
     const visiblePointsWithTime: { pt: GpxPoint; originalIdx: number }[] = [];
     this.gpxPoints.forEach((pt, originalIdx) => {
-      if (pt.time || (pt.timeAcum !== undefined && pt.timeAcum !== null && pt.timeAcum > 0)) {
-        if (bounds.contains([pt.lat, pt.lng])) {
-          visiblePointsWithTime.push({ pt, originalIdx });
+      if (originalIdx >= minIdx && originalIdx <= maxIdx) {
+        if (pt.time || (pt.timeAcum !== undefined && pt.timeAcum !== null && pt.timeAcum > 0)) {
+          if (bounds.contains([pt.lat, pt.lng])) {
+            visiblePointsWithTime.push({ pt, originalIdx });
+          }
         }
       }
     });
