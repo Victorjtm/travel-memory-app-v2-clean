@@ -58,6 +58,7 @@ interface PaginaMedia {
     altitud?: number;
   };
   archivosAsociados?: any[];
+  timestampReal?: number;
 }
 
 interface ContextoViaje {
@@ -1617,14 +1618,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       return paginasInput.filter(p => !p.esMapaAnimado);
     }
 
-    const resultado: PaginaMedia[] = [];
-    const mapasPorArchivoId = new Map<number, string[]>();          // archivoId → [grupoId, ...]
-    const mapasPorGrupoPI = new Map<string, PaginaMedia>();         // grupoId → paginaMapa (único)
-    const mapasInicioActividad = new Map<number, PaginaMedia[]>();
-    const mapasFinActividad = new Map<number, PaginaMedia[]>();
+    const mapasPorActividad = new Map<number, PaginaMedia[]>();
     const actividadesProcesadas = new Set<number>();
 
-    // 1. Pre-procesar actividades y generar mapas parciales asignados al archivo objetivo de cada PI
+    // 1. Pre-procesar actividades con GPX y generar sus mapas animados de tramos válidos
     for (let i = 0; i < paginasInput.length; i++) {
       const pag = paginasInput[i];
       if (pag.esMapaAnimado) continue;
@@ -1675,7 +1672,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             }
             piIndices.push(points.length - 1);
 
-            console.log(`🗺️ Actividad #${actId}: ${points.length} puntos, ${piIndices.length} PIs detectados, modo base: ${modoBaseNorm}, desglose: ${desglose.length} segs, HF: ${!!visualSessionData}`);
+            console.log(`🗺️ Actividad #${actId}: ${points.length} puntos, ${piIndices.length} PIs detectados, modo base: ${modoBaseNorm}`);
 
             for (let s = 0; s < piIndices.length - 1; s++) {
               const startIdx = piIndices[s];
@@ -1687,8 +1684,6 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               const distMetros = (subSegmentPoints[subSegmentPoints.length - 1].distAcum || 0)
                 - (subSegmentPoints[0].distAcum || 0);
               const distKm = distMetros / 1000;
-
-              console.log(`  📏 Tramo PI_${s} → PI_${s + 1}: ${distKm.toFixed(2)} km (Mínimo: ${this.distanciaMinimaAnimacionKm} km)`);
 
               if (distKm >= this.distanciaMinimaAnimacionKm) {
                 const baseDistAcum = subSegmentPoints[0].distAcum || 0;
@@ -1767,6 +1762,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   horaInicioTramo = pag.archivo.horaCaptura;
                 }
 
+                // Calcular timestamp exacto de inicio del tramo (usando formato normalizado idéntico al de las fotos)
+                const datePart = pag.fecha ? pag.fecha.split('T')[0] : (pag.archivo?.fechaCreacion ? pag.archivo.fechaCreacion.split('T')[0] : '1970-01-01');
+                let timePart = horaInicioTramo || '00:00:00';
+                if (timePart.length === 5 && timePart.includes(':')) timePart = `${timePart}:00`;
+                const dt = new Date(`${datePart}T${timePart}Z`);
+                const timestampInicio = !isNaN(dt.getTime()) ? dt.getTime() : 0;
+
                 const tiposUnicos = Array.from(new Set(subTransportSegments.map(t => t.tipo || t.nombre).filter(Boolean)));
                 const tipoTransporteTramo = tiposUnicos.length > 0 ? tiposUnicos.join(', ') : modoBaseNorm;
 
@@ -1775,7 +1777,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   url: '',
                   titulo: `Recorrido de ${distKm.toFixed(1)} km`,
                   descripcion: `Tramo ${s + 1} de ${piIndices.length - 1} (${distKm.toFixed(1)} km)`,
-                  fecha: pag.fecha || '',
+                  fecha: datePart,
                   tipoMedia: 'mapa-animado',
                   mimeType: '',
                   cargado: true,
@@ -1788,47 +1790,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   isHighFidelityMode: !!visualSessionData,
                   horaInicioTramo: horaInicioTramo,
                   horaFinTramo: horaFinTramo,
-                  tipoTransporteTramo: tipoTransporteTramo
+                  tipoTransporteTramo: tipoTransporteTramo,
+                  timestampReal: timestampInicio
                 };
 
-                console.log(`  ✅ Mapa animado generado: Tramo ${s + 1}, ${distKm.toFixed(1)} km, horas: ${horaInicioTramo}-${horaFinTramo}, modos: ${tipoTransporteTramo}`);
-
-                // Identificar TODOS los archivos/fotos del PI de destino para intercalar mapa
-                const targetEvent = points[endIdx]?.event;
-                const targetArchivos: any[] = targetEvent?.archivos || [];
-
-                if (targetArchivos.length > 0) {
-                  // Generar un ID de grupo único para este tramo
-                  const grupoId = `act${actId}_tramo${s}`;
-                  
-                  // Registrar TODOS los archivoIds del grupo PI como disparadores del mapa
-                  for (const arch of targetArchivos) {
-                    if (arch.id) {
-                      if (!mapasPorArchivoId.has(arch.id)) {
-                        mapasPorArchivoId.set(arch.id, []);
-                      }
-                      // Almacenar referencia al grupoId en vez de duplicar mapas
-                      if (!mapasPorGrupoPI.has(grupoId)) {
-                        mapasPorGrupoPI.set(grupoId, paginaMapa);
-                      }
-                      mapasPorArchivoId.get(arch.id)!.push(grupoId);
-                    }
-                  }
-                } else if (s === 0) {
-                  // Tramo inicial sin foto objetivo -> colocar al inicio de la actividad
-                  if (!mapasInicioActividad.has(actId)) {
-                    mapasInicioActividad.set(actId, []);
-                  }
-                  mapasInicioActividad.get(actId)!.push(paginaMapa);
-                } else {
-                  // Tramo de vuelta (PI final -> fin del track) sin foto objetivo -> colocar AL FINAL de la actividad
-                  if (!mapasFinActividad.has(actId)) {
-                    mapasFinActividad.set(actId, []);
-                  }
-                  mapasFinActividad.get(actId)!.push(paginaMapa);
+                if (!mapasPorActividad.has(actId)) {
+                  mapasPorActividad.set(actId, []);
                 }
-              } else {
-                console.log(`  ⏩ Tramo corto omitido: ${distKm.toFixed(2)} km < ${this.distanciaMinimaAnimacionKm} km`);
+                mapasPorActividad.get(actId)!.push(paginaMapa);
+
+                console.log(`  ✅ Mapa generado: Actividad #${actId}, Tramo ${s + 1} (${distKm.toFixed(1)} km), ${horaInicioTramo} - ${horaFinTramo}, ts: ${timestampInicio}`);
               }
             }
           }
@@ -1838,49 +1809,71 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
     }
 
-    // 2. Intercalación fluida: mapas de ida antes de la PRIMERA foto del grupo PI destino, mapas de vuelta al final de la actividad
-    const actividadesInsertadasInicio = new Set<number>();
-    const gruposYaInsertados = new Set<string>(); // Para no duplicar mapas de un mismo grupo PI
+    // 2. Dividir paginasInput en bloques de itinerario (cada bloque empieza con Diario/Índice)
+    interface BloqueItinerario {
+      cabecera?: PaginaMedia;
+      fotos: PaginaMedia[];
+      actividadIds: Set<number>;
+    }
 
-    for (let i = 0; i < paginasInput.length; i++) {
-      const pag = paginasInput[i];
+    const bloques: BloqueItinerario[] = [];
+    let bloqueActual: BloqueItinerario = { fotos: [], actividadIds: new Set<number>() };
+
+    for (const pag of paginasInput) {
       if (pag.esMapaAnimado) continue;
 
-      const actId = pag.archivo?.actividadId;
-      const archivoId = pag.archivo?.id;
-
-      // Si hay mapas del inicio de la actividad sin foto destino fija, colocarlos al inicio de la actividad
-      if (actId && mapasInicioActividad.has(actId) && !actividadesInsertadasInicio.has(actId)) {
-        actividadesInsertadasInicio.add(actId);
-        const mapasInicio = mapasInicioActividad.get(actId)!;
-        resultado.push(...mapasInicio);
-        mapasInicioActividad.delete(actId);
-      }
-
-      // Si este archivo pertenece a un grupo PI con mapa pendiente, insertar el mapa ANTES de esta foto (solo la primera vez)
-      if (archivoId && mapasPorArchivoId.has(archivoId)) {
-        const grupoIds = mapasPorArchivoId.get(archivoId)!;
-        for (const grupoId of grupoIds) {
-          if (!gruposYaInsertados.has(grupoId) && mapasPorGrupoPI.has(grupoId)) {
-            gruposYaInsertados.add(grupoId);
-            resultado.push(mapasPorGrupoPI.get(grupoId)!);
-            console.log(`  🗺️ Mapa de tramo insertado antes de foto #${archivoId} (grupo: ${grupoId})`);
-          }
+      if (pag.esCartaManuscrita || pag.esIndice) {
+        if (bloqueActual.cabecera || bloqueActual.fotos.length > 0) {
+          bloques.push(bloqueActual);
+        }
+        bloqueActual = {
+          cabecera: pag,
+          fotos: [],
+          actividadIds: new Set<number>()
+        };
+      } else {
+        bloqueActual.fotos.push(pag);
+        if (pag.archivo?.actividadId) {
+          bloqueActual.actividadIds.add(pag.archivo.actividadId);
         }
       }
+    }
 
-      resultado.push(pag);
+    if (bloqueActual.cabecera || bloqueActual.fotos.length > 0) {
+      bloques.push(bloqueActual);
+    }
 
-      // Comprobar si esta página es la última foto de la actividad actual
-      const siguientePag = i < paginasInput.length - 1 ? paginasInput[i + 1] : null;
-      const siguienteActId = siguientePag?.archivo?.actividadId;
+    // 3. Para cada bloque: ordenar fotos e intercalar las animaciones en la posición cronológica exacta
+    const resultado: PaginaMedia[] = [];
 
-      if (actId && siguienteActId !== actId && mapasFinActividad.has(actId)) {
-        console.log(`  🔄 Insertando mapas de vuelta al final de la actividad #${actId}`);
-        const mapasVuelta = mapasFinActividad.get(actId)!;
-        resultado.push(...mapasVuelta);
-        mapasFinActividad.delete(actId);
+    for (const bloque of bloques) {
+      // Recopilar todos los mapas correspondientes a las actividades de este bloque
+      const mapasDelBloque: PaginaMedia[] = [];
+      for (const actId of bloque.actividadIds) {
+        const mapasAct = mapasPorActividad.get(actId) || [];
+        mapasDelBloque.push(...mapasAct);
       }
+
+      // Combinar fotos y animaciones del bloque en orden cronológico estricto
+      const contenidoDelBloque: PaginaMedia[] = [...bloque.fotos, ...mapasDelBloque];
+      contenidoDelBloque.sort((a, b) => {
+        const tA = this.obtenerTimestampReal(a);
+        const tB = this.obtenerTimestampReal(b);
+        if (tA !== tB) {
+          return tA - tB;
+        }
+        // "fotos con misma hora de inicio va primero la foto":
+        // Si coinciden exactamente en timestamp, la foto va antes de la animación
+        if (!a.esMapaAnimado && b.esMapaAnimado) return -1;
+        if (a.esMapaAnimado && !b.esMapaAnimado) return 1;
+        return 0;
+      });
+
+      // Ensamblar bloque: [Diario/Índice, ...contenidoDelBloque]
+      if (bloque.cabecera) {
+        resultado.push(bloque.cabecera);
+      }
+      resultado.push(...contenidoDelBloque);
     }
 
     return resultado;
@@ -2745,6 +2738,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
    */
   obtenerTimestampReal(pagina: PaginaMedia | any): number {
     if (!pagina) return 0;
+    if (pagina.timestampReal && !isNaN(pagina.timestampReal) && pagina.timestampReal > 0) {
+      return pagina.timestampReal;
+    }
     const arch = pagina.archivo || pagina;
     let datePart = '';
 
@@ -2758,12 +2754,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       datePart = '1970-01-01';
     }
 
-    let timePart = arch.horaCaptura;
+    let timePart = pagina.horaInicioTramo || arch.horaCaptura;
     if (!timePart && arch.fechaCreacion && arch.fechaCreacion.includes('T')) {
       timePart = arch.fechaCreacion.split('T')[1].split('.')[0];
     }
     if (!timePart) {
       timePart = '12:00:00';
+    }
+
+    if (timePart.length === 5 && timePart.includes(':')) {
+      timePart = `${timePart}:00`;
     }
 
     const fullIso = `${datePart}T${timePart}Z`;
