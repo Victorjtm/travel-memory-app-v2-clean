@@ -2262,6 +2262,61 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   // ====================================================================
 
   /**
+   * Determina si una foto fue tomada en el mar (durante la navegación del barco)
+   * para no incluirla en el cálculo de la ruta terrestre.
+   */
+  private esFotoEnMar(f: { lat: number; lng: number; timeMs: number }): boolean {
+    if (!this.gpxPoints || this.gpxPoints.length === 0) return false;
+
+    const isSeaPoint = (p: GpxPoint) => {
+      const m = (p.mode || p.hfMode || '').toLowerCase();
+      return m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero');
+    };
+
+    const hasSeaPoints = this.gpxPoints.some(p => isSeaPoint(p));
+    if (!hasSeaPoints) return false;
+
+    // Encontrar el punto del track más cercano espacialmente
+    let closestPt: GpxPoint | null = null;
+    let minDist = Infinity;
+    let closestIsSea = false;
+
+    for (const p of this.gpxPoints) {
+      const d = this.trackEditorService.getDistance(p.lat, p.lng, f.lat, f.lng);
+      if (d < minDist) {
+        minDist = d;
+        closestPt = p;
+        closestIsSea = isSeaPoint(p);
+      }
+    }
+
+    if (!closestPt) return false;
+
+    // Si el punto más cercano es marítimo:
+    if (closestIsSea) {
+      // Si la foto está a más de 300 metros de cualquier punto terrestre, es indudablemente una foto en el mar
+      let minDistToLand = Infinity;
+      for (const p of this.gpxPoints) {
+        if (!isSeaPoint(p)) {
+          const dLand = this.trackEditorService.getDistance(p.lat, p.lng, f.lat, f.lng);
+          if (dLand < minDistToLand) minDistToLand = dLand;
+        }
+      }
+
+      if (minDistToLand > 300) {
+        return true;
+      }
+
+      // Si hay marcas temporales en el track, comprobar si coincide con el tramo de navegación
+      if (f.timeMs && closestPt.time instanceof Date && !isNaN(closestPt.time.getTime())) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Genera la ruta probable conectando las fotos de la actividad
    * ordenadas cronológicamente, usando walking (< 2.5 km) y driving (>= 2.5 km)
    */
@@ -2271,8 +2326,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       return;
     }
 
-    // 1. Extraer fotos con coordenadas válidas
-    const fotosValidas: { lat: number; lng: number; timeMs: number; nombre: string }[] = [];
+    // 1. Extraer fotos con coordenadas válidas exclusivamente en tierra
+    const candidatos: { lat: number; lng: number; timeMs: number; nombre: string }[] = [];
 
     for (const item of this.archivosMedia) {
       let lat: number | null = item.latitud ?? item.lat ?? null;
@@ -2332,7 +2387,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       if (!timeMs) timeMs = Date.now();
 
       if (lat !== null && lng !== null && !isNaN(Number(lat)) && !isNaN(Number(lng)) && Number(lat) !== 0 && Number(lng) !== 0) {
-        fotosValidas.push({
+        candidatos.push({
           lat: Number(lat),
           lng: Number(lng),
           timeMs,
@@ -2341,8 +2396,28 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
     }
 
+    // Mostrar overlay de progreso ANTES de filtrar (para que el usuario vea feedback inmediato)
+    this.generandoProbable = true;
+    this.progresoGeneracionProbable = `Analizando ${candidatos.length} fotos (detectando tierra/mar)...`;
+    this.cdr.detectChanges();
+
+    // Filtrar fotos que se encuentren en tierra firme (descartando fotos tomadas mar adentro)
+    // Usa coordenadas deduplicadas y peticiones secuenciales para evitar rate-limiting
+    const fotosValidas = await this.routingService.filterLandPoints(candidatos);
+
+    for (const c of candidatos) {
+      if (!fotosValidas.includes(c)) {
+        console.log(`🌊 Foto descartada (mar adentro): ${c.nombre} (${c.lat}, ${c.lng})`);
+      }
+    }
+
+    console.log(`📊 Fotos en tierra: ${fotosValidas.length} de ${candidatos.length} candidatos`);
+
     if (fotosValidas.length < 2) {
-      alert('⚠️ Se requieren al menos 2 fotos con coordenadas GPS para trazar una ruta probable.');
+      this.generandoProbable = false;
+      this.progresoGeneracionProbable = '';
+      this.cdr.detectChanges();
+      alert('⚠️ Se requieren al menos 2 fotos con coordenadas GPS en tierra firme para trazar una ruta probable.');
       return;
     }
 
@@ -2366,11 +2441,13 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
 
     if (waypoints.length < 2) {
+      this.generandoProbable = false;
+      this.progresoGeneracionProbable = '';
+      this.cdr.detectChanges();
       alert('⚠️ Todas las fotos se encuentran en el mismo punto (menos de 25m de distancia). No se puede trazar una ruta entre diferentes puntos.');
       return;
     }
 
-    this.generandoProbable = true;
     this.progresoGeneracionProbable = `Calculando 0 de ${waypoints.length - 1} tramos...`;
     this.cdr.detectChanges();
 
@@ -2450,8 +2527,64 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         }
       }
 
-      // 5. Asignar ruta generada en memoria
-      this.gpxPoints = this.trackEditorService.recalculateAccumulators(allRoutePoints);
+      // 5. Preservar tramos marítimos (Barco / Mar) existentes y combinar con la ruta calculada en tierra
+      let finalPoints: GpxPoint[] = [];
+
+      const isSeaPoint = (p: GpxPoint) => {
+        const m = (p.mode || p.hfMode || '').toLowerCase();
+        return m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero');
+      };
+
+      const hasSeaPoints = this.puntosGpxAntesDeProbable.some(p => isSeaPoint(p));
+
+      if (hasSeaPoints && this.puntosGpxAntesDeProbable.length > 0 && waypoints.length > 0) {
+        const firstLandW = waypoints[0];
+        const lastLandW = waypoints[waypoints.length - 1];
+
+        // Encontrar índice del punto marítimo de atraque más cercano a la primera foto en tierra
+        let arrivalIdx = -1;
+        let minArrivalDist = Infinity;
+        for (let idx = 0; idx < this.puntosGpxAntesDeProbable.length; idx++) {
+          const pt = this.puntosGpxAntesDeProbable[idx];
+          if (isSeaPoint(pt)) {
+            const d = this.trackEditorService.getDistance(pt.lat, pt.lng, firstLandW.lat, firstLandW.lng);
+            if (d < minArrivalDist) {
+              minArrivalDist = d;
+              arrivalIdx = idx;
+            }
+          }
+        }
+
+        // Encontrar índice del punto marítimo de zarpe más cercano a la última foto en tierra (si es posterior a arrivalIdx)
+        let departureIdx = -1;
+        let minDepDist = Infinity;
+        const searchStart = arrivalIdx >= 0 ? arrivalIdx : 0;
+        for (let idx = searchStart; idx < this.puntosGpxAntesDeProbable.length; idx++) {
+          const pt = this.puntosGpxAntesDeProbable[idx];
+          if (isSeaPoint(pt)) {
+            const d = this.trackEditorService.getDistance(pt.lat, pt.lng, lastLandW.lat, lastLandW.lng);
+            if (d < minDepDist) {
+              minDepDist = d;
+              departureIdx = idx;
+            }
+          }
+        }
+
+        const seaBefore = arrivalIdx >= 0
+          ? this.puntosGpxAntesDeProbable.slice(0, arrivalIdx + 1).filter(p => isSeaPoint(p))
+          : [];
+
+        const seaAfter = departureIdx > arrivalIdx
+          ? this.puntosGpxAntesDeProbable.slice(departureIdx).filter(p => isSeaPoint(p))
+          : [];
+
+        finalPoints = [...seaBefore, ...allRoutePoints, ...seaAfter];
+      } else {
+        finalPoints = allRoutePoints;
+      }
+
+      // 6. Asignar ruta generada en memoria con acumuladores recalculados
+      this.gpxPoints = this.trackEditorService.recalculateAccumulators(finalPoints);
       this.modoPrevisualizandoProbable = true;
       this.drawBaseAndEdits();
 

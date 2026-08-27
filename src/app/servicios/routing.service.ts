@@ -211,4 +211,72 @@ export class RoutingService {
       this._requestInFlight = false;
     }
   }
+
+  /** Caché de resultados: coordenadas redondeadas → está en tierra */
+  private landCache = new Map<string, boolean>();
+
+  /**
+   * Determina si unas coordenadas corresponden a tierra firme (cerca de la red vial/caminos)
+   * o si se encuentran mar adentro (lejos de cualquier vía transitable).
+   * Incluye caché por coordenadas redondeadas y timeout de 5 segundos.
+   */
+  async isPointOnLand(lat: number, lng: number): Promise<boolean> {
+    const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+    if (this.landCache.has(key)) {
+      return this.landCache.get(key)!;
+    }
+
+    const url = `${this.OSM_CAR_BASE}/${lng},${lat};${lng},${lat}?overview=false`;
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 5000)
+      );
+      const httpPromise = this.http.get(url).toPromise();
+      const res: any = await Promise.race([httpPromise, timeoutPromise]);
+
+      if (res && res.waypoints && res.waypoints.length > 0) {
+        const snapDist = res.waypoints[0].distance;
+        const onLand = snapDist !== undefined && snapDist < 600;
+        this.landCache.set(key, onLand);
+        return onLand;
+      }
+    } catch (e) {
+      // En caso de error/timeout, asumir tierra para no bloquear
+      this.landCache.set(key, true);
+      return true;
+    }
+    this.landCache.set(key, true);
+    return true;
+  }
+
+  /**
+   * Filtra una lista de puntos devolviendo solo los que están en tierra firme.
+   * Procesa coordenadas únicas de forma secuencial para evitar rate-limiting.
+   */
+  async filterLandPoints<T extends { lat: number; lng: number }>(points: T[]): Promise<T[]> {
+    // 1. Identificar coordenadas únicas (redondeadas a 3 decimales ≈ 110m)
+    const uniqueKeys = new Set<string>();
+    const keysToCheck: { key: string; lat: number; lng: number }[] = [];
+
+    for (const p of points) {
+      const key = `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`;
+      if (!this.landCache.has(key) && !uniqueKeys.has(key)) {
+        uniqueKeys.add(key);
+        keysToCheck.push({ key, lat: p.lat, lng: p.lng });
+      }
+    }
+
+    // 2. Verificar coordenadas únicas de forma secuencial (con pausa entre peticiones)
+    for (const item of keysToCheck) {
+      await this.isPointOnLand(item.lat, item.lng);
+      // Breve pausa para evitar rate-limiting
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+
+    // 3. Filtrar usando la caché
+    return points.filter(p => {
+      const key = `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`;
+      return this.landCache.get(key) !== false;
+    });
+  }
 }
