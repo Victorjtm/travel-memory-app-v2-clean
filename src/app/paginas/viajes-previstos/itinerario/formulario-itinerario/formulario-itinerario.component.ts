@@ -113,9 +113,18 @@ private calcularDuracionDias(): void {
 
 
 
-agregarItinerario(): void {
+  archivoAudioSeleccionado: File | null = null;
+
+  onAudioSelected(event: any): void {
+    const file = event.target.files?.[0];
+    if (file) {
+      this.archivoAudioSeleccionado = file;
+    }
+  }
+
+  agregarItinerario(): void {
     const itinerarioAEnviar = { ...this.nuevoItinerario, viajePrevistoId: this.viajePrevistoId };
-    this.itinerarioService.crearItinerario(itinerarioAEnviar).subscribe(() => {
+    this.itinerarioService.crearItinerario(itinerarioAEnviar, this.archivoAudioSeleccionado || undefined).subscribe(() => {
       console.log('✅ Itinerario agregado con éxito');
       this.router.navigate(['/itinerarios', this.viajePrevistoId]);
     });

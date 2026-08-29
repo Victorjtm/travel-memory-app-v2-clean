@@ -64,6 +64,15 @@
         (tipoSeleccionadoChange)="itinerarioActualizado.tipoDeViaje = $any($event)">
       </app-tipos-de-actividad>
 
+      <label for="audioItinerario"><i class="fa fa-music"></i> Música / Audio de Fondo (MP3)</label>
+      <input type="file" id="audioItinerario" (change)="onAudioSelected($event)" accept="audio/*" />
+      <span *ngIf="itinerarioActualizado.audio" style="font-size: 0.85rem; color: #0284c7; display: block; margin-top: 2px;">
+        🎵 Audio actual: {{ itinerarioActualizado.audio }}
+      </span>
+      <span *ngIf="archivoAudioSeleccionado" style="font-size: 0.85rem; color: #059669; display: block; margin-top: 2px;">
+        <i class="fa fa-check-circle"></i> Nuevo audio: {{ archivoAudioSeleccionado.name }}
+      </span>
+
       <button type="submit" class="btn-guardar">Guardar cambios</button>
       <button type="button" class="btn-cancelar" (click)="cancelarActualizacion()">Cancelar</button>
     </form>
@@ -81,6 +90,7 @@
       <p><strong>Horario:</strong> {{ itinerario.horaInicio }} a {{ itinerario.horaFin }}</p>
       <p><strong>Clima:</strong> {{ itinerario.climaGeneral }}</p>
       <p><strong>Tipo:</strong> {{ itinerario.tipoDeViaje }}</p>
+      <p *ngIf="itinerario.audio"><strong><i class="fa fa-music"></i> Música:</strong> {{ itinerario.audio }}</p>
 
       <button class="btn-eliminar" (click)="eliminarItinerario(itinerario.id)">
         <i class="fa fa-trash"></i> Eliminar

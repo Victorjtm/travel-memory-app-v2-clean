@@ -47,12 +47,20 @@
             <input type="text" [(ngModel)]="nuevoItinerario.climaGeneral" name="climaGeneral">
         </div>
 
-<div>
+        <div>
             <label><i class="fa fa-suitcase"></i> Tipo de Actividad:</label>
             <app-tipos-de-actividad 
               [tipoSeleccionado]="nuevoItinerario.tipoDeViaje || 'costa'"
               (tipoSeleccionadoChange)="nuevoItinerario.tipoDeViaje = $any($event)">
             </app-tipos-de-actividad>
+        </div>
+
+        <div>
+            <label><i class="fa fa-music"></i> Música / Audio de Fondo (MP3):</label>
+            <input type="file" (change)="onAudioSelected($event)" accept="audio/*">
+            <span *ngIf="archivoAudioSeleccionado" style="font-size: 0.85rem; color: #059669; display: block; margin-top: 4px;">
+              <i class="fa fa-check-circle"></i> Archivo seleccionado: {{ archivoAudioSeleccionado.name }}
+            </span>
         </div>
 
         <button type="submit" [disabled]="!formItinerario.form.valid"><i class="fa fa-plus-circle"></i> Agregar Itinerario</button>

@@ -21,12 +21,35 @@ export class ItinerarioService extends BaseHttpService {
   }
 
   // Crear un nuevo itinerario
-  crearItinerario(itinerario: Omit<Itinerario, 'id'>): Observable<Itinerario> {
+  crearItinerario(itinerario: Omit<Itinerario, 'id'>, audio?: File): Observable<Itinerario> {
+    if (audio) {
+      const formData = new FormData();
+      Object.keys(itinerario).forEach(key => {
+        const value = (itinerario as any)[key];
+        if (value !== undefined && value !== null) {
+          formData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
+        }
+      });
+      formData.append('audio', audio);
+      return this.postFormData<Itinerario>(this.apiUrl, formData);
+    }
     return this.post<Itinerario>(this.apiUrl, itinerario);
   }
 
   // Actualizar un itinerario
-  actualizarItinerario(id: number, itinerario: Itinerario): Observable<any> {
+  actualizarItinerario(id: number, itinerario: Itinerario, audio?: File): Observable<any> {
+    if (audio) {
+      const formData = new FormData();
+      Object.keys(itinerario).forEach(key => {
+        const value = (itinerario as any)[key];
+        if (value !== undefined && value !== null) {
+          formData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
+        }
+      });
+      formData.append('audio_actual', itinerario.audio || '');
+      formData.append('audio', audio);
+      return this.putFormData(`${this.apiUrl}/${id}`, formData);
+    }
     return this.put(`${this.apiUrl}/${id}`, itinerario);
   }
 

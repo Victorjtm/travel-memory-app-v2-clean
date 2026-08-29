@@ -3501,8 +3501,9 @@ app.get('/itinerarios/:id', (req, res) => {
 });
 
 // 3️⃣ POST crear un nuevo itinerario
-app.post('/itinerarios', (req, res) => {
+app.post('/itinerarios', upload.fields([{ name: 'audio', maxCount: 1 }]), (req, res) => {
   console.log('📥 [POST /itinerarios] Datos recibidos:', req.body);
+  console.log('📦 Archivos:', req.files);
 
   const {
     viajePrevistoId,
@@ -3517,6 +3518,8 @@ app.post('/itinerarios', (req, res) => {
     tipoDeViaje
   } = req.body;
 
+  const audio = req.files?.audio ? req.files.audio[0].filename : (req.body.audio || null);
+
   // Validación básica y valores por defecto para campos NOT NULL
   if (!viajePrevistoId || !fechaInicio || !fechaFin) {
     console.error('⚠️ [POST /itinerarios] Faltan campos obligatorios');
@@ -3524,8 +3527,8 @@ app.post('/itinerarios', (req, res) => {
   }
 
   const sql = `INSERT INTO ItinerarioGeneral 
-    (viajePrevistoId, fechaInicio, horaInicio, fechaFin, horaFin, duracionDias, destinosPorDia, descripcionGeneral, climaGeneral, tipoDeViaje) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    (viajePrevistoId, fechaInicio, horaInicio, fechaFin, horaFin, duracionDias, destinosPorDia, descripcionGeneral, climaGeneral, tipoDeViaje, audio) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
   // Corregido: solo stringify si NO es ya un string
   const destinosJSON = (typeof destinosPorDia === 'string') ? destinosPorDia : JSON.stringify(destinosPorDia || '');
@@ -3542,7 +3545,8 @@ app.post('/itinerarios', (req, res) => {
       destinosJSON,
       descripcionGeneral || '',
       climaGeneral || '',
-      tipoDeViaje || 'urbana'
+      tipoDeViaje || 'urbana',
+      audio
     ],
     function (err) {
       if (err) {
@@ -3550,78 +3554,101 @@ app.post('/itinerarios', (req, res) => {
         return res.status(500).json({ error: err.message });
       }
       console.log(`✅ [POST /itinerarios] Creado ID: ${this.lastID}`);
-      res.status(201).json({ id: this.lastID });
+      res.status(201).json({ id: this.lastID, audio });
     }
   );
 });
 
 // 4️⃣ PUT actualizar un itinerario existente
-app.put('/itinerarios/:id', (req, res) => {
+app.put('/itinerarios/:id', upload.fields([{ name: 'audio', maxCount: 1 }]), (req, res) => {
   const { id } = req.params;
   console.log(`📥 [PUT /itinerarios/${id}] Procesando actualización...`);
   console.log('📦 Body:', req.body);
+  console.log('📦 Files:', req.files);
 
-  const {
-    viajePrevistoId,
-    fechaInicio,
-    horaInicio,
-    fechaFin,
-    horaFin,
-    duracionDias,
-    destinosPorDia,
-    descripcionGeneral,
-    climaGeneral,
-    tipoDeViaje
-  } = req.body;
+  db.get('SELECT * FROM ItinerarioGeneral WHERE id = ?', [id], (err, existing) => {
+    if (err) {
+      console.error(`❌ [PUT /itinerarios/${id}] Error consultando existente:`, err.message);
+      return res.status(500).json({ error: err.message });
+    }
+    if (!existing) {
+      return res.status(404).json({ error: 'Itinerario no encontrado para actualizar' });
+    }
 
-  const sql = `UPDATE ItinerarioGeneral SET
-    viajePrevistoId = ?,
-    fechaInicio = ?,
-    horaInicio = ?,
-    fechaFin = ?,
-    horaFin = ?,
-    duracionDias = ?,
-    destinosPorDia = ?,
-    descripcionGeneral = ?,
-    climaGeneral = ?,
-    tipoDeViaje = ?
-    WHERE id = ?`;
+    const {
+      viajePrevistoId,
+      fechaInicio,
+      horaInicio,
+      fechaFin,
+      horaFin,
+      duracionDias,
+      destinosPorDia,
+      descripcionGeneral,
+      climaGeneral,
+      tipoDeViaje,
+      audio_actual
+    } = req.body;
 
-  // Corregido: solo stringify si NO es ya un string
-  const destinosJSON = (typeof destinosPorDia === 'string') ? destinosPorDia : JSON.stringify(destinosPorDia || '');
+    let audio = existing.audio;
+    if (audio_actual !== undefined) {
+      audio = audio_actual || null;
+    } else if (req.body.audio !== undefined) {
+      audio = req.body.audio || null;
+    }
+    if (req.files?.audio) {
+      audio = req.files.audio[0].filename;
+    }
 
-  const params = [
-    viajePrevistoId,
-    fechaInicio,
-    horaInicio || '',
-    fechaFin,
-    horaFin || '',
-    duracionDias || 0,
-    destinosJSON,
-    descripcionGeneral || '',
-    climaGeneral || '',
-    tipoDeViaje || 'urbana',
-    id
-  ];
+    const finalViajePrevistoId = viajePrevistoId !== undefined ? Number(viajePrevistoId) : existing.viajePrevistoId;
+    const finalFechaInicio = fechaInicio !== undefined ? fechaInicio : existing.fechaInicio;
+    const finalHoraInicio = horaInicio !== undefined ? (horaInicio || '') : (existing.horaInicio || '');
+    const finalFechaFin = fechaFin !== undefined ? fechaFin : existing.fechaFin;
+    const finalHoraFin = horaFin !== undefined ? (horaFin || '') : (existing.horaFin || '');
+    const finalDuracionDias = duracionDias !== undefined ? Number(duracionDias) : (existing.duracionDias || 1);
+    const finalDestinos = destinosPorDia !== undefined ? ((typeof destinosPorDia === 'string') ? destinosPorDia : JSON.stringify(destinosPorDia || '')) : existing.destinosPorDia;
+    const finalDesc = descripcionGeneral !== undefined ? (descripcionGeneral || '') : (existing.descripcionGeneral || '');
+    const finalClima = climaGeneral !== undefined ? (climaGeneral || '') : (existing.climaGeneral || '');
+    const finalTipo = tipoDeViaje !== undefined ? (tipoDeViaje || 'urbana') : (existing.tipoDeViaje || 'urbana');
 
-  db.run(
-    sql,
-    params,
-    function (err) {
-      if (err) {
-        console.error(`❌ [PUT /itinerarios/${id}] Error SQLite:`, err.message);
-        return res.status(500).json({ error: err.message });
+    const sql = `UPDATE ItinerarioGeneral SET
+      viajePrevistoId = ?,
+      fechaInicio = ?,
+      horaInicio = ?,
+      fechaFin = ?,
+      horaFin = ?,
+      duracionDias = ?,
+      destinosPorDia = ?,
+      descripcionGeneral = ?,
+      climaGeneral = ?,
+      tipoDeViaje = ?,
+      audio = ?
+      WHERE id = ?`;
+
+    const params = [
+      finalViajePrevistoId,
+      finalFechaInicio,
+      finalHoraInicio,
+      finalFechaFin,
+      finalHoraFin,
+      finalDuracionDias,
+      finalDestinos,
+      finalDesc,
+      finalClima,
+      finalTipo,
+      audio,
+      id
+    ];
+
+    db.run(sql, params, function (updateErr) {
+      if (updateErr) {
+        console.error(`❌ [PUT /itinerarios/${id}] Error SQLite:`, updateErr.message);
+        return res.status(500).json({ error: updateErr.message });
       }
 
       console.log(`✅ [PUT /itinerarios/${id}] Cambios realizados: ${this.changes}`);
-
-      if (this.changes === 0) {
-        return res.status(404).json({ error: 'Itinerario no encontrado para actualizar' });
-      }
-
-      res.json({ changes: this.changes });
-    }
-  );
+      res.json({ changes: this.changes, audio });
+    });
+  });
 });
 
 // 5️⃣ DELETE eliminar un itinerario

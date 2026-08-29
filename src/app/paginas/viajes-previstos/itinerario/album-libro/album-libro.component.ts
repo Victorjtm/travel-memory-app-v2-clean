@@ -59,6 +59,7 @@ interface PaginaMedia {
   };
   archivosAsociados?: any[];
   timestampReal?: number;
+  itinerarioId?: number;
 }
 
 interface ContextoViaje {
@@ -115,6 +116,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   volumenOriginal = 1;
   modoRecuerdoActivo = false;
   audioAutoplayBloqueado = false;
+  private audioCrossfadeInterval: any = null;
+  private audioUrlActual: string | null = null;
+  private itinerarioActualAudioId: number | null = null;
 
   // ==========================================
   // PROPIEDADES DE CONTEXTO Y DATOS
@@ -934,71 +938,187 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // MÉTODOS PARA GESTIÓN DEL AUDIO DEL VIAJE
   // ==========================================
 
-  private inicializarAudioViaje(): void {
-    if (!this.infoViaje?.audio) {
-      console.log('ℹ️ No hay audio asociado al viaje');
-      this.audioDisponible = false;
-      return;
+  private getAudioUrlParaItinerario(itinerarioId?: number): string | null {
+    if (itinerarioId && this.listaItinerarios && this.listaItinerarios.length > 0) {
+      const itin = this.listaItinerarios.find(it => it.id === itinerarioId);
+      if (itin?.audio) {
+        if (itin.audio.startsWith('http')) return itin.audio;
+        const nombreArchivo = itin.audio.split(/[\\/]/).pop();
+        return `${environment.apiUrl}/uploads/${nombreArchivo}`;
+      }
     }
 
-    const audioUrl = this.getAudioViajeUrl();
+    if (this.infoViaje?.audio) {
+      if (this.infoViaje.audio.startsWith('http')) return this.infoViaje.audio;
+      const nombreArchivo = this.infoViaje.audio.split(/[\\/]/).pop();
+      return `${environment.apiUrl}/uploads/${nombreArchivo}`;
+    }
+
+    return null;
+  }
+
+  private inicializarAudioViaje(): void {
+    const pag = this.paginas[this.paginaActual];
+    const itinId = pag?.itinerarioId || pag?.archivo?.itinerarioId || this.contextoViaje?.itinerarioId;
+    const audioUrl = this.getAudioUrlParaItinerario(itinId);
+
     if (!audioUrl) {
-      console.log('⚠️ No se pudo generar URL del audio');
+      console.log('ℹ️ No hay audio asociado al itinerario ni al viaje');
       this.audioDisponible = false;
       return;
     }
 
     try {
+      this.audioUrlActual = audioUrl;
+      this.itinerarioActualAudioId = itinId || null;
+
       this.audioViaje = new Audio(audioUrl);
       this.audioViaje.loop = true;
-      this.volumenOriginal = this.audioViaje.volume; // 👈 AÑADIDO
+      this.volumenOriginal = this.audioViaje.volume || 0.72;
 
-      // Eventos del audio
       this.audioViaje.addEventListener('play', () => {
-        console.log('▶️ Audio del viaje reproduciendo');
+        console.log('▶️ Audio reproduciendo');
         this.audioReproduciendo = true;
+        this.cdr.detectChanges();
       });
 
       this.audioViaje.addEventListener('pause', () => {
-        console.log('⏸️ Audio del viaje pausado');
+        console.log('⏸️ Audio pausado');
         this.audioReproduciendo = false;
+        this.cdr.detectChanges();
       });
 
       this.audioViaje.addEventListener('error', (e) => {
-        console.error('❌ Error al cargar audio del viaje:', e);
+        console.error('❌ Error al cargar audio:', e);
         this.audioDisponible = false;
+        this.cdr.detectChanges();
       });
 
       this.audioViaje.addEventListener('loadedmetadata', () => {
-        console.log('✅ Audio del viaje cargado correctamente');
+        console.log('✅ Audio cargado correctamente');
         this.audioDisponible = true;
+        this.cdr.detectChanges();
       });
 
     } catch (error) {
-      console.error('❌ Error al inicializar audio del viaje:', error);
+      console.error('❌ Error al inicializar audio:', error);
       this.audioDisponible = false;
     }
   }
 
-  private getAudioViajeUrl(): string | null {
-    if (!this.infoViaje?.audio) {
-      return null;
+  verificarSincronizacionAudioItinerario(): void {
+    const pag = this.paginas[this.paginaActual];
+    const itinId = pag?.itinerarioId || pag?.archivo?.itinerarioId || this.contextoViaje?.itinerarioId;
+    const targetUrl = this.getAudioUrlParaItinerario(itinId);
+
+    if (targetUrl === this.audioUrlActual) {
+      return; // Misma pista musical, continúa en bucle sin interrupción
     }
 
-    // Si la URL ya es completa
-    if (this.infoViaje.audio.startsWith('http')) {
-      return this.infoViaje.audio;
+    console.log(`🎵 [Audio] Cambio de pista de itinerario detectado (Itin #${itinId}): ${this.audioUrlActual} ➔ ${targetUrl}`);
+
+    const oldAudio = this.audioViaje;
+    const eraReproduciendo = this.audioReproduciendo || this.reproduciendoSlideshow;
+    this.audioUrlActual = targetUrl;
+    this.itinerarioActualAudioId = itinId || null;
+
+    if (targetUrl) {
+      const newAudio = new Audio(targetUrl);
+      newAudio.loop = true;
+      newAudio.volume = eraReproduciendo ? 0 : (this.volumenOriginal || 0.72);
+
+      newAudio.addEventListener('play', () => {
+        this.audioReproduciendo = true;
+        this.cdr.detectChanges();
+      });
+      newAudio.addEventListener('pause', () => {
+        this.audioReproduciendo = false;
+        this.cdr.detectChanges();
+      });
+      newAudio.addEventListener('loadedmetadata', () => {
+        this.audioDisponible = true;
+        this.cdr.detectChanges();
+      });
+
+      this.audioViaje = newAudio;
+      this.audioDisponible = true;
+
+      if (eraReproduciendo) {
+        this.ejecutarCrossfade(oldAudio, newAudio);
+      } else {
+        if (oldAudio) {
+          oldAudio.pause();
+          oldAudio.src = '';
+        }
+      }
+    } else {
+      if (oldAudio && eraReproduciendo) {
+        this.ejecutarCrossfade(oldAudio, null);
+      } else if (oldAudio) {
+        oldAudio.pause();
+        oldAudio.src = '';
+        this.audioViaje = null;
+        this.audioDisponible = false;
+      }
+    }
+  }
+
+  private ejecutarCrossfade(audioSaliente: HTMLAudioElement | null, audioEntrante: HTMLAudioElement | null): void {
+    if (this.audioCrossfadeInterval) {
+      clearInterval(this.audioCrossfadeInterval);
+      this.audioCrossfadeInterval = null;
     }
 
-    // Construir URL relativa
-    const nombreArchivo = this.infoViaje.audio.split(/[\\/]/).pop();
-    return `${environment.apiUrl}/uploads/${nombreArchivo}`;
+    const targetVolume = this.volumenOriginal || 0.72;
+    const duracionMs = 2000; // 2 segundos de fundido cruzado (crossfade)
+    const intervaloMs = 50;
+    const pasos = Math.max(1, Math.round(duracionMs / intervaloMs));
+    const deltaVolumen = targetVolume / pasos;
+
+    if (audioEntrante) {
+      audioEntrante.volume = 0;
+      audioEntrante.play().catch(err => {
+        console.warn('⚠️ [Audio] Autoplay prevenido al iniciar crossfade:', err);
+      });
+    }
+
+    let pasoActual = 0;
+    this.audioCrossfadeInterval = setInterval(() => {
+      pasoActual++;
+
+      // Fade out de la pista saliente
+      if (audioSaliente && !audioSaliente.paused) {
+        audioSaliente.volume = Math.max(0, audioSaliente.volume - deltaVolumen);
+      }
+
+      // Fade in de la pista entrante
+      if (audioEntrante && !audioEntrante.paused) {
+        audioEntrante.volume = Math.min(targetVolume, audioEntrante.volume + deltaVolumen);
+      }
+
+      if (pasoActual >= pasos) {
+        clearInterval(this.audioCrossfadeInterval);
+        this.audioCrossfadeInterval = null;
+
+        if (audioSaliente) {
+          audioSaliente.pause();
+          audioSaliente.src = '';
+        }
+        if (audioEntrante) {
+          audioEntrante.volume = targetVolume;
+        }
+      }
+    }, intervaloMs);
   }
 
   toggleAudioViaje(): void {
     if (!this.audioViaje) {
-      console.warn('⚠️ Audio no disponible');
-      return;
+      // Intentar inicializar con la página actual
+      this.inicializarAudioViaje();
+      if (!this.audioViaje) {
+        console.warn('⚠️ Audio no disponible');
+        return;
+      }
     }
 
     if (this.audioReproduciendo) {
@@ -1023,6 +1143,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   private limpiarAudioViaje(): void {
+    if (this.audioCrossfadeInterval) {
+      clearInterval(this.audioCrossfadeInterval);
+      this.audioCrossfadeInterval = null;
+    }
     if (this.audioViaje) {
       this.audioViaje.pause();
       this.audioViaje.src = '';
@@ -1030,19 +1154,21 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
     this.audioReproduciendo = false;
     this.audioDisponible = false;
+    this.audioUrlActual = null;
+    this.itinerarioActualAudioId = null;
   }
 
   private bajarVolumenAudioViaje(): void {
     if (this.audioViaje && this.audioDisponible) {
       this.audioViaje.volume = 0.05; // Casi silencio
-      console.log('🔉 Volumen del audio del viaje reducido');
+      console.log('🔉 Volumen del audio reducido');
     }
   }
 
   private restaurarVolumenAudioViaje(): void {
     if (this.audioViaje && this.audioDisponible) {
-      this.audioViaje.volume = this.volumenOriginal;
-      console.log('🔊 Volumen del audio del viaje restaurado');
+      this.audioViaje.volume = this.volumenOriginal || 0.72;
+      console.log('🔊 Volumen del audio restaurado');
     }
   }
 
@@ -2328,6 +2454,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       } else {
         this.restaurarVolumenAudioViaje();
       }
+      this.verificarSincronizacionAudioItinerario();
 
       this.centrarMiniaturaActiva(this.paginaActual);
     } else if (nuevaPagina >= this.paginas.length && this.contextoViaje?.itinerarioId && !this.contextoViaje.actividadId) {
@@ -2569,6 +2696,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       } else {
         this.restaurarVolumenAudioViaje();
       }
+      this.verificarSincronizacionAudioItinerario();
 
       if (paginaActual.esCartaManuscrita) {
         this.abrirFullscreen('', 'carta-manuscrita', {

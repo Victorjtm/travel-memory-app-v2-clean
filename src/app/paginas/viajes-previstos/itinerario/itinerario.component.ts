@@ -201,16 +201,27 @@ export class ItinerariosComponent implements OnInit {
     });
   }
 
+  archivoAudioSeleccionado: File | null = null;
+
+  onAudioSelected(event: any): void {
+    const file = event.target.files?.[0];
+    if (file) {
+      this.archivoAudioSeleccionado = file;
+    }
+  }
+
   // Método que se activa cuando se hace clic en el botón "Actualizar"
   actualizarItinerario(itinerario: Itinerario): void {
     this.itinerarioActualizado = { ...itinerario }; // Copia el itinerario a editar en el formulario
+    this.archivoAudioSeleccionado = null;
     console.log('Itinerario listo para actualizar:', this.itinerarioActualizado);
   }
 
   // Método que maneja el envío del itinerario actualizado
   guardarActualizacion(): void {
-    this.itinerarioService.actualizarItinerario(this.itinerarioActualizado.id, this.itinerarioActualizado).subscribe(() => {
+    this.itinerarioService.actualizarItinerario(this.itinerarioActualizado.id, this.itinerarioActualizado, this.archivoAudioSeleccionado || undefined).subscribe(() => {
       console.log('Itinerario actualizado correctamente');
+      this.archivoAudioSeleccionado = null;
       this.cargarItinerarios(); // Vuelve a cargar los itinerarios para reflejar el cambio
       this.resetearFormulario();
     });

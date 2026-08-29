@@ -10,5 +10,6 @@ export interface Itinerario {
     horaFin?: string;
     climaGeneral?: string;
     tipoDeViaje?: string; // Permitir valores dinámicos
+    audio?: string;
   }
   
