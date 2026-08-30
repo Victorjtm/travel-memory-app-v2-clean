@@ -111,7 +111,7 @@
           <span>{{ (modoRecuerdoActivo && modoGuiadoActivo) ? 'Pausar Guiado' : 'Play Guiado' }}</span>
         </button>
 
-        <button class="toolbar-icon" *ngIf="audioViaje" [class.active]="audioReproduciendo" (click)="toggleAudioViaje()"
+        <button class="toolbar-icon" *ngIf="audioDisponible || audioViaje" [class.active]="audioReproduciendo" (click)="toggleAudioViaje()"
           [title]="audioReproduciendo ? 'Pausar musica' : 'Reproducir musica'">
           <i class="fas" [class.fa-volume-high]="audioReproduciendo" [class.fa-music]="!audioReproduciendo"></i>
         </button>
@@ -371,10 +371,12 @@
           <app-gpx-animation 
             *ngIf="paginaActual.trackGpx"
             [gpxText]="paginaActual.trackGpx" 
+            [multimedia]="paginaActual.multimedia || []"
             [transportSegments]="paginaActual.transportSegments || []"
             [visualSessionData]="paginaActual.visualSessionData"
             [isHighFidelityMode]="paginaActual.isHighFidelityMode || false"
             [modoRecorridoGuiado]="modoGuiadoActivo"
+            [interactiveMode]="false"
             [autoPlay]="true"
             (onAnimacionCompletada)="onFinAnimacionMapa()"
             (onCerrar)="onFinAnimacionMapa()">
@@ -760,10 +762,12 @@
         <div class="mapa-fullscreen-container" *ngIf="paginaActualData?.trackGpx">
           <app-gpx-animation 
             [gpxText]="paginaActualData!.trackGpx!" 
+            [multimedia]="paginaActualData?.multimedia || []"
             [transportSegments]="paginaActualData?.transportSegments || []"
             [visualSessionData]="paginaActualData?.visualSessionData"
             [isHighFidelityMode]="paginaActualData?.isHighFidelityMode || false"
             [modoRecorridoGuiado]="modoGuiadoActivo"
+            [interactiveMode]="false"
             [autoPlay]="true"
             (onAnimacionCompletada)="onFinAnimacionMapa()"
             (onCerrar)="onFinAnimacionMapa()">

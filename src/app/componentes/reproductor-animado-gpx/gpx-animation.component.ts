@@ -141,14 +141,14 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   isPlaying = false;
   speed = 2; // Multiplicador de velocidad
   progress = 0;
-  
+
   // Real-time Metrics
   currentDistKm = 0;
   currentSteps = 0;
   currentTimeSeg = 0;
   currentPointTime: Date | null = null; // ✨ NUEVA PROPIEDAD
   currentMode: string | null = null;
-  
+
   // OSRM Gap Fill (Prototipo V2)
   autoFillGaps = false;
   isFillingGaps = false;
@@ -160,7 +160,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private currentActualZoom: number = 16;
   private autoZoomPaused: boolean = false;
   private lastInteractionTime: number = 0;
-  
+
   public cameraMode: 'TRACKING' | 'FREE' = 'TRACKING';
   private lastCameraUpdateTime = 0;
   private lastZoomUpdateTime = 0;
@@ -183,7 +183,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   modeList: string[] = []; // Para mantener el orden de aparición
 
   stats: AnimationStats | null = null;
-  
+
   // Multimedia Events
   activeEvent: any = null;
   pendingEvent: any = null; // ✨ NUEVA PROPIEDAD para paso pre-multimedia
@@ -192,6 +192,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   @Input() visualSessionData: any = null;
   @Input() isHighFidelityMode = false;
   @Input() modoRecorridoGuiado = false;
+  @Input() interactiveMode: boolean = true;
   visualSessionGroup: any = null;
   private poiLayerGroup: any = null; // ✨ Grupo independiente para POIs (no colisiona con HF)
 
@@ -217,12 +218,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private modeOccurrences: Record<string, number> = {};
   private pendingVisualMarkers: any[] = [];
   private revealedMarkersCount = 0;
-  
+
   private currentHfColor: string = '';
   private currentHfPhase: string = '';
   private currentHfMode: string = '';
   private hfSegments: any[] = []; // ✨ NUEVA ESTRUCTURA DE SEGMENTOS
-  
+
   public hasCanonicalStats: boolean = false;
 
   constructor(
@@ -289,13 +290,13 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     } else {
       this.points = this.animationService.syncMultimedia(this.points, this.multimedia);
     }
-    
+
     // ✅ CORRECCIÓN ROBUSTA: Asegurar que el tipo de transporte sea el correcto basado en el nombre
     if (this.transportSegments) {
       this.transportSegments.forEach((s: any) => {
         const nombre = (s.nombre || '').toLowerCase();
         const tipo = (s.tipo || '').toLowerCase();
-        
+
         if ((nombre.includes('coche') || nombre.includes('driving') || nombre.includes('car')) && tipo === 'walking') {
           console.log(`🚗 [Fijando Modo] Corrigiendo segmento ${s.nombre}: walking -> driving`);
           s.tipo = 'driving';
@@ -307,7 +308,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     }
 
     this.points = this.animationService.applyTransportSegments(this.points, this.transportSegments);
-    
+
     // ✨ NUEVO: Sincronización de Alta Fidelidad (Prioridad sobre estadísticas legacy)
     if (this.isHighFidelityMode && this.visualSessionData) {
       this.syncHighFidelityMetadata();
@@ -318,10 +319,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     // Inicializar primer modo para el HUD y crear la primera polilínea
     if (this.points.length > 0) {
       const p0 = this.points[0];
-      
+
       // ✨ PRIORIDAD: Usar el primer segmento HF para el estado inicial si existe
       const firstSeg = (this.isHighFidelityMode && this.hfSegments.length > 0) ? this.hfSegments[0] : null;
-      
+
       if (firstSeg && firstSeg.startIndex <= 5) { // Si el primer segmento empieza cerca del inicio
         this.currentMode = firstSeg.mode;
         this.currentHfColor = firstSeg.color;
@@ -336,10 +337,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         this.modeStats[this.currentMode] = { dist: 0, time: 0, steps: 0 };
         this.modeList.push(this.currentMode);
       }
-      this.currentPointTime = p0.time || null; 
-      
-      await this.initMap(); 
-      
+      this.currentPointTime = p0.time || null;
+
+      await this.initMap();
+
       const pointContext = (this.isHighFidelityMode && this.hfSegments.length > 0 && this.hfSegments[0].startIndex <= 10) ? {
         hfColor: this.hfSegments[0].color,
         hfMode: this.hfSegments[0].mode,
@@ -356,7 +357,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       }
 
       this.createNewPolyline(this.currentMode || 'walking', [p0.lat, p0.lng], pointContext);
-      
+
       // NUEVO: Mostrar todos los POIs de inmediato
       this.displayAllPois();
       console.log(`🛣️ Primera polilínea (HF) creada. Color: ${this.currentHfColor || 'default'}`);
@@ -390,7 +391,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
             const loc = typeof archivo.geolocalizacion === 'string' ? JSON.parse(archivo.geolocalizacion) : archivo.geolocalizacion;
             lat = Number(loc.latitud || loc.latitude || loc.lat || 0);
             lng = Number(loc.longitud || loc.longitude || loc.lng || 0);
-          } catch (e) {}
+          } catch (e) { }
         }
         if ((!lat || !lng) && archivo.latitud && archivo.longitud) {
           lat = Number(archivo.latitud);
@@ -456,7 +457,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   // ✨ Replica la MISMA lógica de agrupación y estilo visual que "ver GPX" (actividades-itinerarios)
   private displayAllPois() {
     if (!this.map) { console.warn('⚠️ [displayAllPois] No hay mapa'); return; }
-    
+
     // ✨ USAR GRUPO DEDICADO para POIs (separado de visualSessionGroup de HF)
     if (!this.poiLayerGroup) {
       this.poiLayerGroup = this.L.layerGroup().addTo(this.map);
@@ -466,7 +467,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         this.poiLayerGroup.addTo(this.map);
       }
     }
-    
+
     // ❌ Evitar que se revelen marcadores dinámicos extra durante la animación (ya están todos mostrados)
     this.pendingVisualMarkers = [];
 
@@ -527,7 +528,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   private async initMap() {
     this.L = await import('leaflet');
-    
+
     const initialLat = this.points.length > 0 ? this.points[0].lat : 0;
     const initialLng = this.points.length > 0 ? this.points[0].lng : 0;
 
@@ -600,14 +601,14 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     if (this.isHighFidelityMode && this.visualSessionData?.layers) {
       this.visualSessionGroup = this.L.layerGroup().addTo(this.map);
       this.pendingVisualMarkers = [];
-      
+
       this.visualSessionData.layers.forEach((layer: any) => {
         try {
           if (layer.type === 'marker' && layer.latLng) {
             // ❌ FILTRO: No añadir flechas de dirección a la animación
-            const isArrow = layer.icon?.className === 'direction-arrow-svg' || 
-                           (layer.icon?.html && (layer.icon.html.includes('direction-arrow-svg') || layer.icon.html.includes('rotate(')));
-            
+            const isArrow = layer.icon?.className === 'direction-arrow-svg' ||
+              (layer.icon?.html && (layer.icon.html.includes('direction-arrow-svg') || layer.icon.html.includes('rotate(')));
+
             if (!isArrow) {
               this.pendingVisualMarkers.push(layer);
             }
@@ -628,7 +629,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     // Marcador de posición (Icono dinámico de transporte)
     const initialMode = this.currentMode || 'walking';
     const iconHtml = `<div class="transport-icon-wrapper" style="width:120px;height:120px;background:#FFD600;border:6px solid #FFFFFF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:90px;line-height:1;box-shadow:0 10px 30px rgba(0,0,0,0.7);">${this.getModeIcon(initialMode)}</div>`;
-    
+
     if (this.points.length > 0) {
       this.marker = this.L.marker([this.points[0].lat, this.points[0].lng], {
         icon: this.L.divIcon({
@@ -643,7 +644,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   togglePlay() {
     if (this.isFramingSegment) return; // Prevenir interrupciones durante el encuadre
-    
+
     this.isPlaying = !this.isPlaying;
     if (this.isPlaying) {
       // SIEMPRE encuadrar el tramo antes de arrancar la animación
@@ -659,9 +660,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   private handleUserMapInteraction(e: any) {
     if (e.originalEvent || (e.sourceTarget && e.sourceTarget === this.map)) {
-       this.autoZoomPaused = true;
-       this.lastInteractionTime = Date.now();
-       this.narrativeService.setManualZoom();
+      this.autoZoomPaused = true;
+      this.lastInteractionTime = Date.now();
+      this.narrativeService.setManualZoom();
     }
   }
 
@@ -674,20 +675,20 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     let nextPiIdx = -1;
 
     for (let i = currentPiIdx + 1; i < this.points.length; i++) {
-        if (this.points[i].event) {
-            nextPiIdx = i;
-            break;
-        }
+      if (this.points[i].event) {
+        nextPiIdx = i;
+        break;
+      }
     }
 
     if (nextPiIdx === -1) {
-        nextPiIdx = this.points.length - 1;
+      nextPiIdx = this.points.length - 1;
     }
-    
+
     if (currentPiIdx === nextPiIdx) {
-        this.lastTimestamp = performance.now();
-        this.animate();
-        return;
+      this.lastTimestamp = performance.now();
+      this.animate();
+      return;
     }
 
     const p1 = this.points[currentPiIdx];
@@ -716,7 +717,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       while (boatEnd < this.points.length - 1 && this.isBoatMode(this.points[boatEnd + 1]?.mode || this.points[boatEnd + 1]?.hfMode)) {
         boatEnd++;
       }
-      
+
       const boatPoints = this.points.slice(boatStart, boatEnd + 1).map(p => [p.lat, p.lng] as [number, number]);
       bounds = this.L.latLngBounds(boatPoints.length > 0 ? boatPoints : [[p1.lat, p1.lng], [p2.lat, p2.lng]]);
       console.log(`🚢 [Panorámica Mar] Encuadrando travesía completa (${boatPoints.length} puntos de navegación)`);
@@ -726,48 +727,48 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         [p2.lat, p2.lng]
       ]);
     }
-    
+
     const onFrameComplete = () => {
-        if (!this.isFramingSegment) return; // Evitar doble ejecución
-        this.isFramingSegment = false; // Marcar como completado para evitar que el fallback lo llame otra vez
+      if (!this.isFramingSegment) return; // Evitar doble ejecución
+      this.isFramingSegment = false; // Marcar como completado para evitar que el fallback lo llame otra vez
 
-        // Dar tiempo al navegador para renderizar el mapa con los dos puntos visibles
-        setTimeout(() => {
-            // Calcular distancia visual en pantalla
-            const point1 = this.map.latLngToContainerPoint([p1.lat, p1.lng]);
-            const point2 = this.map.latLngToContainerPoint([p2.lat, p2.lng]);
-            const visualDistPx = Math.sqrt(Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2));
-            
-            // Velocidad visual deseada (ej: 150 píxeles por segundo)
-            const targetPxPerSec = isBoat ? 100 : 150;
-            const targetDurationSeconds = Math.max(0.5, visualDistPx / targetPxPerSec);
-            
-            // Distancia geográfica real del tramo (en metros)
-            const segmentDistM = Math.abs((p2.distAcum - p1.distAcum)) || 1;
-            const speedFactor = this.getSpeedFactor(this.currentMode);
-            
-            // Para distancias largas (> 2 km), acelerar suavemente el tiempo objetivo del tramo
-            let effectiveTargetSec = targetDurationSeconds;
-            if (segmentDistM > 2000) {
-              const distKm = segmentDistM / 1000;
-              const distanceSpeedBoost = Math.min(isBoat ? 3.5 : 2.2, 1 + 0.35 * Math.log10(distKm));
-              effectiveTargetSec = targetDurationSeconds / distanceSpeedBoost;
-            }
+      // Dar tiempo al navegador para renderizar el mapa con los dos puntos visibles
+      setTimeout(() => {
+        // Calcular distancia visual en pantalla
+        const point1 = this.map.latLngToContainerPoint([p1.lat, p1.lng]);
+        const point2 = this.map.latLngToContainerPoint([p2.lat, p2.lng]);
+        const visualDistPx = Math.sqrt(Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2));
 
-            let calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
-            calculatedSpeed = Math.max(1, Math.min(3000, Math.round(calculatedSpeed)));
+        // Velocidad visual deseada (ej: 150 píxeles por segundo)
+        const targetPxPerSec = isBoat ? 100 : 150;
+        const targetDurationSeconds = Math.max(0.5, visualDistPx / targetPxPerSec);
 
-            console.log(`🎯 [Tramo] pixels=${visualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${targetDurationSeconds.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
+        // Distancia geográfica real del tramo (en metros)
+        const segmentDistM = Math.abs((p2.distAcum - p1.distAcum)) || 1;
+        const speedFactor = this.getSpeedFactor(this.currentMode);
 
-            // SIEMPRE aplicar la velocidad calculada (sin depender de autoSpeedEnabled)
-            this.speed = calculatedSpeed;
+        // Para distancias largas (> 2 km), acelerar suavemente el tiempo objetivo del tramo
+        let effectiveTargetSec = targetDurationSeconds;
+        if (segmentDistM > 2000) {
+          const distKm = segmentDistM / 1000;
+          const distanceSpeedBoost = Math.min(isBoat ? 3.5 : 2.2, 1 + 0.35 * Math.log10(distKm));
+          effectiveTargetSec = targetDurationSeconds / distanceSpeedBoost;
+        }
 
-            // Reanudar viaje
-            this.isPlaying = true;
-            this.lastTimestamp = performance.now();
-            this.animate();
-            this.cdr.detectChanges();
-        }, 500);
+        let calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
+        calculatedSpeed = Math.max(1, Math.min(3000, Math.round(calculatedSpeed)));
+
+        console.log(`🎯 [Tramo] pixels=${visualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${targetDurationSeconds.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
+
+        // SIEMPRE aplicar la velocidad calculada (sin depender de autoSpeedEnabled)
+        this.speed = calculatedSpeed;
+
+        // Reanudar viaje
+        this.isPlaying = true;
+        this.lastTimestamp = performance.now();
+        this.animate();
+        this.cdr.detectChanges();
+      }, 500);
     };
 
     // Encuadrar la cámara
@@ -778,13 +779,13 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       animate: true,
       duration: 1.5
     });
-    
+
     // Fallback de seguridad por si moveend no se dispara (ej. si ya estaba encuadrado)
     setTimeout(() => {
-        if (this.isFramingSegment) {
-            this.map.off('moveend', onFrameComplete);
-            onFrameComplete();
-        }
+      if (this.isFramingSegment) {
+        this.map.off('moveend', onFrameComplete);
+        onFrameComplete();
+      }
     }, 2500);
   }
 
@@ -810,84 +811,84 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     let segmentDistanceSum = 0;
 
     for (let i = 0; i < this.points.length - 1; i++) {
-        const p1 = this.points[i];
-        const p2 = this.points[i+1];
-        filledPoints.push(p1);
+      const p1 = this.points[i];
+      const p2 = this.points[i + 1];
+      filledPoints.push(p1);
 
-        // Si es un evento, reseteamos el segmento de conteo de densidad
-        if (p1.event && i > 0) {
-            segmentPointsCount = 0;
-            segmentDistanceSum = 0;
-        }
+      // Si es un evento, reseteamos el segmento de conteo de densidad
+      if (p1.event && i > 0) {
+        segmentPointsCount = 0;
+        segmentDistanceSum = 0;
+      }
 
-        const distKm = this.animationService.getDistance(p1.lat, p1.lng, p2.lat, p2.lng) / 1000;
-        
-        if (distKm > 5) {
-            console.log(`🚧 GAP detectado: ${distKm.toFixed(2)}km → Consultando OSRM...`);
-            // ✨ DENSIDAD RELATIVA: Promedio del tramo anterior (segmentPointsCount)
-            const avgDistanceMeters = segmentPointsCount > 0 
-                ? (segmentDistanceSum * 1000) / segmentPointsCount 
-                : 15; // fallback
-            
-            const targetNumPoints = Math.max(1, Math.floor((distKm * 1000) / avgDistanceMeters));
-            const subPoints = await this.animationService.getOsrmRoute(p1, p2, targetNumPoints);
-            filledPoints.push(...subPoints);
-            if (subPoints.length > 0) gapCount++;
-            
-            // Reset for the next segment if needed
-            segmentPointsCount = 0;
-            segmentDistanceSum = 0;
-        } else {
-            segmentPointsCount++;
-            segmentDistanceSum += distKm;
-        }
+      const distKm = this.animationService.getDistance(p1.lat, p1.lng, p2.lat, p2.lng) / 1000;
+
+      if (distKm > 5) {
+        console.log(`🚧 GAP detectado: ${distKm.toFixed(2)}km → Consultando OSRM...`);
+        // ✨ DENSIDAD RELATIVA: Promedio del tramo anterior (segmentPointsCount)
+        const avgDistanceMeters = segmentPointsCount > 0
+          ? (segmentDistanceSum * 1000) / segmentPointsCount
+          : 15; // fallback
+
+        const targetNumPoints = Math.max(1, Math.floor((distKm * 1000) / avgDistanceMeters));
+        const subPoints = await this.animationService.getOsrmRoute(p1, p2, targetNumPoints);
+        filledPoints.push(...subPoints);
+        if (subPoints.length > 0) gapCount++;
+
+        // Reset for the next segment if needed
+        segmentPointsCount = 0;
+        segmentDistanceSum = 0;
+      } else {
+        segmentPointsCount++;
+        segmentDistanceSum += distKm;
+      }
     }
     if (this.points.length > 0) {
-        filledPoints.push(this.points[this.points.length - 1]);
+      filledPoints.push(this.points[this.points.length - 1]);
     }
 
     if (gapCount > 0) {
-        // ✨ 3. Ya NO recalculamos accumulators globales. Los subPoints ya vienen con su distAcum interpolado.
-        this.points = filledPoints;
-        
-        this.currentIndex = 0;
-        this.progress = 0;
-        
-        if (this.map) {
-             const wasPlaying = this.isPlaying;
-             if (wasPlaying) this.togglePlay(); // pause
-             
-             this.map.eachLayer((layer: any) => {
-               if (layer.options && (layer.options.color || layer.options.icon)) {
-                 this.map.removeLayer(layer);
-               }
-             });
-             this.polylines = [];
-             this.currentPolyline = null;
-             
-             this.currentMode = this.points[0].mode || 'walking';
-             const iconHtml = `<div class="transport-icon-wrapper">${this.getModeIcon(this.currentMode)}</div>`;
-             this.marker = this.L.marker([this.points[0].lat, this.points[0].lng], {
-               icon: this.L.divIcon({
-                 className: 'custom-transport-marker',
-                 html: iconHtml,
-                 iconSize: [60, 60],
-                 iconAnchor: [30, 30]
-               })
-             }).addTo(this.map);
-             
-             // ✨ RE-SINCRONIZAR ALTA FIDELIDAD TRAS OSRM
-             if (this.isHighFidelityMode) {
-               this.syncHighFidelityMetadata();
-             }
+      // ✨ 3. Ya NO recalculamos accumulators globales. Los subPoints ya vienen con su distAcum interpolado.
+      this.points = filledPoints;
 
-             this.createNewPolyline(this.currentMode, [this.points[0].lat, this.points[0].lng], this.points[0]);
-             
-             if (wasPlaying) this.togglePlay();
+      this.currentIndex = 0;
+      this.progress = 0;
+
+      if (this.map) {
+        const wasPlaying = this.isPlaying;
+        if (wasPlaying) this.togglePlay(); // pause
+
+        this.map.eachLayer((layer: any) => {
+          if (layer.options && (layer.options.color || layer.options.icon)) {
+            this.map.removeLayer(layer);
+          }
+        });
+        this.polylines = [];
+        this.currentPolyline = null;
+
+        this.currentMode = this.points[0].mode || 'walking';
+        const iconHtml = `<div class="transport-icon-wrapper">${this.getModeIcon(this.currentMode)}</div>`;
+        this.marker = this.L.marker([this.points[0].lat, this.points[0].lng], {
+          icon: this.L.divIcon({
+            className: 'custom-transport-marker',
+            html: iconHtml,
+            iconSize: [60, 60],
+            iconAnchor: [30, 30]
+          })
+        }).addTo(this.map);
+
+        // ✨ RE-SINCRONIZAR ALTA FIDELIDAD TRAS OSRM
+        if (this.isHighFidelityMode) {
+          this.syncHighFidelityMetadata();
         }
-        console.log(`✅ OSRM completado. Gaps rellenados: ${gapCount}. Nuevos puntos totales: ${this.points.length}`);
+
+        this.createNewPolyline(this.currentMode, [this.points[0].lat, this.points[0].lng], this.points[0]);
+
+        if (wasPlaying) this.togglePlay();
+      }
+      console.log(`✅ OSRM completado. Gaps rellenados: ${gapCount}. Nuevos puntos totales: ${this.points.length}`);
     }
-    
+
     this.isFillingGaps = false;
     this.cdr.detectChanges();
   }
@@ -910,7 +911,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     const dt = (timestamp - this.lastTimestamp) / 1000;
     this.lastTimestamp = timestamp;
     const safeDt = Math.max(0, Math.min(dt, 0.1));
-    const frames = safeDt / (1/60);
+    const frames = safeDt / (1 / 60);
 
     // Fase 3: El zoom ya no se interpola frame a frame (LERP eliminado).
     // El zoom discreto se gestiona en updateCameraTracking() con throttle de 1000ms.
@@ -920,30 +921,30 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     let currentSpeed = Number(this.speed) || 2;
 
     const speedFactor = this.getSpeedFactor(this.currentMode);
-    
+
     // ✨ AVANCE POR DISTANCIA GEOGRÁFICA (no por índice)
     // Calculamos cuántos metros por segundo queremos avanzar, 
     // y luego buscamos cuántos índices corresponden a esa distancia.
     const prevIdx = Math.floor(this.currentIndex);
     const p_cur = this.points[prevIdx];
     const p_next = this.points[Math.min(prevIdx + 1, this.points.length - 1)];
-    
+
     // Distancia geográfica entre el punto actual y el siguiente (en metros)
     const interPointDistM = (p_next.distAcum - p_cur.distAcum) || 1; // evitar /0
-    
+
     // Velocidad deseada en metros/segundo: base ~7.5 m/s * speed * speedFactor
     // (7.5 m/s ≈ 27 km/h como base, escalado por speed y speedFactor)
     const metersPerSecond = 7.5 * currentSpeed * speedFactor;
-    
+
     // Cuántos metros avanzamos en este frame
     const metersThisFrame = metersPerSecond * safeDt;
-    
+
     // Traducir metros a índices: si entre punto[i] y punto[i+1] hay X metros,
     // avanzar Y metros equivale a avanzar Y/X índices
-    const indexProgress = Math.abs(interPointDistM) > 0.01 
-        ? metersThisFrame / Math.abs(interPointDistM)
-        : 0.5 * currentSpeed * speedFactor * frames; // fallback al método clásico si distancia es ~0
-    
+    const indexProgress = Math.abs(interPointDistM) > 0.01
+      ? metersThisFrame / Math.abs(interPointDistM)
+      : 0.5 * currentSpeed * speedFactor * frames; // fallback al método clásico si distancia es ~0
+
     this.currentIndex += indexProgress;
     const newIdx = Math.floor(Math.min(this.currentIndex, this.points.length - 1));
 
@@ -989,7 +990,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
           this.currentMode = newMode;
           this.currentHfColor = newColor;
           this.currentHfPhase = newPhase;
-          
+
           const pointContext = {
             hfColor: newColor,
             hfMode: newMode,
@@ -997,10 +998,10 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
             hfOpacity: newOpacity,
             hfDashArray: newDashArray
           };
-          
+
           this.createNewPolyline(this.currentMode, [p.lat, p.lng], pointContext);
           this.updateMarkerIcon(this.currentMode);
-          
+
           if (!this.modeStats[this.currentMode]) {
             this.modeStats[this.currentMode] = { dist: 0, time: 0, steps: 0 };
             this.modeList.push(this.currentMode);
@@ -1022,13 +1023,13 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
           s.time += t;
         }
 
-        if (p.event) {
+        if (p.event && this.interactiveMode) {
           // Si hay puntos pendientes antes del evento, inyectarlos
           if (coordsBatch.length > 0) {
             this.addLatLngsToCurrentPolylines(coordsBatch);
             coordsBatch.length = 0;
           }
-          this.currentIndex = i; 
+          this.currentIndex = i;
           this.renderCurrentFrame();
           this.pauseForEvent(p.event);
           return;
@@ -1036,7 +1037,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
         // ✨ NUEVO: Revelar marcadores visuales cercanos
         if (this.isHighFidelityMode && this.pendingVisualMarkers.length > 0) {
-           this.revealNearbyMarkers(p.lat, p.lng);
+          this.revealNearbyMarkers(p.lat, p.lng);
         }
       }
 
@@ -1067,7 +1068,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
     const floorIdx = Math.floor(this.currentIndex);
     const ceilIdx = Math.min(floorIdx + 1, this.points.length - 1);
-    
+
     const p1 = this.points[floorIdx];
     const p2 = this.points[ceilIdx];
 
@@ -1080,7 +1081,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       const latlng = [lat, lng];
 
       this.marker.setLatLng(latlng);
-      
+
       // Fase 2: Seguimiento de cámara throttled con Safe Zone - ya no se llama setView cada frame
       if (!this.pendingEvent && !this.activeEvent && this.cameraMode === 'TRACKING') {
         this.updateCameraTracking(latlng as [number, number]);
@@ -1088,7 +1089,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
       // 2. Tiempo Objetivo (Teórico del GPX)
       const targetTimeSeg = p1.timeAcum + (p2.timeAcum - p1.timeAcum) * alpha;
-      
+
       let targetPointTimeMs = 0;
       if (p1.time && p2.time) {
         const t1 = p1.time.getTime();
@@ -1116,13 +1117,13 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       // 4. Métricas Globales (InterpDist para coherencia absoluta con el marcador)
       const interpDist = p1.distAcum + (p2.distAcum - p1.distAcum) * alpha;
       this.currentDistKm = interpDist / 1000;
-      
+
       if (this.isWalkingMode(this.currentMode)) {
         this.currentSteps = (interpDist / 1000) * 1400;
       }
 
       this.progress = (interpDist / ((this.stats?.distanciaTotalKm || 1) * 1000)) * 100;
-      
+
       // Actualizar estado para detección de movimiento en el siguiente frame
       this.lastKnownIndex = this.currentIndex;
     }
@@ -1142,9 +1143,9 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private getAdaptiveFollowValue(current: number, target: number): number {
     const drift = target - current;
     const absDrift = Math.abs(drift);
-    
+
     // Heurística para detectar si estamos en MS (Hora Absoluta) o Segundos
-    const isMs = absDrift > 10000; 
+    const isMs = absDrift > 10000;
     const driftSec = isMs ? absDrift / 1000 : absDrift;
 
     const markerMoved = Math.abs(this.currentIndex - this.lastKnownIndex) > this.CLOCK_CONFIG.freezeEpsilon;
@@ -1176,7 +1177,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   getDisplayTime(mode: string): number {
     const stats = this.modeStats[mode];
     if (!stats) return 0;
-    
+
     if (mode === this.currentMode) {
       const p1 = this.points[Math.floor(this.currentIndex)];
       const deltaT = Math.max(0, this.currentTimeSeg - p1.timeAcum);
@@ -1188,14 +1189,14 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   getDisplayDist(mode: string): number {
     const stats = this.modeStats[mode];
     if (!stats) return 0;
-    
+
     if (mode === this.currentMode) {
       const p1 = this.points[Math.floor(this.currentIndex)];
       const p2 = this.points[Math.min(Math.floor(this.currentIndex) + 1, this.points.length - 1)];
       const timeDiff = p2.timeAcum - p1.timeAcum;
       const alpha = timeDiff > 0 ? (this.currentTimeSeg - p1.timeAcum) / timeDiff : 0;
       const safeAlpha = Math.max(0, Math.min(1, alpha));
-      
+
       const deltaD = ((p2.distAcum - p1.distAcum) / 1000) * safeAlpha;
       return stats.dist + deltaD;
     }
@@ -1234,19 +1235,19 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     if (event.archivos && event.archivos.length > 0) {
       for (const archivo of event.archivos) {
         if (!archivo.direccion && currentPoint) {
-           // Si no tiene dirección interna, la obtenemos dinámicamente con Geocoding Inverso
-           try {
-             // Fallback al GPS
-             const locationStr = `${currentPoint.lat},${currentPoint.lng}`;
-             const locationData = await firstValueFrom(this.geocodificacionService.obtenerUbicacionPorCoordenadas(locationStr));
-             if (locationData && locationData.direccion) {
-               archivo.direccionDeducida = locationData.direccion;
-             }
-           } catch (error) {
-             console.error('Error buscando dirección inversa:', error);
-           }
+          // Si no tiene dirección interna, la obtenemos dinámicamente con Geocoding Inverso
+          try {
+            // Fallback al GPS
+            const locationStr = `${currentPoint.lat},${currentPoint.lng}`;
+            const locationData = await firstValueFrom(this.geocodificacionService.obtenerUbicacionPorCoordenadas(locationStr));
+            if (locationData && locationData.direccion) {
+              archivo.direccionDeducida = locationData.direccion;
+            }
+          } catch (error) {
+            console.error('Error buscando dirección inversa:', error);
+          }
         }
-        
+
         // Adjuntar timestamp explícito para lectura directa en caso de usarse en UI
         if (!archivo.fechaCalculada) {
           archivo.fechaCalculada = archivo.fecha ? new Date(archivo.fecha) : (currentPoint.time || new Date());
@@ -1372,7 +1373,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
         const m = this.L.marker(layer.latLng, { icon: icon || new this.L.Icon.Default() }).addTo(this.visualSessionGroup);
         if (layer.popup) m.bindPopup(layer.popup);
-        
+
         // Animación de entrada
         const el = m.getElement();
         if (el) {
@@ -1407,12 +1408,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private syncHighFidelityMetadata() {
     if (!this.visualSessionData?.layers || this.points.length === 0) return;
 
-    const polyLayers = this.visualSessionData.layers.filter((l: any) => 
+    const polyLayers = this.visualSessionData.layers.filter((l: any) =>
       l.type === 'polyline' && l.latLngs?.length > 0
     );
-    
+
     console.log(`🔄 [Alta Fidelidad] Alineando ${polyLayers.length} capas visuales con el GPX...`);
-    
+
     this.hfSegments = [];
     let lastEndIdx = 0;
 
@@ -1424,7 +1425,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       // 1. Buscar inicio del tramo (Desde el último final, con margen amplio)
       let startIndex = -1;
       let minStartDist = 100; // Margen generoso de 100m
-      
+
       for (let i = lastEndIdx; i < Math.min(lastEndIdx + 2000, this.points.length); i++) {
         const d = this.getDistance(vStart.lat, vStart.lng, this.points[i].lat, this.points[i].lng);
         if (d < minStartDist) {
@@ -1441,7 +1442,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       // 2. Buscar fin del tramo (Desde startIndex hasta el final de la ruta)
       let endIndex = -1;
       let minEndDist = 100;
-      
+
       for (let i = startIndex; i < this.points.length; i++) {
         const d = this.getDistance(vEnd.lat, vEnd.lng, this.points[i].lat, this.points[i].lng);
         if (d < minEndDist) {
@@ -1458,14 +1459,14 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       // 3. Extracción de Metadatos y Creación de Segmento
       let mode = (layer.mode || layer.options?.mode || layer.profileId || '').toLowerCase();
       const phase = (layer.routePhase || layer.options?.routePhase || '').toLowerCase();
-      
+
       if (!mode) {
         const color = layer.options?.color;
         if (color === '#059669' || color === '#6EE7B7') mode = 'walking';
         else if (color === '#DC2626' || color === '#FCA5A5') mode = 'driving';
         else mode = 'walking';
       }
-      
+
       if (mode.includes('walk')) mode = 'walking';
       else if (mode.includes('car') || mode.includes('drive')) mode = 'driving';
 
@@ -1526,11 +1527,11 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       const normKey = this.normalizeModeKey(mode);
       color = colorSet[normKey] || colorSet[mode] || colorSet['transport'] || '#FF0000';
     }
-    
+
     if (opacity === undefined || opacity === null) {
       opacity = isReturn ? 0.45 : 0.9;
     }
-    
+
     if (dashArray === undefined || dashArray === null) {
       dashArray = isReturn ? '10, 8' : null;
     }
@@ -1552,7 +1553,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       lineCap: 'round',
       lineJoin: 'round'
     }).addTo(this.map);
-    
+
     this.polylines.push(this.currentPolyline);
   }
 
@@ -1593,18 +1594,18 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   abrirVisorFoto(archivo: any) {
     const urlArchivo = this.getMediaUrl(archivo.rutaArchivo);
     let fullUrl = `${window.location.origin}/visualizador-foto?url=${encodeURIComponent(urlArchivo)}&descripcion=${encodeURIComponent(archivo.descripcion || archivo.nombreArchivo)}`;
-    
+
     if (archivo.audioUrl) {
       fullUrl += `&audioUrl=${encodeURIComponent(archivo.audioUrl)}`;
     }
-    
+
     window.open(fullUrl, '_blank', 'noopener,noreferrer');
   }
 
   getModeName(mode: string | null | undefined): string {
     if (!mode) return 'Andando';
     const m = mode.toLowerCase();
-    
+
     // Mapeo flexible
     if (m.includes('walk') || m.includes('camin') || m.includes('andan')) return 'Andando';
     if (m.includes('car') || m.includes('coch') || m.includes('driv')) return 'En Coche';
@@ -1626,7 +1627,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   private getModeIcon(mode: string | null): string {
     if (!mode) return '📍';
     const m = mode.toLowerCase();
-    
+
     // Mapeo flexible
     if (m.includes('walk') || m.includes('camin') || m.includes('andan')) return '🚶';
     if (m.includes('car') || m.includes('coch') || m.includes('driv') || m.includes('auto') || m.includes('taxi')) return '🚗';
@@ -1636,7 +1637,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     if (m.includes('tren') || m.includes('train') || m.includes('metro') || m.includes('ferrocarril')) return '🚆';
     if (m.includes('avion') || m.includes('plane') || m.includes('flight') || m.includes('vuelo')) return '✈️';
     if (m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero')) return '🚢';
-    
+
     return this.MODE_ICONS[m] || '📍';
   }
 
@@ -1714,7 +1715,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
               const geo = typeof m.geolocalizacion === 'string' ? JSON.parse(m.geolocalizacion) : m.geolocalizacion;
               mLat = geo.latitud || geo.latitude;
               mLng = geo.longitud || geo.longitude;
-            } catch(err) {}
+            } catch (err) { }
           }
           return mLat && mLng && Math.abs(mLat - lat) < 0.0001 && Math.abs(mLng - lng) < 0.0001;
         });
@@ -1793,29 +1794,29 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   public recenterCamera() {
     if (!this.map || !this.marker) return;
-    
+
     this.cameraMode = 'TRACKING';
     this.autoZoomPaused = false;
-    
+
     const markerLatLng = this.marker.getLatLng();
-    
+
     // Retorno suave y controlado
     this.map.flyTo(markerLatLng, this.userSelectedZoom, {
       animate: true,
       duration: 0.8
     });
-    
+
     this.cdr.detectChanges();
   }
 
   private updateCameraTracking(markerLatLng: [number, number]) {
     if (this.cameraMode !== 'TRACKING' || !this.map) return;
-    
+
     // En Fase 4, si autoCamera está activado y no pausado, el `fitBounds` del tramo
     // ya se encarga de que todo esté en pantalla, por lo que NO necesitamos hacer pan ni zoom continuo,
     // permitiendo que el marcador recorra la ruta libremente por la pantalla de PI a PI.
     if (this.narrativeService.cameraState$.value.autoCameraEnabled && !this.autoZoomPaused) {
-       return;
+      return;
     }
 
     // Si el usuario intervino (autoZoomPaused = true), hacemos PAN suave para que no se pierda el marcador
@@ -1846,22 +1847,22 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
   private addLatLngsToCurrentPolylines(coords: [number, number][]) {
     if (!this.map || coords.length === 0) return;
-    
+
     if (this.currentPolyline) {
       const latlngs = this.currentPolyline.getLatLngs() as any[];
       coords.forEach(c => latlngs.push(this.L.latLng(c[0], c[1])));
       this.currentPolyline.redraw();
     }
-    
+
     if (this.currentBackgroundPolyline) {
       const bgLatLngs = this.currentBackgroundPolyline.getLatLngs() as any[];
       coords.forEach(c => bgLatLngs.push(this.L.latLng(c[0], c[1])));
       this.currentBackgroundPolyline.redraw();
     }
   }
-  
+
   get displayZoom(): string {
-     return this.map ? this.map.getZoom().toFixed(1) : '16.0';
+    return this.map ? this.map.getZoom().toFixed(1) : '16.0';
   }
 }
 

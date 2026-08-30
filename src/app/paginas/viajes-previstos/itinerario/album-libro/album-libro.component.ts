@@ -58,6 +58,7 @@ interface PaginaMedia {
     altitud?: number;
   };
   archivosAsociados?: any[];
+  multimedia?: any[];
   timestampReal?: number;
   itinerarioId?: number;
 }
@@ -1740,6 +1741,20 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     return 'walking';
   }
 
+  private getDistanceMetros(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371e3; // metros
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) *
+      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
   private async generarPaginasConAnimaciones(paginasInput: PaginaMedia[]): Promise<PaginaMedia[]> {
     if (!this.incluirAnimacionesMapa) {
       return paginasInput.filter(p => !p.esMapaAnimado);
@@ -1789,17 +1804,102 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               (a.tipo === 'foto' || a.tipo === 'video') && a.geolocalizacion
             );
 
-            points = this.gpxAnimationService.syncMultimedia(points, archivosGeo);
-
-            const piIndices: number[] = [0];
-            for (let j = 1; j < points.length - 1; j++) {
-              if (points[j].event) {
-                piIndices.push(j);
+            // Extraer y agrupar fotos geolocalizadas en PIs (< 10m)
+            const validMedia = (archivosGeo || []).map((archivo: any) => {
+              let lat: number | null = null;
+              let lng: number | null = null;
+              if (archivo.geolocalizacion) {
+                try {
+                  const loc = typeof archivo.geolocalizacion === 'string' ? JSON.parse(archivo.geolocalizacion) : archivo.geolocalizacion;
+                  lat = Number(loc.latitud ?? loc.latitude ?? loc.lat ?? 0);
+                  lng = Number(loc.longitud ?? loc.longitude ?? loc.lng ?? 0);
+                } catch (e) {}
               }
-            }
-            piIndices.push(points.length - 1);
+              if ((!lat || !lng) && archivo.latitud && archivo.longitud) {
+                lat = Number(archivo.latitud);
+                lng = Number(archivo.longitud);
+              }
+              if ((!lat || !lng) && archivo.lat && archivo.lng) {
+                lat = Number(archivo.lat);
+                lng = Number(archivo.lng);
+              }
+              if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
+                let ts = 0;
+                if (archivo.fechaCreacion) {
+                  const fecha = new Date(archivo.fechaCreacion);
+                  if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string') {
+                    const [horas, minutos] = archivo.horaCaptura.split(':').map(Number);
+                    if (!isNaN(horas) && !isNaN(minutos)) fecha.setHours(horas, minutos, 0, 0);
+                  }
+                  ts = fecha.getTime();
+                } else if (archivo.fechaTomada || archivo.fecha) {
+                  ts = new Date(archivo.fechaTomada || archivo.fecha).getTime() || 0;
+                }
+                return { lat, lng, archivo, timestamp: ts };
+              }
+              return null;
+            }).filter(Boolean) as { lat: number; lng: number; archivo: any; timestamp: number }[];
 
-            console.log(`🗺️ Actividad #${actId}: ${points.length} puntos, ${piIndices.length} PIs detectados, modo base: ${modoBaseNorm}`);
+            validMedia.sort((a, b) => a.timestamp - b.timestamp);
+
+            const TOLERANCIA_GPS = 0.0001; // ~10 metros
+            const gruposPIs: { lat: number; lng: number; archivos: any[] }[] = [];
+
+            validMedia.forEach(item => {
+              const ultimoGrupo = gruposPIs.length > 0 ? gruposPIs[gruposPIs.length - 1] : null;
+              const coincideUbicacion = ultimoGrupo &&
+                Math.abs(ultimoGrupo.lat - item.lat) < TOLERANCIA_GPS &&
+                Math.abs(ultimoGrupo.lng - item.lng) < TOLERANCIA_GPS;
+
+              if (coincideUbicacion && ultimoGrupo) {
+                ultimoGrupo.archivos.push(item.archivo);
+              } else {
+                gruposPIs.push({ lat: item.lat, lng: item.lng, archivos: [item.archivo] });
+              }
+            });
+
+            // Mapear PIs a puntos del track ordenadamente hacia adelante
+            let lastMatchedIdx = 0;
+            const piMatchedIndicesSet = new Set<number>([0]);
+
+            gruposPIs.forEach((pi) => {
+              let bestIdx = -1;
+              let minScore = Infinity;
+
+              for (let i = lastMatchedIdx; i < points.length; i++) {
+                const pt = points[i];
+                const dist = this.getDistanceMetros(pt.lat, pt.lng, pi.lat, pi.lng);
+                const penalty = (i - lastMatchedIdx) * 0.05;
+                const score = dist + penalty;
+                if (score < minScore) {
+                  minScore = score;
+                  bestIdx = i;
+                  if (dist < 30) break;
+                }
+              }
+
+              if (bestIdx === -1) {
+                for (let i = 0; i < points.length; i++) {
+                  const pt = points[i];
+                  const dist = this.getDistanceMetros(pt.lat, pt.lng, pi.lat, pi.lng);
+                  if (dist < minScore) {
+                    minScore = dist;
+                    bestIdx = i;
+                  }
+                }
+              }
+
+              if (bestIdx !== -1) {
+                (pi as any).trackIdx = bestIdx;
+                piMatchedIndicesSet.add(bestIdx);
+                lastMatchedIdx = bestIdx;
+              }
+            });
+
+            piMatchedIndicesSet.add(points.length - 1);
+            const piIndices = Array.from(piMatchedIndicesSet).sort((a, b) => a - b);
+
+            console.log(`🗺️ Actividad #${actId}: ${points.length} puntos, ${gruposPIs.length} PIs detectados, ${piIndices.length} puntos de corte, modo base: ${modoBaseNorm}`);
 
             for (let s = 0; s < piIndices.length - 1; s++) {
               const startIdx = piIndices[s];
@@ -1875,27 +1975,40 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                 const ptInicio = subSegmentPoints[0];
                 const ptFin = subSegmentPoints[subSegmentPoints.length - 1];
 
+                // Obtener el PI de origen del subtramo para posicionar la animación inmediatamente tras sus fotos
+                const piOrigen = gruposPIs.find((g: any) => g.trackIdx === startIdx);
+                let timestampInicio = 0;
                 let horaInicioTramo = '';
                 let horaFinTramo = '';
 
+                if (piOrigen && piOrigen.archivos && piOrigen.archivos.length > 0) {
+                  const lastFile = piOrigen.archivos[piOrigen.archivos.length - 1];
+                  const dP = lastFile.fecha ? lastFile.fecha.split('T')[0] : (lastFile.fechaCreacion ? lastFile.fechaCreacion.split('T')[0] : '1970-01-01');
+                  let tP = lastFile.horaCaptura || '00:00:00';
+                  if (tP.length === 5 && tP.includes(':')) tP = `${tP}:00`;
+                  const dObj = new Date(`${dP}T${tP}Z`);
+                  timestampInicio = !isNaN(dObj.getTime()) ? dObj.getTime() + 1 : 0;
+                  horaInicioTramo = lastFile.horaCaptura || '';
+                }
+
                 if (ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime())) {
-                  horaInicioTramo = ptInicio.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                  if (!horaInicioTramo) {
+                    horaInicioTramo = ptInicio.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                  }
                 }
                 if (ptFin?.time instanceof Date && !isNaN(ptFin.time.getTime())) {
                   horaFinTramo = ptFin.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
                 }
 
-                if (!horaInicioTramo && pag.archivo?.horaCaptura) {
-                  horaInicioTramo = pag.archivo.horaCaptura;
+                if (!timestampInicio) {
+                  const datePart = pag.fecha ? pag.fecha.split('T')[0] : (pag.archivo?.fechaCreacion ? pag.archivo.fechaCreacion.split('T')[0] : '1970-01-01');
+                  let timePart = horaInicioTramo || '00:00:00';
+                  if (timePart.length === 5 && timePart.includes(':')) timePart = `${timePart}:00`;
+                  const dt = new Date(`${datePart}T${timePart}Z`);
+                  timestampInicio = !isNaN(dt.getTime()) ? dt.getTime() : 0;
                 }
 
-                // Calcular timestamp exacto de inicio del tramo (usando formato normalizado idéntico al de las fotos)
                 const datePart = pag.fecha ? pag.fecha.split('T')[0] : (pag.archivo?.fechaCreacion ? pag.archivo.fechaCreacion.split('T')[0] : '1970-01-01');
-                let timePart = horaInicioTramo || '00:00:00';
-                if (timePart.length === 5 && timePart.includes(':')) timePart = `${timePart}:00`;
-                const dt = new Date(`${datePart}T${timePart}Z`);
-                const timestampInicio = !isNaN(dt.getTime()) ? dt.getTime() : 0;
-
                 const tiposUnicos = Array.from(new Set(subTransportSegments.map(t => t.tipo || t.nombre).filter(Boolean)));
                 const tipoTransporteTramo = tiposUnicos.length > 0 ? tiposUnicos.join(', ') : modoBaseNorm;
 
@@ -1918,7 +2031,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   horaInicioTramo: horaInicioTramo,
                   horaFinTramo: horaFinTramo,
                   tipoTransporteTramo: tipoTransporteTramo,
-                  timestampReal: timestampInicio
+                  timestampReal: timestampInicio,
+                  multimedia: archivosGeo
                 };
 
                 if (!mapasPorActividad.has(actId)) {
