@@ -249,25 +249,28 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       let lastMatchedIdx = 0;
       pis.forEach((pi, idx) => {
         let bestIdx = -1;
-        let minD = Infinity;
+        let minScore = Infinity;
 
-        // Búsqueda prioritaria hacia adelante en el trazado
+        // Búsqueda progresiva hacia adelante en el trazado (con leve penalización por saltos masivos)
         for (let i = lastMatchedIdx; i < this.points.length; i++) {
           const pt = this.points[i];
-          const d = this.getDistance(pt.lat, pt.lng, pi.lat, pi.lng);
-          if (d < minD) {
-            minD = d;
+          const dist = this.getDistance(pt.lat, pt.lng, pi.lat, pi.lng);
+          const indexAdvancePenalty = (i - lastMatchedIdx) * 0.05;
+          const score = dist + indexAdvancePenalty;
+          if (score < minScore) {
+            minScore = score;
             bestIdx = i;
+            if (dist < 30) break; // Coincidencia directa inmediata encontrada en el tramo actual
           }
         }
 
-        // Si no se encontró hacia adelante, buscar en todo el trazado
+        // Si no se encontró hacia adelante, buscar globalmente
         if (bestIdx === -1) {
           for (let i = 0; i < this.points.length; i++) {
             const pt = this.points[i];
-            const d = this.getDistance(pt.lat, pt.lng, pi.lat, pi.lng);
-            if (d < minD) {
-              minD = d;
+            const dist = this.getDistance(pt.lat, pt.lng, pi.lat, pi.lng);
+            if (dist < minScore) {
+              minScore = dist;
               bestIdx = i;
             }
           }
@@ -536,12 +539,43 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       zoomAnimation: true // Se preserva opción nativa
     }).setView([initialLat, initialLng], this.currentActualZoom);
 
-    this.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 18,
-      keepBuffer: 8,
-      updateWhenIdle: false,
-      updateWhenZooming: false
-    }).addTo(this.map);
+    // --- CAPAS BASE (SATÉLITE Y MAPA) ---
+    const satellite = this.L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        attribution: 'Tiles © Esri',
+        maxZoom: 18,
+        keepBuffer: 8,
+        updateWhenIdle: false,
+        updateWhenZooming: false
+      }
+    );
+
+    const streets = this.L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {
+        attribution: '© OpenStreetMap',
+        maxZoom: 19,
+        keepBuffer: 8,
+        updateWhenIdle: false,
+        updateWhenZooming: false
+      }
+    );
+
+    satellite.addTo(this.map); // Capa por defecto
+
+    // Control de selección de capas
+    const layersControl = this.L.control.layers(
+      { 'Satélite': satellite, 'Mapa': streets },
+      {},
+      { position: 'topright' }
+    ).addTo(this.map);
+
+    const layersContainer = layersControl.getContainer();
+    if (layersContainer) {
+      layersContainer.classList.add('capas-animacion-flotante');
+      layersContainer.classList.add('capas-animacion');
+    }
 
     // Eventos de Usuario para Auto-Zoom Cooldown y Modo de Cámara
     this.map.on('zoomstart', (e: any) => {
@@ -669,10 +703,29 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     this.isPlaying = false;
     this.stopAnimation();
 
-    const bounds = this.L.latLngBounds([
+    let bounds: any;
+    const isBoat = this.isBoatMode(segMode);
+
+    if (isBoat) {
+      // 🚢 EN EL MAR: Encuadre panorámico completo (desde puerto de salida hasta puerto de llegada)
+      let boatStart = currentPiIdx;
+      while (boatStart > 0 && this.isBoatMode(this.points[boatStart - 1]?.mode || this.points[boatStart - 1]?.hfMode)) {
+        boatStart--;
+      }
+      let boatEnd = nextPiIdx;
+      while (boatEnd < this.points.length - 1 && this.isBoatMode(this.points[boatEnd + 1]?.mode || this.points[boatEnd + 1]?.hfMode)) {
+        boatEnd++;
+      }
+      
+      const boatPoints = this.points.slice(boatStart, boatEnd + 1).map(p => [p.lat, p.lng] as [number, number]);
+      bounds = this.L.latLngBounds(boatPoints.length > 0 ? boatPoints : [[p1.lat, p1.lng], [p2.lat, p2.lng]]);
+      console.log(`🚢 [Panorámica Mar] Encuadrando travesía completa (${boatPoints.length} puntos de navegación)`);
+    } else {
+      bounds = this.L.latLngBounds([
         [p1.lat, p1.lng],
         [p2.lat, p2.lng]
-    ]);
+      ]);
+    }
     
     const onFrameComplete = () => {
         if (!this.isFramingSegment) return; // Evitar doble ejecución
@@ -686,7 +739,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
             const visualDistPx = Math.sqrt(Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2));
             
             // Velocidad visual deseada (ej: 150 píxeles por segundo)
-            const targetPxPerSec = 150;
+            const targetPxPerSec = isBoat ? 100 : 150;
             const targetDurationSeconds = Math.max(0.5, visualDistPx / targetPxPerSec);
             
             // Distancia geográfica real del tramo (en metros)
@@ -697,7 +750,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
             let effectiveTargetSec = targetDurationSeconds;
             if (segmentDistM > 2000) {
               const distKm = segmentDistM / 1000;
-              const distanceSpeedBoost = Math.min(2.2, 1 + 0.3 * Math.log10(distKm));
+              const distanceSpeedBoost = Math.min(isBoat ? 3.5 : 2.2, 1 + 0.35 * Math.log10(distKm));
               effectiveTargetSec = targetDurationSeconds / distanceSpeedBoost;
             }
 
@@ -719,7 +772,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
     // Encuadrar la cámara
     this.map.once('moveend', onFrameComplete);
-    this.map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
+    this.map.fitBounds(bounds, {
+      padding: isBoat ? [70, 70] : [50, 50],
+      maxZoom: isBoat ? 11 : undefined,
+      animate: true,
+      duration: 1.5
+    });
     
     // Fallback de seguridad por si moveend no se dispara (ej. si ya estaba encuadrado)
     setTimeout(() => {
@@ -728,6 +786,12 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
             onFrameComplete();
         }
     }, 2500);
+  }
+
+  isBoatMode(mode?: string): boolean {
+    if (!mode) return false;
+    const m = mode.toLowerCase();
+    return m.includes('boat') || m.includes('barco') || m.includes('ship') || m.includes('ferry') || m.includes('crucero') || m.includes('embarc') || m.includes('kayak') || m.includes('canoa');
   }
 
   async toggleOsrmFill() {

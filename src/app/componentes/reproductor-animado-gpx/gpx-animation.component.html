@@ -2,6 +2,9 @@
   <!-- Mapa Leaflet -->
   <div id="map-animation" class="mapa-fullscreen"></div>
 
+  <!-- Botón de Cierre Superior -->
+  <button class="btn-cerrar" (click)="cerrar()" title="Cerrar reproducción">✕</button>
+
   <!-- HUD: Métricas en Tiempo Real (Detallado por Modo) -->
   <div class="hud-overlay" *ngIf="stats">
     <!-- NUEVO: Registro de Tiempo Real -->

@@ -115,6 +115,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   audioDisponible = false;
   volumenOriginal = 1;
   modoRecuerdoActivo = false;
+  modoGuiadoActivo = false;
   audioAutoplayBloqueado = false;
   private audioCrossfadeInterval: any = null;
   private audioUrlActual: string | null = null;
@@ -2375,12 +2376,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // MÉTODOS DE NAVEGACIÓN DEL ÁLBUM
   // ==========================================
 
-  abrirLibro(activarModoRecuerdo = false): void {
+  abrirLibro(activarModoRecuerdo = false, modoGuiado = false): void {
     console.log('📖 Abriendo libro...');
     if (this.paginas.length === 0) return;
 
     this.estado = 'abierto';
     this.modoRecuerdoActivo = activarModoRecuerdo;
+    this.modoGuiadoActivo = activarModoRecuerdo ? modoGuiado : false;
 
     // Siempre abrir en la página de índice (página 0)
     this.paginaActual = activarModoRecuerdo ? this.obtenerPrimeraPaginaMemoria() : 0;
@@ -2391,23 +2393,51 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.iniciarSlideshow();
       }, 120);
     }
-    console.log('✅ Libro abierto en el índice, página actual:', this.paginaActual);
+    console.log('✅ Libro abierto en el índice, página actual:', this.paginaActual, 'modoGuiado:', this.modoGuiadoActivo);
   }
 
   iniciarModoRecuerdo(event?: Event): void {
     event?.stopPropagation();
-    this.abrirLibro(true);
+    this.abrirLibro(true, false);
+  }
+
+  iniciarModoGuiado(event?: Event): void {
+    event?.stopPropagation();
+    this.abrirLibro(true, true);
   }
 
   toggleModoRecuerdo(event?: Event): void {
     event?.stopPropagation();
 
-    if (this.modoRecuerdoActivo) {
+    if (this.modoRecuerdoActivo && !this.modoGuiadoActivo) {
       this.modoRecuerdoActivo = false;
       this.detenerSlideshow();
       return;
     }
 
+    this.modoGuiadoActivo = false;
+    this.modoRecuerdoActivo = true;
+    this.intentarReproducirAudioViaje();
+
+    if (this.paginaActualData?.esIndice) {
+      this.paginaActual = this.obtenerPrimeraPaginaMemoria();
+    }
+
+    this.abrirPaginaActualEnFullscreen();
+    this.iniciarSlideshow();
+  }
+
+  toggleModoGuiado(event?: Event): void {
+    event?.stopPropagation();
+
+    if (this.modoRecuerdoActivo && this.modoGuiadoActivo) {
+      this.modoRecuerdoActivo = false;
+      this.modoGuiadoActivo = false;
+      this.detenerSlideshow();
+      return;
+    }
+
+    this.modoGuiadoActivo = true;
     this.modoRecuerdoActivo = true;
     this.intentarReproducirAudioViaje();
 

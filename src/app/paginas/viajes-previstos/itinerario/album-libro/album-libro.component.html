@@ -99,10 +99,16 @@
       </div>
 
       <div class="album-toolbar-actions">
-        <button class="toolbar-pill primary" [class.active]="modoRecuerdoActivo" (click)="toggleModoRecuerdo($event)"
-          [title]="modoRecuerdoActivo ? 'Pausar modo recuerdo' : 'Entrar en modo recuerdo'">
-          <i class="fas" [class.fa-pause]="modoRecuerdoActivo" [class.fa-play]="!modoRecuerdoActivo"></i>
-          <span>{{ modoRecuerdoActivo ? 'Pausar' : 'Play recuerdo' }}</span>
+        <button class="toolbar-pill primary" [class.active]="modoRecuerdoActivo && !modoGuiadoActivo" (click)="toggleModoRecuerdo($event)"
+          [title]="(modoRecuerdoActivo && !modoGuiadoActivo) ? 'Pausar modo recuerdo' : 'Entrar en modo recuerdo clásico'">
+          <i class="fas" [class.fa-pause]="modoRecuerdoActivo && !modoGuiadoActivo" [class.fa-play]="!(modoRecuerdoActivo && !modoGuiadoActivo)"></i>
+          <span>{{ (modoRecuerdoActivo && !modoGuiadoActivo) ? 'Pausar' : 'Play' }}</span>
+        </button>
+
+        <button class="toolbar-pill secondary btn-toolbar-guiado" [class.active]="modoRecuerdoActivo && modoGuiadoActivo" (click)="toggleModoGuiado($event)"
+          [title]="(modoRecuerdoActivo && modoGuiadoActivo) ? 'Pausar modo guiado' : 'Entrar en modo recuerdo guiado por PIs'">
+          <i class="fas" [class.fa-pause]="modoRecuerdoActivo && modoGuiadoActivo" [class.fa-route]="!(modoRecuerdoActivo && modoGuiadoActivo)"></i>
+          <span>{{ (modoRecuerdoActivo && modoGuiadoActivo) ? 'Pausar Guiado' : 'Play Guiado' }}</span>
         </button>
 
         <button class="toolbar-icon" *ngIf="audioViaje" [class.active]="audioReproduciendo" (click)="toggleAudioViaje()"
@@ -368,6 +374,7 @@
             [transportSegments]="paginaActual.transportSegments || []"
             [visualSessionData]="paginaActual.visualSessionData"
             [isHighFidelityMode]="paginaActual.isHighFidelityMode || false"
+            [modoRecorridoGuiado]="modoGuiadoActivo"
             [autoPlay]="true"
             (onAnimacionCompletada)="onFinAnimacionMapa()"
             (onCerrar)="onFinAnimacionMapa()">
@@ -756,6 +763,7 @@
             [transportSegments]="paginaActualData?.transportSegments || []"
             [visualSessionData]="paginaActualData?.visualSessionData"
             [isHighFidelityMode]="paginaActualData?.isHighFidelityMode || false"
+            [modoRecorridoGuiado]="modoGuiadoActivo"
             [autoPlay]="true"
             (onAnimacionCompletada)="onFinAnimacionMapa()"
             (onCerrar)="onFinAnimacionMapa()">

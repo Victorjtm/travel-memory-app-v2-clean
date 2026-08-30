@@ -318,3 +318,52 @@ textarea:focus {
     font-size: 15px;
   }
 }
+
+/* =========================================
+   CONTROL DE CAPAS EN REPRODUCTOR ANIMADO GPX
+   ========================================= */
+.reproductor-container .leaflet-control-layers,
+.capas-animacion-flotante {
+  position: fixed !important;
+  top: 75px !important;
+  right: 16px !important;
+  left: auto !important;
+  bottom: auto !important;
+  margin: 0 !important;
+  z-index: 10001 !important;
+  background: rgba(15, 23, 42, 0.88) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 12px !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+}
+
+.reproductor-container .leaflet-control-layers .leaflet-control-layers-toggle,
+.capas-animacion-flotante .leaflet-control-layers-toggle {
+  background-color: transparent !important;
+  filter: invert(1);
+  width: 40px !important;
+  height: 40px !important;
+  background-size: 22px 22px !important;
+}
+
+.reproductor-container .leaflet-control-layers .leaflet-control-layers-list,
+.capas-animacion-flotante .leaflet-control-layers-list {
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #ffffff !important;
+}
+
+.reproductor-container .leaflet-control-layers-base label,
+.capas-animacion-flotante .leaflet-control-layers-base label {
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
