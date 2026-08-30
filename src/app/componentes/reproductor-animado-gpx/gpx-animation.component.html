@@ -92,7 +92,7 @@
     <div class="prompt-card" cdkDrag>
       <div class="prompt-header" cdkDragHandle>
         <span class="prompt-icon">📍</span>
-        <h4>Punto de Interés</h4>
+        <h4>{{ pendingEvent.esPuntoInteres ? ('Parada #' + pendingEvent.piNumero + ' de ' + pendingEvent.piTotal) : 'Punto de Interés' }}</h4>
       </div>
       <div class="prompt-body">
         <p class="prompt-address" *ngIf="pendingEvent.archivos && pendingEvent.archivos[0]?.direccionDeducida">
@@ -114,7 +114,7 @@
   <div class="multimedia-overlay" *ngIf="activeEvent" @fadeInOut>
     <div class="event-card" cdkDrag>
       <div class="event-header" cdkDragHandle>
-        <h3>📍 Evento Multimedia</h3>
+        <h3>📍 {{ activeEvent.esPuntoInteres ? ('Parada #' + activeEvent.piNumero + ' de ' + activeEvent.piTotal) : 'Evento Multimedia' }}</h3>
         <button class="btn-mini-cerrar" (click)="resumeFromEvent()">✕</button>
       </div>
       <div class="event-body">

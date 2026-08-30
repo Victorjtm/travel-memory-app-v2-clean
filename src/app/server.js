@@ -8937,6 +8937,14 @@ app.post('/api/actividades/:id/guardar-ruta-generada', async (req, res) => {
     await dbQuery.run('DELETE FROM segments WHERE actividadId = ?', [actividadId]);
     await dbQuery.run('DELETE FROM track_edits WHERE actividadId = ?', [actividadId]);
 
+    // 1.1 Invalidad sesión visual (Alta Fidelidad) obsoleta si existía
+    const vsFileRel = actRow.rutaVisualSession || `${actRow.viajePrevistoId}/${actRow.id}/metadata/visual_session.json`;
+    const vsFileFull = path.join(uploadsPath, vsFileRel);
+    if (fs.existsSync(vsFileFull)) {
+      try { fs.unlinkSync(vsFileFull); } catch (e) {}
+    }
+    await dbQuery.run('UPDATE actividades SET rutaVisualSession = NULL WHERE id = ?', [actividadId]);
+
     // 2. Insertar los nuevos puntos como el segmento base original (segmentOrder = 0)
     const points_json = JSON.stringify(points);
     await dbQuery.run(

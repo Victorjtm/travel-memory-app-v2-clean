@@ -38,12 +38,13 @@ export class ActividadesItinerariosComponent implements OnInit {
   viajePrevistoId!: number;
   itinerarioId!: number;
 
-  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚Â¨ PROPIEDADES PARA MODALES
+  // ✨ PROPIEDADES PARA MODALES
   mostrarModalGPX = false;
   mostrarModalMapa = false;
   mostrarModalEstadisticas = false;
   mostrarModalGPXMapa = false;
-  mostrarReproductorAnimado = false; // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚Â¨ NUEVA PROPIEDAD
+  mostrarReproductorAnimado = false; // ✨ NUEVA PROPIEDAD
+  modoRecorridoGuiadoAnimacion = false; // 🎬 Modo Recorrido Guiado por PIs
 
   urlMapaDataURL: string | null = null;
   fotosActividad: any[] = [];
@@ -485,18 +486,29 @@ export class ActividadesItinerariosComponent implements OnInit {
           this.inicializarMapaGPX();
         });
       },
-      error: err => console.error('ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ Error obteniendo GPX:', err)
+      error: err => console.error('❌ Error obteniendo GPX:', err)
     });
   }
 
-  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ NUEVO: Animar GPX con multimedia (MEJORADO: Carga estadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas primero)
-  animarGPX(actividadId: number): void {
-    console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â½Ãƒâ€šÃ‚Â¬ Iniciando proceso de animaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n para actividad:', actividadId);
+  // 🎬 Iniciar Recorrido Guiado (navegación por PIs sobre la línea física)
+  iniciarRecorridoGuiado(actividadId: number): void {
+    console.log('🎬 Iniciando Recorrido Guiado para actividad:', actividadId);
+    this.modoRecorridoGuiadoAnimacion = true;
+    this.ejecutarAnimacion(actividadId);
+  }
 
-    // 1. PASO 1: Asegurar que tengamos las estadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas para los segmentos de transporte
+  // 🎬 Animar GPX estándar con multimedia
+  animarGPX(actividadId: number): void {
+    console.log('🎬 Iniciando animación estándar para actividad:', actividadId);
+    this.modoRecorridoGuiadoAnimacion = false;
+    this.ejecutarAnimacion(actividadId);
+  }
+
+  private ejecutarAnimacion(actividadId: number): void {
+    // 1. PASO 1: Asegurar que tengamos las estadísticas para los segmentos de transporte
     this.actividadService.obtenerEstadisticas(actividadId).subscribe({
       next: (stats) => {
-        console.log('ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€¦Ã‚Â  EstadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas cargadas para animaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n:', stats);
+        console.log('📊 Estadísticas cargadas para animación:', stats);
         this.estadisticasGPX = {
           distanciaKm: stats.distancia?.km || '0.00',
           distanciaMetros: stats.distancia?.metros || 0,
@@ -517,8 +529,8 @@ export class ActividadesItinerariosComponent implements OnInit {
         this.trackEditorService.getSegments(actividadId).subscribe({
           next: (segments) => {
             const hasUserEdits = segments && segments.some((s: any) => s.source === 'user-delete' || s.source === 'user-override' || s.source === 'user-append' || s.source === 'user-prepend');
-            if (hasUserEdits) {
-              console.log('ℹ️ [Animación] Ediciones manuales detectadas. Omitiendo visual_session desfasado.');
+            if (hasUserEdits || this.modoRecorridoGuiadoAnimacion) {
+              console.log('ℹ️ [Animación] Omitiendo visual_session para modo guiado o ediciones manuales.');
               this.isHighFidelityMode = false;
               this.visualSessionData = null;
               this.continuarCargaAnimacion(actividadId);
@@ -550,7 +562,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         });
       },
       error: (err) => {
-        console.error('âŒ Error cargando estadísticas para animación:', err);
+        console.error('❌ Error cargando estadísticas para animación:', err);
         this.desgloseTransporteAnimacion = [];
         this.continuarCargaAnimacion(actividadId);
       }
@@ -574,24 +586,24 @@ export class ActividadesItinerariosComponent implements OnInit {
             this.desgloseTransporteAnimacion = this.estadisticasGPX?.desgloseTransporte || [];
             this.actividadAnimacion = this.actividades.find(a => a.id === actividadId);
 
-            console.log('ðŸŽ¬ Lanzando reproductor animado con', this.desgloseTransporteAnimacion.length, 'segmentos');
+            console.log('🎬 Lanzando reproductor animado (Guiado:', this.modoRecorridoGuiadoAnimacion, ') con', this.desgloseTransporteAnimacion.length, 'segmentos');
             this.mostrarReproductorAnimado = true;
             this.cdr.detectChanges();
           },
-          error: err => console.error('âŒ Error obteniendo GPX para animación:', err)
+          error: err => console.error('❌ Error obteniendo GPX para animación:', err)
         });
       },
-      error: err => console.error('âŒ Error obteniendo multimedia para animación:', err)
+      error: err => console.error('❌ Error obteniendo multimedia para animación:', err)
     });
   }
 
   cerrarAnimacion(): void {
     this.mostrarReproductorAnimado = false;
+    this.modoRecorridoGuiadoAnimacion = false;
     this.gpxTextAnimacion = '';
     this.multimediaAnimacion = [];
     this.cdr.detectChanges();
   }
-
   // Parsear GPX y extraer coordenadas y modos de transporte
   parseGPX(gpxText: string): void {
     try {

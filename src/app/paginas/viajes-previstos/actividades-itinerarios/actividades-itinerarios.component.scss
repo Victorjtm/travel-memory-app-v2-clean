@@ -515,6 +515,21 @@ textarea:focus {
   }
 }
 
+.btn-recorrido-guiado {
+  background: linear-gradient(135deg, #8b5cf6, color.adjust(#8b5cf6, $lightness: -10%));
+  color: $color-blanco;
+
+  &:hover {
+    box-shadow: 0 4px 15px rgba(#8b5cf6, 0.4);
+    transform: translateY(-2px);
+  }
+
+  &:focus {
+    outline: 3px solid rgba(#8b5cf6, 0.3);
+    outline-offset: 2px;
+  }
+}
+
 .btn-mapa {
   background: linear-gradient(135deg, #1abc9c, color.adjust(#1abc9c, $lightness: -10%));
   color: $color-blanco;

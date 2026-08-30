@@ -34,6 +34,9 @@
       <button class="btn-animacion" (click)="animarGPX(actividad.id)">
         <i class="fa fa-play-circle"></i> Animación
       </button>
+      <button class="btn-animacion btn-recorrido-guiado" (click)="iniciarRecorridoGuiado(actividad.id)" title="Recorrido guiado continuo con paradas exclusivas en Puntos de Interés">
+        <i class="fa fa-route"></i> Recorrido Guiado
+      </button>
       <button class="btn-editor-track" (click)="abrirEditorTrack(actividad.id)">
         <i class="fa fa-pencil"></i> Editar Recorrido
       </button>
@@ -317,6 +320,7 @@
   [actividadActual]="actividadAnimacion"
   [visualSessionData]="visualSessionData"
   [isHighFidelityMode]="isHighFidelityMode"
+  [modoRecorridoGuiado]="modoRecorridoGuiadoAnimacion"
   (onCerrar)="cerrarAnimacion()">
 </app-gpx-animation>
 

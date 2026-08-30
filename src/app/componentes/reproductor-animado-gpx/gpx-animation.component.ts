@@ -191,6 +191,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   // ✨ NUEVO: Master Visual Session
   @Input() visualSessionData: any = null;
   @Input() isHighFidelityMode = false;
+  @Input() modoRecorridoGuiado = false;
   visualSessionGroup: any = null;
   private poiLayerGroup: any = null; // ✨ Grupo independiente para POIs (no colisiona con HF)
 
@@ -234,11 +235,57 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   ) { }
 
   async ngOnInit() {
-    console.log('🎬 [GpxAnimationComponent] Iniciando animación...');
+    console.log(`🎬 [GpxAnimationComponent] Iniciando animación... (Modo Recorrido Guiado: ${this.modoRecorridoGuiado})`);
     console.log('📊 [GpxAnimationComponent] Datos de transporte recibidos:', this.transportSegments);
 
     this.points = this.animationService.parseGpx(this.gpxText);
-    this.points = this.animationService.syncMultimedia(this.points, this.multimedia);
+
+    if (this.modoRecorridoGuiado) {
+      // En modo guiado, se limpia cualquier evento difuso previo y se generan eventos estrictos por PIs
+      this.points.forEach(p => p.event = null);
+      const pis = this.obtenerGruposPIs();
+      console.log(`🎬 [Recorrido Guiado] Sincronizando ${pis.length} Puntos de Interés a lo largo del trazado`);
+
+      let lastMatchedIdx = 0;
+      pis.forEach((pi, idx) => {
+        let bestIdx = -1;
+        let minD = Infinity;
+
+        // Búsqueda prioritaria hacia adelante en el trazado
+        for (let i = lastMatchedIdx; i < this.points.length; i++) {
+          const pt = this.points[i];
+          const d = this.getDistance(pt.lat, pt.lng, pi.lat, pi.lng);
+          if (d < minD) {
+            minD = d;
+            bestIdx = i;
+          }
+        }
+
+        // Si no se encontró hacia adelante, buscar en todo el trazado
+        if (bestIdx === -1) {
+          for (let i = 0; i < this.points.length; i++) {
+            const pt = this.points[i];
+            const d = this.getDistance(pt.lat, pt.lng, pi.lat, pi.lng);
+            if (d < minD) {
+              minD = d;
+              bestIdx = i;
+            }
+          }
+        }
+
+        if (bestIdx !== -1) {
+          this.points[bestIdx].event = {
+            archivos: pi.archivos,
+            piNumero: idx + 1,
+            piTotal: pis.length,
+            esPuntoInteres: true
+          };
+          lastMatchedIdx = bestIdx;
+        }
+      });
+    } else {
+      this.points = this.animationService.syncMultimedia(this.points, this.multimedia);
+    }
     
     // ✅ CORRECCIÓN ROBUSTA: Asegurar que el tipo de transporte sea el correcto basado en el nombre
     if (this.transportSegments) {
@@ -320,33 +367,17 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   }
 
   // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
-  // ✨ Replica la MISMA lógica de agrupación y estilo visual que "ver GPX" (actividades-itinerarios)
-  private displayAllPois() {
-    if (!this.map) { console.warn('⚠️ [displayAllPois] No hay mapa'); return; }
-    
-    // ✨ USAR GRUPO DEDICADO para POIs (separado de visualSessionGroup de HF)
-    if (!this.poiLayerGroup) {
-      this.poiLayerGroup = this.L.layerGroup().addTo(this.map);
-    } else {
-      this.poiLayerGroup.clearLayers();
-      if (!this.map.hasLayer(this.poiLayerGroup)) {
-        this.poiLayerGroup.addTo(this.map);
-      }
-    }
-    
-    // ❌ Evitar que se revelen marcadores dinámicos extra durante la animación (ya están todos mostrados)
-    this.pendingVisualMarkers = [];
-
-    // ═══════════════════════════════════════════════════════════════════
-    // PASO 1: Extraer coordenadas y timestamp de cada archivo foto/video (igual que ver GPX)
-    // ═══════════════════════════════════════════════════════════════════
+  /**
+   * Extrae y agrupa los archivos multimedia en Puntos de Interés (PIs)
+   * basados en proximidad geográfica (< 10m) y coherencia temporal.
+   */
+  private obtenerGruposPIs(): { lat: number; lng: number; archivos: any[] }[] {
     const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number }[] = [];
 
     if (this.multimedia && this.multimedia.length > 0) {
       this.multimedia.forEach((archivo: any) => {
-        // Filtrar exclusivamente fotos y vídeos (igual que ver GPX)
         const tipo = (archivo.tipo || '').toLowerCase();
-        if (tipo !== 'foto' && tipo !== 'video') return;
+        if (tipo !== 'foto' && tipo !== 'video' && tipo !== 'imagen') return;
 
         let lat: number | null = null;
         let lng: number | null = null;
@@ -356,7 +387,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
             const loc = typeof archivo.geolocalizacion === 'string' ? JSON.parse(archivo.geolocalizacion) : archivo.geolocalizacion;
             lat = Number(loc.latitud || loc.latitude || loc.lat || 0);
             lng = Number(loc.longitud || loc.longitude || loc.lng || 0);
-          } catch(e) {}
+          } catch (e) {}
         }
         if ((!lat || !lng) && archivo.latitud && archivo.longitud) {
           lat = Number(archivo.latitud);
@@ -368,7 +399,6 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         }
 
         if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
-          // Extraer timestamp exacto a partir de los campos editables de la BD (igual que ver GPX)
           let ts = 0;
           if (archivo.fechaCreacion) {
             const fecha = new Date(archivo.fechaCreacion);
@@ -388,22 +418,13 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       });
     }
 
-    console.log(`📌 [displayAllPois] archivos con coordenadas válidas: ${archivosConCoordenadas.length}`);
-
-    // ═══════════════════════════════════════════════════════════════════
-    // PASO 2: Ordenar estrictamente por timestamp (IGUAL que ver GPX)
-    // ═══════════════════════════════════════════════════════════════════
     archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
 
-    // ═══════════════════════════════════════════════════════════════════
-    // PASO 3: Agrupar por ubicación y secuencia temporal (Tolerancia ~10m y máx 1h)
-    // ═══════════════════════════════════════════════════════════════════
     const TOLERANCIA_GPS = 0.0001; // ~10 metros
-    const MAX_TIME_GAP_MS = 60 * 60 * 1000; // 1 hora de margen máximo
+    const MAX_TIME_GAP_MS = 60 * 60 * 1000; // 1 hora
     const grupos: { lat: number; lng: number; archivos: any[] }[] = [];
 
     archivosConCoordenadas.forEach(item => {
-      // Evaluar únicamente el último grupo creado en la secuencia temporal
       const ultimoGrupo = grupos.length > 0 ? grupos[grupos.length - 1] : null;
 
       const coincideUbicacion = ultimoGrupo &&
@@ -412,20 +433,42 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
       const ultimoItem = ultimoGrupo ? ultimoGrupo.archivos[ultimoGrupo.archivos.length - 1] : null;
       const tiempoCercano = !item.timestamp || !ultimoItem?.timestamp ||
-        Math.abs(item.timestamp - ultimoItem.timestamp) < MAX_TIME_GAP_MS;
+        Math.abs(item.timestamp - (ultimoItem.timestamp || 0)) < MAX_TIME_GAP_MS;
 
       if (coincideUbicacion && tiempoCercano) {
-        ultimoGrupo!.archivos.push(item);
+        ultimoGrupo!.archivos.push(item.archivo);
       } else {
         grupos.push({
           lat: item.lat,
           lng: item.lng,
-          archivos: [item]
+          archivos: [item.archivo]
         });
       }
     });
 
-    console.log(`📌 [displayAllPois] Grupos (PIs) creados en orden temporal estricto (coincidente con ver GPX): ${grupos.length}`);
+    return grupos;
+  }
+
+  // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
+  // ✨ Replica la MISMA lógica de agrupación y estilo visual que "ver GPX" (actividades-itinerarios)
+  private displayAllPois() {
+    if (!this.map) { console.warn('⚠️ [displayAllPois] No hay mapa'); return; }
+    
+    // ✨ USAR GRUPO DEDICADO para POIs (separado de visualSessionGroup de HF)
+    if (!this.poiLayerGroup) {
+      this.poiLayerGroup = this.L.layerGroup().addTo(this.map);
+    } else {
+      this.poiLayerGroup.clearLayers();
+      if (!this.map.hasLayer(this.poiLayerGroup)) {
+        this.poiLayerGroup.addTo(this.map);
+      }
+    }
+    
+    // ❌ Evitar que se revelen marcadores dinámicos extra durante la animación (ya están todos mostrados)
+    this.pendingVisualMarkers = [];
+
+    const grupos = this.obtenerGruposPIs();
+    console.log(`📌 [displayAllPois] Grupos (PIs) creados en orden temporal estricto: ${grupos.length}`);
 
     // ═══════════════════════════════════════════════════════════════════
     // PASO 4: Crear marcadores con el MISMO estilo visual que "ver GPX"
