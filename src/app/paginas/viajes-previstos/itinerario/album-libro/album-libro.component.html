@@ -111,9 +111,14 @@
           <span>{{ (modoRecuerdoActivo && modoGuiadoActivo) ? 'Pausar Guiado' : 'Play Guiado' }}</span>
         </button>
 
-        <button class="toolbar-icon" *ngIf="audioDisponible || audioViaje" [class.active]="audioReproduciendo" (click)="toggleAudioViaje()"
-          [title]="audioReproduciendo ? 'Pausar musica' : 'Reproducir musica'">
-          <i class="fas" [class.fa-volume-high]="audioReproduciendo" [class.fa-music]="!audioReproduciendo"></i>
+        <button class="toolbar-icon" *ngIf="audioDisponible || audioViaje" [class.active]="musicaActivada" (click)="toggleAudioViaje($event)"
+          [title]="musicaActivada ? 'Música activada para el modo vídeo (Click para desactivar)' : 'Música desactivada (Click para activar)'">
+          <i class="fas" [class.fa-volume-high]="musicaActivada" [class.fa-volume-xmark]="!musicaActivada"></i>
+        </button>
+
+        <button class="toolbar-icon" [class.active]="reproducirVideosCompletos" (click)="toggleVideosCompletos($event)"
+          [title]="reproducirVideosCompletos ? 'Vídeos completos: Activado (los vídeos se reproducen enteros sin cortar)' : 'Vídeos completos: Desactivado (los vídeos duran unos segundos como las fotos)'">
+          <i class="fas fa-film" aria-hidden="true"></i>
         </button>
 
         <button class="toolbar-icon" (click)="mostrarDialogoVideo()" title="Crear video" [disabled]="generandoVideo">
@@ -699,6 +704,7 @@
 
       <video *ngIf="tipoFullscreen === 'video'" [src]="mediaFullscreen" class="media-fullscreen video-fullscreen" controls
         autoplay (click)="$event.stopPropagation()"
+        (play)="onVideoPlay()" (pause)="onVideoPause()" (ended)="onVideoEnded()"
         [attr.aria-label]="'Video en pantalla completa: ' + (paginaActualData?.titulo || '')">
         Tu navegador no soporta el elemento video.
       </video>

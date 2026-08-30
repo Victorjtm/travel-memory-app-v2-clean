@@ -540,7 +540,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       zoomAnimation: true // Se preserva opción nativa
     }).setView([initialLat, initialLng], this.currentActualZoom);
 
-    // --- CAPAS BASE (SATÉLITE Y MAPA) ---
+    // --- CAPAS BASE (MAPA Y SATÉLITE) ---
     const satellite = this.L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
@@ -563,14 +563,27 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       }
     );
 
-    satellite.addTo(this.map); // Capa por defecto
+    // Preferencia persistente de capa (por defecto 'streets' / 'Mapa')
+    const preferredLayer = localStorage.getItem('gpx_animation_preferred_layer') || 'streets';
+    if (preferredLayer === 'satellite') {
+      satellite.addTo(this.map);
+    } else {
+      streets.addTo(this.map);
+    }
 
     // Control de selección de capas
     const layersControl = this.L.control.layers(
-      { 'Satélite': satellite, 'Mapa': streets },
+      { 'Mapa': streets, 'Satélite': satellite },
       {},
       { position: 'topright' }
     ).addTo(this.map);
+
+    this.map.on('baselayerchange', (e: any) => {
+      const layerName = e.name;
+      const key = layerName === 'Satélite' ? 'satellite' : 'streets';
+      localStorage.setItem('gpx_animation_preferred_layer', key);
+      console.log('🗺️ [Capa persistente cambiada]:', key);
+    });
 
     const layersContainer = layersControl.getContainer();
     if (layersContainer) {

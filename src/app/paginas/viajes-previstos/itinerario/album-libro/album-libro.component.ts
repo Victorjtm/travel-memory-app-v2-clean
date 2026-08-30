@@ -213,7 +213,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   reproducirVideosCompletos: boolean = false;
   paginasBase: PaginaMedia[] = [];
 
-  toggleVideosCompletos(): void {
+  toggleVideosCompletos(event?: Event): void {
+    event?.stopPropagation();
     this.reproducirVideosCompletos = !this.reproducirVideosCompletos;
     console.log('🎬 Reproducción de vídeos completos:', this.reproducirVideosCompletos);
 
@@ -224,6 +225,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.reiniciarTimerSlideshow();
       }
     }
+    this.cdr.detectChanges();
   }
 
   onCambioSelectDistancia(val: any): void {
@@ -1113,25 +1115,48 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }, intervaloMs);
   }
 
-  toggleAudioViaje(): void {
-    if (!this.audioViaje) {
-      // Intentar inicializar con la página actual
-      this.inicializarAudioViaje();
-      if (!this.audioViaje) {
-        console.warn('⚠️ Audio no disponible');
-        return;
+  musicaActivada = true;
+
+  toggleAudioViaje(event?: Event): void {
+    event?.stopPropagation();
+    this.musicaActivada = !this.musicaActivada;
+    console.log('🎵 Preferencia de música:', this.musicaActivada ? 'Activada' : 'Desactivada');
+
+    const estaReproduciendo = this.modoRecuerdoActivo || this.reproduciendoSlideshow;
+
+    if (estaReproduciendo) {
+      if (this.musicaActivada) {
+        if (!this.audioViaje) {
+          this.inicializarAudioViaje();
+        }
+        this.intentarReproducirAudioViaje();
+      } else {
+        if (this.audioViaje) {
+          this.audioViaje.pause();
+        }
+        this.audioReproduciendo = false;
+      }
+    } else {
+      // En modo estático (sin reproducir), no reproducimos sonido inmediatamente
+      if (!this.musicaActivada && this.audioViaje) {
+        this.audioViaje.pause();
+        this.audioReproduciendo = false;
       }
     }
-
-    if (this.audioReproduciendo) {
-      this.audioViaje.pause();
-    } else {
-      this.intentarReproducirAudioViaje();
-    }
+    this.cdr.detectChanges();
   }
 
   private intentarReproducirAudioViaje(): void {
-    if (!this.audioViaje) return;
+    if (!this.musicaActivada) {
+      if (this.audioViaje) this.audioViaje.pause();
+      this.audioReproduciendo = false;
+      return;
+    }
+
+    if (!this.audioViaje) {
+      this.inicializarAudioViaje();
+      if (!this.audioViaje) return;
+    }
 
     this.audioAutoplayBloqueado = false;
     this.audioViaje.volume = this.volumenOriginal || 0.72;
@@ -2794,6 +2819,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.reproduciendoSlideshow = false;
     this.modoRecuerdoActivo = false;
     this.limpiarTimerSlideshow();
+    if (this.audioViaje) {
+      this.audioViaje.pause();
+    }
   }
 
   private avanzarSlideshow(): void {
