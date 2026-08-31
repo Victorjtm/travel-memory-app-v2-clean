@@ -651,7 +651,9 @@
         <!-- ============================== -->
         <!-- PÁGINA DERECHA (Página activa) -->
         <!-- ============================== -->
-        <div class="hoja-vintage-spread pagina-derecha-3d" *ngIf="paginas[paginaActual] as pagDer">
+        <div class="hoja-vintage-spread pagina-derecha-3d" *ngIf="paginas[paginaActual] as pagDer"
+          (click)="hayPaginaSiguiente && cambiarPagina(1)"
+          [title]="hayPaginaSiguiente ? 'Click para ir a la página siguiente' : ''">
           <div class="textura-papel-antiguo" aria-hidden="true"></div>
           <div class="sombra-lomo-der" aria-hidden="true"></div>
 
@@ -668,7 +670,7 @@
             </div>
 
             <!-- Caso: Carta Manuscrita -->
-            <div class="vintage-carta-full" *ngIf="pagDer.esCartaManuscrita" (click)="abrirFullscreen('', 'carta-manuscrita', { titulo: pagDer.titulo, descripcion: pagDer.descripcion })">
+            <div class="vintage-carta-full" *ngIf="pagDer.esCartaManuscrita">
               <h3 class="titulo-carta-vintage">{{ pagDer.titulo }}</h3>
               <p class="fecha-carta-vintage" *ngIf="pagDer.fecha">{{ formatearFecha(pagDer.fecha) }}</p>
               <div class="texto-carta-vintage">{{ pagDer.descripcion }}</div>
@@ -687,6 +689,8 @@
                   [multimedia]="pagDer.multimedia || []"
                   [transportSegments]="pagDer.transportSegments || []"
                   [visualSessionData]="pagDer.visualSessionData"
+                  [isHighFidelityMode]="pagDer.isHighFidelityMode || false"
+                  [modoRecorridoGuiado]="modoGuiadoActivo"
                   [interactiveMode]="false"
                   [autoPlay]="true"
                   (onAnimacionCompletada)="onFinAnimacionMapa()"
@@ -697,15 +701,15 @@
 
             <!-- Caso: Foto / Vídeo Estándar -->
             <div class="foto-vintage-container" *ngIf="!pagDer.esIndice && !pagDer.esCartaManuscrita && !pagDer.esMapaAnimado">
-              <div class="foto-polaroid-vintage foto-principal" (click)="abrirPaginaActualEnFullscreen()">
+              <div class="foto-polaroid-vintage foto-principal">
                 <span class="esquinera-foto sup-izq"></span>
                 <span class="esquinera-foto sup-der"></span>
                 <span class="esquinera-foto inf-izq"></span>
                 <span class="esquinera-foto inf-der"></span>
 
                 <img *ngIf="pagDer.tipoMedia === 'imagen'" [src]="pagDer.url" [alt]="pagDer.titulo" class="imagen-foto-vintage" />
-                <video *ngIf="pagDer.tipoMedia === 'video'" [src]="pagDer.url" class="video-foto-vintage" controls></video>
-                <div class="lupa-zoom-overlay"><i class="fas fa-search-plus"></i> Ampliar</div>
+                <video *ngIf="pagDer.tipoMedia === 'video'" [src]="pagDer.url" class="video-foto-vintage" controls (click)="$event.stopPropagation()"></video>
+                <div class="lupa-zoom-overlay" (click)="abrirPaginaActualEnFullscreen(); $event.stopPropagation()"><i class="fas fa-search-plus"></i> Ampliar</div>
               </div>
 
               <div class="pie-foto-vintage">
@@ -755,9 +759,9 @@
     </section>
 
     <!-- ======================================= -->
-    <!-- SUB-BLOQUE: NAVEGACIÓN DE PÁGINAS -->
+    <!-- SUB-BLOQUE: NAVEGACIÓN DE PÁGINAS (MODO CLÁSICO) -->
     <!-- ======================================= -->
-    <nav class="controles-pagina" role="navigation" aria-label="Navegación de páginas">
+    <nav class="controles-pagina" *ngIf="!modoAlbumVintage" role="navigation" aria-label="Navegación de páginas">
 
       <!-- --- Botón anterior --->
       <button class="btn-pagina" (click)="cambiarPagina(-1)" [disabled]="!puedeNavegar('anterior')"
@@ -1161,6 +1165,8 @@
                   [multimedia]="pagDer.multimedia || []"
                   [transportSegments]="pagDer.transportSegments || []"
                   [visualSessionData]="pagDer.visualSessionData"
+                  [isHighFidelityMode]="pagDer.isHighFidelityMode || false"
+                  [modoRecorridoGuiado]="modoGuiadoActivo"
                   [interactiveMode]="false"
                   [autoPlay]="true"
                   (onAnimacionCompletada)="onFinAnimacionMapa()"

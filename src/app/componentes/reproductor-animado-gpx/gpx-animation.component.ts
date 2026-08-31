@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, ViewEncapsulation } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, ViewEncapsulation, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DragDropModule } from '@angular/cdk/drag-drop';
@@ -31,6 +31,8 @@ import { environment } from '../../../environments/environment';
   ]
 })
 export class GpxAnimationComponent implements OnInit, OnDestroy {
+  @ViewChild('mapElement', { static: false }) mapElement!: ElementRef<HTMLDivElement>;
+
   @Input() gpxText!: string;
   @Input() multimedia: any[] = [];
   @Input() transportSegments: any[] = [];
@@ -532,13 +534,25 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     const initialLat = this.points.length > 0 ? this.points[0].lat : 0;
     const initialLng = this.points.length > 0 ? this.points[0].lng : 0;
 
-    this.map = this.L.map('map-animation', {
+    const container = this.mapElement?.nativeElement || document.getElementById('map-animation');
+    if (!container) {
+      console.warn('⚠️ [GpxAnimationComponent] mapElement no encontrado');
+      return;
+    }
+
+    this.map = this.L.map(container, {
       zoomControl: false,
       attributionControl: false,
       preferCanvas: true,
       zoomSnap: 0.1, // ✨ V4: Zoom fraccional para suavidad extrema
       zoomAnimation: true // Se preserva opción nativa
     }).setView([initialLat, initialLng], this.currentActualZoom);
+
+    setTimeout(() => {
+      if (this.map) {
+        this.map.invalidateSize();
+      }
+    }, 200);
 
     // --- CAPAS BASE (MAPA Y SATÉLITE) ---
     const satellite = this.L.tileLayer(
