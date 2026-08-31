@@ -186,13 +186,15 @@
             </div>
           </div>
 
-          <!-- Botón Modo Ruta en Imagen vs Animación -->
-          <button class="toolbar-icon btn-modo-ruta-img" [class.active]="modoRutaImagen" (click)="toggleModoRutaImagen($event)"
-            *ngIf="incluirAnimacionesMapa"
-            [title]="modoRutaImagen ? 'Ruta en Imagen: Activado (el mapa se muestra como imagen estática)' : 'Ruta en Imagen: Desactivado (se muestra la animación con movimiento)'">
-            <i class="fas" [class.fa-image]="modoRutaImagen" [class.fa-person-walking-dashed-line-arrow-right]="!modoRutaImagen"></i>
-            <span class="tb-btn-text" style="font-size: 0.72rem; margin-left: 3px;">{{ modoRutaImagen ? 'Foto' : 'Animación' }}</span>
-          </button>
+          <!-- Selector Segmentado: Modo Foto vs Modo Animación -->
+          <div class="modo-mapa-segmented-control" *ngIf="incluirAnimacionesMapa">
+            <button type="button" class="btn-segment" [class.active]="modoRutaImagen" (click)="toggleModoRutaImagen(true, $event)" title="Mostrar mapas de rutas como foto estática (rápido y ligero)">
+              <i class="fas fa-image"></i> Foto
+            </button>
+            <button type="button" class="btn-segment" [class.active]="!modoRutaImagen" (click)="toggleModoRutaImagen(false, $event)" title="Mostrar mapas de rutas como animación con movimiento">
+              <i class="fas fa-play"></i> Animación
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -249,14 +251,15 @@
         </div>
       </div>
 
-      <!-- --- Botón Modo Ruta en Imagen vs Animación --- -->
-      <button class="btn-toggle-animaciones" [class.activo]="modoRutaImagen" (click)="toggleModoRutaImagen($event)"
-        *ngIf="incluirAnimacionesMapa"
-        [title]="modoRutaImagen ? 'Ruta en Imagen: Activado (mapa estático)' : 'Ruta en Imagen: Desactivado (animación)'"
-        aria-label="Alternar ruta en imagen o animación">
-        <i class="fas" [class.fa-image]="modoRutaImagen" [class.fa-play-circle]="!modoRutaImagen"></i>
-        <span>{{ modoRutaImagen ? 'Ruta en Imagen' : 'Ruta Animada' }}</span>
-      </button>
+      <!-- --- Selector Segmentado: Modo Foto vs Modo Animación --- -->
+      <div class="modo-mapa-segmented-control" *ngIf="incluirAnimacionesMapa">
+        <button type="button" class="btn-segment" [class.active]="modoRutaImagen" (click)="toggleModoRutaImagen(true, $event)" title="Mostrar mapas de rutas como foto estática">
+          <i class="fas fa-image"></i> Foto
+        </button>
+        <button type="button" class="btn-segment" [class.active]="!modoRutaImagen" (click)="toggleModoRutaImagen(false, $event)" title="Mostrar mapas de rutas como animación con movimiento">
+          <i class="fas fa-play"></i> Animación
+        </button>
+      </div>
 
       <!-- --- Botón Reproducir Vídeos Completos --- -->
       <button class="btn-toggle-videos" [class.activo]="reproducirVideosCompletos" (click)="toggleVideosCompletos()"

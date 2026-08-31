@@ -222,9 +222,19 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
-  toggleModoRutaImagen(event?: Event): void {
-    event?.stopPropagation();
-    this.modoRutaImagen = !this.modoRutaImagen;
+  toggleModoRutaImagen(valorEspecifico?: boolean | Event, event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    } else if (valorEspecifico instanceof Event) {
+      valorEspecifico.stopPropagation();
+    }
+
+    if (typeof valorEspecifico === 'boolean') {
+      this.modoRutaImagen = valorEspecifico;
+    } else {
+      this.modoRutaImagen = !this.modoRutaImagen;
+    }
+
     localStorage.setItem('album_modo_ruta_imagen', String(this.modoRutaImagen));
     console.log('🗺️ Modo Ruta en Imagen:', this.modoRutaImagen);
     this.cdr.detectChanges();

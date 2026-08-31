@@ -4671,6 +4671,100 @@
       }
     }
   }
+
+  .modo-mapa-segmented-control {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 10px;
+    padding: 2px;
+    gap: 2px;
+
+    .btn-segment {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.78rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+
+      i {
+        font-size: 0.76rem;
+      }
+
+      &:hover {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      &.active {
+        background: linear-gradient(135deg, #dfc488, #c8a75e);
+        color: #1a120b;
+        font-weight: 750;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+
+        i {
+          color: #1a120b;
+        }
+      }
+    }
+  }
+}
+
+.control-animaciones-panel {
+  .modo-mapa-segmented-control {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 10px;
+    padding: 2px;
+    gap: 2px;
+
+    .btn-segment {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.82rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+
+      i {
+        font-size: 0.8rem;
+      }
+
+      &:hover {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      &.active {
+        background: linear-gradient(135deg, #dfc488, #c8a75e);
+        color: #1a120b;
+        font-weight: 750;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+
+        i {
+          color: #1a120b;
+        }
+      }
+    }
+  }
 }
 
 @keyframes fadeInSelector {
