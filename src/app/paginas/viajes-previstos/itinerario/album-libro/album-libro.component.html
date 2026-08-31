@@ -631,14 +631,15 @@
                     <i class="fas fa-play"></i>
                   </div>
                 </div>
-                <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage">
-                  <i class="fas fa-map-marked-alt icono-mapa-vintage"></i>
-                  <span class="titulo-mapa-prev">{{ pagIzq.titulo }}</span>
-                  <span class="desc-mapa-prev" *ngIf="pagIzq.distanciaTramoKm">Recorrido: {{ pagIzq.distanciaTramoKm | number:'1.1-2' }} km</span>
+                <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()">
+                  <app-mini-mapa-gpx *ngIf="pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx"></app-mini-mapa-gpx>
+                  <div class="mapa-mini-badge-overlay" *ngIf="pagIzq.distanciaTramoKm">
+                    <i class="fas fa-route"></i> {{ pagIzq.distanciaTramoKm | number:'1.1-2' }} km
+                  </div>
                 </div>
               </div>
 
-              <div class="pie-foto-vintage" *ngIf="!pagIzq.esMapaAnimado && (pagIzq.titulo || pagIzq.fecha)">
+              <div class="pie-foto-vintage" *ngIf="pagIzq.titulo || pagIzq.fecha">
                 <h4 class="titulo-pie-vintage">{{ pagIzq.titulo }}</h4>
                 <p class="fecha-pie-vintage" *ngIf="pagIzq.fecha">{{ formatearFecha(pagIzq.fecha) }}</p>
                 <p class="desc-pie-vintage" *ngIf="pagIzq.descripcion">{{ pagIzq.descripcion }}</p>
@@ -1117,14 +1118,15 @@
                     <i class="fas fa-play"></i>
                   </div>
                 </div>
-                <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage">
-                  <i class="fas fa-map-marked-alt icono-mapa-vintage"></i>
-                  <span class="titulo-mapa-prev">{{ pagIzq.titulo }}</span>
-                  <span class="desc-mapa-prev" *ngIf="pagIzq.distanciaTramoKm">Recorrido: {{ pagIzq.distanciaTramoKm | number:'1.1-2' }} km</span>
+                <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()">
+                  <app-mini-mapa-gpx *ngIf="pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx"></app-mini-mapa-gpx>
+                  <div class="mapa-mini-badge-overlay" *ngIf="pagIzq.distanciaTramoKm">
+                    <i class="fas fa-route"></i> {{ pagIzq.distanciaTramoKm | number:'1.1-2' }} km
+                  </div>
                 </div>
               </div>
 
-              <div class="pie-foto-vintage" *ngIf="!pagIzq.esMapaAnimado && (pagIzq.titulo || pagIzq.fecha)">
+              <div class="pie-foto-vintage" *ngIf="pagIzq.titulo || pagIzq.fecha">
                 <h4 class="titulo-pie-vintage">{{ pagIzq.titulo }}</h4>
                 <p class="fecha-pie-vintage" *ngIf="pagIzq.fecha">{{ formatearFecha(pagIzq.fecha) }}</p>
                 <p class="desc-pie-vintage" *ngIf="pagIzq.descripcion">{{ pagIzq.descripcion }}</p>

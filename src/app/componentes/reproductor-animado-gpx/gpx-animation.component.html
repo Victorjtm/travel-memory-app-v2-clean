@@ -1,6 +1,12 @@
 <div class="reproductor-container">
+  <!-- Loading Spinner Overlay mientras se cargan los fotogramas del mapa -->
+  <div class="cargando-mapa-overlay" *ngIf="cargandoMapa">
+    <div class="spinner-mapa"></div>
+    <span class="texto-cargando-mapa">Cargando mapa y recorrido...</span>
+  </div>
+
   <!-- Mapa Leaflet -->
-  <div #mapElement class="mapa-fullscreen"></div>
+  <div #mapElement class="mapa-fullscreen" [class.mapa-cargado]="!cargandoMapa"></div>
 
   <!-- Botón de Cierre Superior -->
   <button class="btn-cerrar" (click)="cerrar()" title="Cerrar reproducción">✕</button>

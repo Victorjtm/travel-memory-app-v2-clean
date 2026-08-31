@@ -15,6 +15,46 @@
 .mapa-fullscreen {
   flex: 1;
   width: 100%;
+  opacity: 0;
+  transition: opacity 0.4s ease-in-out;
+
+  &.mapa-cargado {
+    opacity: 1;
+  }
+}
+
+.cargando-mapa-overlay {
+  position: absolute;
+  inset: 0;
+  background: #140d07;
+  z-index: 10050;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  transition: opacity 0.4s ease;
+
+  .spinner-mapa {
+    width: 50px;
+    height: 50px;
+    border: 4px solid rgba(223, 196, 136, 0.2);
+    border-top-color: #dfc488;
+    border-radius: 50%;
+    animation: spinMapa 0.8s linear infinite;
+  }
+
+  .texto-cargando-mapa {
+    font-family: 'Cinzel', 'Georgia', serif;
+    font-size: 1.05rem;
+    color: #f7efe0;
+    letter-spacing: 1px;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  }
+}
+
+@keyframes spinMapa {
+  to { transform: rotate(360deg); }
 }
 
 /* HUD Overlay */

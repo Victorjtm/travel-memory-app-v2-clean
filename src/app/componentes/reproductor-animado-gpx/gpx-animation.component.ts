@@ -143,6 +143,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
   isPlaying = false;
   speed = 2; // Multiplicador de velocidad
   progress = 0;
+  cargandoMapa: boolean = true;
 
   // Real-time Metrics
   currentDistKm = 0;
@@ -366,10 +367,6 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     } else {
       await this.initMap();
     }
-    // Auto-play: si se pide desde el álbum, arrancar automáticamente
-    if (this.autoPlay) {
-      setTimeout(() => this.togglePlay(), 800);
-    }
   }
 
   // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
@@ -579,11 +576,27 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
 
     // Preferencia persistente de capa (por defecto 'streets' / 'Mapa')
     const preferredLayer = localStorage.getItem('gpx_animation_preferred_layer') || 'streets';
-    if (preferredLayer === 'satellite') {
-      satellite.addTo(this.map);
-    } else {
-      streets.addTo(this.map);
-    }
+    const activeTileLayer = preferredLayer === 'satellite' ? satellite : streets;
+    activeTileLayer.addTo(this.map);
+
+    let tilesReady = false;
+    const onMapTilesReady = () => {
+      if (tilesReady) return;
+      tilesReady = true;
+      setTimeout(() => {
+        this.cargandoMapa = false;
+        if (this.map) {
+          this.map.invalidateSize();
+        }
+        this.cdr.detectChanges();
+        if (this.autoPlay && !this.isPlaying) {
+          setTimeout(() => this.togglePlay(), 250);
+        }
+      }, 350);
+    };
+
+    activeTileLayer.on('load', onMapTilesReady);
+    setTimeout(onMapTilesReady, 1000);
 
     // Control de selección de capas
     const layersControl = this.L.control.layers(

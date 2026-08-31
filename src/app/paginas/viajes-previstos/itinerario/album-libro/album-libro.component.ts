@@ -17,6 +17,7 @@ import { VideoGeneratorService, ProgresoVideo } from '../../../../servicios/vide
 import { EscenaMultimedia, ConfiguracionExportacion } from '../../../../modelos/escena-multimedia';
 
 import { GpxAnimationComponent } from '../../../../componentes/reproductor-animado-gpx/gpx-animation.component';
+import { MiniMapaGpxComponent } from '../../../../componentes/mini-mapa-gpx/mini-mapa-gpx.component';
 import { GpxAnimationService } from '../../../../servicios/gpx-animation.service';
 import { TrackEditorService } from '../../../../servicios/track-editor.service';
 
@@ -93,7 +94,7 @@ interface CoordenadasDMS {
 @Component({
   selector: 'app-album-libro',
   standalone: true,
-  imports: [CommonModule, FontAwesomeModule, FormsModule, GpxAnimationComponent],
+  imports: [CommonModule, FontAwesomeModule, FormsModule, GpxAnimationComponent, MiniMapaGpxComponent],
   templateUrl: './album-libro.component.html',
   styleUrls: ['./album-libro.component.scss']
 })
