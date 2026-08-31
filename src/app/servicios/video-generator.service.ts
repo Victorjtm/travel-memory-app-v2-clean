@@ -826,7 +826,7 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
     }
 
   private renderizarCartaFrame(escena: any, progreso: number): void {
-    const carta = escena.data;
+    const carta = escena.data || escena;
     if (!carta) return;
 
     // Fondo de papel

@@ -204,9 +204,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
 
   // ==========================================
-  // CONFIGURACIÓN MODO ÁLBUM VINTAGE 3D
+  // CONFIGURACIÓN MODO ÁLBUM VINTAGE 3D Y FULLSCREEN
   // ==========================================
   modoAlbumVintage: boolean = localStorage.getItem('album_modo_vintage') === 'true';
+  reproducirEnFullscreen: boolean = localStorage.getItem('album_reproducir_fullscreen') !== 'false';
   hojaVolteando3D: boolean = false;
   direccionVolteo3D: 'adelante' | 'atras' = 'adelante';
   paginaVolteoSaliente: PaginaMedia | null = null;
@@ -217,6 +218,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.modoAlbumVintage = !this.modoAlbumVintage;
     localStorage.setItem('album_modo_vintage', String(this.modoAlbumVintage));
     console.log('📖 Modo Álbum Vintage 3D:', this.modoAlbumVintage ? 'ACTIVADO' : 'DESACTIVADO');
+    this.cdr.detectChanges();
+  }
+
+  toggleReproducirEnFullscreen(event?: Event): void {
+    event?.stopPropagation();
+    this.reproducirEnFullscreen = !this.reproducirEnFullscreen;
+    localStorage.setItem('album_reproducir_fullscreen', String(this.reproducirEnFullscreen));
+    console.log('🖥️ Reproducción en Pantalla Completa:', this.reproducirEnFullscreen ? 'ACTIVADA' : 'DESACTIVADA (Pantalla Reducida)');
     this.cdr.detectChanges();
   }
 
@@ -2545,7 +2554,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     if (activarModoRecuerdo) {
       this.intentarReproducirAudioViaje();
       setTimeout(() => {
-        this.abrirPaginaActualEnFullscreen();
+        if (this.reproducirEnFullscreen) {
+          this.abrirPaginaActualEnFullscreen();
+        }
         this.iniciarSlideshow();
       }, 120);
     }
@@ -2579,9 +2590,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.paginaActual = this.obtenerPrimeraPaginaMemoria();
     }
 
-    // En modo Álbum Vintage 3D, el slideshow se ejecuta dentro del libro 3D
-    // sin abrir la vista fullscreen clásica
-    if (!this.modoAlbumVintage) {
+    if (this.reproducirEnFullscreen) {
       this.abrirPaginaActualEnFullscreen();
     }
     this.iniciarSlideshow();
@@ -2605,8 +2614,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.paginaActual = this.obtenerPrimeraPaginaMemoria();
     }
 
-    // En modo Álbum Vintage 3D, el slideshow se ejecuta dentro del libro 3D
-    if (!this.modoAlbumVintage) {
+    if (this.reproducirEnFullscreen) {
       this.abrirPaginaActualEnFullscreen();
     }
     this.iniciarSlideshow();
@@ -2623,6 +2631,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     if (pagina.esCartaManuscrita) {
       this.abrirFullscreen('', 'carta-manuscrita', {
+        titulo: pagina.titulo,
+        descripcion: pagina.descripcion
+      });
+      return;
+    }
+
+    if (pagina.esMapaAnimado) {
+      this.abrirFullscreen('', 'mapa-animado', {
         titulo: pagina.titulo,
         descripcion: pagina.descripcion
       });
@@ -2877,12 +2893,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   private avanzarSlideshow(): void {
-    // En modo vintage el slideshow funciona sin fullscreen
-    const slideshowActivo = this.modoAlbumVintage
-      ? this.reproduciendoSlideshow
-      : (this.mostrarFullscreen && this.reproduciendoSlideshow);
-
-    if (!slideshowActivo) {
+    if (!this.reproduciendoSlideshow) {
       this.detenerSlideshow();
       return;
     }
@@ -2893,11 +2904,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       // Elegir transición aleatoria
       this.transicionActual = this.TRANSICIONES[Math.floor(Math.random() * this.TRANSICIONES.length)];
 
-      // En modo Vintage 3D: avanzar con paso de hoja 3D dentro del libro
-      if (this.modoAlbumVintage) {
-        this.cambiarPagina(1);
-      } else {
+      if (this.mostrarFullscreen) {
         this.navegarEnFullscreen(1);
+      } else {
+        this.cambiarPagina(1);
       }
       this.cdr.detectChanges();
     } else {
@@ -2913,17 +2923,30 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.tipoFullscreen = 'imagen';
     this.fullscreenTitulo = '';
     this.fullscreenDescripcion = '';
+    this.hojaVolteando3D = false;
     document.body.style.overflow = '';
+    this.cdr.detectChanges();
   }
 
   navegarEnFullscreen(direccion: number): void {
     console.log(`🖼️ Navegando en fullscreen, dirección: ${direccion}`);
     const nuevaPagina = this.paginaActual + direccion;
     if (nuevaPagina >= 0 && nuevaPagina < this.paginas.length && !this.paginas[nuevaPagina].esIndice) {
+      if (this.modoAlbumVintage && !this.hojaVolteando3D) {
+        this.paginaVolteoSaliente = this.paginas[this.paginaActual];
+        this.paginaVolteoEntrante = this.paginas[nuevaPagina];
+        this.direccionVolteo3D = direccion > 0 ? 'adelante' : 'atras';
+        this.hojaVolteando3D = true;
+
+        setTimeout(() => {
+          this.hojaVolteando3D = false;
+          this.cdr.detectChanges();
+        }, 750);
+      }
+
       this.paginaActual = nuevaPagina;
       const paginaActual = this.paginas[this.paginaActual];
 
-      // 👇 AÑADIR ESTO
       if (paginaActual?.tipoMedia === 'video') {
         this.bajarVolumenAudioViaje();
       } else {
@@ -2932,19 +2955,23 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.verificarSincronizacionAudioItinerario();
 
       if (paginaActual.esCartaManuscrita) {
-        this.abrirFullscreen('', 'carta-manuscrita', {
-          titulo: paginaActual.titulo,
-          descripcion: paginaActual.descripcion
-        });
+        this.tipoFullscreen = 'carta-manuscrita';
+        this.mediaFullscreen = '';
+        this.fullscreenTitulo = paginaActual.titulo;
+        this.fullscreenDescripcion = paginaActual.descripcion;
       } else if (paginaActual.esMapaAnimado) {
-        this.abrirFullscreen('', 'mapa-animado', {
-          titulo: paginaActual.titulo,
-          descripcion: paginaActual.descripcion
-        });
+        this.tipoFullscreen = 'mapa-animado';
+        this.mediaFullscreen = '';
+        this.fullscreenTitulo = paginaActual.titulo;
+        this.fullscreenDescripcion = paginaActual.descripcion;
       } else {
         this.mediaFullscreen = paginaActual.url;
         this.tipoFullscreen = paginaActual.tipoMedia;
+        this.fullscreenTitulo = '';
+        this.fullscreenDescripcion = '';
       }
+
+      this.centrarMiniaturaActiva(this.paginaActual);
 
       // Control inteligente del timer de slideshow según la diapositiva entrante
       if (this.reproduciendoSlideshow) {
@@ -2958,6 +2985,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           this.reiniciarTimerSlideshow();
         }
       }
+      this.cdr.detectChanges();
+    } else if (nuevaPagina >= this.paginas.length) {
+      console.log('🏁 Fin del álbum alcanzado');
+      this.detenerSlideshow();
     }
   }
 
