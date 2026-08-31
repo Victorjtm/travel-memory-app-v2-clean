@@ -7,8 +7,15 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="mini-mapa-gpx-container">
+    <div class="mini-mapa-gpx-container" [class.full-page-mode]="fullPage">
       <div #miniMapElement class="mini-mapa-canvas" [class.mapa-listo]="mapaListo"></div>
+      
+      <!-- Overlay con badge de transporte y distancia -->
+      <div class="mini-mapa-info-badge" *ngIf="mapaListo && distanciaKm">
+        <span class="badge-transporte-icono">{{ getTransportIcon() }}</span>
+        <span class="badge-distancia-texto">{{ distanciaKm | number:'1.1-2' }} km</span>
+      </div>
+
       <div class="mini-mapa-spinner" *ngIf="!mapaListo">
         <div class="spinner-mini"></div>
       </div>
@@ -27,6 +34,11 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
       display: flex;
       align-items: center;
       justify-content: center;
+
+      &.full-page-mode {
+        min-height: 260px;
+        max-height: 100%;
+      }
     }
 
     .mini-mapa-canvas {
@@ -41,6 +53,34 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
       }
     }
 
+    .mini-mapa-info-badge {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(191, 161, 95, 0.8);
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
+      border-radius: 20px;
+      padding: 4px 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 10;
+      pointer-events: none;
+
+      .badge-transporte-icono {
+        font-size: 0.95rem;
+      }
+
+      .badge-distancia-texto {
+        font-family: 'Cinzel', 'Georgia', serif;
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #2b1810;
+      }
+    }
+
     .mini-mapa-spinner {
       position: absolute;
       inset: 0;
@@ -51,8 +91,8 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
       z-index: 5;
 
       .spinner-mini {
-        width: 32px;
-        height: 32px;
+        width: 34px;
+        height: 34px;
         border: 3px solid rgba(139, 90, 43, 0.2);
         border-top-color: #8b5a2b;
         border-radius: 50%;
@@ -68,6 +108,9 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
 export class MiniMapaGpxComponent implements OnInit, AfterViewInit, OnChanges, OnDestroy {
   @ViewChild('miniMapElement', { static: false }) miniMapElement!: ElementRef<HTMLDivElement>;
   @Input() trackGpx: string = '';
+  @Input() fullPage: boolean = false;
+  @Input() transportMode: string = 'driving';
+  @Input() distanciaKm?: number;
 
   mapaListo: boolean = false;
   private map: any = null;
@@ -84,9 +127,20 @@ export class MiniMapaGpxComponent implements OnInit, AfterViewInit, OnChanges, O
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['trackGpx'] && !changes['trackGpx'].isFirstChange()) {
+    if ((changes['trackGpx'] && !changes['trackGpx'].isFirstChange()) ||
+        (changes['fullPage'] && !changes['fullPage'].isFirstChange())) {
       setTimeout(() => this.renderMiniMapa(), 50);
     }
+  }
+
+  getTransportIcon(): string {
+    const m = (this.transportMode || '').toLowerCase();
+    if (m.includes('walk') || m.includes('andando') || m.includes('pie') || m.includes('caminar')) return '🚶';
+    if (m.includes('boat') || m.includes('barco') || m.includes('ferry')) return '🚢';
+    if (m.includes('plane') || m.includes('avion') || m.includes('vuelo')) return '✈️';
+    if (m.includes('train') || m.includes('tren')) return '🚆';
+    if (m.includes('bicycle') || m.includes('bici') || m.includes('bike')) return '🚴';
+    return '🚗';
   }
 
   private async renderMiniMapa(): Promise<void> {
@@ -128,42 +182,42 @@ export class MiniMapaGpxComponent implements OnInit, AfterViewInit, OnChanges, O
       );
       tileLayer.addTo(this.map);
 
-      // Sombra exterior de la ruta
+      // Sombra exterior blanca de la ruta
       this.L.polyline(latlngs, {
         color: '#ffffff',
         weight: 6,
-        opacity: 0.85
+        opacity: 0.9
       }).addTo(this.map);
 
-      // Línea principal de la ruta
+      // Línea principal de la ruta (rojo vivo)
       const polyline = this.L.polyline(latlngs, {
         color: '#dc2626',
-        weight: 3.5,
+        weight: 3.8,
         opacity: 0.95
       }).addTo(this.map);
 
-      // Marcadores inicio y fin
+      // Marcadores inicio (verde) y fin (rojo)
       const startPoint = latlngs[0];
       const endPoint = latlngs[latlngs.length - 1];
 
       this.L.circleMarker(startPoint, {
-        radius: 5,
+        radius: 6,
         fillColor: '#16a34a',
         color: '#ffffff',
-        weight: 2,
+        weight: 2.5,
         fillOpacity: 1
       }).addTo(this.map);
 
       this.L.circleMarker(endPoint, {
-        radius: 5,
+        radius: 6,
         fillColor: '#dc2626',
         color: '#ffffff',
-        weight: 2,
+        weight: 2.5,
         fillOpacity: 1
       }).addTo(this.map);
 
       this.map.fitBounds(polyline.getBounds(), {
-        padding: [14, 14],
+        padding: [18, 18],
         animate: false
       });
 

@@ -5474,6 +5474,99 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
       position: relative;
     }
+
+    .mapa-estatico-vintage-view {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 270px;
+      cursor: pointer;
+
+      app-mini-mapa-gpx {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .mapa-hint-play-overlay {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(18, 10, 6, 0.82);
+        color: #f7efe0;
+        border: 1px solid #dfc488;
+        padding: 4px 10px;
+        border-radius: 16px;
+        font-family: 'Cinzel', serif;
+        font-size: 0.75rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        opacity: 0.85;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        z-index: 10;
+
+        i {
+          color: #dfc488;
+          font-size: 0.7rem;
+        }
+      }
+
+      &:hover {
+        .mapa-hint-play-overlay {
+          opacity: 1;
+          transform: scale(1.05);
+        }
+      }
+    }
+  }
+
+  .mapa-estatico-libro-view {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 270px;
+    cursor: pointer;
+
+    app-mini-mapa-gpx {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .mapa-hint-play-overlay {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(15, 23, 42, 0.85);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      opacity: 0.85;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 10;
+
+      i {
+        color: #7df2be;
+        font-size: 0.7rem;
+      }
+    }
+
+    &:hover {
+      .mapa-hint-play-overlay {
+        opacity: 1;
+        transform: scale(1.05);
+      }
+    }
   }
 
   /* --- Contenedores de Páginas Vintage (Izquierda y Derecha) --- */

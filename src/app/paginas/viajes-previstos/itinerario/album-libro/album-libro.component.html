@@ -185,6 +185,14 @@
               <span class="unit-m">m</span>
             </div>
           </div>
+
+          <!-- Botón Modo Ruta en Imagen vs Animación -->
+          <button class="toolbar-icon btn-modo-ruta-img" [class.active]="modoRutaImagen" (click)="toggleModoRutaImagen($event)"
+            *ngIf="incluirAnimacionesMapa"
+            [title]="modoRutaImagen ? 'Ruta en Imagen: Activado (el mapa se muestra como imagen estática)' : 'Ruta en Imagen: Desactivado (se muestra la animación con movimiento)'">
+            <i class="fas" [class.fa-image]="modoRutaImagen" [class.fa-person-walking-dashed-line-arrow-right]="!modoRutaImagen"></i>
+            <span class="tb-btn-text" style="font-size: 0.72rem; margin-left: 3px;">{{ modoRutaImagen ? 'Foto' : 'Animación' }}</span>
+          </button>
         </div>
       </div>
     </header>
@@ -218,7 +226,7 @@
       <button class="btn-toggle-animaciones" [class.activo]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
         title="Activar/Desactivar mapas animados por tramos" aria-label="Activar/Desactivar mapas animados por tramos">
         <i class="fas fa-route"></i>
-        <span>Ver animaciones</span>
+        <span>Ver mapas</span>
       </button>
 
       <div class="selector-distancia-wrapper" *ngIf="incluirAnimacionesMapa">
@@ -240,6 +248,15 @@
           <span class="unit-m">m</span>
         </div>
       </div>
+
+      <!-- --- Botón Modo Ruta en Imagen vs Animación --- -->
+      <button class="btn-toggle-animaciones" [class.activo]="modoRutaImagen" (click)="toggleModoRutaImagen($event)"
+        *ngIf="incluirAnimacionesMapa"
+        [title]="modoRutaImagen ? 'Ruta en Imagen: Activado (mapa estático)' : 'Ruta en Imagen: Desactivado (animación)'"
+        aria-label="Alternar ruta en imagen o animación">
+        <i class="fas" [class.fa-image]="modoRutaImagen" [class.fa-play-circle]="!modoRutaImagen"></i>
+        <span>{{ modoRutaImagen ? 'Ruta en Imagen' : 'Ruta Animada' }}</span>
+      </button>
 
       <!-- --- Botón Reproducir Vídeos Completos --- -->
       <button class="btn-toggle-videos" [class.activo]="reproducirVideosCompletos" (click)="toggleVideosCompletos()"
@@ -400,15 +417,22 @@
       </div>
 
       <!-- ===================================== -->
-      <!-- SUB-BLOQUE: MAPA ANIMADO DE RUTA -->
+      <!-- SUB-BLOQUE: MAPA DE RUTA (IMAGEN O ANIMADO) -->
       <!-- ===================================== -->
       <div class="pagina-contenido mapa-animado-page" *ngIf="paginaActual.esMapaAnimado">
         <div class="header-mapa-animado">
           <span class="badge-distancia"><i class="fas fa-route"></i> Recorrido: {{ paginaActual.distanciaTramoKm | number:'1.1-2' }} km</span>
         </div>
         <div class="mapa-animado-container">
+          <!-- Modo 1: Ruta en Imagen Estática -->
+          <div *ngIf="modoRutaImagen && paginaActual.trackGpx" class="mapa-estatico-libro-view" (click)="abrirFullscreen('', 'mapa-animado')" title="Hacer clic para ver animación a pantalla completa">
+            <app-mini-mapa-gpx [trackGpx]="paginaActual.trackGpx" [fullPage]="true" [distanciaKm]="paginaActual.distanciaTramoKm" [transportMode]="paginaActual.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
+            <div class="mapa-hint-play-overlay"><i class="fas fa-play"></i> Ver animación</div>
+          </div>
+
+          <!-- Modo 2: Ruta Animada con Movimiento -->
           <app-gpx-animation 
-            *ngIf="paginaActual.trackGpx"
+            *ngIf="!modoRutaImagen && paginaActual.trackGpx"
             [gpxText]="paginaActual.trackGpx" 
             [multimedia]="paginaActual.multimedia || []"
             [transportSegments]="paginaActual.transportSegments || []"
@@ -687,14 +711,21 @@
               <div class="firma-vintage"><em>— Diario de viaje —</em></div>
             </div>
 
-            <!-- Caso: Mapa Animado -->
+            <!-- Caso: Mapa de Tramo (Imagen o Animado) -->
             <div class="vintage-mapa-box" *ngIf="pagDer.esMapaAnimado">
               <div class="header-mapa-vintage">
                 <span class="badge-vintage-distancia"><i class="fas fa-route"></i> Recorrido: {{ pagDer.distanciaTramoKm | number:'1.1-2' }} km</span>
               </div>
               <div class="mapa-vintage-wrapper">
+                <!-- Modo 1: Ruta en Imagen Estática -->
+                <div *ngIf="modoRutaImagen && pagDer.trackGpx" class="mapa-estatico-vintage-view" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()" title="Hacer clic para ver animación a pantalla completa">
+                  <app-mini-mapa-gpx [trackGpx]="pagDer.trackGpx" [fullPage]="true" [distanciaKm]="pagDer.distanciaTramoKm" [transportMode]="pagDer.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
+                  <div class="mapa-hint-play-overlay"><i class="fas fa-play"></i> Ver animación</div>
+                </div>
+
+                <!-- Modo 2: Ruta Animada con Movimiento -->
                 <app-gpx-animation 
-                  *ngIf="pagDer.trackGpx"
+                  *ngIf="!modoRutaImagen && pagDer.trackGpx"
                   [gpxText]="pagDer.trackGpx" 
                   [multimedia]="pagDer.multimedia || []"
                   [transportSegments]="pagDer.transportSegments || []"
@@ -1174,14 +1205,21 @@
               <div class="firma-vintage"><em>— Diario de viaje —</em></div>
             </div>
 
-            <!-- Caso: Mapa Animado -->
+            <!-- Caso: Mapa de Tramo (Imagen o Animado) -->
             <div class="vintage-mapa-box" *ngIf="pagDer.esMapaAnimado">
               <div class="header-mapa-vintage">
                 <span class="badge-vintage-distancia"><i class="fas fa-route"></i> Recorrido: {{ pagDer.distanciaTramoKm | number:'1.1-2' }} km</span>
               </div>
               <div class="mapa-vintage-wrapper">
+                <!-- Modo 1: Ruta en Imagen Estática -->
+                <div *ngIf="modoRutaImagen && pagDer.trackGpx" class="mapa-estatico-vintage-view" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()" title="Hacer clic para ver animación a pantalla completa">
+                  <app-mini-mapa-gpx [trackGpx]="pagDer.trackGpx" [fullPage]="true" [distanciaKm]="pagDer.distanciaTramoKm" [transportMode]="pagDer.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
+                  <div class="mapa-hint-play-overlay"><i class="fas fa-play"></i> Ver animación</div>
+                </div>
+
+                <!-- Modo 2: Ruta Animada con Movimiento -->
                 <app-gpx-animation 
-                  *ngIf="pagDer.trackGpx"
+                  *ngIf="!modoRutaImagen && pagDer.trackGpx"
                   [gpxText]="pagDer.trackGpx" 
                   [multimedia]="pagDer.multimedia || []"
                   [transportSegments]="pagDer.transportSegments || []"
