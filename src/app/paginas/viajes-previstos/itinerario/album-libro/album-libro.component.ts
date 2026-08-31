@@ -204,6 +204,23 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
 
   // ==========================================
+  // CONFIGURACIÓN MODO ÁLBUM VINTAGE 3D
+  // ==========================================
+  modoAlbumVintage: boolean = localStorage.getItem('album_modo_vintage') === 'true';
+  hojaVolteando3D: boolean = false;
+  direccionVolteo3D: 'adelante' | 'atras' = 'adelante';
+  paginaVolteoSaliente: PaginaMedia | null = null;
+  paginaVolteoEntrante: PaginaMedia | null = null;
+
+  toggleModoAlbumVintage(event?: Event): void {
+    event?.stopPropagation();
+    this.modoAlbumVintage = !this.modoAlbumVintage;
+    localStorage.setItem('album_modo_vintage', String(this.modoAlbumVintage));
+    console.log('📖 Modo Álbum Vintage 3D:', this.modoAlbumVintage ? 'ACTIVADO' : 'DESACTIVADO');
+    this.cdr.detectChanges();
+  }
+
+  // ==========================================
   // CONFIGURACIÓN DE MAPAS ANIMADOS Y VÍDEOS
   // ==========================================
   incluirAnimacionesMapa: boolean = false;
@@ -2562,7 +2579,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.paginaActual = this.obtenerPrimeraPaginaMemoria();
     }
 
-    this.abrirPaginaActualEnFullscreen();
+    // En modo Álbum Vintage 3D, el slideshow se ejecuta dentro del libro 3D
+    // sin abrir la vista fullscreen clásica
+    if (!this.modoAlbumVintage) {
+      this.abrirPaginaActualEnFullscreen();
+    }
     this.iniciarSlideshow();
   }
 
@@ -2584,7 +2605,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.paginaActual = this.obtenerPrimeraPaginaMemoria();
     }
 
-    this.abrirPaginaActualEnFullscreen();
+    // En modo Álbum Vintage 3D, el slideshow se ejecuta dentro del libro 3D
+    if (!this.modoAlbumVintage) {
+      this.abrirPaginaActualEnFullscreen();
+    }
     this.iniciarSlideshow();
   }
 
@@ -2593,7 +2617,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     return index >= 0 ? index : 0;
   }
 
-  private abrirPaginaActualEnFullscreen(): void {
+  abrirPaginaActualEnFullscreen(): void {
     const pagina = this.paginaActualData;
     if (!pagina || pagina.esIndice) return;
 
@@ -2613,7 +2637,20 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     const nuevaPagina = this.paginaActual + direccion;
 
     if (nuevaPagina >= 0 && nuevaPagina < this.paginas.length) {
-      this.paginaActual = nuevaPagina;
+      if (this.modoAlbumVintage && !this.hojaVolteando3D) {
+        this.paginaVolteoSaliente = this.paginas[this.paginaActual];
+        this.paginaVolteoEntrante = this.paginas[nuevaPagina];
+        this.direccionVolteo3D = direccion > 0 ? 'adelante' : 'atras';
+        this.hojaVolteando3D = true;
+
+        setTimeout(() => {
+          this.paginaActual = nuevaPagina;
+          this.hojaVolteando3D = false;
+          this.cdr.detectChanges();
+        }, 750);
+      } else {
+        this.paginaActual = nuevaPagina;
+      }
       console.log('✅ Nueva página:', this.paginaActual);
 
       // 👇 Manejo de audio al cambiar página
@@ -2626,6 +2663,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.verificarSincronizacionAudioItinerario();
 
       this.centrarMiniaturaActiva(this.paginaActual);
+      this.cdr.detectChanges();
     } else if (nuevaPagina >= this.paginas.length && this.contextoViaje?.itinerarioId && !this.contextoViaje.actividadId) {
       console.log('📈 Fin del itinerario, cambiando a nivel viaje...');
       this.cambiarANivelViaje();
@@ -2662,8 +2700,21 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   irAPagina(index: number): void {
-    if (index >= 0 && index < this.paginas.length) {
-      this.paginaActual = index;
+    if (index >= 0 && index < this.paginas.length && index !== this.paginaActual) {
+      if (this.modoAlbumVintage && !this.hojaVolteando3D) {
+        this.paginaVolteoSaliente = this.paginas[this.paginaActual];
+        this.paginaVolteoEntrante = this.paginas[index];
+        this.direccionVolteo3D = index > this.paginaActual ? 'adelante' : 'atras';
+        this.hojaVolteando3D = true;
+
+        setTimeout(() => {
+          this.paginaActual = index;
+          this.hojaVolteando3D = false;
+          this.cdr.detectChanges();
+        }, 750);
+      } else {
+        this.paginaActual = index;
+      }
       const pagina = this.paginas[this.paginaActual];
       if (pagina?.tipoMedia === 'video') {
         this.bajarVolumenAudioViaje();
@@ -2671,6 +2722,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.restaurarVolumenAudioViaje();
       }
       this.centrarMiniaturaActiva(index);
+      this.cdr.detectChanges();
     }
   }
 
@@ -2825,7 +2877,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   private avanzarSlideshow(): void {
-    if (!this.mostrarFullscreen || !this.reproduciendoSlideshow) {
+    // En modo vintage el slideshow funciona sin fullscreen
+    const slideshowActivo = this.modoAlbumVintage
+      ? this.reproduciendoSlideshow
+      : (this.mostrarFullscreen && this.reproduciendoSlideshow);
+
+    if (!slideshowActivo) {
       this.detenerSlideshow();
       return;
     }
@@ -2836,8 +2893,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       // Elegir transición aleatoria
       this.transicionActual = this.TRANSICIONES[Math.floor(Math.random() * this.TRANSICIONES.length)];
 
-      // Cambiar de página
-      this.navegarEnFullscreen(1);
+      // En modo Vintage 3D: avanzar con paso de hoja 3D dentro del libro
+      if (this.modoAlbumVintage) {
+        this.cambiarPagina(1);
+      } else {
+        this.navegarEnFullscreen(1);
+      }
       this.cdr.detectChanges();
     } else {
       console.log('🏁 Fin del álbum alcanzado en slideshow');

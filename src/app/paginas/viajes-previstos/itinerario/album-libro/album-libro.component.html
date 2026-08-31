@@ -111,6 +111,13 @@
           <span>{{ (modoRecuerdoActivo && modoGuiadoActivo) ? 'Pausar Guiado' : 'Play Guiado' }}</span>
         </button>
 
+        <!-- Botón Conmutable Álbum Vintage 3D -->
+        <button class="toolbar-pill btn-toolbar-vintage" [class.active]="modoAlbumVintage" (click)="toggleModoAlbumVintage($event)"
+          [title]="modoAlbumVintage ? 'Modo Álbum Vintage 3D Activado (Click para volver al modo clásico)' : 'Modo Álbum Vintage 3D Desactivado (Click para activar)'">
+          <i class="fas fa-book-open" aria-hidden="true"></i>
+          <span>Álbum Vintage</span>
+        </button>
+
         <button class="toolbar-icon" *ngIf="audioDisponible || audioViaje" [class.active]="musicaActivada" (click)="toggleAudioViaje($event)"
           [title]="musicaActivada ? 'Música activada para el modo vídeo (Click para desactivar)' : 'Música desactivada (Click para activar)'">
           <i class="fas" [class.fa-volume-high]="musicaActivada" [class.fa-volume-xmark]="!musicaActivada"></i>
@@ -285,9 +292,9 @@
 
 
     <!-- ======================================= -->
-    <!-- SUB-BLOQUE: PÁGINA ACTUAL -->
+    <!-- SUB-BLOQUE: PÁGINA ACTUAL (MODO CLÁSICO)  -->
     <!-- ======================================= -->
-    <article class="pagina" *ngIf="paginas[paginaActual] as paginaActual" role="region" aria-label="Página del álbum">
+    <article class="pagina" *ngIf="!modoAlbumVintage && paginas[paginaActual] as paginaActual" role="region" aria-label="Página del álbum">
 
       <!-- ===================================== -->
       <!-- SUB-BLOQUE: PÁGINA ÍNDICE -->
@@ -513,6 +520,212 @@
 
       </div>
     </article>
+
+    <!-- ======================================= -->
+    <!-- MODO ÁLBUM VINTAGE 3D: DOBLE PÁGINA REAL -->
+    <!-- ======================================= -->
+    <section class="album-vintage-3d-escenario" *ngIf="modoAlbumVintage" aria-label="Álbum Vintage 3D">
+      <div class="mesa-madera-fondo" aria-hidden="true"></div>
+
+      <!-- Contenedor del Libro 3D Abierto -->
+      <div class="libro-vintage-abierto-3d" [class.animando-volteo]="hojaVolteando3D">
+        
+        <!-- Borde volumétrico de hojas apiladas a la izquierda -->
+        <div class="grosor-hojas grosor-izq" aria-hidden="true"></div>
+
+        <!-- ============================== -->
+        <!-- PÁGINA IZQUIERDA (Página n-1 o Intro) -->
+        <!-- ============================== -->
+        <div class="hoja-vintage-spread pagina-izquierda-3d" (click)="hayPaginaAnterior && cambiarPagina(-1)"
+          [title]="hayPaginaAnterior ? 'Click para ir a la página anterior' : ''">
+          <div class="textura-papel-antiguo" aria-hidden="true"></div>
+          <div class="sombra-lomo-izq" aria-hidden="true"></div>
+
+          <!-- Si estamos en la página 0: Portada / Introducción de Viaje -->
+          <div class="contenido-vintage-izq intro-viaje-vintage" *ngIf="paginaActual === 0">
+            <div class="marco-pergamino-decorativo">
+              <span class="adorno-esquina sup-izq"></span>
+              <span class="adorno-esquina sup-der"></span>
+              <span class="adorno-esquina inf-izq"></span>
+              <span class="adorno-esquina inf-der"></span>
+
+              <h2 class="titulo-intro-vintage">{{ infoViaje?.nombre || getTituloContextual() }}</h2>
+              <div class="linea-divisoria-oro"></div>
+              
+              <div class="fechas-intro-vintage" *ngIf="infoViaje?.fechaInicio">
+                <i class="fas fa-calendar-alt"></i>
+                {{ infoViaje?.fechaInicio | date:'longDate':'es' }}
+                <span *ngIf="infoViaje?.fechaFin"> — {{ infoViaje?.fechaFin | date:'longDate':'es' }}</span>
+              </div>
+
+              <p class="descripcion-intro-vintage">{{ getDescripcionContextual() }}</p>
+
+              <div class="estadisticas-intro-vintage">
+                <div class="stat-item-vintage">
+                  <strong>{{ totalRecuerdosDisplay }}</strong>
+                  <span>Recuerdos</span>
+                </div>
+                <div class="stat-item-vintage">
+                  <strong>{{ listaItinerarios.length || 1 }}</strong>
+                  <span>Itinerarios</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="numero-pagina-difuminado num-izq">
+              <span>Portada</span>
+            </div>
+          </div>
+
+          <!-- Si estamos en página > 0: Muestra la foto / contenido de la página anterior -->
+          <div class="contenido-vintage-izq" *ngIf="paginaActual > 0 && paginas[paginaActual - 1] as pagIzq">
+            <div class="foto-vintage-container">
+              <div class="foto-polaroid-vintage">
+                <!-- Esquinas de montaje vintage -->
+                <span class="esquinera-foto sup-izq"></span>
+                <span class="esquinera-foto sup-der"></span>
+                <span class="esquinera-foto inf-izq"></span>
+                <span class="esquinera-foto inf-der"></span>
+
+                <img *ngIf="pagIzq.tipoMedia === 'imagen'" [src]="pagIzq.url" [alt]="pagIzq.titulo" class="imagen-foto-vintage" loading="lazy" />
+                <div *ngIf="pagIzq.tipoMedia === 'video'" class="video-preview-vintage">
+                  <img *ngIf="pagIzq.url" [src]="pagIzq.url" class="imagen-foto-vintage" />
+                  <i class="fas fa-play-circle play-badge-vintage"></i>
+                </div>
+                <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage">
+                  <i class="fas fa-map-marked-alt icono-mapa-vintage"></i>
+                  <span>Tramo de ruta ({{ pagIzq.distanciaTramoKm | number:'1.1-2' }} km)</span>
+                </div>
+                <div *ngIf="pagIzq.esCartaManuscrita" class="carta-preview-vintage">
+                  <i class="fas fa-feather-alt icono-carta-vintage"></i>
+                  <span>{{ pagIzq.titulo }}</span>
+                </div>
+              </div>
+
+              <div class="pie-foto-vintage" *ngIf="pagIzq.titulo || pagIzq.fecha">
+                <h4 class="titulo-pie-vintage">{{ pagIzq.titulo }}</h4>
+                <p class="fecha-pie-vintage" *ngIf="pagIzq.fecha">{{ formatearFecha(pagIzq.fecha) }}</p>
+                <p class="desc-pie-vintage" *ngIf="pagIzq.descripcion">{{ pagIzq.descripcion }}</p>
+              </div>
+            </div>
+
+            <!-- Numeración difuminada esquina inferior izquierda -->
+            <div class="numero-pagina-difuminado num-izq">
+              <span>Pág. {{ paginaActual }} / {{ paginas.length - 1 }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hendidura / Pliegue central del Lomo 3D -->
+        <div class="lomo-central-3d" aria-hidden="true">
+          <div class="linea-cosido"></div>
+        </div>
+
+        <!-- ============================== -->
+        <!-- PÁGINA DERECHA (Página activa) -->
+        <!-- ============================== -->
+        <div class="hoja-vintage-spread pagina-derecha-3d" *ngIf="paginas[paginaActual] as pagDer">
+          <div class="textura-papel-antiguo" aria-hidden="true"></div>
+          <div class="sombra-lomo-der" aria-hidden="true"></div>
+
+          <div class="contenido-vintage-der">
+            <!-- Caso: Índice -->
+            <div class="vintage-indice-grid" *ngIf="pagDer.esIndice">
+              <h3 class="titulo-indice-vintage"><i class="fas fa-compass"></i> Índice de Itinerarios</h3>
+              <div class="itinerarios-vintage-lista">
+                <button *ngFor="let it of listaItinerarios" class="btn-itinerario-vintage" (click)="verAlbumItinerario(it.id); $event.stopPropagation()">
+                  <i class="fas fa-map-pin"></i>
+                  <span>{{ it.fechaInicio | date:'EEEE dd-MM-yyyy':'es' }}</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Caso: Carta Manuscrita -->
+            <div class="vintage-carta-full" *ngIf="pagDer.esCartaManuscrita" (click)="abrirFullscreen('', 'carta-manuscrita', { titulo: pagDer.titulo, descripcion: pagDer.descripcion })">
+              <h3 class="titulo-carta-vintage">{{ pagDer.titulo }}</h3>
+              <p class="fecha-carta-vintage" *ngIf="pagDer.fecha">{{ formatearFecha(pagDer.fecha) }}</p>
+              <div class="texto-carta-vintage">{{ pagDer.descripcion }}</div>
+              <div class="firma-vintage"><em>— Diario de viaje —</em></div>
+            </div>
+
+            <!-- Caso: Mapa Animado -->
+            <div class="vintage-mapa-box" *ngIf="pagDer.esMapaAnimado">
+              <div class="header-mapa-vintage">
+                <span class="badge-vintage-distancia"><i class="fas fa-route"></i> Recorrido: {{ pagDer.distanciaTramoKm | number:'1.1-2' }} km</span>
+              </div>
+              <div class="mapa-vintage-wrapper">
+                <app-gpx-animation 
+                  *ngIf="pagDer.trackGpx"
+                  [gpxText]="pagDer.trackGpx" 
+                  [multimedia]="pagDer.multimedia || []"
+                  [transportSegments]="pagDer.transportSegments || []"
+                  [visualSessionData]="pagDer.visualSessionData"
+                  [interactiveMode]="false"
+                  [autoPlay]="true"
+                  (onAnimacionCompletada)="onFinAnimacionMapa()"
+                  (onCerrar)="onFinAnimacionMapa()">
+                </app-gpx-animation>
+              </div>
+            </div>
+
+            <!-- Caso: Foto / Vídeo Estándar -->
+            <div class="foto-vintage-container" *ngIf="!pagDer.esIndice && !pagDer.esCartaManuscrita && !pagDer.esMapaAnimado">
+              <div class="foto-polaroid-vintage foto-principal" (click)="abrirPaginaActualEnFullscreen()">
+                <span class="esquinera-foto sup-izq"></span>
+                <span class="esquinera-foto sup-der"></span>
+                <span class="esquinera-foto inf-izq"></span>
+                <span class="esquinera-foto inf-der"></span>
+
+                <img *ngIf="pagDer.tipoMedia === 'imagen'" [src]="pagDer.url" [alt]="pagDer.titulo" class="imagen-foto-vintage" />
+                <video *ngIf="pagDer.tipoMedia === 'video'" [src]="pagDer.url" class="video-foto-vintage" controls></video>
+                <div class="lupa-zoom-overlay"><i class="fas fa-search-plus"></i> Ampliar</div>
+              </div>
+
+              <div class="pie-foto-vintage">
+                <h4 class="titulo-pie-vintage">{{ pagDer.titulo }}</h4>
+                <p class="fecha-pie-vintage" *ngIf="pagDer.fecha">{{ formatearFecha(pagDer.fecha) }}</p>
+                <p class="desc-pie-vintage" *ngIf="pagDer.descripcion">{{ pagDer.descripcion }}</p>
+              </div>
+            </div>
+
+            <!-- Numeración difuminada esquina inferior derecha -->
+            <div class="numero-pagina-difuminado num-der">
+              <span>Pág. {{ paginaActual + 1 }} / {{ paginas.length - 1 }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Borde volumétrico de hojas apiladas a la derecha -->
+        <div class="grosor-hojas grosor-der" aria-hidden="true"></div>
+
+        <!-- ============================================== -->
+        <!-- HOJA 3D VOLTEANDO FÍSICAMENTE (PAGE FLIP 3D)  -->
+        <!-- ============================================== -->
+        <div class="hoja-volteando-3d" *ngIf="hojaVolteando3D"
+          [class.volteando-adelante]="direccionVolteo3D === 'adelante'"
+          [class.volteando-atras]="direccionVolteo3D === 'atras'">
+          <div class="cara-hoja cara-anverso">
+            <div class="textura-papel-antiguo"></div>
+            <div class="sombra-curvatura-papel"></div>
+            <!-- Contenido que se va -->
+            <div class="preview-mini-volteo" *ngIf="paginaVolteoSaliente as pSal">
+              <img *ngIf="pSal.tipoMedia === 'imagen'" [src]="pSal.url" class="img-volteo" />
+              <h4 *ngIf="pSal.titulo">{{ pSal.titulo }}</h4>
+            </div>
+          </div>
+          <div class="cara-hoja cara-reverso">
+            <div class="textura-papel-antiguo"></div>
+            <div class="sombra-curvatura-papel"></div>
+            <!-- Contenido que entra -->
+            <div class="preview-mini-volteo" *ngIf="paginaVolteoEntrante as pEnt">
+              <img *ngIf="pEnt.tipoMedia === 'imagen'" [src]="pEnt.url" class="img-volteo" />
+              <h4 *ngIf="pEnt.titulo">{{ pEnt.titulo }}</h4>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
 
     <!-- ======================================= -->
     <!-- SUB-BLOQUE: NAVEGACIÓN DE PÁGINAS -->
