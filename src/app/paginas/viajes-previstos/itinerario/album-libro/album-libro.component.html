@@ -140,28 +140,10 @@
           <span>{{ reproducirEnFullscreen ? 'Fullscreen' : 'En Libro' }}</span>
         </button>
 
-        <!-- Botón para abrir directamente la página actual en Fullscreen -->
-        <button class="toolbar-icon" (click)="abrirPaginaActualEnFullscreen()" title="Ampliar a pantalla completa">
-          <i class="fas fa-up-right-and-down-left-from-center"></i>
-        </button>
-
-        <button class="toolbar-icon" *ngIf="audioDisponible || audioViaje" [class.active]="musicaActivada" (click)="toggleAudioViaje($event)"
-          [title]="musicaActivada ? 'Música activada para el modo vídeo (Click para desactivar)' : 'Música desactivada (Click para activar)'">
-          <i class="fas" [class.fa-volume-high]="musicaActivada" [class.fa-volume-xmark]="!musicaActivada"></i>
-        </button>
-
-        <button class="toolbar-icon" [class.active]="reproducirVideosCompletos" (click)="toggleVideosCompletos($event)"
-          [title]="reproducirVideosCompletos ? 'Vídeos completos: Activado (los vídeos se reproducen enteros sin cortar)' : 'Vídeos completos: Desactivado (los vídeos duran unos segundos como las fotos)'">
-          <i class="fas fa-film" aria-hidden="true"></i>
-        </button>
-
-        <button class="toolbar-icon" (click)="mostrarDialogoVideo()" title="Crear video" [disabled]="generandoVideo">
-          <i class="fas fa-video" aria-hidden="true"></i>
-        </button>
-
+        <!-- Bloque Mapas y Rutas: Tramos y Modo Foto / Animación -->
         <div class="toolbar-animacion-container">
           <button class="toolbar-icon" [class.active]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
-            title="Activar/Desactivar mapas animados por tramos">
+            title="Activar/Desactivar mapas de rutas por tramos">
             <i class="fas fa-route" aria-hidden="true"></i>
           </button>
 
@@ -196,6 +178,25 @@
             </button>
           </div>
         </div>
+
+        <!-- Botón para abrir directamente la página actual en Fullscreen -->
+        <button class="toolbar-icon" (click)="abrirPaginaActualEnFullscreen()" title="Ampliar a pantalla completa">
+          <i class="fas fa-up-right-and-down-left-from-center"></i>
+        </button>
+
+        <button class="toolbar-icon" *ngIf="audioDisponible || audioViaje" [class.active]="musicaActivada" (click)="toggleAudioViaje($event)"
+          [title]="musicaActivada ? 'Música activada para el modo vídeo (Click para desactivar)' : 'Música desactivada (Click para activar)'">
+          <i class="fas" [class.fa-volume-high]="musicaActivada" [class.fa-volume-xmark]="!musicaActivada"></i>
+        </button>
+
+        <button class="toolbar-icon" [class.active]="reproducirVideosCompletos" (click)="toggleVideosCompletos($event)"
+          [title]="reproducirVideosCompletos ? 'Vídeos completos: Activado (los vídeos se reproducen enteros sin cortar)' : 'Vídeos completos: Desactivado (los vídeos duran unos segundos como las fotos)'">
+          <i class="fas fa-film" aria-hidden="true"></i>
+        </button>
+
+        <button class="toolbar-icon" (click)="mostrarDialogoVideo()" title="Crear video" [disabled]="generandoVideo">
+          <i class="fas fa-video" aria-hidden="true"></i>
+        </button>
       </div>
     </header>
 

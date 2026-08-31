@@ -4476,25 +4476,36 @@
 
 .album-toolbar {
   flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(140px, 220px) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
-  padding: 12px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+  border-radius: 18px;
+  background: rgba(18, 24, 38, 0.88);
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(24px) saturate(160%);
   z-index: 20;
+  max-width: 100%;
 }
 
-.album-toolbar-main,
+.album-toolbar-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 120px;
+}
+
 .album-toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 auto;
+  justify-content: flex-end;
 }
 
 .album-now {
