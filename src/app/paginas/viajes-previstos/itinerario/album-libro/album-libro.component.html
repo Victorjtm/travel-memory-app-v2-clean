@@ -606,7 +606,17 @@
 
           <!-- Si estamos en página > 0: Muestra la foto / contenido de la página anterior -->
           <div class="contenido-vintage-izq" *ngIf="paginaActual > 0 && paginas[paginaActual - 1] as pagIzq">
-            <div class="foto-vintage-container">
+            
+            <!-- Caso Carta Manuscrita en página izquierda -->
+            <div class="vintage-carta-full" *ngIf="pagIzq.esCartaManuscrita">
+              <h3 class="titulo-carta-vintage">{{ pagIzq.titulo }}</h3>
+              <p class="fecha-carta-vintage" *ngIf="pagIzq.fecha">{{ formatearFecha(pagIzq.fecha) }}</p>
+              <div class="texto-carta-vintage">{{ pagIzq.descripcion }}</div>
+              <div class="firma-vintage"><em>— Diario de viaje —</em></div>
+            </div>
+
+            <!-- Caso Foto / Vídeo / Mapa Estándar en página izquierda -->
+            <div class="foto-vintage-container" *ngIf="!pagIzq.esIndice && !pagIzq.esCartaManuscrita">
               <div class="foto-polaroid-vintage">
                 <!-- Esquinas de montaje vintage -->
                 <span class="esquinera-foto sup-izq"></span>
@@ -616,20 +626,19 @@
 
                 <img *ngIf="pagIzq.tipoMedia === 'imagen'" [src]="pagIzq.url" [alt]="pagIzq.titulo" class="imagen-foto-vintage" loading="lazy" />
                 <div *ngIf="pagIzq.tipoMedia === 'video'" class="video-preview-vintage">
-                  <img *ngIf="pagIzq.url" [src]="pagIzq.url" class="imagen-foto-vintage" />
-                  <i class="fas fa-play-circle play-badge-vintage"></i>
+                  <video *ngIf="pagIzq.url" [src]="pagIzq.url + '#t=0.5'" class="video-foto-vintage video-miniatura-estatica" preload="metadata" muted playsinline></video>
+                  <div class="play-overlay-vintage">
+                    <i class="fas fa-play"></i>
+                  </div>
                 </div>
                 <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage">
                   <i class="fas fa-map-marked-alt icono-mapa-vintage"></i>
-                  <span>Tramo de ruta ({{ pagIzq.distanciaTramoKm | number:'1.1-2' }} km)</span>
-                </div>
-                <div *ngIf="pagIzq.esCartaManuscrita" class="carta-preview-vintage">
-                  <i class="fas fa-feather-alt icono-carta-vintage"></i>
-                  <span>{{ pagIzq.titulo }}</span>
+                  <span class="titulo-mapa-prev">{{ pagIzq.titulo }}</span>
+                  <span class="desc-mapa-prev" *ngIf="pagIzq.distanciaTramoKm">Recorrido: {{ pagIzq.distanciaTramoKm | number:'1.1-2' }} km</span>
                 </div>
               </div>
 
-              <div class="pie-foto-vintage" *ngIf="pagIzq.titulo || pagIzq.fecha">
+              <div class="pie-foto-vintage" *ngIf="!pagIzq.esMapaAnimado && (pagIzq.titulo || pagIzq.fecha)">
                 <h4 class="titulo-pie-vintage">{{ pagIzq.titulo }}</h4>
                 <p class="fecha-pie-vintage" *ngIf="pagIzq.fecha">{{ formatearFecha(pagIzq.fecha) }}</p>
                 <p class="desc-pie-vintage" *ngIf="pagIzq.descripcion">{{ pagIzq.descripcion }}</p>
@@ -1084,7 +1093,17 @@
 
           <!-- Si estamos en página > 0: Muestra la foto / contenido de la página anterior -->
           <div class="contenido-vintage-izq" *ngIf="paginaActual > 0 && paginas[paginaActual - 1] as pagIzq">
-            <div class="foto-vintage-container">
+            
+            <!-- Caso Carta Manuscrita en página izquierda -->
+            <div class="vintage-carta-full" *ngIf="pagIzq.esCartaManuscrita">
+              <h3 class="titulo-carta-vintage">{{ pagIzq.titulo }}</h3>
+              <p class="fecha-carta-vintage" *ngIf="pagIzq.fecha">{{ formatearFecha(pagIzq.fecha) }}</p>
+              <div class="texto-carta-vintage">{{ pagIzq.descripcion }}</div>
+              <div class="firma-vintage"><em>— Diario de viaje —</em></div>
+            </div>
+
+            <!-- Caso Foto / Vídeo / Mapa Estándar en página izquierda -->
+            <div class="foto-vintage-container" *ngIf="!pagIzq.esIndice && !pagIzq.esCartaManuscrita">
               <div class="foto-polaroid-vintage">
                 <span class="esquinera-foto sup-izq"></span>
                 <span class="esquinera-foto sup-der"></span>
@@ -1093,26 +1112,26 @@
 
                 <img *ngIf="pagIzq.tipoMedia === 'imagen'" [src]="pagIzq.url" [alt]="pagIzq.titulo" class="imagen-foto-vintage" loading="lazy" />
                 <div *ngIf="pagIzq.tipoMedia === 'video'" class="video-preview-vintage">
-                  <img *ngIf="pagIzq.url" [src]="pagIzq.url" class="imagen-foto-vintage" />
-                  <i class="fas fa-play-circle play-badge-vintage"></i>
+                  <video *ngIf="pagIzq.url" [src]="pagIzq.url + '#t=0.5'" class="video-foto-vintage video-miniatura-estatica" preload="metadata" muted playsinline></video>
+                  <div class="play-overlay-vintage">
+                    <i class="fas fa-play"></i>
+                  </div>
                 </div>
                 <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage">
                   <i class="fas fa-map-marked-alt icono-mapa-vintage"></i>
-                  <span>Tramo de ruta ({{ pagIzq.distanciaTramoKm | number:'1.1-2' }} km)</span>
-                </div>
-                <div *ngIf="pagIzq.esCartaManuscrita" class="carta-preview-vintage">
-                  <i class="fas fa-feather-alt icono-carta-vintage"></i>
-                  <span>{{ pagIzq.titulo }}</span>
+                  <span class="titulo-mapa-prev">{{ pagIzq.titulo }}</span>
+                  <span class="desc-mapa-prev" *ngIf="pagIzq.distanciaTramoKm">Recorrido: {{ pagIzq.distanciaTramoKm | number:'1.1-2' }} km</span>
                 </div>
               </div>
 
-              <div class="pie-foto-vintage" *ngIf="pagIzq.titulo || pagIzq.fecha">
+              <div class="pie-foto-vintage" *ngIf="!pagIzq.esMapaAnimado && (pagIzq.titulo || pagIzq.fecha)">
                 <h4 class="titulo-pie-vintage">{{ pagIzq.titulo }}</h4>
                 <p class="fecha-pie-vintage" *ngIf="pagIzq.fecha">{{ formatearFecha(pagIzq.fecha) }}</p>
                 <p class="desc-pie-vintage" *ngIf="pagIzq.descripcion">{{ pagIzq.descripcion }}</p>
               </div>
             </div>
 
+            <!-- Numeración difuminada esquina inferior izquierda -->
             <div class="numero-pagina-difuminado num-izq">
               <span>Pág. {{ paginaActual }} / {{ paginas.length - 1 }}</span>
             </div>

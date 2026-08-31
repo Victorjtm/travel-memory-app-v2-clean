@@ -5243,31 +5243,45 @@
     }
   }
 
-  /* --- Foto Estilo Polaroid / Vintage --- */
-  .foto-vintage-container {
+  /* --- Contenedores de Páginas Vintage (Izquierda y Derecha) --- */
+  .contenido-vintage-izq,
+  .contenido-vintage-der {
     position: relative;
     width: 100%;
     height: 100%;
     display: flex;
     flex-direction: column;
+    z-index: 2;
+  }
+
+  /* --- Foto Estilo Polaroid / Vintage --- */
+  .foto-vintage-container {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 12px;
+    padding: 6px 0 20px 0;
     z-index: 2;
 
     .foto-polaroid-vintage {
       position: relative;
-      padding: 8px 8px 14px 8px;
+      flex: 0 0 auto;
+      padding: 6px 6px 10px 6px;
       background: #ffffff;
       box-shadow: 
         0 6px 18px rgba(0, 0, 0, 0.15),
         0 2px 6px rgba(0, 0, 0, 0.1);
       border-radius: 2px;
-      max-width: 94%;
-      max-height: 64%;
+      max-width: 92%;
       display: flex;
       justify-content: center;
       align-items: center;
       transition: transform 0.3s ease;
+      margin-bottom: 2px;
 
       &.foto-principal {
         cursor: pointer;
@@ -5284,26 +5298,102 @@
 
       .imagen-foto-vintage {
         max-width: 100%;
-        max-height: 290px;
+        max-height: 220px;
         object-fit: contain;
         border-radius: 2px;
+        display: block;
       }
 
       .video-foto-vintage {
         max-width: 100%;
-        max-height: 290px;
+        max-height: 220px;
         border-radius: 2px;
+        display: block;
+      }
+
+      /* Miniatura estática de vídeo para la página izquierda */
+      .video-preview-vintage {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+
+        .video-miniatura-estatica {
+          max-width: 100%;
+          max-height: 220px;
+          object-fit: cover;
+          border-radius: 2px;
+          pointer-events: none;
+        }
+
+        .play-overlay-vintage {
+          position: absolute;
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: rgba(18, 10, 6, 0.75);
+          border: 2px solid #dfc488;
+          color: #f7efe0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.1rem;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45);
+          pointer-events: none;
+
+          i {
+            margin-left: 2px;
+          }
+        }
+      }
+
+      /* Miniatura de mapa para la página izquierda */
+      .mapa-preview-vintage {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 16px 20px;
+        min-height: 120px;
+        background: linear-gradient(135deg, #fbf7ee, #f3ebd8);
+        border: 1px dashed rgba(139, 107, 70, 0.45);
+        border-radius: 2px;
+        color: #2b1810;
+        text-align: center;
+        gap: 6px;
+
+        .icono-mapa-vintage {
+          font-size: 1.8rem;
+          color: #8b5a2b;
+          margin-bottom: 2px;
+        }
+
+        .titulo-mapa-prev {
+          font-family: 'Cinzel', serif;
+          font-size: 0.9rem;
+          font-weight: 700;
+          color: #2b1810;
+        }
+
+        .desc-mapa-prev {
+          font-family: 'Georgia', serif;
+          font-size: 0.78rem;
+          color: #6b4d32;
+          font-style: italic;
+        }
       }
 
       .lupa-zoom-overlay {
         position: absolute;
-        bottom: 20px;
-        right: 14px;
+        bottom: 14px;
+        right: 12px;
         background: rgba(0, 0, 0, 0.7);
         color: #fff;
-        padding: 4px 10px;
+        padding: 3px 8px;
         border-radius: 20px;
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         opacity: 0;
         transition: opacity 0.2s ease;
       }
@@ -5326,30 +5416,32 @@
     }
 
     .pie-foto-vintage {
-      margin-top: 8px;
+      flex: 0 0 auto;
+      margin-top: 2px;
       text-align: center;
       max-width: 90%;
+      z-index: 3;
 
       .titulo-pie-vintage {
         font-family: 'Cinzel', 'Georgia', serif;
-        font-size: 1.02rem;
+        font-size: 0.95rem;
         font-weight: 700;
         color: #2b1810;
-        margin: 0 0 3px 0;
+        margin: 0 0 2px 0;
         line-height: 1.25;
       }
 
       .fecha-pie-vintage {
         font-family: 'Georgia', serif;
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         color: #8b6b47;
-        margin: 0 0 3px 0;
+        margin: 0 0 2px 0;
         font-style: italic;
       }
 
       .desc-pie-vintage {
         font-family: 'Georgia', serif;
-        font-size: 0.88rem;
+        font-size: 0.84rem;
         color: #4a3828;
         line-height: 1.35;
         margin: 0;
