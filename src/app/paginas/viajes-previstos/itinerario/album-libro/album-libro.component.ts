@@ -2696,23 +2696,51 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         setTimeout(() => {
           this.paginaActual = nuevaPagina;
           this.hojaVolteando3D = false;
+
+          const pagina = this.paginas[this.paginaActual];
+          if (pagina?.tipoMedia === 'video') {
+            this.bajarVolumenAudioViaje();
+          } else {
+            this.restaurarVolumenAudioViaje();
+          }
+          this.verificarSincronizacionAudioItinerario();
+          this.centrarMiniaturaActiva(this.paginaActual);
+
+          if (this.reproduciendoSlideshow) {
+            if (pagina?.esMapaAnimado && !this.modoRutaImagen) {
+              this.limpiarTimerSlideshow();
+            } else if (pagina?.tipoMedia === 'video' && this.reproducirVideosCompletos) {
+              this.limpiarTimerSlideshow();
+            } else {
+              this.reiniciarTimerSlideshow();
+            }
+          }
+
           this.cdr.detectChanges();
         }, 750);
       } else {
         this.paginaActual = nuevaPagina;
+
+        const pagina = this.paginas[this.paginaActual];
+        if (pagina?.tipoMedia === 'video') {
+          this.bajarVolumenAudioViaje();
+        } else {
+          this.restaurarVolumenAudioViaje();
+        }
+        this.verificarSincronizacionAudioItinerario();
+        this.centrarMiniaturaActiva(this.paginaActual);
+
+        if (this.reproduciendoSlideshow) {
+          if (pagina?.esMapaAnimado && !this.modoRutaImagen) {
+            this.limpiarTimerSlideshow();
+          } else if (pagina?.tipoMedia === 'video' && this.reproducirVideosCompletos) {
+            this.limpiarTimerSlideshow();
+          } else {
+            this.reiniciarTimerSlideshow();
+          }
+        }
       }
       console.log('✅ Nueva página:', this.paginaActual);
-
-      // 👇 Manejo de audio al cambiar página
-      const pagina = this.paginas[this.paginaActual];
-      if (pagina?.tipoMedia === 'video') {
-        this.bajarVolumenAudioViaje();
-      } else {
-        this.restaurarVolumenAudioViaje();
-      }
-      this.verificarSincronizacionAudioItinerario();
-
-      this.centrarMiniaturaActiva(this.paginaActual);
       this.cdr.detectChanges();
     } else if (nuevaPagina >= this.paginas.length && this.contextoViaje?.itinerarioId && !this.contextoViaje.actividadId) {
       console.log('📈 Fin del itinerario, cambiando a nivel viaje...');

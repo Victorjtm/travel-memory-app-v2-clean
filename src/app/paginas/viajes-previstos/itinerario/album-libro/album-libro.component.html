@@ -660,10 +660,7 @@
                   </div>
                 </div>
                 <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()">
-                  <app-mini-mapa-gpx *ngIf="pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx"></app-mini-mapa-gpx>
-                  <div class="mapa-mini-badge-overlay" *ngIf="pagIzq.distanciaTramoKm">
-                    <i class="fas fa-route"></i> {{ pagIzq.distanciaTramoKm | number:'1.1-2' }} km
-                  </div>
+                  <app-mini-mapa-gpx *ngIf="pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx" [distanciaKm]="pagIzq.distanciaTramoKm" [transportMode]="pagIzq.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
                 </div>
               </div>
 
@@ -1154,10 +1151,7 @@
                   </div>
                 </div>
                 <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()">
-                  <app-mini-mapa-gpx *ngIf="pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx"></app-mini-mapa-gpx>
-                  <div class="mapa-mini-badge-overlay" *ngIf="pagIzq.distanciaTramoKm">
-                    <i class="fas fa-route"></i> {{ pagIzq.distanciaTramoKm | number:'1.1-2' }} km
-                  </div>
+                  <app-mini-mapa-gpx *ngIf="pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx" [distanciaKm]="pagIzq.distanciaTramoKm" [transportMode]="pagIzq.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
                 </div>
               </div>
 

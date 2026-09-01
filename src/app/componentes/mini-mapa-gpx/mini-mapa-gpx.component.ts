@@ -25,6 +25,7 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
     .mini-mapa-gpx-container {
       position: relative;
       width: 100%;
+      min-width: 260px;
       height: 100%;
       min-height: 200px;
       max-height: 295px;
@@ -36,6 +37,7 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
       justify-content: center;
 
       &.full-page-mode {
+        min-width: 280px;
         min-height: 260px;
         max-height: 100%;
       }
@@ -44,6 +46,7 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
     .mini-mapa-canvas {
       width: 100%;
       height: 100%;
+      min-height: 200px;
       opacity: 0;
       transition: opacity 0.35s ease;
       pointer-events: none;
@@ -57,7 +60,7 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
       position: absolute;
       bottom: 10px;
       right: 10px;
-      background: rgba(255, 255, 255, 0.92);
+      background: rgba(255, 255, 255, 0.94);
       backdrop-filter: blur(4px);
       border: 1px solid rgba(191, 161, 95, 0.8);
       box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
@@ -115,6 +118,7 @@ export class MiniMapaGpxComponent implements OnInit, AfterViewInit, OnChanges, O
   mapaListo: boolean = false;
   private map: any = null;
   private L: any = null;
+  private polylineRef: any = null;
 
   constructor(private gpxService: GpxAnimationService) {}
 
@@ -190,7 +194,7 @@ export class MiniMapaGpxComponent implements OnInit, AfterViewInit, OnChanges, O
       }).addTo(this.map);
 
       // Línea principal de la ruta (rojo vivo)
-      const polyline = this.L.polyline(latlngs, {
+      this.polylineRef = this.L.polyline(latlngs, {
         color: '#dc2626',
         weight: 3.8,
         opacity: 0.95
@@ -216,20 +220,31 @@ export class MiniMapaGpxComponent implements OnInit, AfterViewInit, OnChanges, O
         fillOpacity: 1
       }).addTo(this.map);
 
-      this.map.fitBounds(polyline.getBounds(), {
-        padding: [18, 18],
-        animate: false
-      });
+      const reajustarLimites = () => {
+        if (this.map && this.polylineRef) {
+          this.map.invalidateSize();
+          this.map.fitBounds(this.polylineRef.getBounds(), {
+            padding: [18, 18],
+            animate: false
+          });
+        }
+      };
+
+      reajustarLimites();
 
       tileLayer.on('load', () => {
         this.mapaListo = true;
-        if (this.map) this.map.invalidateSize();
+        reajustarLimites();
       });
 
       setTimeout(() => {
         this.mapaListo = true;
-        if (this.map) this.map.invalidateSize();
-      }, 700);
+        reajustarLimites();
+      }, 200);
+
+      setTimeout(() => {
+        reajustarLimites();
+      }, 600);
 
     } catch (e) {
       console.warn('⚠️ [MiniMapaGpxComponent] Error al renderizar mini mapa:', e);

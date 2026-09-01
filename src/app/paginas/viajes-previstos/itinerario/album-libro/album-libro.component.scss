@@ -5787,8 +5787,10 @@
       /* Miniatura de mapa para la página izquierda */
       .mapa-preview-vintage {
         position: relative;
-        width: 100%;
-        min-height: 200px;
+        width: 320px;
+        max-width: 90%;
+        height: 230px;
+        min-height: 190px;
         max-height: 295px;
         display: flex;
         align-items: center;
