@@ -248,87 +248,88 @@
       </div>
 
       <div class="album-toolbar-actions">
-        <button class="toolbar-pill primary" [class.active]="modoRecuerdoActivo && !modoGuiadoActivo" (click)="toggleModoRecuerdo($event)"
-          [title]="(modoRecuerdoActivo && !modoGuiadoActivo) ? 'Pausar modo recuerdo' : 'Entrar en modo recuerdo'">
+        <!-- 1. Play / Pausa Modo Recuerdo -->
+        <button class="toolbar-icon toolbar-action-btn primary" [class.active]="modoRecuerdoActivo && !modoGuiadoActivo" (click)="toggleModoRecuerdo($event)"
+          [title]="(modoRecuerdoActivo && !modoGuiadoActivo) ? 'Pausar modo recuerdo' : 'Vivir recuerdo (Play)'">
           <i class="fas" [class.fa-pause]="modoRecuerdoActivo && !modoGuiadoActivo" [class.fa-play]="!(modoRecuerdoActivo && !modoGuiadoActivo)"></i>
-          <span>{{ (modoRecuerdoActivo && !modoGuiadoActivo) ? 'Pausar' : 'Play' }}</span>
         </button>
 
-        <button class="toolbar-pill secondary btn-toolbar-guiado" [class.active]="modoRecuerdoActivo && modoGuiadoActivo" (click)="toggleModoGuiado($event)"
-          [title]="(modoRecuerdoActivo && modoGuiadoActivo) ? 'Pausar modo guiado' : 'Entrar en modo recuerdo guiado por PIs'">
+        <!-- 2. Play Guiado por PIs -->
+        <button class="toolbar-icon toolbar-action-btn btn-toolbar-guiado" [class.active]="modoRecuerdoActivo && modoGuiadoActivo" (click)="toggleModoGuiado($event)"
+          [title]="(modoRecuerdoActivo && modoGuiadoActivo) ? 'Pausar modo guiado' : 'Play Guiado por PIs'">
           <i class="fas" [class.fa-pause]="modoRecuerdoActivo && modoGuiadoActivo" [class.fa-route]="!(modoRecuerdoActivo && modoGuiadoActivo)"></i>
-          <span>{{ (modoRecuerdoActivo && modoGuiadoActivo) ? 'Pausar Guiado' : 'Play Guiado' }}</span>
         </button>
 
-        <!-- Botón Conmutable Álbum Vintage 3D -->
-        <button class="toolbar-pill btn-toolbar-vintage" [class.active]="modoAlbumVintage" (click)="toggleModoAlbumVintage($event)"
-          [title]="modoAlbumVintage ? 'Modo Álbum Vintage 3D Activado (Click para volver al modo clásico)' : 'Modo Álbum Vintage 3D Desactivado (Click para activar)'">
+        <!-- 3. Botón Conmutable Álbum Vintage 3D vs Clásico -->
+        <button class="toolbar-icon toolbar-action-btn btn-toolbar-vintage" [class.active]="modoAlbumVintage" (click)="toggleModoAlbumVintage($event)"
+          [title]="modoAlbumVintage ? 'Modo Álbum Vintage 3D activo (Click para Clásico)' : 'Modo Clásico activo (Click para Vintage 3D)'">
           <i class="fas fa-book-open" aria-hidden="true"></i>
-          <span>{{ modoAlbumVintage ? 'Álbum Vintage' : 'Álbum Clásico' }}</span>
         </button>
 
-        <!-- Botón Conmutable Pantalla Completa vs Reducida -->
-        <button class="toolbar-pill btn-toolbar-fullscreen-toggle" [class.active]="reproducirEnFullscreen" (click)="toggleReproducirEnFullscreen($event)"
-          [title]="reproducirEnFullscreen ? 'Modo Pantalla Completa activo para Play (Click para reproducir en pantalla reducida en el libro)' : 'Modo Pantalla Reducida activo para Play (Click para reproducir en pantalla completa)'">
+        <!-- 4. Botón Conmutable Pantalla Completa vs Reducida -->
+        <button class="toolbar-icon toolbar-action-btn btn-toolbar-fullscreen-toggle" [class.active]="reproducirEnFullscreen" (click)="toggleReproducirEnFullscreen($event)"
+          [title]="reproducirEnFullscreen ? 'Modo Pantalla Completa activo para Play (Click para modo En Libro)' : 'Modo En Libro activo para Play (Click para Pantalla Completa)'">
           <i class="fas" [class.fa-expand]="reproducirEnFullscreen" [class.fa-compress]="!reproducirEnFullscreen"></i>
-          <span>{{ reproducirEnFullscreen ? 'Fullscreen' : 'En Libro' }}</span>
         </button>
 
-        <!-- Bloque Mapas y Rutas: Tramos y Modo Foto / Animación -->
+        <!-- 5. Bloque Mapas y Rutas: Tramos y Modo Foto / Animación -->
         <div class="toolbar-animacion-container">
-          <button class="toolbar-icon" [class.active]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
-            title="Activar/Desactivar mapas de rutas por tramos">
-            <i class="fas fa-route" aria-hidden="true"></i>
+          <button class="toolbar-icon toolbar-action-btn" [class.active]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
+            [title]="incluirAnimacionesMapa ? 'Mapas GPX activados (Click para ocultar)' : 'Mapas GPX desactivados (Click para mostrar)'">
+            <i class="fas fa-map-location-dot" aria-hidden="true"></i>
           </button>
 
           <!-- Selector de distancia mínima visible cuando los mapas animados están activos -->
           <div class="toolbar-distancia-selector" *ngIf="incluirAnimacionesMapa">
-            <span class="distancia-label">Tramos &gt;</span>
+            <span class="distancia-label">&gt;</span>
             <select [ngModel]="modoDistanciaPersonalizada ? 'custom' : distanciaMinimaAnimacionKm" (ngModelChange)="onCambioSelectDistancia($event)" class="select-distancia-tb" title="Filtrar tramos por distancia mínima">
-              <option [ngValue]="0.05">50 m</option>
-              <option [ngValue]="0.1">100 m</option>
-              <option [ngValue]="0.2">200 m</option>
-              <option [ngValue]="0.3">300 m</option>
-              <option [ngValue]="0.5">500 m</option>
-              <option [ngValue]="1">1 km</option>
-              <option [ngValue]="2">2 km</option>
-              <option [ngValue]="5">5 km</option>
-              <option [ngValue]="10">10 km</option>
-              <option value="custom">✏️ Personalizado (m)...</option>
+              <option [ngValue]="0.05">50m</option>
+              <option [ngValue]="0.1">100m</option>
+              <option [ngValue]="0.2">200m</option>
+              <option [ngValue]="0.3">300m</option>
+              <option [ngValue]="0.5">500m</option>
+              <option [ngValue]="1">1km</option>
+              <option [ngValue]="2">2km</option>
+              <option [ngValue]="5">5km</option>
+              <option [ngValue]="10">10km</option>
+              <option value="custom">✏️...</option>
             </select>
             <div class="input-metros-custom-tb" *ngIf="modoDistanciaPersonalizada">
-              <input type="number" min="10" step="10" [(ngModel)]="distanciaMinimaMetros" (change)="onCambioDistanciaMetrosInput()" class="input-distancia-tb" placeholder="Metros" title="Escribe metros mínimos">
+              <input type="number" min="10" step="10" [(ngModel)]="distanciaMinimaMetros" (change)="onCambioDistanciaMetrosInput()" class="input-distancia-tb" placeholder="m" title="Escribe metros mínimos">
               <span class="unit-m">m</span>
             </div>
           </div>
 
           <!-- Selector Segmentado: Modo Foto vs Modo Animación -->
           <div class="modo-mapa-segmented-control" *ngIf="incluirAnimacionesMapa">
-            <button type="button" class="btn-segment" [class.active]="modoRutaImagen" (click)="toggleModoRutaImagen(true, $event)" title="Mostrar mapas de rutas como foto estática (rápido y ligero)">
-              <i class="fas fa-image"></i> Foto
+            <button type="button" class="btn-segment" [class.active]="modoRutaImagen" (click)="toggleModoRutaImagen(true, $event)" title="Mostrar mapas de rutas como Foto">
+              <i class="fas fa-image"></i>
             </button>
-            <button type="button" class="btn-segment" [class.active]="!modoRutaImagen" (click)="toggleModoRutaImagen(false, $event)" title="Mostrar mapas de rutas como animación con movimiento">
-              <i class="fas fa-play"></i> Animación
+            <button type="button" class="btn-segment" [class.active]="!modoRutaImagen" (click)="toggleModoRutaImagen(false, $event)" title="Mostrar mapas de rutas como Animación">
+              <i class="fas fa-play"></i>
             </button>
           </div>
         </div>
 
-        <!-- Botón para abrir directamente la página actual en Fullscreen -->
-        <button class="toolbar-icon" (click)="abrirPaginaActualEnFullscreen()" title="Ampliar a pantalla completa">
+        <!-- 6. Botón para abrir directamente la página actual en Fullscreen -->
+        <button class="toolbar-icon toolbar-action-btn" (click)="abrirPaginaActualEnFullscreen()" title="Ampliar a pantalla completa">
           <i class="fas fa-up-right-and-down-left-from-center"></i>
         </button>
 
-        <button class="toolbar-icon" *ngIf="audioDisponible || audioViaje" [class.active]="musicaActivada" (click)="toggleAudioViaje($event)"
-          [title]="musicaActivada ? 'Música activada para el modo vídeo (Click para desactivar)' : 'Música desactivada (Click para activar)'">
+        <!-- 7. Música -->
+        <button class="toolbar-icon toolbar-action-btn" *ngIf="audioDisponible || audioViaje" [class.active]="musicaActivada" (click)="toggleAudioViaje($event)"
+          [title]="musicaActivada ? 'Música activada (Click para silenciar)' : 'Música silenciada (Click para activar)'">
           <i class="fas" [class.fa-volume-high]="musicaActivada" [class.fa-volume-xmark]="!musicaActivada"></i>
         </button>
 
-        <button class="toolbar-icon" [class.active]="reproducirVideosCompletos" (click)="toggleVideosCompletos($event)"
-          [title]="reproducirVideosCompletos ? 'Vídeos completos: Activado (los vídeos se reproducen enteros sin cortar)' : 'Vídeos completos: Desactivado (los vídeos duran unos segundos como las fotos)'">
+        <!-- 8. Vídeos completos -->
+        <button class="toolbar-icon toolbar-action-btn" [class.active]="reproducirVideosCompletos" (click)="toggleVideosCompletos($event)"
+          [title]="reproducirVideosCompletos ? 'Vídeos completos: Activado' : 'Vídeos completos: Desactivado'">
           <i class="fas fa-film" aria-hidden="true"></i>
         </button>
 
-        <button class="toolbar-icon" (click)="mostrarDialogoVideo()" title="Crear video" [disabled]="generandoVideo">
+        <!-- 9. Exportar vídeo MP4 -->
+        <button class="toolbar-icon toolbar-action-btn" (click)="mostrarDialogoVideo()" title="Crear vídeo" [disabled]="generandoVideo">
           <i class="fas fa-video" aria-hidden="true"></i>
         </button>
       </div>
