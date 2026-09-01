@@ -5784,6 +5784,95 @@
         }
       }
 
+      /* Miniatura de audio para la página izquierda */
+      .audio-preview-vintage {
+        position: relative;
+        width: 320px;
+        max-width: 90%;
+        height: 200px;
+        background: linear-gradient(135deg, #2b1810, #180d09);
+        border: 2px solid #bfa15f;
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 16px;
+        box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6);
+
+        .vinilo-vintage-icon {
+          width: 60px;
+          height: 60px;
+          border-radius: 50%;
+          background: #dfc488;
+          color: #2b1810;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.5rem;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+        }
+
+        .audio-title-tag {
+          font-family: 'Cinzel', serif;
+          font-size: 0.85rem;
+          color: #eedfc7;
+          font-weight: 700;
+          text-align: center;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          max-width: 90%;
+        }
+      }
+
+      /* Reproductor de audio para la página derecha */
+      .audio-vintage-box {
+        position: relative;
+        width: 330px;
+        max-width: 94%;
+        min-height: 210px;
+        background: linear-gradient(135deg, #2e1a12, #1a0f0a);
+        border: 2px solid #dfc488;
+        border-radius: 6px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 20px 16px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), inset 0 0 30px rgba(0, 0, 0, 0.5);
+
+        .vinilo-vintage-disco {
+          width: 74px;
+          height: 74px;
+          border-radius: 50%;
+          background: radial-gradient(circle, #dfc488 20%, #2b1810 25%, #180d09 70%, #dfc488 100%);
+          border: 2px solid #dfc488;
+          color: #eedfc7;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 2rem;
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+          animation: spinVinilo 8s linear infinite;
+
+          i {
+            color: #dfc488;
+          }
+        }
+
+        .audio-vintage-control {
+          width: 100%;
+          max-width: 290px;
+          height: 38px;
+          filter: sepia(0.3) contrast(1.1);
+          border-radius: 20px;
+          outline: none;
+        }
+      }
+
       /* Miniatura de mapa para la página izquierda */
       .mapa-preview-vintage {
         position: relative;
@@ -6069,5 +6158,14 @@
   }
   100% {
     transform: rotateY(180deg);
+  }
+}
+
+@keyframes spinVinilo {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }

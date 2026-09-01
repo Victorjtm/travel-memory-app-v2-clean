@@ -652,12 +652,19 @@
                 <span class="esquinera-foto inf-izq"></span>
                 <span class="esquinera-foto inf-der"></span>
 
-                <img *ngIf="pagIzq.tipoMedia === 'imagen'" [src]="pagIzq.url" [alt]="pagIzq.titulo" class="imagen-foto-vintage" loading="lazy" />
+                <img *ngIf="pagIzq.tipoMedia === 'imagen'" [src]="pagIzq.url" [alt]="pagIzq.titulo" class="imagen-foto-vintage" loading="lazy" decoding="async" />
                 <div *ngIf="pagIzq.tipoMedia === 'video'" class="video-preview-vintage">
                   <video *ngIf="pagIzq.url" [src]="pagIzq.url + '#t=0.5'" class="video-foto-vintage video-miniatura-estatica" preload="metadata" muted playsinline></video>
                   <div class="play-overlay-vintage">
                     <i class="fas fa-play"></i>
                   </div>
+                </div>
+                <!-- Miniatura de audio página izquierda -->
+                <div *ngIf="pagIzq.tipoMedia === 'audio'" class="audio-preview-vintage">
+                  <div class="vinilo-vintage-icon">
+                    <i class="fas fa-music"></i>
+                  </div>
+                  <span class="audio-title-tag">{{ pagIzq.titulo }}</span>
                 </div>
                 <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()">
                   <app-mini-mapa-gpx *ngIf="pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx" [distanciaKm]="pagIzq.distanciaTramoKm" [transportMode]="pagIzq.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
@@ -741,7 +748,7 @@
               </div>
             </div>
 
-            <!-- Caso: Foto / Vídeo Estándar -->
+            <!-- Caso: Foto / Vídeo / Audio Estándar -->
             <div class="foto-vintage-container" *ngIf="!pagDer.esIndice && !pagDer.esCartaManuscrita && !pagDer.esMapaAnimado">
               <div class="foto-polaroid-vintage foto-principal">
                 <span class="esquinera-foto sup-izq"></span>
@@ -749,8 +756,17 @@
                 <span class="esquinera-foto inf-izq"></span>
                 <span class="esquinera-foto inf-der"></span>
 
-                <img *ngIf="pagDer.tipoMedia === 'imagen'" [src]="pagDer.url" [alt]="pagDer.titulo" class="imagen-foto-vintage" />
+                <img *ngIf="pagDer.tipoMedia === 'imagen'" [src]="pagDer.url" [alt]="pagDer.titulo" class="imagen-foto-vintage" loading="lazy" decoding="async" />
                 <video *ngIf="pagDer.tipoMedia === 'video'" [src]="pagDer.url" class="video-foto-vintage" controls (click)="$event.stopPropagation()"></video>
+                
+                <!-- Reproductor de Audio Vintage -->
+                <div *ngIf="pagDer.tipoMedia === 'audio'" class="audio-vintage-box" (click)="$event.stopPropagation()">
+                  <div class="vinilo-vintage-disco">
+                    <i class="fas fa-compact-disc"></i>
+                  </div>
+                  <audio [src]="pagDer.url" controls preload="auto" class="audio-vintage-control" (play)="onAudioItemPlay()" (pause)="onAudioItemPause()" (ended)="onAudioItemEnded()"></audio>
+                </div>
+
                 <div class="lupa-zoom-overlay" (click)="abrirPaginaActualEnFullscreen(); $event.stopPropagation()"><i class="fas fa-search-plus"></i> Ampliar</div>
               </div>
 
@@ -905,7 +921,7 @@
 
               <!-- 5. Video -->
               <div class="thumb-video-wrapper" *ngIf="pagina.tipoMedia === 'video'">
-                <video [src]="pagina.url + '#t=0.5'" class="thumb-video" preload="metadata"></video>
+                <video [src]="pagina.url + '#t=0.5'" class="thumb-video" preload="none"></video>
                 <i class="fas fa-play-circle video-play-badge"></i>
               </div>
 
@@ -1143,22 +1159,23 @@
                 <span class="esquinera-foto inf-izq"></span>
                 <span class="esquinera-foto inf-der"></span>
 
-                <img *ngIf="pagIzq.tipoMedia === 'imagen'" [src]="pagIzq.url" [alt]="pagIzq.titulo" class="imagen-foto-vintage" loading="lazy" />
+                <img *ngIf="pagIzq.tipoMedia === 'imagen'" [src]="pagIzq.url" [alt]="pagIzq.titulo" class="imagen-foto-vintage" loading="lazy" decoding="async" />
                 <div *ngIf="pagIzq.tipoMedia === 'video'" class="video-preview-vintage">
                   <video *ngIf="pagIzq.url" [src]="pagIzq.url + '#t=0.5'" class="video-foto-vintage video-miniatura-estatica" preload="metadata" muted playsinline></video>
                   <div class="play-overlay-vintage">
                     <i class="fas fa-play"></i>
                   </div>
                 </div>
+                <!-- Miniatura de audio página izquierda en fullscreen -->
+                <div *ngIf="pagIzq.tipoMedia === 'audio'" class="audio-preview-vintage">
+                  <div class="vinilo-vintage-icon">
+                    <i class="fas fa-music"></i>
+                  </div>
+                  <span class="audio-title-tag">{{ pagIzq.titulo }}</span>
+                </div>
                 <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()">
                   <app-mini-mapa-gpx *ngIf="pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx" [distanciaKm]="pagIzq.distanciaTramoKm" [transportMode]="pagIzq.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
                 </div>
-              </div>
-
-              <div class="pie-foto-vintage" *ngIf="pagIzq.titulo || pagIzq.fecha">
-                <h4 class="titulo-pie-vintage">{{ pagIzq.titulo }}</h4>
-                <p class="fecha-pie-vintage" *ngIf="pagIzq.fecha">{{ formatearFecha(pagIzq.fecha) }}</p>
-                <p class="desc-pie-vintage" *ngIf="pagIzq.descripcion">{{ pagIzq.descripcion }}</p>
               </div>
             </div>
 
@@ -1232,7 +1249,7 @@
               </div>
             </div>
 
-            <!-- Caso: Foto / Vídeo Estándar -->
+            <!-- Caso: Foto / Vídeo / Audio Estándar en Fullscreen -->
             <div class="foto-vintage-container" *ngIf="!pagDer.esIndice && !pagDer.esCartaManuscrita && !pagDer.esMapaAnimado">
               <div class="foto-polaroid-vintage foto-principal">
                 <span class="esquinera-foto sup-izq"></span>
@@ -1240,14 +1257,16 @@
                 <span class="esquinera-foto inf-izq"></span>
                 <span class="esquinera-foto inf-der"></span>
 
-                <img *ngIf="pagDer.tipoMedia === 'imagen'" [src]="pagDer.url" [alt]="pagDer.titulo" class="imagen-foto-vintage" />
+                <img *ngIf="pagDer.tipoMedia === 'imagen'" [src]="pagDer.url" [alt]="pagDer.titulo" class="imagen-foto-vintage" loading="lazy" decoding="async" />
                 <video *ngIf="pagDer.tipoMedia === 'video'" [src]="pagDer.url" class="video-foto-vintage" controls autoplay (click)="$event.stopPropagation()" (play)="onVideoPlay()" (pause)="onVideoPause()" (ended)="onVideoEnded()"></video>
-              </div>
-
-              <div class="pie-foto-vintage">
-                <h4 class="titulo-pie-vintage">{{ pagDer.titulo }}</h4>
-                <p class="fecha-pie-vintage" *ngIf="pagDer.fecha">{{ formatearFecha(pagDer.fecha) }}</p>
-                <p class="desc-pie-vintage" *ngIf="pagDer.descripcion">{{ pagDer.descripcion }}</p>
+                
+                <!-- Reproductor de Audio Vintage en Fullscreen -->
+                <div *ngIf="pagDer.tipoMedia === 'audio'" class="audio-vintage-box" (click)="$event.stopPropagation()">
+                  <div class="vinilo-vintage-disco">
+                    <i class="fas fa-compact-disc"></i>
+                  </div>
+                  <audio [src]="pagDer.url" controls autoplay preload="auto" class="audio-vintage-control" (play)="onAudioItemPlay()" (pause)="onAudioItemPause()" (ended)="onAudioItemEnded()"></audio>
+                </div>
               </div>
             </div>
 

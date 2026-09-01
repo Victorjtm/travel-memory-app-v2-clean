@@ -2698,7 +2698,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           this.hojaVolteando3D = false;
 
           const pagina = this.paginas[this.paginaActual];
-          if (pagina?.tipoMedia === 'video') {
+          if (pagina?.tipoMedia === 'video' || pagina?.tipoMedia === 'audio') {
             this.bajarVolumenAudioViaje();
           } else {
             this.restaurarVolumenAudioViaje();
@@ -2722,7 +2722,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.paginaActual = nuevaPagina;
 
         const pagina = this.paginas[this.paginaActual];
-        if (pagina?.tipoMedia === 'video') {
+        if (pagina?.tipoMedia === 'video' || pagina?.tipoMedia === 'audio') {
           this.bajarVolumenAudioViaje();
         } else {
           this.restaurarVolumenAudioViaje();
@@ -3009,7 +3009,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.paginaActual = nuevaPagina;
       const paginaActual = this.paginas[this.paginaActual];
 
-      if (paginaActual?.tipoMedia === 'video') {
+      if (paginaActual?.tipoMedia === 'video' || paginaActual?.tipoMedia === 'audio') {
         this.bajarVolumenAudioViaje();
       } else {
         this.restaurarVolumenAudioViaje();
@@ -4224,6 +4224,29 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.restaurarVolumenAudioViaje();
     if (this.reproduciendoSlideshow && this.reproducirVideosCompletos) {
       console.log('🎬 Vídeo completo finalizado en slideshow: avanzando a la siguiente diapositiva');
+      setTimeout(() => {
+        if (this.reproduciendoSlideshow) {
+          this.avanzarSlideshow();
+        }
+      }, 500);
+    }
+  }
+
+  onAudioItemPlay(): void {
+    this.bajarVolumenAudioViaje();
+    if (this.reproduciendoSlideshow) {
+      this.limpiarTimerSlideshow();
+    }
+  }
+
+  onAudioItemPause(): void {
+    this.restaurarVolumenAudioViaje();
+  }
+
+  onAudioItemEnded(): void {
+    this.restaurarVolumenAudioViaje();
+    if (this.reproduciendoSlideshow) {
+      console.log('🎵 Audio finalizado en slideshow: avanzando a la siguiente página');
       setTimeout(() => {
         if (this.reproduciendoSlideshow) {
           this.avanzarSlideshow();
