@@ -5,89 +5,137 @@
   [class.audio-bloqueado]="audioAutoplayBloqueado" role="main" aria-label="Album multimedia">
 
   <!-- ========================================= -->
-  <!-- BLOQUE: PORTADA DEL LIBRO -->
+  <!-- BLOQUE: PORTADA DEL LIBRO 3D REALISTA    -->
   <!-- ========================================= -->
-  <div class="portada" *ngIf="estado === 'portada'" (click)="iniciarModoRecuerdo($event)" role="button" tabindex="0"
-    aria-label="Reproducir album" (keydown.enter)="iniciarModoRecuerdo($event)" (keydown.space)="iniciarModoRecuerdo($event)">
+  <div class="portada-escenario-vintage" *ngIf="estado === 'portada'" [class.abriendo-libro]="abriendoPortada3D">
+    
+    <!-- Sombra proyectada del libro en la mesa -->
+    <div class="sombra-libro-mesa" aria-hidden="true"></div>
 
-    <!-- --- Elemento visual del lomo --- -->
-    <div class="lomo" aria-hidden="true"></div>
+    <!-- Tapa del Libro 3D -->
+    <div class="tapa-libro-vintage" (click)="iniciarModoRecuerdo($event)" role="button" tabindex="0"
+      aria-label="Abrir álbum de recuerdos" (keydown.enter)="iniciarModoRecuerdo($event)" (keydown.space)="iniciarModoRecuerdo($event)">
 
-    <!-- --- Contenido de la portada --- -->
-    <div class="titulo-portada">
-
-      <!-- --- Imagen del viaje --- -->
-      <div class="imagen-portada" *ngIf="getImagenViajeUrl(); else imagenDefault">
-        <img [src]="getImagenViajeUrl()!" [alt]="infoViaje?.nombre || 'Imagen del viaje'" class="imagen-viaje"
-          loading="lazy" (error)="onMediaError($event)" />
+      <!-- Lomo de Cuero Izquierdo con Nervios Dorados y Costuras -->
+      <div class="lomo-vintage-lateral" aria-hidden="true">
+        <div class="nervio-lomo"></div>
+        <div class="nervio-lomo"></div>
+        <div class="nervio-lomo"></div>
+        <div class="nervio-lomo"></div>
+        <div class="costura-lomo"></div>
       </div>
-      <ng-template #imagenDefault>
-        <div class="imagen-portada imagen-default">
-          <div class="placeholder-content">
-            <i class="fas fa-camera-retro" aria-hidden="true"></i>
-            <span class="placeholder-text">{{ infoViaje?.nombre || getTituloContextual() }}</span>
+
+      <!-- Grosor de Hojas Doradas (Efecto bloque de páginas 3D) -->
+      <div class="bloque-hojas-doradas" aria-hidden="true">
+        <div class="corte-hojas-dorado"></div>
+      </div>
+
+      <!-- Esquineras Metálicas de Oro Envejecido -->
+      <div class="esquinera-oro esquinera-tl" aria-hidden="true"></div>
+      <div class="esquinera-oro esquinera-tr" aria-hidden="true"></div>
+      <div class="esquinera-oro esquinera-bl" aria-hidden="true"></div>
+      <div class="esquinera-oro esquinera-br" aria-hidden="true"></div>
+
+      <!-- Textura de Cuero y Ribetes de Oro Repujado -->
+      <div class="textura-cuero-grabado" aria-hidden="true"></div>
+      <div class="marco-oro-exterior" aria-hidden="true"></div>
+      <div class="marco-oro-interior" aria-hidden="true"></div>
+
+      <!-- Cara Frontal con el Contenido -->
+      <div class="portada-cuerpo">
+        
+        <!-- Insignia Superior Imperial -->
+        <div class="insignia-portada">
+          <span class="insignia-simbolo">✦</span>
+          <span class="insignia-texto">MEMORIAS DE VIAJE</span>
+          <span class="insignia-simbolo">✦</span>
+        </div>
+
+        <!-- Título Principal con Relieve Dorado -->
+        <ng-container *ngIf="infoViaje as info; else fallbackTitulo">
+          <h1 class="titulo-dorado-viaje">{{ info.nombre || getTituloContextual() }}</h1>
+          <div class="fechas-doradas-viaje" *ngIf="info.fechaInicio">
+            <i class="fas fa-calendar-alt"></i>
+            <span>{{ info.fechaInicio | date:'longDate':'es' }}<ng-container *ngIf="info.fechaFin"> – {{ info.fechaFin | date:'longDate':'es' }}</ng-container></span>
+          </div>
+        </ng-container>
+        <ng-template #fallbackTitulo>
+          <h1 class="titulo-dorado-viaje">{{ getTituloContextual() }}</h1>
+        </ng-template>
+
+        <!-- Subtítulo o Descripción -->
+        <p class="subtitulo-vintage-portada" *ngIf="getDescripcionContextual()">{{ getDescripcionContextual() }}</p>
+
+        <!-- Ventana Central con Marco de Relicario / Fotografía Destacada -->
+        <div class="relicario-foto-portada">
+          <div class="relicario-marco-oro">
+            <div class="foto-portada-wrapper" *ngIf="getImagenViajeUrl(); else relicarioDefault">
+              <img [src]="getImagenViajeUrl()!" [alt]="infoViaje?.nombre || 'Imagen de portada'" class="foto-portada-img" loading="eager" />
+              <div class="brillo-cristal-satinado" aria-hidden="true"></div>
+            </div>
+            <ng-template #relicarioDefault>
+              <div class="foto-portada-placeholder">
+                <i class="fas fa-camera-retro"></i>
+                <span>{{ infoViaje?.nombre || getTituloContextual() }}</span>
+              </div>
+            </ng-template>
           </div>
         </div>
-      </ng-template>
 
-      <!-- --- Título y fechas --- -->
-      <ng-container *ngIf="infoViaje as info; else fallbackTitulo">
-        <h1>{{ info.nombre || getTituloContextual() }}</h1>
-        <p *ngIf="info.fechaInicio">
-          <strong>Fechas:</strong>
-          {{ info.fechaInicio | date:'longDate':'es' }}
-          <span *ngIf="info.fechaFin"> – {{ info.fechaFin | date:'longDate':'es' }}</span>
-        </p>
-      </ng-container>
-      <ng-template #fallbackTitulo>
-        <h1>{{ getTituloContextual() }}</h1>
-      </ng-template>
+        <!-- Placas de Latón Vintage con Estadísticas -->
+        <div class="placas-laton-stats" aria-label="Resumen del álbum">
+          <div class="placa-laton-item">
+            <span class="placa-valor">{{ totalRecuerdosDisplay }}</span>
+            <span class="placa-label"><i class="fas fa-images"></i> Recuerdos</span>
+          </div>
+          <div class="placa-laton-item" *ngIf="audioViaje">
+            <span class="placa-valor"><i class="fas fa-music"></i></span>
+            <span class="placa-label">Música</span>
+          </div>
+          <div class="placa-laton-item">
+            <span class="placa-valor">{{ listaItinerarios.length || 1 }}</span>
+            <span class="placa-label"><i class="fas fa-map-marked-alt"></i> {{ listaItinerarios.length === 1 ? 'Itinerario' : 'Itinerarios' }}</span>
+          </div>
+        </div>
 
-      <!-- --- Descripción del álbum --- -->
-      <p class="album-subtitle">{{ getDescripcionContextual() }}</p>
+        <!-- Acciones Principales: Vivir Recuerdo y Abrir Libro -->
+        <div class="acciones-portada-vintage">
+          <button class="btn-vivir-recuerdo-oro" type="button" (click)="iniciarModoRecuerdo($event)">
+            <i class="fas fa-play"></i>
+            <span>Vivir Recuerdo</span>
+          </button>
 
-      <!-- --- Instrucción para abrir --- -->
-      <div class="portada-stats" aria-label="Resumen del album">
-        <span>
-          <strong>{{ totalRecuerdosDisplay }}</strong>
-          recuerdos
-        </span>
-        <span *ngIf="audioViaje">
-          <strong>Audio</strong>
-          ambiente
-        </span>
-        <span>
-          <strong>{{ listaItinerarios.length || 1 }}</strong>
-          itinerarios
-        </span>
+          <button class="btn-abrir-libro-vintage" type="button" (click)="abrirLibro(); $event.stopPropagation()">
+            <i class="fas fa-book-open"></i>
+            <span>Abrir Diario</span>
+          </button>
+        </div>
+
+        <!-- Opciones Rápidas de Portada (Estilo y Pantalla Completa/Reducida) -->
+        <div class="portada-opciones-switch" (click)="$event.stopPropagation()">
+          <button type="button" class="pill-opcion-portada" [class.activa]="modoAlbumVintage" (click)="toggleModoAlbumVintage($event)"
+            title="Alternar entre Álbum Vintage 3D y Álbum Clásico">
+            <i class="fas fa-book-open"></i>
+            <span>{{ modoAlbumVintage ? 'Álbum Vintage 3D' : 'Álbum Clásico' }}</span>
+          </button>
+
+          <button type="button" class="pill-opcion-portada" [class.activa]="reproducirEnFullscreen" (click)="toggleReproducirEnFullscreen($event)"
+            title="Alternar entre reproducir en Pantalla Completa o en Pantalla Reducida (en el propio libro)">
+            <i class="fas" [class.fa-expand]="reproducirEnFullscreen" [class.fa-compress]="!reproducirEnFullscreen"></i>
+            <span>{{ reproducirEnFullscreen ? 'Pantalla Completa' : 'Pantalla Reducida' }}</span>
+          </button>
+        </div>
+
       </div>
 
-      <button class="btn-play-recuerdo" type="button" (click)="iniciarModoRecuerdo($event)">
-        <span class="play-ring" aria-hidden="true"></span>
-        <i class="fas fa-play" aria-hidden="true"></i>
-        <span>Vivir recuerdo</span>
-      </button>
-
-      <button class="btn-abrir-simple" type="button" (click)="abrirLibro(); $event.stopPropagation()">
-        Abrir sin modo cine
-      </button>
-
-      <!-- Opciones Rápidas de Portada (Estilo y Pantalla Completa/Reducida) -->
-      <div class="portada-opciones-switch" (click)="$event.stopPropagation()">
-        <button type="button" class="pill-opcion-portada" [class.activa]="modoAlbumVintage" (click)="toggleModoAlbumVintage($event)"
-          title="Alternar entre Álbum Vintage 3D y Álbum Clásico">
-          <i class="fas fa-book-open"></i>
-          <span>{{ modoAlbumVintage ? 'Álbum Vintage 3D' : 'Álbum Clásico' }}</span>
-        </button>
-
-        <button type="button" class="pill-opcion-portada" [class.activa]="reproducirEnFullscreen" (click)="toggleReproducirEnFullscreen($event)"
-          title="Alternar entre reproducir en Pantalla Completa o en Pantalla Reducida (en el propio libro)">
-          <i class="fas" [class.fa-expand]="reproducirEnFullscreen" [class.fa-compress]="!reproducirEnFullscreen"></i>
-          <span>{{ reproducirEnFullscreen ? 'Pantalla Completa' : 'Pantalla Reducida' }}</span>
-        </button>
+      <!-- Contraportada interior visible durante la animación de apertura 3D -->
+      <div class="reverso-tapa-vintage" aria-hidden="true">
+        <div class="textura-papel-antiguo"></div>
+        <div class="guarda-papel-marmoleado"></div>
       </div>
 
     </div>
+
   </div>
 
   <!-- ========================================= -->

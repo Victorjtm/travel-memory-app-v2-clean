@@ -212,6 +212,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   reproducirEnFullscreen: boolean = localStorage.getItem('album_reproducir_fullscreen') !== 'false';
   modoRutaImagen: boolean = localStorage.getItem('album_modo_ruta_imagen') === 'true';
   hojaVolteando3D: boolean = false;
+  abriendoPortada3D: boolean = false;
   direccionVolteo3D: 'adelante' | 'atras' = 'adelante';
   paginaVolteoSaliente: PaginaMedia | null = null;
   paginaVolteoEntrante: PaginaMedia | null = null;
@@ -2600,6 +2601,32 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     console.log('📖 Abriendo libro...');
     if (this.paginas.length === 0) return;
 
+    if (this.estado === 'portada' && this.modoAlbumVintage && !this.abriendoPortada3D) {
+      this.abriendoPortada3D = true;
+      this.cdr.detectChanges();
+
+      setTimeout(() => {
+        this.estado = 'abierto';
+        this.abriendoPortada3D = false;
+        this.modoRecuerdoActivo = activarModoRecuerdo;
+        this.modoGuiadoActivo = activarModoRecuerdo ? modoGuiado : false;
+
+        this.paginaActual = activarModoRecuerdo ? this.obtenerPrimeraPaginaMemoria() : 0;
+        this.precargarSiguienteVideo();
+        if (activarModoRecuerdo) {
+          this.intentarReproducirAudioViaje();
+          setTimeout(() => {
+            if (this.reproducirEnFullscreen) {
+              this.abrirPaginaActualEnFullscreen();
+            }
+            this.iniciarSlideshow();
+          }, 120);
+        }
+        this.cdr.detectChanges();
+      }, 750);
+      return;
+    }
+
     this.estado = 'abierto';
     this.modoRecuerdoActivo = activarModoRecuerdo;
     this.modoGuiadoActivo = activarModoRecuerdo ? modoGuiado : false;
@@ -2617,6 +2644,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }, 120);
     }
     console.log('✅ Libro abierto en el índice, página actual:', this.paginaActual, 'modoGuiado:', this.modoGuiadoActivo);
+    this.cdr.detectChanges();
   }
 
   iniciarModoRecuerdo(event?: Event): void {
