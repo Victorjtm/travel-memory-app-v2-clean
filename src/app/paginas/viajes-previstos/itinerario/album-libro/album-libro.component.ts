@@ -20,7 +20,6 @@ import { GpxAnimationComponent } from '../../../../componentes/reproductor-anima
 import { MiniMapaGpxComponent } from '../../../../componentes/mini-mapa-gpx/mini-mapa-gpx.component';
 import { GpxAnimationService } from '../../../../servicios/gpx-animation.service';
 import { TrackEditorService } from '../../../../servicios/track-editor.service';
-import { MapaSnapshotService } from '../../../../servicios/mapa-snapshot.service';
 
 // ==========================================
 // TIPOS E INTERFACES
@@ -316,12 +315,6 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   private readonly EXTENSIONES_PDF = ['.pdf'];
   private readonly EXTENSIONES_DOCUMENTO = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.rtf'];
 
-  // ==========================================
-  // PREPARACIÓN DE LÁMINAS Y RENDIMIENTO
-  // ==========================================
-  preparandoAlbum: boolean = false;
-  progresoPreparacion: number = 0;
-  mensajePreparacion: string = '';
   siguienteVideoUrl?: string;
 
   // ==========================================
@@ -339,51 +332,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     public videoGeneratorService: VideoGeneratorService,
     private gpxAnimationService: GpxAnimationService,
     private trackEditorService: TrackEditorService,
-    private mapaSnapshotService: MapaSnapshotService,
-    private cdr: ChangeDetectorRef,  // ✅ NUEVO
-    private ngZone: NgZone  // ✅ NUEVO
+    private cdr: ChangeDetectorRef,
+    private ngZone: NgZone
   ) { }
-
-  async prepararLaminasDeMapas(): Promise<void> {
-    const paginasMapa = this.paginas.filter(p => p.esMapaAnimado && p.trackGpx && !p.urlMapaRenderizado);
-    if (paginasMapa.length === 0) return;
-
-    this.preparandoAlbum = true;
-    this.progresoPreparacion = 5;
-    this.mensajePreparacion = 'Preparando láminas del álbum...';
-    this.cdr.detectChanges();
-
-    const total = paginasMapa.length;
-    for (let i = 0; i < total; i++) {
-      const pag = paginasMapa[i];
-      this.mensajePreparacion = `Generando lámina de ruta ${i + 1} de ${total}...`;
-      this.progresoPreparacion = Math.round(((i) / total) * 90) + 5;
-      this.cdr.detectChanges();
-
-      try {
-        const dataUrl = await this.mapaSnapshotService.obtenerSnapshotRuta(
-          pag.trackGpx!,
-          pag.distanciaTramoKm,
-          pag.tipoTransporteTramo || 'driving',
-          720,
-          520
-        );
-        if (dataUrl) {
-          pag.urlMapaRenderizado = dataUrl;
-        }
-      } catch (err) {
-        console.warn('⚠️ Error al generar snapshot de ruta:', err);
-      }
-    }
-
-    this.progresoPreparacion = 100;
-    this.mensajePreparacion = '¡Álbum listo!';
-    this.cdr.detectChanges();
-
-    await new Promise(r => setTimeout(r, 450));
-    this.preparandoAlbum = false;
-    this.cdr.detectChanges();
-  }
 
   precargarSiguienteVideo(): void {
     const nextPag = this.paginas[this.paginaActual + 1];
@@ -1901,9 +1852,17 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     return R * c;
   }
 
+  private cachePaginasPorFiltro = new Map<string, PaginaMedia[]>();
+
   private async generarPaginasConAnimaciones(paginasInput: PaginaMedia[]): Promise<PaginaMedia[]> {
     if (!this.incluirAnimacionesMapa) {
       return paginasInput.filter(p => !p.esMapaAnimado);
+    }
+
+    const cacheKey = `${this.contextoViaje?.viajeId || 0}_${this.contextoViaje?.itinerarioId || 0}_${this.distanciaMinimaAnimacionKm}_${paginasInput.length}`;
+    if (this.cachePaginasPorFiltro.has(cacheKey)) {
+      console.log('⚡ [Caché Álbum] Páginas con animaciones cargadas instantáneamente desde caché:', cacheKey);
+      return this.cachePaginasPorFiltro.get(cacheKey)!;
     }
 
     const mapasPorActividad = new Map<number, PaginaMedia[]>();
@@ -2263,6 +2222,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       resultado.push(...contenidoDelBloque);
     }
 
+    this.cachePaginasPorFiltro.set(cacheKey, resultado);
     return resultado;
   }
 
@@ -2636,13 +2596,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // MÉTODOS DE NAVEGACIÓN DEL ÁLBUM
   // ==========================================
 
-  async abrirLibro(activarModoRecuerdo = false, modoGuiado = false): Promise<void> {
+  abrirLibro(activarModoRecuerdo = false, modoGuiado = false): void {
     console.log('📖 Abriendo libro...');
     if (this.paginas.length === 0) return;
-
-    if (this.modoRutaImagen) {
-      await this.prepararLaminasDeMapas();
-    }
 
     this.estado = 'abierto';
     this.modoRecuerdoActivo = activarModoRecuerdo;
@@ -2673,17 +2629,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.abrirLibro(true, true);
   }
 
-  async toggleModoRecuerdo(event?: Event): Promise<void> {
+  toggleModoRecuerdo(event?: Event): void {
     event?.stopPropagation();
 
     if (this.modoRecuerdoActivo && !this.modoGuiadoActivo) {
       this.modoRecuerdoActivo = false;
       this.detenerSlideshow();
       return;
-    }
-
-    if (this.modoRutaImagen) {
-      await this.prepararLaminasDeMapas();
     }
 
     this.modoGuiadoActivo = false;
@@ -2701,7 +2653,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.iniciarSlideshow();
   }
 
-  async toggleModoGuiado(event?: Event): Promise<void> {
+  toggleModoGuiado(event?: Event): void {
     event?.stopPropagation();
 
     if (this.modoRecuerdoActivo && this.modoGuiadoActivo) {
@@ -2709,10 +2661,6 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.modoGuiadoActivo = false;
       this.detenerSlideshow();
       return;
-    }
-
-    if (this.modoRutaImagen) {
-      await this.prepararLaminasDeMapas();
     }
 
     this.modoGuiadoActivo = true;
