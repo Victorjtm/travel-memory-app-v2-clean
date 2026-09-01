@@ -6169,3 +6169,99 @@
     transform: rotate(360deg);
   }
 }
+
+/* ========================================= */
+/* OVERLAY VINTAGE DE PREPARACIÓN DEL ÁLBUM   */
+/* ========================================= */
+.preparacion-album-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 10, 6, 0.88);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeInPreparacion 0.3s ease-out;
+
+  .preparacion-album-card {
+    background: linear-gradient(135deg, #2b1810, #1a0f0a);
+    border: 2px solid #dfc488;
+    border-radius: 12px;
+    padding: 32px 36px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.5);
+    max-width: 440px;
+    width: 90%;
+    animation: scaleInCard 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+
+    .vinilo-preparando-spinner {
+      font-size: 2.4rem;
+      color: #dfc488;
+      margin-bottom: 16px;
+      filter: drop-shadow(0 0 10px rgba(223, 196, 136, 0.5));
+    }
+
+    .titulo-preparando {
+      font-family: 'Cinzel', serif;
+      font-size: 1.3rem;
+      color: #eedfc7;
+      margin: 0 0 8px 0;
+      letter-spacing: 0.05em;
+    }
+
+    .mensaje-preparando {
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.75);
+      margin: 0 0 20px 0;
+      min-height: 22px;
+    }
+
+    .barra-progreso-vintage-container {
+      width: 100%;
+      height: 10px;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(223, 196, 136, 0.4);
+      border-radius: 20px;
+      overflow: hidden;
+      margin-bottom: 10px;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+
+      .progreso-vintage-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #bfa15f, #dfc488, #7df2be);
+        border-radius: 20px;
+        transition: width 0.25s ease-out;
+        box-shadow: 0 0 12px rgba(223, 196, 136, 0.6);
+      }
+    }
+
+    .porcentaje-preparando {
+      font-family: 'Cinzel', serif;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #dfc488;
+    }
+  }
+}
+
+.imagen-mapa-estatico {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 2px;
+  display: block;
+}
+
+@keyframes fadeInPreparacion {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleInCard {
+  from { transform: scale(0.92); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}

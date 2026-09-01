@@ -20,6 +20,7 @@ import { GpxAnimationComponent } from '../../../../componentes/reproductor-anima
 import { MiniMapaGpxComponent } from '../../../../componentes/mini-mapa-gpx/mini-mapa-gpx.component';
 import { GpxAnimationService } from '../../../../servicios/gpx-animation.service';
 import { TrackEditorService } from '../../../../servicios/track-editor.service';
+import { MapaSnapshotService } from '../../../../servicios/mapa-snapshot.service';
 
 // ==========================================
 // TIPOS E INTERFACES
@@ -31,6 +32,7 @@ export type TipoMedia = 'imagen' | 'video' | 'audio' | 'documento' | 'pdf' | 'te
 interface PaginaMedia {
   archivo: Archivo;
   url: string;
+  urlMapaRenderizado?: string;
   titulo: string;
   descripcion: string;
   fecha: string;
@@ -315,6 +317,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   private readonly EXTENSIONES_DOCUMENTO = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.rtf'];
 
   // ==========================================
+  // PREPARACIÓN DE LÁMINAS Y RENDIMIENTO
+  // ==========================================
+  preparandoAlbum: boolean = false;
+  progresoPreparacion: number = 0;
+  mensajePreparacion: string = '';
+  siguienteVideoUrl?: string;
+
+  // ==========================================
   // CONSTRUCTOR
   // ==========================================
 
@@ -329,9 +339,60 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     public videoGeneratorService: VideoGeneratorService,
     private gpxAnimationService: GpxAnimationService,
     private trackEditorService: TrackEditorService,
+    private mapaSnapshotService: MapaSnapshotService,
     private cdr: ChangeDetectorRef,  // ✅ NUEVO
     private ngZone: NgZone  // ✅ NUEVO
   ) { }
+
+  async prepararLaminasDeMapas(): Promise<void> {
+    const paginasMapa = this.paginas.filter(p => p.esMapaAnimado && p.trackGpx && !p.urlMapaRenderizado);
+    if (paginasMapa.length === 0) return;
+
+    this.preparandoAlbum = true;
+    this.progresoPreparacion = 5;
+    this.mensajePreparacion = 'Preparando láminas del álbum...';
+    this.cdr.detectChanges();
+
+    const total = paginasMapa.length;
+    for (let i = 0; i < total; i++) {
+      const pag = paginasMapa[i];
+      this.mensajePreparacion = `Generando lámina de ruta ${i + 1} de ${total}...`;
+      this.progresoPreparacion = Math.round(((i) / total) * 90) + 5;
+      this.cdr.detectChanges();
+
+      try {
+        const dataUrl = await this.mapaSnapshotService.obtenerSnapshotRuta(
+          pag.trackGpx!,
+          pag.distanciaTramoKm,
+          pag.tipoTransporteTramo || 'driving',
+          720,
+          520
+        );
+        if (dataUrl) {
+          pag.urlMapaRenderizado = dataUrl;
+        }
+      } catch (err) {
+        console.warn('⚠️ Error al generar snapshot de ruta:', err);
+      }
+    }
+
+    this.progresoPreparacion = 100;
+    this.mensajePreparacion = '¡Álbum listo!';
+    this.cdr.detectChanges();
+
+    await new Promise(r => setTimeout(r, 450));
+    this.preparandoAlbum = false;
+    this.cdr.detectChanges();
+  }
+
+  precargarSiguienteVideo(): void {
+    const nextPag = this.paginas[this.paginaActual + 1];
+    if (nextPag && nextPag.tipoMedia === 'video' && nextPag.url) {
+      this.siguienteVideoUrl = nextPag.url;
+    } else {
+      this.siguienteVideoUrl = undefined;
+    }
+  }
 
 
   // ==========================================
@@ -2575,9 +2636,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // MÉTODOS DE NAVEGACIÓN DEL ÁLBUM
   // ==========================================
 
-  abrirLibro(activarModoRecuerdo = false, modoGuiado = false): void {
+  async abrirLibro(activarModoRecuerdo = false, modoGuiado = false): Promise<void> {
     console.log('📖 Abriendo libro...');
     if (this.paginas.length === 0) return;
+
+    if (this.modoRutaImagen) {
+      await this.prepararLaminasDeMapas();
+    }
 
     this.estado = 'abierto';
     this.modoRecuerdoActivo = activarModoRecuerdo;
@@ -2585,6 +2650,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     // Siempre abrir en la página de índice (página 0)
     this.paginaActual = activarModoRecuerdo ? this.obtenerPrimeraPaginaMemoria() : 0;
+    this.precargarSiguienteVideo();
     if (activarModoRecuerdo) {
       this.intentarReproducirAudioViaje();
       setTimeout(() => {
@@ -2607,13 +2673,17 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.abrirLibro(true, true);
   }
 
-  toggleModoRecuerdo(event?: Event): void {
+  async toggleModoRecuerdo(event?: Event): Promise<void> {
     event?.stopPropagation();
 
     if (this.modoRecuerdoActivo && !this.modoGuiadoActivo) {
       this.modoRecuerdoActivo = false;
       this.detenerSlideshow();
       return;
+    }
+
+    if (this.modoRutaImagen) {
+      await this.prepararLaminasDeMapas();
     }
 
     this.modoGuiadoActivo = false;
@@ -2623,6 +2693,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     if (this.paginaActualData?.esIndice) {
       this.paginaActual = this.obtenerPrimeraPaginaMemoria();
     }
+    this.precargarSiguienteVideo();
 
     if (this.reproducirEnFullscreen) {
       this.abrirPaginaActualEnFullscreen();
@@ -2630,7 +2701,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.iniciarSlideshow();
   }
 
-  toggleModoGuiado(event?: Event): void {
+  async toggleModoGuiado(event?: Event): Promise<void> {
     event?.stopPropagation();
 
     if (this.modoRecuerdoActivo && this.modoGuiadoActivo) {
@@ -2640,6 +2711,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       return;
     }
 
+    if (this.modoRutaImagen) {
+      await this.prepararLaminasDeMapas();
+    }
+
     this.modoGuiadoActivo = true;
     this.modoRecuerdoActivo = true;
     this.intentarReproducirAudioViaje();
@@ -2647,6 +2722,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     if (this.paginaActualData?.esIndice) {
       this.paginaActual = this.obtenerPrimeraPaginaMemoria();
     }
+    this.precargarSiguienteVideo();
 
     if (this.reproducirEnFullscreen) {
       this.abrirPaginaActualEnFullscreen();
@@ -2705,6 +2781,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           }
           this.verificarSincronizacionAudioItinerario();
           this.centrarMiniaturaActiva(this.paginaActual);
+          this.precargarSiguienteVideo();
 
           if (this.reproduciendoSlideshow) {
             if (pagina?.esMapaAnimado && !this.modoRutaImagen) {
@@ -2729,6 +2806,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         }
         this.verificarSincronizacionAudioItinerario();
         this.centrarMiniaturaActiva(this.paginaActual);
+        this.precargarSiguienteVideo();
 
         if (this.reproduciendoSlideshow) {
           if (pagina?.esMapaAnimado && !this.modoRutaImagen) {
@@ -3034,6 +3112,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
 
       this.centrarMiniaturaActiva(this.paginaActual);
+      this.precargarSiguienteVideo();
 
       // Control inteligente del timer de slideshow según la diapositiva entrante
       if (this.reproduciendoSlideshow) {

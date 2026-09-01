@@ -667,7 +667,8 @@
                   <span class="audio-title-tag">{{ pagIzq.titulo }}</span>
                 </div>
                 <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()">
-                  <app-mini-mapa-gpx *ngIf="pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx" [distanciaKm]="pagIzq.distanciaTramoKm" [transportMode]="pagIzq.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
+                  <img *ngIf="pagIzq.urlMapaRenderizado" [src]="pagIzq.urlMapaRenderizado" [alt]="pagIzq.titulo" class="imagen-foto-vintage imagen-mapa-estatico" loading="lazy" decoding="async" />
+                  <app-mini-mapa-gpx *ngIf="!pagIzq.urlMapaRenderizado && pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx" [distanciaKm]="pagIzq.distanciaTramoKm" [transportMode]="pagIzq.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
                 </div>
               </div>
 
@@ -725,9 +726,10 @@
                 <span class="badge-vintage-distancia"><i class="fas fa-route"></i> Recorrido: {{ pagDer.distanciaTramoKm | number:'1.1-2' }} km</span>
               </div>
               <div class="mapa-vintage-wrapper">
-                <!-- Modo 1: Ruta en Imagen Estática -->
+                <!-- Modo 1: Ruta en Imagen Estática Pre-renderizada Instantánea -->
                 <div *ngIf="modoRutaImagen && pagDer.trackGpx" class="mapa-estatico-vintage-view" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()" title="Hacer clic para ver animación a pantalla completa">
-                  <app-mini-mapa-gpx [trackGpx]="pagDer.trackGpx" [fullPage]="true" [distanciaKm]="pagDer.distanciaTramoKm" [transportMode]="pagDer.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
+                  <img *ngIf="pagDer.urlMapaRenderizado" [src]="pagDer.urlMapaRenderizado" [alt]="pagDer.titulo" class="imagen-foto-vintage imagen-mapa-estatico" loading="eager" decoding="async" />
+                  <app-mini-mapa-gpx *ngIf="!pagDer.urlMapaRenderizado" [trackGpx]="pagDer.trackGpx" [fullPage]="true" [distanciaKm]="pagDer.distanciaTramoKm" [transportMode]="pagDer.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
                   <div class="mapa-hint-play-overlay"><i class="fas fa-play"></i> Ver animación</div>
                 </div>
 
@@ -1174,7 +1176,8 @@
                   <span class="audio-title-tag">{{ pagIzq.titulo }}</span>
                 </div>
                 <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()">
-                  <app-mini-mapa-gpx *ngIf="pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx" [distanciaKm]="pagIzq.distanciaTramoKm" [transportMode]="pagIzq.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
+                  <img *ngIf="pagIzq.urlMapaRenderizado" [src]="pagIzq.urlMapaRenderizado" [alt]="pagIzq.titulo" class="imagen-foto-vintage imagen-mapa-estatico" loading="lazy" decoding="async" />
+                  <app-mini-mapa-gpx *ngIf="!pagIzq.urlMapaRenderizado && pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx" [distanciaKm]="pagIzq.distanciaTramoKm" [transportMode]="pagIzq.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
                 </div>
               </div>
             </div>
@@ -1226,9 +1229,10 @@
                 <span class="badge-vintage-distancia"><i class="fas fa-route"></i> Recorrido: {{ pagDer.distanciaTramoKm | number:'1.1-2' }} km</span>
               </div>
               <div class="mapa-vintage-wrapper">
-                <!-- Modo 1: Ruta en Imagen Estática -->
+                <!-- Modo 1: Ruta en Imagen Estática Pre-renderizada Instantánea -->
                 <div *ngIf="modoRutaImagen && pagDer.trackGpx" class="mapa-estatico-vintage-view" (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()" title="Hacer clic para ver animación a pantalla completa">
-                  <app-mini-mapa-gpx [trackGpx]="pagDer.trackGpx" [fullPage]="true" [distanciaKm]="pagDer.distanciaTramoKm" [transportMode]="pagDer.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
+                  <img *ngIf="pagDer.urlMapaRenderizado" [src]="pagDer.urlMapaRenderizado" [alt]="pagDer.titulo" class="imagen-foto-vintage imagen-mapa-estatico" loading="eager" decoding="async" />
+                  <app-mini-mapa-gpx *ngIf="!pagDer.urlMapaRenderizado" [trackGpx]="pagDer.trackGpx" [fullPage]="true" [distanciaKm]="pagDer.distanciaTramoKm" [transportMode]="pagDer.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
                   <div class="mapa-hint-play-overlay"><i class="fas fa-play"></i> Ver animación</div>
                 </div>
 
@@ -1617,4 +1621,26 @@
 
   </div>
 </ng-template>
+
+<!-- ========================================= -->
+<!-- MODAL DE PREPARACIÓN DE LÁMINAS DEL ÁLBUM -->
+<!-- ========================================= -->
+<div class="preparacion-album-overlay" *ngIf="preparandoAlbum">
+  <div class="preparacion-album-card">
+    <div class="vinilo-preparando-spinner">
+      <i class="fas fa-compass fa-spin"></i>
+    </div>
+    <h3 class="titulo-preparando">Preparando Diario de Viaje</h3>
+    <p class="mensaje-preparando">{{ mensajePreparacion }}</p>
+    
+    <div class="barra-progreso-vintage-container">
+      <div class="progreso-vintage-fill" [style.width.%]="progresoPreparacion"></div>
+    </div>
+    <span class="porcentaje-preparando">{{ progresoPreparacion }}%</span>
+  </div>
+</div>
+
+<!-- Buffer oculto de precarga de vídeo siguiente -->
+<video *ngIf="siguienteVideoUrl" [src]="siguienteVideoUrl" preload="auto" muted playsinline style="position: fixed; top: -9999px; left: -9999px; width: 1px; height: 1px; opacity: 0; pointer-events: none;"></video>
+
 
