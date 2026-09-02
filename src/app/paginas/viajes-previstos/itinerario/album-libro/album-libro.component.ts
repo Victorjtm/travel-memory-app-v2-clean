@@ -2660,6 +2660,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   toggleModoRecuerdo(event?: Event): void {
     event?.stopPropagation();
 
+    if (this.estado === 'portada') {
+      this.abrirLibro(true, false);
+      return;
+    }
+
     if (this.modoRecuerdoActivo && !this.modoGuiadoActivo) {
       this.modoRecuerdoActivo = false;
       this.detenerSlideshow();
@@ -2683,6 +2688,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   toggleModoGuiado(event?: Event): void {
     event?.stopPropagation();
+
+    if (this.estado === 'portada') {
+      this.abrirLibro(true, true);
+      return;
+    }
 
     if (this.modoRecuerdoActivo && this.modoGuiadoActivo) {
       this.modoRecuerdoActivo = false;

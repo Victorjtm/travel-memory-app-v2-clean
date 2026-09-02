@@ -72,23 +72,25 @@
   .portada-escenario-vintage {
     position: relative;
     width: 100%;
-    min-height: 80vh;
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     perspective: 2400px;
-    padding: 20px;
+    padding: 10px 16px 16px;
     user-select: none;
+    box-sizing: border-box;
 
     /* Sombra proyectada del libro sobre la mesa */
     .sombra-libro-mesa {
       position: absolute;
-      width: min(800px, 92%);
-      height: min(540px, 78vh);
-      background: rgba(0, 0, 0, 0.7);
+      width: min(840px, 94%);
+      height: min(580px, 78vh);
+      background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.4) 65%, transparent 85%);
       filter: blur(28px);
-      border-radius: 20px;
-      transform: translateY(26px) scale(0.96);
+      border-radius: 28px;
+      transform: translateY(32px) scale(0.96);
       pointer-events: none;
       z-index: 1;
     }
@@ -96,31 +98,48 @@
     /* Tapa del Libro 3D */
     .tapa-libro-vintage {
       position: relative;
-      width: min(780px, 92%);
-      min-height: 550px;
-      background: linear-gradient(145deg, #321c13 0%, #22120a 50%, #150b07 100%);
-      border-radius: 6px 14px 14px 6px;
+      width: min(820px, 94%);
+      min-height: 520px;
+      max-height: calc(94vh - 120px);
+      background:
+        radial-gradient(ellipse at 42% 28%, #4a291b 0%, #30170d 42%, #190a04 100%);
+      border-radius: 8px 18px 18px 8px;
       box-shadow: 
-        -14px 16px 40px rgba(0, 0, 0, 0.65),
-        inset 0 0 90px rgba(0, 0, 0, 0.85),
-        inset 0 0 12px rgba(223, 196, 136, 0.18);
+        -18px 24px 50px rgba(0, 0, 0, 0.75),
+        0 8px 20px rgba(0, 0, 0, 0.5),
+        inset 0 0 100px rgba(0, 0, 0, 0.85),
+        inset 0 0 20px rgba(223, 196, 136, 0.22);
       border: 3px solid #6b4d24;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 32px 42px 32px 64px;
+      padding: 24px 36px 24px 58px;
       cursor: pointer;
       transform-origin: left center;
       transform-style: preserve-3d;
       transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.4s ease;
       z-index: 2;
+      box-sizing: border-box;
 
       &:hover {
-        transform: translateY(-4px) rotateX(1deg);
+        transform: translateY(-4px) rotateX(1.5deg);
         box-shadow: 
-          -18px 22px 50px rgba(0, 0, 0, 0.75),
-          inset 0 0 100px rgba(0, 0, 0, 0.9);
+          -22px 30px 60px rgba(0, 0, 0, 0.85),
+          0 10px 25px rgba(0, 0, 0, 0.6),
+          inset 0 0 110px rgba(0, 0, 0, 0.9);
+      }
+
+      /* Textura de cuero micro-grano */
+      .textura-cuero-grabado {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        opacity: 0.14;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 0);
+        background-size: 4px 4px;
+        z-index: 1;
       }
 
       /* Lomo de cuero izquierdo */
@@ -129,102 +148,115 @@
         top: 0;
         left: 0;
         bottom: 0;
-        width: 38px;
-        background: linear-gradient(to right, #140905 0%, #2b1810 40%, #140905 100%);
+        width: 44px;
+        background: linear-gradient(to right, #110704 0%, #2e180f 35%, #422316 60%, #170a05 100%);
         border-right: 2px solid #5a3e1c;
-        border-radius: 6px 0 0 6px;
-        box-shadow: inset 4px 0 10px rgba(0, 0, 0, 0.7);
+        border-radius: 8px 0 0 8px;
+        box-shadow: inset 4px 0 12px rgba(0, 0, 0, 0.8);
         display: flex;
         flex-direction: column;
         justify-content: space-around;
         align-items: center;
-        padding: 40px 0;
+        padding: 30px 0;
         z-index: 10;
 
         .nervio-lomo {
           width: 100%;
-          height: 6px;
-          background: linear-gradient(to right, #8a6828, #dfc488, #8a6828);
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
-          border-radius: 1px;
+          height: 8px;
+          background: linear-gradient(to right, #8a6828, #dfc488 40%, #fff2cc 50%, #dfc488 60%, #8a6828);
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+          border-radius: 2px;
         }
 
         .costura-lomo {
           position: absolute;
-          right: 4px;
-          top: 10px;
-          bottom: 10px;
+          right: 5px;
+          top: 12px;
+          bottom: 12px;
           width: 2px;
           background-image: repeating-linear-gradient(to bottom, #dfc488 0, #dfc488 4px, transparent 4px, transparent 8px);
-          opacity: 0.6;
+          opacity: 0.75;
         }
       }
 
-      /* Bloque de pÃ¡ginas doradas 3D a la derecha */
+      /* Bloque de páginas doradas 3D a la derecha */
       .bloque-hojas-doradas {
         position: absolute;
-        right: -12px;
+        right: -14px;
         top: 8px;
         bottom: 8px;
-        width: 12px;
-        background: repeating-linear-gradient(to bottom, #d4af37 0px, #bfa15f 2px, #8c6d31 3px, #e8d08d 5px);
-        border-radius: 0 4px 4px 0;
-        box-shadow: 5px 4px 15px rgba(0, 0, 0, 0.5);
+        width: 14px;
+        background: repeating-linear-gradient(to bottom, #f3e5ab 0px, #d4af37 2px, #bfa15f 3px, #8c6d31 4px, #e8d08d 6px);
+        border-radius: 0 5px 5px 0;
+        box-shadow: 6px 4px 18px rgba(0, 0, 0, 0.6);
         z-index: -1;
       }
 
-      /* Esquineras de oro envejecido */
+      /* Esquineras de oro envejecido con remaches */
       .esquinera-oro {
         position: absolute;
-        width: 44px;
-        height: 44px;
+        width: 50px;
+        height: 50px;
         border-color: #dfc488;
         border-style: solid;
         z-index: 8;
         pointer-events: none;
-        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+        filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.7));
+
+        .remache-esquinera {
+          position: absolute;
+          width: 6px;
+          height: 6px;
+          background: radial-gradient(circle at 35% 35%, #fff2cc, #dfc488 50%, #6b4d24);
+          border-radius: 50%;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+        }
 
         &.esquinera-tl {
           top: 14px;
-          left: 48px;
+          left: 54px;
           border-width: 3px 0 0 3px;
           border-top-left-radius: 4px;
+          .remache-esquinera { top: 6px; left: 6px; }
         }
         &.esquinera-tr {
           top: 14px;
           right: 14px;
           border-width: 3px 3px 0 0;
-          border-top-right-radius: 8px;
+          border-top-right-radius: 10px;
+          .remache-esquinera { top: 6px; right: 6px; }
         }
         &.esquinera-bl {
           bottom: 14px;
-          left: 48px;
+          left: 54px;
           border-width: 0 0 3px 3px;
           border-bottom-left-radius: 4px;
+          .remache-esquinera { bottom: 6px; left: 6px; }
         }
         &.esquinera-br {
           bottom: 14px;
           right: 14px;
           border-width: 0 3px 3px 0;
-          border-bottom-right-radius: 8px;
+          border-bottom-right-radius: 10px;
+          .remache-esquinera { bottom: 6px; right: 6px; }
         }
       }
 
       /* Ribetes dorados repujados */
       .marco-oro-exterior {
         position: absolute;
-        inset: 14px 14px 14px 48px;
-        border: 2px solid rgba(223, 196, 136, 0.7);
-        border-radius: 6px;
+        inset: 14px 14px 14px 54px;
+        border: 2px solid rgba(223, 196, 136, 0.75);
+        border-radius: 8px;
         pointer-events: none;
-        box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.4);
+        box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
       }
 
       .marco-oro-interior {
         position: absolute;
-        inset: 20px 20px 20px 54px;
-        border: 1px dashed rgba(223, 196, 136, 0.4);
-        border-radius: 4px;
+        inset: 20px 20px 20px 60px;
+        border: 1px dashed rgba(223, 196, 136, 0.45);
+        border-radius: 5px;
         pointer-events: none;
       }
 
@@ -233,41 +265,41 @@
         position: relative;
         z-index: 12;
         width: 100%;
-        max-width: 620px;
+        max-width: 660px;
         display: flex;
         flex-direction: column;
         align-items: center;
         text-align: center;
-        gap: 6px;
+        gap: 5px;
 
         .insignia-portada {
           display: flex;
           align-items: center;
           gap: 10px;
           font-family: 'Cinzel', 'Georgia', serif;
-          font-size: 0.78rem;
-          letter-spacing: 0.25em;
+          font-size: 0.8rem;
+          letter-spacing: 0.28em;
           color: #dfc488;
-          text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+          text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
           margin-bottom: 2px;
 
           .insignia-simbolo {
-            color: #bfa15f;
+            color: #ffd700;
           }
         }
 
         .titulo-dorado-viaje {
           font-family: 'Cinzel', 'Georgia', serif;
-          font-size: clamp(1.7rem, 3.2vw, 2.5rem);
-          font-weight: 700;
+          font-size: clamp(1.6rem, 3.2vw, 2.4rem);
+          font-weight: 800;
           color: #dfc488;
-          background: linear-gradient(135deg, #fff3d1 0%, #dfc488 45%, #9e7529 100%);
+          background: linear-gradient(135deg, #ffffff 0%, #fff2cc 20%, #dfc488 50%, #b8860b 80%, #f3e5ab 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
-          text-shadow: 0 3px 12px rgba(0, 0, 0, 0.6);
+          filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.7));
           letter-spacing: 0.04em;
           margin: 0;
-          line-height: 1.2;
+          line-height: 1.15;
         }
 
         .fechas-doradas-viaje {
@@ -277,11 +309,11 @@
           font-family: 'Georgia', serif;
           font-style: italic;
           font-size: 0.92rem;
-          color: #d1b88a;
-          margin-top: 2px;
+          color: #eedfc7;
+          margin-top: 1px;
 
           i {
-            color: #dfc488;
+            color: #ffd700;
             font-size: 0.85rem;
           }
         }
@@ -289,32 +321,32 @@
         .subtitulo-vintage-portada {
           font-family: 'Georgia', serif;
           font-size: 0.88rem;
-          color: rgba(238, 223, 199, 0.8);
+          color: rgba(238, 223, 199, 0.85);
           max-width: 90%;
-          line-height: 1.4;
-          margin: 4px 0 6px 0;
+          line-height: 1.35;
+          margin: 2px 0 4px 0;
         }
 
-        /* Relicario fotogrÃ¡fico */
+        /* Relicario fotográfico */
         .relicario-foto-portada {
-          margin: 8px auto;
-          width: 310px;
+          margin: 6px auto;
+          width: 320px;
           max-width: 85%;
-          height: 175px;
+          height: 170px;
 
           .relicario-marco-oro {
             width: 100%;
             height: 100%;
             padding: 5px;
-            background: linear-gradient(135deg, #dfc488 0%, #6b4d24 50%, #dfc488 100%);
-            border-radius: 6px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+            background: linear-gradient(135deg, #fff2cc 0%, #dfc488 35%, #6b4d24 70%, #dfc488 100%);
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), inset 0 1px 3px rgba(255, 255, 255, 0.6);
 
             .foto-portada-wrapper {
               position: relative;
               width: 100%;
               height: 100%;
-              border-radius: 3px;
+              border-radius: 4px;
               overflow: hidden;
 
               .foto-portada-img {
@@ -322,13 +354,13 @@
                 height: 100%;
                 object-fit: cover;
                 display: block;
-                filter: contrast(1.05) saturate(1.1);
+                filter: contrast(1.06) saturate(1.12);
               }
 
               .brillo-cristal-satinado {
                 position: absolute;
                 inset: 0;
-                background: linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0%, transparent 50%, rgba(0, 0, 0, 0.25) 100%);
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, transparent 45%, rgba(0, 0, 0, 0.3) 100%);
                 pointer-events: none;
               }
             }
@@ -357,47 +389,47 @@
           }
         }
 
-        /* Placas de latÃ³n con estadÃ­sticas */
+        /* Placas de latón con estadísticas */
         .placas-laton-stats {
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 12px;
-          margin: 6px 0 14px 0;
+          margin: 4px 0 12px 0;
           flex-wrap: wrap;
 
           .placa-laton-item {
-            background: linear-gradient(135deg, #24140d, #140a06);
-            border: 1.5px solid #bfa15f;
+            background: linear-gradient(135deg, #2a160e, #140a06);
+            border: 1.5px solid #dfc488;
             border-radius: 20px;
             padding: 5px 14px;
             display: flex;
             align-items: center;
             gap: 6px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 
             .placa-valor {
               font-family: 'Cinzel', serif;
               font-weight: 700;
               font-size: 0.95rem;
-              color: #dfc488;
+              color: #ffd700;
             }
 
             .placa-label {
               font-size: 0.78rem;
-              color: #d6c4a5;
+              color: #eedfc7;
               text-transform: uppercase;
               letter-spacing: 0.04em;
 
               i {
-                color: #bfa15f;
+                color: #dfc488;
                 margin-right: 3px;
               }
             }
           }
         }
 
-        /* Botones de acciÃ³n */
+        /* Botones de acción */
         .acciones-portada-vintage {
           display: flex;
           align-items: center;
@@ -4767,16 +4799,15 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  flex: 1 1 auto;
   width: 100%;
-  height: 100%;
-  max-height: 100%;
+  height: calc(100% - 54px);
+  max-height: calc(100% - 54px);
   overflow: hidden;
-  padding: 8px 12px;
+  padding: 4px 10px 8px 10px;
   gap: 6px;
   box-sizing: border-box;
-  background:
-    radial-gradient(circle at 18% 0%, rgba(10, 132, 255, 0.16), transparent 28%),
-    linear-gradient(145deg, #10131a, #07080c);
+  background: transparent;
 }
 
 .contenido-libro > .btn-cerrar,
@@ -4794,14 +4825,15 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 12px;
+  padding: 0 14px;
+  margin: 6px 10px 2px 10px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
   background: rgba(18, 24, 38, 0.95);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(24px) saturate(160%);
   z-index: 20;
-  max-width: 100%;
+  max-width: calc(100% - 20px);
   box-sizing: border-box;
 }
 

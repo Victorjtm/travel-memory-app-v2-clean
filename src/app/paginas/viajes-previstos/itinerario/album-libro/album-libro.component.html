@@ -4,6 +4,113 @@
 <div class="libro-container" [class.portada-abierta]="estado === 'abierto'" [class.modo-recuerdo]="modoRecuerdoActivo"
   [class.audio-bloqueado]="audioAutoplayBloqueado" role="main" aria-label="Album multimedia">
 
+  <!-- ======================================================== -->
+  <!-- BARRA DE HERRAMIENTAS PRINCIPAL UNIFICADA (PORTADA Y LIBRO) -->
+  <!-- ======================================================== -->
+  <header class="album-toolbar" aria-label="Controles del album">
+    <div class="album-toolbar-main">
+      <button class="toolbar-icon toolbar-action-btn" (click)="volver()" title="Cerrar álbum y volver" aria-label="Cerrar álbum">
+        <i class="fas fa-arrow-left" aria-hidden="true"></i>
+      </button>
+
+      <div class="album-now">
+        <span class="now-kicker">{{ estado === 'portada' ? 'Portada' : (modoRecuerdoActivo ? 'Modo recuerdo activo' : getNivelContexto()) }}</span>
+        <strong>{{ paginaActualData?.titulo || infoViaje?.nombre || getTituloContextual() }}</strong>
+      </div>
+    </div>
+
+    <div class="album-progress" aria-hidden="true" *ngIf="estado === 'abierto'">
+      <span [style.width.%]="progresoAlbum"></span>
+    </div>
+
+    <div class="album-toolbar-actions">
+      <!-- 1. Play / Pausa Modo Recuerdo -->
+      <button class="toolbar-icon toolbar-action-btn primary" [class.active]="modoRecuerdoActivo && !modoGuiadoActivo" (click)="toggleModoRecuerdo($event)"
+        [title]="(modoRecuerdoActivo && !modoGuiadoActivo) ? 'Pausar modo recuerdo' : 'Vivir recuerdo (Play)'">
+        <i class="fas" [class.fa-pause]="modoRecuerdoActivo && !modoGuiadoActivo" [class.fa-play]="!(modoRecuerdoActivo && !modoGuiadoActivo)"></i>
+      </button>
+
+      <!-- 2. Play Guiado por PIs -->
+      <button class="toolbar-icon toolbar-action-btn btn-toolbar-guiado" [class.active]="modoRecuerdoActivo && modoGuiadoActivo" (click)="toggleModoGuiado($event)"
+        [title]="(modoRecuerdoActivo && modoGuiadoActivo) ? 'Pausar modo guiado' : 'Play Guiado por PIs'">
+        <i class="fas" [class.fa-pause]="modoRecuerdoActivo && modoGuiadoActivo" [class.fa-route]="!(modoRecuerdoActivo && modoGuiadoActivo)"></i>
+      </button>
+
+      <!-- 3. Botón Conmutable Álbum Vintage 3D vs Clásico -->
+      <button class="toolbar-icon toolbar-action-btn btn-toolbar-vintage" [class.active]="modoAlbumVintage" (click)="toggleModoAlbumVintage($event)"
+        [title]="modoAlbumVintage ? 'Modo Álbum Vintage 3D activo (Click para Clásico)' : 'Modo Clásico activo (Click para Vintage 3D)'">
+        <i class="fas fa-book-open" aria-hidden="true"></i>
+      </button>
+
+      <!-- 4. Botón Conmutable Pantalla Completa vs Reducida -->
+      <button class="toolbar-icon toolbar-action-btn btn-toolbar-fullscreen-toggle" [class.active]="reproducirEnFullscreen" (click)="toggleReproducirEnFullscreen($event)"
+        [title]="reproducirEnFullscreen ? 'Modo Pantalla Completa activo para Play (Click para modo En Libro)' : 'Modo En Libro activo para Play (Click para Pantalla Completa)'">
+        <i class="fas" [class.fa-expand]="reproducirEnFullscreen" [class.fa-compress]="!reproducirEnFullscreen"></i>
+      </button>
+
+      <!-- 5. Bloque Mapas y Rutas: Tramos y Modo Foto / Animación -->
+      <div class="toolbar-animacion-container">
+        <button class="toolbar-icon toolbar-action-btn" [class.active]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
+          [title]="incluirAnimacionesMapa ? 'Mapas GPX activados (Click para ocultar)' : 'Mapas GPX desactivados (Click para mostrar)'">
+          <i class="fas fa-map-location-dot" aria-hidden="true"></i>
+        </button>
+
+        <!-- Selector de distancia mínima visible cuando los mapas animados están activos -->
+        <div class="toolbar-distancia-selector" *ngIf="incluirAnimacionesMapa">
+          <span class="distancia-label">&gt;</span>
+          <select [ngModel]="modoDistanciaPersonalizada ? 'custom' : distanciaMinimaAnimacionKm" (ngModelChange)="onCambioSelectDistancia($event)" class="select-distancia-tb" title="Filtrar tramos por distancia mínima">
+            <option [ngValue]="0.05">50m</option>
+            <option [ngValue]="0.1">100m</option>
+            <option [ngValue]="0.2">200m</option>
+            <option [ngValue]="0.3">300m</option>
+            <option [ngValue]="0.5">500m</option>
+            <option [ngValue]="1">1km</option>
+            <option [ngValue]="2">2km</option>
+            <option [ngValue]="5">5km</option>
+            <option [ngValue]="10">10km</option>
+            <option value="custom">✏️...</option>
+          </select>
+          <div class="input-metros-custom-tb" *ngIf="modoDistanciaPersonalizada">
+            <input type="number" min="10" step="10" [(ngModel)]="distanciaMinimaMetros" (change)="onCambioDistanciaMetrosInput()" class="input-distancia-tb" placeholder="m" title="Escribe metros mínimos">
+            <span class="unit-m">m</span>
+          </div>
+        </div>
+
+        <!-- Selector Segmentado: Modo Foto vs Modo Animación -->
+        <div class="modo-mapa-segmented-control" *ngIf="incluirAnimacionesMapa">
+          <button type="button" class="btn-segment" [class.active]="modoRutaImagen" (click)="toggleModoRutaImagen(true, $event)" title="Mostrar mapas de rutas como Foto">
+            <i class="fas fa-image"></i>
+          </button>
+          <button type="button" class="btn-segment" [class.active]="!modoRutaImagen" (click)="toggleModoRutaImagen(false, $event)" title="Mostrar mapas de rutas como Animación">
+            <i class="fas fa-play"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 6. Botón para abrir directamente la página actual en Fullscreen -->
+      <button class="toolbar-icon toolbar-action-btn" (click)="abrirPaginaActualEnFullscreen()" title="Ampliar a pantalla completa">
+        <i class="fas fa-up-right-and-down-left-from-center"></i>
+      </button>
+
+      <!-- 7. Música -->
+      <button class="toolbar-icon toolbar-action-btn" *ngIf="audioDisponible || audioViaje" [class.active]="musicaActivada" (click)="toggleAudioViaje($event)"
+        [title]="musicaActivada ? 'Música activada (Click para silenciar)' : 'Música silenciada (Click para activar)'">
+        <i class="fas" [class.fa-volume-high]="musicaActivada" [class.fa-volume-xmark]="!musicaActivada"></i>
+      </button>
+
+      <!-- 8. Vídeos completos -->
+      <button class="toolbar-icon toolbar-action-btn" [class.active]="reproducirVideosCompletos" (click)="toggleVideosCompletos($event)"
+        [title]="reproducirVideosCompletos ? 'Vídeos completos: Activado' : 'Vídeos completos: Desactivado'">
+        <i class="fas fa-film" aria-hidden="true"></i>
+      </button>
+
+      <!-- 9. Exportar vídeo MP4 -->
+      <button class="toolbar-icon toolbar-action-btn" (click)="mostrarDialogoVideo()" title="Crear vídeo" [disabled]="generandoVideo">
+        <i class="fas fa-video" aria-hidden="true"></i>
+      </button>
+    </div>
+  </header>
+
   <!-- ============================================================ -->
   <!-- BLOQUE: PORTADA DEL LIBRO 3D REALISTA (sólo modo vintage)  -->
   <!-- ============================================================ -->
@@ -31,10 +138,18 @@
       </div>
 
       <!-- Esquineras Metálicas de Oro Envejecido -->
-      <div class="esquinera-oro esquinera-tl" aria-hidden="true"></div>
-      <div class="esquinera-oro esquinera-tr" aria-hidden="true"></div>
-      <div class="esquinera-oro esquinera-bl" aria-hidden="true"></div>
-      <div class="esquinera-oro esquinera-br" aria-hidden="true"></div>
+      <div class="esquinera-oro esquinera-tl" aria-hidden="true">
+        <span class="remache-esquinera"></span>
+      </div>
+      <div class="esquinera-oro esquinera-tr" aria-hidden="true">
+        <span class="remache-esquinera"></span>
+      </div>
+      <div class="esquinera-oro esquinera-bl" aria-hidden="true">
+        <span class="remache-esquinera"></span>
+      </div>
+      <div class="esquinera-oro esquinera-br" aria-hidden="true">
+        <span class="remache-esquinera"></span>
+      </div>
 
       <!-- Textura de Cuero y Ribetes de Oro Repujado -->
       <div class="textura-cuero-grabado" aria-hidden="true"></div>
@@ -47,7 +162,7 @@
         <!-- Insignia Superior Imperial -->
         <div class="insignia-portada">
           <span class="insignia-simbolo">✦</span>
-          <span class="insignia-texto">MEMORIAS DE VIAJE</span>
+          <span class="insignia-texto">DIARIO DE VIAJES Y MEMORIAS</span>
           <span class="insignia-simbolo">✦</span>
         </div>
 
@@ -101,6 +216,7 @@
         <!-- Acciones Principales: Vivir Recuerdo y Abrir Libro -->
         <div class="acciones-portada-vintage">
           <button class="btn-vivir-recuerdo-oro" type="button" (click)="iniciarModoRecuerdo($event)">
+            <span class="play-ring" aria-hidden="true"></span>
             <i class="fas fa-play"></i>
             <span>Vivir Recuerdo</span>
           </button>
@@ -108,21 +224,6 @@
           <button class="btn-abrir-libro-vintage" type="button" (click)="abrirLibro(); $event.stopPropagation()">
             <i class="fas fa-book-open"></i>
             <span>Abrir Diario</span>
-          </button>
-        </div>
-
-        <!-- Opciones Rápidas de Portada (Estilo y Pantalla Completa/Reducida) -->
-        <div class="portada-opciones-switch" (click)="$event.stopPropagation()">
-          <button type="button" class="pill-opcion-portada activa" (click)="toggleModoAlbumVintage($event)"
-            title="Actualmente en modo Álbum Vintage 3D. Pulsa para volver al Álbum Clásico">
-            <i class="fas fa-book-open"></i>
-            <span>Álbum Vintage 3D</span>
-          </button>
-
-          <button type="button" class="pill-opcion-portada" [class.activa]="reproducirEnFullscreen" (click)="toggleReproducirEnFullscreen($event)"
-            title="Alternar entre reproducir en Pantalla Completa o en Pantalla Reducida (en el propio libro)">
-            <i class="fas" [class.fa-expand]="reproducirEnFullscreen" [class.fa-compress]="!reproducirEnFullscreen"></i>
-            <span>{{ reproducirEnFullscreen ? 'Pantalla Completa' : 'Pantalla Reducida' }}</span>
           </button>
         </div>
 
@@ -206,21 +307,6 @@
         Abrir sin modo cine
       </button>
 
-      <!-- Opciones Rápidas de Portada (Estilo y Pantalla Completa/Reducida) -->
-      <div class="portada-opciones-switch" (click)="$event.stopPropagation()">
-        <button type="button" class="pill-opcion-portada" (click)="toggleModoAlbumVintage($event)"
-          title="Modo Álbum Clásico activo. Pulsa para activar el Álbum Vintage 3D">
-          <i class="fas fa-book-open"></i>
-          <span>Álbum Clásico</span>
-        </button>
-
-        <button type="button" class="pill-opcion-portada" [class.activa]="reproducirEnFullscreen" (click)="toggleReproducirEnFullscreen($event)"
-          title="Alternar entre reproducir en Pantalla Completa o en Pantalla Reducida (en el propio libro)">
-          <i class="fas" [class.fa-expand]="reproducirEnFullscreen" [class.fa-compress]="!reproducirEnFullscreen"></i>
-          <span>{{ reproducirEnFullscreen ? 'Pantalla Completa' : 'Pantalla Reducida' }}</span>
-        </button>
-      </div>
-
     </div>
   </div>
 
@@ -229,111 +315,6 @@
   <!-- ========================================= -->
   <section class="contenido-libro" [class.contenido-visible]="estado === 'abierto'" aria-label="Contenido del álbum"
     *ngIf="estado === 'abierto'">
-
-    <!-- --- Botón cerrar álbum --- -->
-    <header class="album-toolbar" aria-label="Controles del album">
-      <div class="album-toolbar-main">
-        <button class="toolbar-icon" (click)="volver()" title="Cerrar album" aria-label="Cerrar album">
-          <i class="fas fa-arrow-left" aria-hidden="true"></i>
-        </button>
-
-        <div class="album-now">
-          <span class="now-kicker">{{ modoRecuerdoActivo ? 'Modo recuerdo activo' : getNivelContexto() }}</span>
-          <strong>{{ paginaActualData?.titulo || infoViaje?.nombre || getTituloContextual() }}</strong>
-        </div>
-      </div>
-
-      <div class="album-progress" aria-hidden="true">
-        <span [style.width.%]="progresoAlbum"></span>
-      </div>
-
-      <div class="album-toolbar-actions">
-        <!-- 1. Play / Pausa Modo Recuerdo -->
-        <button class="toolbar-icon toolbar-action-btn primary" [class.active]="modoRecuerdoActivo && !modoGuiadoActivo" (click)="toggleModoRecuerdo($event)"
-          [title]="(modoRecuerdoActivo && !modoGuiadoActivo) ? 'Pausar modo recuerdo' : 'Vivir recuerdo (Play)'">
-          <i class="fas" [class.fa-pause]="modoRecuerdoActivo && !modoGuiadoActivo" [class.fa-play]="!(modoRecuerdoActivo && !modoGuiadoActivo)"></i>
-        </button>
-
-        <!-- 2. Play Guiado por PIs -->
-        <button class="toolbar-icon toolbar-action-btn btn-toolbar-guiado" [class.active]="modoRecuerdoActivo && modoGuiadoActivo" (click)="toggleModoGuiado($event)"
-          [title]="(modoRecuerdoActivo && modoGuiadoActivo) ? 'Pausar modo guiado' : 'Play Guiado por PIs'">
-          <i class="fas" [class.fa-pause]="modoRecuerdoActivo && modoGuiadoActivo" [class.fa-route]="!(modoRecuerdoActivo && modoGuiadoActivo)"></i>
-        </button>
-
-        <!-- 3. Botón Conmutable Álbum Vintage 3D vs Clásico -->
-        <button class="toolbar-icon toolbar-action-btn btn-toolbar-vintage" [class.active]="modoAlbumVintage" (click)="toggleModoAlbumVintage($event)"
-          [title]="modoAlbumVintage ? 'Modo Álbum Vintage 3D activo (Click para Clásico)' : 'Modo Clásico activo (Click para Vintage 3D)'">
-          <i class="fas fa-book-open" aria-hidden="true"></i>
-        </button>
-
-        <!-- 4. Botón Conmutable Pantalla Completa vs Reducida -->
-        <button class="toolbar-icon toolbar-action-btn btn-toolbar-fullscreen-toggle" [class.active]="reproducirEnFullscreen" (click)="toggleReproducirEnFullscreen($event)"
-          [title]="reproducirEnFullscreen ? 'Modo Pantalla Completa activo para Play (Click para modo En Libro)' : 'Modo En Libro activo para Play (Click para Pantalla Completa)'">
-          <i class="fas" [class.fa-expand]="reproducirEnFullscreen" [class.fa-compress]="!reproducirEnFullscreen"></i>
-        </button>
-
-        <!-- 5. Bloque Mapas y Rutas: Tramos y Modo Foto / Animación -->
-        <div class="toolbar-animacion-container">
-          <button class="toolbar-icon toolbar-action-btn" [class.active]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
-            [title]="incluirAnimacionesMapa ? 'Mapas GPX activados (Click para ocultar)' : 'Mapas GPX desactivados (Click para mostrar)'">
-            <i class="fas fa-map-location-dot" aria-hidden="true"></i>
-          </button>
-
-          <!-- Selector de distancia mínima visible cuando los mapas animados están activos -->
-          <div class="toolbar-distancia-selector" *ngIf="incluirAnimacionesMapa">
-            <span class="distancia-label">&gt;</span>
-            <select [ngModel]="modoDistanciaPersonalizada ? 'custom' : distanciaMinimaAnimacionKm" (ngModelChange)="onCambioSelectDistancia($event)" class="select-distancia-tb" title="Filtrar tramos por distancia mínima">
-              <option [ngValue]="0.05">50m</option>
-              <option [ngValue]="0.1">100m</option>
-              <option [ngValue]="0.2">200m</option>
-              <option [ngValue]="0.3">300m</option>
-              <option [ngValue]="0.5">500m</option>
-              <option [ngValue]="1">1km</option>
-              <option [ngValue]="2">2km</option>
-              <option [ngValue]="5">5km</option>
-              <option [ngValue]="10">10km</option>
-              <option value="custom">✏️...</option>
-            </select>
-            <div class="input-metros-custom-tb" *ngIf="modoDistanciaPersonalizada">
-              <input type="number" min="10" step="10" [(ngModel)]="distanciaMinimaMetros" (change)="onCambioDistanciaMetrosInput()" class="input-distancia-tb" placeholder="m" title="Escribe metros mínimos">
-              <span class="unit-m">m</span>
-            </div>
-          </div>
-
-          <!-- Selector Segmentado: Modo Foto vs Modo Animación -->
-          <div class="modo-mapa-segmented-control" *ngIf="incluirAnimacionesMapa">
-            <button type="button" class="btn-segment" [class.active]="modoRutaImagen" (click)="toggleModoRutaImagen(true, $event)" title="Mostrar mapas de rutas como Foto">
-              <i class="fas fa-image"></i>
-            </button>
-            <button type="button" class="btn-segment" [class.active]="!modoRutaImagen" (click)="toggleModoRutaImagen(false, $event)" title="Mostrar mapas de rutas como Animación">
-              <i class="fas fa-play"></i>
-            </button>
-          </div>
-        </div>
-
-        <!-- 6. Botón para abrir directamente la página actual en Fullscreen -->
-        <button class="toolbar-icon toolbar-action-btn" (click)="abrirPaginaActualEnFullscreen()" title="Ampliar a pantalla completa">
-          <i class="fas fa-up-right-and-down-left-from-center"></i>
-        </button>
-
-        <!-- 7. Música -->
-        <button class="toolbar-icon toolbar-action-btn" *ngIf="audioDisponible || audioViaje" [class.active]="musicaActivada" (click)="toggleAudioViaje($event)"
-          [title]="musicaActivada ? 'Música activada (Click para silenciar)' : 'Música silenciada (Click para activar)'">
-          <i class="fas" [class.fa-volume-high]="musicaActivada" [class.fa-volume-xmark]="!musicaActivada"></i>
-        </button>
-
-        <!-- 8. Vídeos completos -->
-        <button class="toolbar-icon toolbar-action-btn" [class.active]="reproducirVideosCompletos" (click)="toggleVideosCompletos($event)"
-          [title]="reproducirVideosCompletos ? 'Vídeos completos: Activado' : 'Vídeos completos: Desactivado'">
-          <i class="fas fa-film" aria-hidden="true"></i>
-        </button>
-
-        <!-- 9. Exportar vídeo MP4 -->
-        <button class="toolbar-icon toolbar-action-btn" (click)="mostrarDialogoVideo()" title="Crear vídeo" [disabled]="generandoVideo">
-          <i class="fas fa-video" aria-hidden="true"></i>
-        </button>
-      </div>
-    </header>
 
     <div class="audio-autoplay-hint" *ngIf="audioAutoplayBloqueado && audioViaje">
       <i class="fas fa-music" aria-hidden="true"></i>
