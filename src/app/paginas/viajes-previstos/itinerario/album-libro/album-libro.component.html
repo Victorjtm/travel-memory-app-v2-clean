@@ -116,44 +116,58 @@
   <!-- ============================================================ -->
   <div class="portada-escenario-vintage" *ngIf="estado === 'portada' && modoAlbumVintage" [class.abriendo-libro]="abriendoPortada3D">
     
-    <!-- Sombra proyectada del libro en la mesa -->
+    <!-- Sombra proyectada volumétrica del libro en la mesa -->
     <div class="sombra-libro-mesa" aria-hidden="true"></div>
 
     <!-- Tapa del Libro 3D -->
     <div class="tapa-libro-vintage" role="button" tabindex="0"
       aria-label="Abrir álbum de recuerdos">
 
-      <!-- Lomo de Cuero Izquierdo con Nervios Dorados y Costuras -->
+      <!-- Capas de textura y relieve fotográfico de cuero envejecido -->
+      <div class="capa-cuero-organico" aria-hidden="true"></div>
+      <div class="iluminacion-cuero-volumen" aria-hidden="true"></div>
+
+      <!-- Lomo de Cuero Izquierdo con Nervios Dorados, Canal de Bisagra y Costuras -->
       <div class="lomo-vintage-lateral" aria-hidden="true">
-        <div class="nervio-lomo"></div>
-        <div class="nervio-lomo"></div>
-        <div class="nervio-lomo"></div>
-        <div class="nervio-lomo"></div>
+        <div class="nervio-lomo"><span class="nervio-relieve"></span></div>
+        <div class="nervio-lomo"><span class="nervio-relieve"></span></div>
+        <div class="nervio-lomo"><span class="nervio-relieve"></span></div>
+        <div class="nervio-lomo"><span class="nervio-relieve"></span></div>
         <div class="costura-lomo"></div>
       </div>
+      <div class="canal-bisagra-lomo" aria-hidden="true"></div>
 
-      <!-- Grosor de Hojas Doradas (Efecto bloque de páginas 3D) -->
+      <!-- Grosor de Hojas Doradas (Efecto bloque de páginas 3D envejecidas) -->
       <div class="bloque-hojas-doradas" aria-hidden="true">
         <div class="corte-hojas-dorado"></div>
+        <div class="sombra-canto-hojas"></div>
       </div>
 
-      <!-- Esquineras Metálicas de Oro Envejecido -->
+      <!-- Esquineras Metálicas de Oro Envejecido con Filigrana y Remaches -->
       <div class="esquinera-oro esquinera-tl" aria-hidden="true">
+        <span class="adorno-filigrana"></span>
         <span class="remache-esquinera"></span>
       </div>
       <div class="esquinera-oro esquinera-tr" aria-hidden="true">
+        <span class="adorno-filigrana"></span>
         <span class="remache-esquinera"></span>
       </div>
       <div class="esquinera-oro esquinera-bl" aria-hidden="true">
+        <span class="adorno-filigrana"></span>
         <span class="remache-esquinera"></span>
       </div>
       <div class="esquinera-oro esquinera-br" aria-hidden="true">
+        <span class="adorno-filigrana"></span>
         <span class="remache-esquinera"></span>
       </div>
 
-      <!-- Textura de Cuero y Ribetes de Oro Repujado -->
-      <div class="textura-cuero-grabado" aria-hidden="true"></div>
-      <div class="marco-oro-exterior" aria-hidden="true"></div>
+      <!-- Marcos de Oro Repujado (Hot Stamped Gold Foil con relieve) -->
+      <div class="marco-oro-exterior" aria-hidden="true">
+        <span class="floreado-esquina sup-izq"></span>
+        <span class="floreado-esquina sup-der"></span>
+        <span class="floreado-esquina inf-izq"></span>
+        <span class="floreado-esquina inf-der"></span>
+      </div>
       <div class="marco-oro-interior" aria-hidden="true"></div>
 
       <!-- Cara Frontal con el Contenido -->
@@ -166,7 +180,7 @@
           <span class="insignia-simbolo">✦</span>
         </div>
 
-        <!-- Título Principal con Relieve Dorado -->
+        <!-- Título Principal con Relieve Dorado y Grabado en Cuero -->
         <ng-container *ngIf="infoViaje as info; else fallbackTitulo3D">
           <h1 class="titulo-dorado-viaje">{{ info.nombre || getTituloContextual() }}</h1>
           <div class="fechas-doradas-viaje" *ngIf="info.fechaInicio">
@@ -184,16 +198,18 @@
         <!-- Ventana Central con Marco de Relicario / Fotografía Destacada -->
         <div class="relicario-foto-portada">
           <div class="relicario-marco-oro">
-            <div class="foto-portada-wrapper" *ngIf="getImagenViajeUrl(); else relicarioDefault">
-              <img [src]="getImagenViajeUrl()!" [alt]="infoViaje?.nombre || 'Imagen de portada'" class="foto-portada-img" loading="eager" />
-              <div class="brillo-cristal-satinado" aria-hidden="true"></div>
-            </div>
-            <ng-template #relicarioDefault>
-              <div class="foto-portada-placeholder">
-                <i class="fas fa-camera-retro"></i>
-                <span>{{ infoViaje?.nombre || getTituloContextual() }}</span>
+            <div class="relicario-passepartout">
+              <div class="foto-portada-wrapper" *ngIf="getImagenViajeUrl(); else relicarioDefault">
+                <img [src]="getImagenViajeUrl()!" [alt]="infoViaje?.nombre || 'Imagen de portada'" class="foto-portada-img" loading="eager" />
+                <div class="brillo-cristal-satinado" aria-hidden="true"></div>
               </div>
-            </ng-template>
+              <ng-template #relicarioDefault>
+                <div class="foto-portada-placeholder">
+                  <i class="fas fa-camera-retro"></i>
+                  <span>{{ infoViaje?.nombre || getTituloContextual() }}</span>
+                </div>
+              </ng-template>
+            </div>
           </div>
         </div>
 
