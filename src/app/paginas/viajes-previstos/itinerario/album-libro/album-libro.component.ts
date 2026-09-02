@@ -208,7 +208,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // ==========================================
   // CONFIGURACIÓN MODO ÁLBUM VINTAGE 3D Y FULLSCREEN
   // ==========================================
-  modoAlbumVintage: boolean = localStorage.getItem('album_modo_vintage') === 'true';
+  modoAlbumVintage: boolean = localStorage.getItem('album_modo_vintage') !== 'false';
   reproducirEnFullscreen: boolean = localStorage.getItem('album_reproducir_fullscreen') !== 'false';
   modoRutaImagen: boolean = localStorage.getItem('album_modo_ruta_imagen') === 'true';
   hojaVolteando3D: boolean = false;

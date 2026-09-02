@@ -4688,11 +4688,17 @@
 }
 
 .portada {
-  min-height: 100%;
-  padding: clamp(22px, 4vw, 54px);
-  align-items: stretch;
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  height: calc(100% - 56px);
+  max-height: calc(100% - 56px);
+  padding: 16px 28px;
+  display: flex;
+  align-items: center;
   justify-content: center;
   overflow: hidden;
+  box-sizing: border-box;
   background:
     linear-gradient(90deg, rgba(0, 0, 0, 0.52), rgba(0, 0, 0, 0.16)),
     radial-gradient(circle at 74% 42%, rgba(255, 255, 255, 0.14), transparent 30%),
@@ -4702,9 +4708,9 @@
 .portada::before {
   content: "";
   position: absolute;
-  inset: 18px;
+  inset: 12px;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 24px;
+  border-radius: 20px;
   pointer-events: none;
 }
 
@@ -4714,14 +4720,14 @@
 }
 
 .portada .lomo {
-  left: 22px;
-  width: 10px;
-  height: calc(100% - 44px);
-  top: 22px;
+  left: 18px;
+  width: 8px;
+  height: calc(100% - 36px);
+  top: 18px;
   border: 0;
   border-radius: 999px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.08));
-  box-shadow: 0 0 30px rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.12);
 }
 
 .titulo-portada {
@@ -4729,9 +4735,9 @@
   max-width: none !important;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(320px, 0.72fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr);
   align-items: center;
-  gap: clamp(24px, 5vw, 70px);
+  gap: clamp(16px, 3vw, 40px);
   text-align: left;
 }
 
@@ -4740,12 +4746,13 @@
   grid-row: 1 / span 7;
   width: 100%;
   max-width: none;
-  height: clamp(340px, 52vh, 580px);
+  height: clamp(240px, 38vh, 380px);
   margin: 0;
   border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 26px;
+  border-radius: 20px;
   background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.34);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
 }
 
 .titulo-portada .imagen-portada img {
@@ -4755,49 +4762,51 @@
 
 .titulo-portada h1 {
   margin: 0;
-  max-width: 720px;
+  max-width: 600px;
   color: #ffffff;
-  font-size: clamp(2.6rem, 6vw, 6.8rem);
-  font-weight: 860;
-  letter-spacing: 0;
-  line-height: 0.9;
+  font-size: clamp(1.6rem, 3.2vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
   text-shadow: none;
 }
 
 .titulo-portada p {
-  max-width: 660px;
+  max-width: 580px;
   color: var(--album-muted);
-  font-size: clamp(1rem, 1.6vw, 1.22rem);
+  font-size: clamp(0.9rem, 1.2vw, 1.05rem);
+  line-height: 1.4;
+  margin: 6px 0;
 }
 
 .album-subtitle {
-  margin-top: 18px !important;
+  margin-top: 8px !important;
 }
 
 .portada-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin: 24px 0 8px;
+  gap: 8px;
+  margin: 12px 0 14px;
 }
 
 .portada-stats span {
-  min-width: 118px;
-  padding: 12px 14px;
+  min-width: 90px;
+  padding: 8px 12px;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 16px;
+  border-radius: 12px;
   color: rgba(255, 255, 255, 0.66);
   background: rgba(255, 255, 255, 0.09);
   backdrop-filter: blur(18px);
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   font-weight: 700;
 }
 
 .portada-stats strong {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   color: #ffffff;
-  font-size: 1.15rem;
+  font-size: 1rem;
 }
 
 .btn-play-recuerdo,
