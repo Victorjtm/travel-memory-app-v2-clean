@@ -118,6 +118,9 @@
       cursor: pointer;
       transform-origin: left center;
       transform-style: preserve-3d;
+      backface-visibility: hidden;
+      will-change: transform;
+      transform: translateZ(0);
       transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.4s ease;
       z-index: 2;
       box-sizing: border-box;
@@ -603,24 +606,20 @@
       }
     }
 
-    /* AnimaciÃ³n de apertura del libro 3D */
+    /* Animación de apertura del libro 3D */
     &.abriendo-libro .tapa-libro-vintage {
-      animation: animarAperturaLibro 0.75s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      animation: animarAperturaLibro 0.65s cubic-bezier(0.4, 0, 0.2, 1) forwards;
       pointer-events: none;
+      will-change: transform;
     }
   }
 
   @keyframes animarAperturaLibro {
     0% {
-      transform: rotateY(0deg);
-      box-shadow: -14px 16px 40px rgba(0, 0, 0, 0.65);
-    }
-    40% {
-      box-shadow: -40px 30px 70px rgba(0, 0, 0, 0.85);
+      transform: rotateY(0deg) translateZ(0);
     }
     100% {
-      transform: rotateY(-180deg);
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      transform: rotateY(-180deg) translateZ(0);
     }
   }
 
@@ -6433,7 +6432,7 @@
     }
   }
 
-  /* --- Hoja 3D Volteando FÃ­sicamente (Page Flip 3D) --- */
+  /* --- Hoja 3D Volteando Físicamente (Page Flip 3D) --- */
   .hoja-volteando-3d {
     position: absolute;
     top: 0;
@@ -6442,19 +6441,22 @@
     height: 100%;
     transform-origin: left center;
     transform-style: preserve-3d;
+    backface-visibility: hidden;
+    will-change: transform;
+    transform: translateZ(0);
     pointer-events: none;
     z-index: 50;
     box-shadow: -15px 0 35px rgba(0, 0, 0, 0.4);
 
     &.volteando-adelante {
-      animation: animarGiroHojaAdelante 0.75s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+      animation: animarGiroHojaAdelante 0.65s cubic-bezier(0.4, 0, 0.2, 1) forwards;
     }
 
     &.volteando-atras {
       left: 0;
       right: auto;
       transform-origin: right center;
-      animation: animarGiroHojaAtras 0.75s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+      animation: animarGiroHojaAtras 0.65s cubic-bezier(0.4, 0, 0.2, 1) forwards;
     }
 
     .cara-hoja {
@@ -6571,24 +6573,19 @@
 
 @keyframes animarGiroHojaAdelante {
   0% {
-    transform: rotateY(0deg);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-  }
-  50% {
-    box-shadow: -25px 20px 45px rgba(0,0,0,0.5);
+    transform: rotateY(0deg) translateZ(0);
   }
   100% {
-    transform: rotateY(-180deg);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    transform: rotateY(-180deg) translateZ(0);
   }
 }
 
 @keyframes animarGiroHojaAtras {
   0% {
-    transform: rotateY(0deg);
+    transform: rotateY(0deg) translateZ(0);
   }
   100% {
-    transform: rotateY(180deg);
+    transform: rotateY(180deg) translateZ(0);
   }
 }
 
@@ -6695,4 +6692,43 @@
 @keyframes scaleInCard {
   from { transform: scale(0.92); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
+}
+
+/* ========================================= */
+/* OVERLAY VINTAGE DE CARGA / SKELETON       */
+/* ========================================= */
+.cargando-album-spinner-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(18, 12, 8, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: #fdfaf3;
+  animation: fadeInPreparacion 0.25s ease-out;
+
+  .spinner-vintage-brujula {
+    font-size: 2.8rem;
+    color: #e5c378;
+    filter: drop-shadow(0 0 16px rgba(229, 195, 120, 0.45));
+  }
+
+  .texto-cargando-vintage {
+    font-family: 'Cinzel', serif;
+    font-size: 1.15rem;
+    letter-spacing: 0.08em;
+    color: #f4ebd8;
+  }
+
+  .subtexto-cargando-vintage {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 0.92rem;
+    color: rgba(244, 235, 216, 0.75);
+  }
 }

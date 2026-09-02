@@ -105,6 +105,15 @@
     </div>
   </header>
 
+  <!-- SKELETON / LOADER VINTAGE FLUIDO -->
+  <div class="cargando-album-spinner-overlay" *ngIf="isLoading" aria-live="polite">
+    <div class="spinner-vintage-brujula">
+      <i class="fas fa-compass fa-spin"></i>
+    </div>
+    <span class="texto-cargando-vintage">Preparando cuaderno de viaje y recuerdos...</span>
+    <span class="subtexto-cargando-vintage">Sincronizando mapas y fotografías</span>
+  </div>
+
   <!-- ============================================================ -->
   <!-- BLOQUE: PORTADA DEL LIBRO 3D REALISTA (sólo modo vintage)  -->
   <!-- ============================================================ -->
@@ -114,7 +123,7 @@
     <div class="sombra-libro-mesa" aria-hidden="true"></div>
 
     <!-- Tapa del Libro 3D -->
-    <div class="tapa-libro-vintage" role="button" tabindex="0"
+    <div class="tapa-libro-vintage" role="button" tabindex="0" (click)="abrirLibro()"
       aria-label="Abrir álbum de recuerdos">
 
       <!-- Capas de textura y relieve fotográfico de cuero envejecido -->

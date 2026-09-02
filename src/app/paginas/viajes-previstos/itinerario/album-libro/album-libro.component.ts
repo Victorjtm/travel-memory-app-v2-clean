@@ -216,6 +216,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   direccionVolteo3D: 'adelante' | 'atras' = 'adelante';
   paginaVolteoSaliente: PaginaMedia | null = null;
   paginaVolteoEntrante: PaginaMedia | null = null;
+  private pendienteAbrirLibro: { activarModoRecuerdo: boolean; modoGuiado: boolean } | null = null;
 
   toggleModoVintage(): void {
     this.modoAlbumVintage = !this.modoAlbumVintage;
@@ -1714,6 +1715,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     // Precargar contenido inicial (ventana deslizante) y ubicaciones en segundo plano sin bloquear
     this.precargarContenidoVentana(0);
     this.precargarUbicaciones().catch(err => console.warn('Precarga de ubicaciones en segundo plano:', err));
+
+    // Si el usuario intentó abrir el libro durante la carga, abrirlo automáticamente
+    if (this.pendienteAbrirLibro) {
+      const { activarModoRecuerdo, modoGuiado } = this.pendienteAbrirLibro;
+      this.pendienteAbrirLibro = null;
+      setTimeout(() => this.abrirLibro(activarModoRecuerdo, modoGuiado), 60);
+    }
   }
 
   // ==========================================
@@ -1894,6 +1902,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           ]);
 
           if (gpxXml && gpxXml.trim().length > 0) {
+            await new Promise(r => setTimeout(r, 0));
             let points = this.gpxAnimationService.parseGpx(gpxXml);
             const { desglose, transportePrincipal, visualSessionData } = infoTransporte;
             const modoBaseNorm = this.normalizarModoTransporte(transportePrincipal);
@@ -2629,7 +2638,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   abrirLibro(activarModoRecuerdo = false, modoGuiado = false): void {
     console.log('📖 Abriendo libro...');
-    if (this.paginas.length === 0) return;
+    if (this.paginas.length === 0 || this.isLoading) {
+      console.log('⏳ Álbum aún cargándose, programando apertura automática al terminar...');
+      this.pendienteAbrirLibro = { activarModoRecuerdo, modoGuiado };
+      return;
+    }
 
     if (this.estado === 'portada' && this.modoAlbumVintage && !this.abriendoPortada3D) {
       this.abriendoPortada3D = true;
@@ -2654,7 +2667,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           }, 120);
         }
         this.cdr.detectChanges();
-      }, 750);
+      }, 650);
       return;
     }
 
@@ -2813,7 +2826,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           }
 
           this.cdr.detectChanges();
-        }, 750);
+        }, 650);
       } else {
         this.paginaActual = nuevaPagina;
 
@@ -2888,7 +2901,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           this.hojaVolteando3D = false;
           this.precargarContenidoVentana(this.paginaActual);
           this.cdr.detectChanges();
-        }, 750);
+        }, 650);
       } else {
         this.paginaActual = index;
         this.precargarContenidoVentana(this.paginaActual);

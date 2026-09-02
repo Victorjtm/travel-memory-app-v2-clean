@@ -6,7 +6,7 @@
   </div>
 
   <!-- Mapa Leaflet -->
-  <div #mapElement class="mapa-fullscreen" [class.mapa-cargado]="!cargandoMapa"></div>
+  <div #mapElement id="map-animation" class="mapa-fullscreen" [class.mapa-cargado]="!cargandoMapa"></div>
 
   <!-- Botón de Cierre Superior -->
   <button class="btn-cerrar" (click)="cerrar()" title="Cerrar reproducción">✕</button>

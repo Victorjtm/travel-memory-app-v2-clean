@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, ViewEncapsulation, ViewChild, ElementRef } from '@angular/core';
+import { Component, Input, OnInit, AfterViewInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, ViewEncapsulation, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DragDropModule } from '@angular/cdk/drag-drop';
@@ -30,7 +30,7 @@ import { environment } from '../../../environments/environment';
     ])
   ]
 })
-export class GpxAnimationComponent implements OnInit, OnDestroy {
+export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('mapElement', { static: false }) mapElement!: ElementRef<HTMLDivElement>;
 
   @Input() gpxText!: string;
@@ -341,9 +341,15 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         this.modeList.push(this.currentMode);
       }
       this.currentPointTime = p0.time || null;
+    }
+  }
 
-      await this.initMap();
+  async ngAfterViewInit() {
+    await this.initMap();
 
+    if (this.points.length > 0) {
+      const p0 = this.points[0];
+      const firstSeg = (this.isHighFidelityMode && this.hfSegments.length > 0) ? this.hfSegments[0] : null;
       const pointContext = (this.isHighFidelityMode && this.hfSegments.length > 0 && this.hfSegments[0].startIndex <= 10) ? {
         hfColor: this.hfSegments[0].color,
         hfMode: this.hfSegments[0].mode,
@@ -352,7 +358,6 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
         hfDashArray: this.hfSegments[0].dashArray
       } : p0;
 
-      // Asegurar que las variables de estado coincidan con el contexto inicial
       if (pointContext.hfColor) {
         this.currentMode = pointContext.hfMode || this.currentMode;
         this.currentHfColor = pointContext.hfColor;
@@ -360,12 +365,8 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       }
 
       this.createNewPolyline(this.currentMode || 'walking', [p0.lat, p0.lng], pointContext);
-
-      // NUEVO: Mostrar todos los POIs de inmediato
       this.displayAllPois();
-      console.log(`🛣️ Primera polilínea (HF) creada. Color: ${this.currentHfColor || 'default'}`);
-    } else {
-      await this.initMap();
+      console.log(`🛣️ Primera polilínea (HF) y POIs creados en ngAfterViewInit. Color: ${this.currentHfColor || 'default'}`);
     }
   }
 
@@ -536,10 +537,21 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     const initialLat = this.points.length > 0 ? this.points[0].lat : 0;
     const initialLng = this.points.length > 0 ? this.points[0].lng : 0;
 
-    const container = this.mapElement?.nativeElement || document.getElementById('map-animation');
+    let container = this.mapElement?.nativeElement || document.getElementById('map-animation');
     if (!container) {
-      console.warn('⚠️ [GpxAnimationComponent] mapElement no encontrado');
+      await new Promise(r => setTimeout(r, 60));
+      container = this.mapElement?.nativeElement || document.getElementById('map-animation');
+    }
+    if (!container) {
+      console.warn('⚠️ [GpxAnimationComponent] mapElement no encontrado tras espera');
+      this.cargandoMapa = false;
+      this.cdr.detectChanges();
       return;
+    }
+
+    if (this.map) {
+      try { this.map.remove(); } catch (e) {}
+      this.map = null;
     }
 
     this.map = this.L.map(container, {
@@ -554,7 +566,7 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
       if (this.map) {
         this.map.invalidateSize();
       }
-    }, 200);
+    }, 120);
 
     // --- CAPAS BASE (MAPA Y SATÉLITE) ---
     const satellite = this.L.tileLayer(
@@ -588,20 +600,18 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     const onMapTilesReady = () => {
       if (tilesReady) return;
       tilesReady = true;
-      setTimeout(() => {
-        this.cargandoMapa = false;
-        if (this.map) {
-          this.map.invalidateSize();
-        }
-        this.cdr.detectChanges();
-        if (this.autoPlay && !this.isPlaying) {
-          setTimeout(() => this.togglePlay(), 250);
-        }
-      }, 350);
+      this.cargandoMapa = false;
+      if (this.map) {
+        this.map.invalidateSize();
+      }
+      this.cdr.detectChanges();
+      if (this.autoPlay && !this.isPlaying) {
+        setTimeout(() => this.togglePlay(), 200);
+      }
     };
 
     activeTileLayer.on('load', onMapTilesReady);
-    setTimeout(onMapTilesReady, 1000);
+    setTimeout(onMapTilesReady, 800);
 
     // Control de selección de capas
     const layersControl = this.L.control.layers(
