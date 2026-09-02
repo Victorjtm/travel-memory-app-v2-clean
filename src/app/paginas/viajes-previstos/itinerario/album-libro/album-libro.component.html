@@ -24,19 +24,13 @@
     </div>
 
     <div class="album-toolbar-actions">
-      <!-- 1. Play / Pausa Modo Recuerdo -->
+      <!-- 1. Play / Pausa Modo Normal (No guiado) -->
       <button class="toolbar-icon toolbar-action-btn primary" [class.active]="modoRecuerdoActivo && !modoGuiadoActivo" (click)="toggleModoRecuerdo($event)"
-        [title]="(modoRecuerdoActivo && !modoGuiadoActivo) ? 'Pausar modo recuerdo' : 'Vivir recuerdo (Play)'">
+        [title]="(modoRecuerdoActivo && !modoGuiadoActivo) ? 'Pausar modo recuerdo' : 'Vivir recuerdo (Modo normal)'">
         <i class="fas" [class.fa-pause]="modoRecuerdoActivo && !modoGuiadoActivo" [class.fa-play]="!(modoRecuerdoActivo && !modoGuiadoActivo)"></i>
       </button>
 
-      <!-- 2. Play Guiado por PIs -->
-      <button class="toolbar-icon toolbar-action-btn btn-toolbar-guiado" [class.active]="modoRecuerdoActivo && modoGuiadoActivo" (click)="toggleModoGuiado($event)"
-        [title]="(modoRecuerdoActivo && modoGuiadoActivo) ? 'Pausar modo guiado' : 'Play Guiado por PIs'">
-        <i class="fas" [class.fa-pause]="modoRecuerdoActivo && modoGuiadoActivo" [class.fa-route]="!(modoRecuerdoActivo && modoGuiadoActivo)"></i>
-      </button>
-
-      <!-- 3. Botón Conmutable Álbum Vintage 3D vs Clásico -->
+      <!-- 2. Botón Conmutable Álbum Vintage 3D vs Clásico -->
       <button class="toolbar-icon toolbar-action-btn btn-toolbar-vintage" [class.active]="modoAlbumVintage" (click)="toggleModoAlbumVintage($event)"
         [title]="modoAlbumVintage ? 'Modo Álbum Vintage 3D activo (Click para Clásico)' : 'Modo Clásico activo (Click para Vintage 3D)'">
         <i class="fas fa-book-open" aria-hidden="true"></i>
@@ -229,12 +223,12 @@
           </div>
         </div>
 
-        <!-- Acciones Principales: Vivir Recuerdo y Abrir Libro -->
+        <!-- Acciones Principales: Modo Guiado y Abrir Libro -->
         <div class="acciones-portada-vintage">
-          <button class="btn-vivir-recuerdo-oro" type="button" (click)="iniciarModoRecuerdo($event)">
+          <button class="btn-vivir-recuerdo-oro" type="button" (click)="iniciarModoGuiado($event)" title="Iniciar recorrido guiado por puntos de interés">
             <span class="play-ring" aria-hidden="true"></span>
-            <i class="fas fa-play"></i>
-            <span>Vivir Recuerdo</span>
+            <i class="fas fa-route"></i>
+            <span>Recorrido Guiado</span>
           </button>
 
           <button class="btn-abrir-libro-vintage" type="button" (click)="abrirLibro(); $event.stopPropagation()">
