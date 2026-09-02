@@ -147,12 +147,17 @@ export class MiniMapaGpxComponent implements OnInit, AfterViewInit, OnChanges, O
     return '🚗';
   }
 
+  private static cachedLeafletModule: any = null;
+
   private async renderMiniMapa(): Promise<void> {
     if (!this.trackGpx || !this.miniMapElement?.nativeElement) return;
 
     try {
       if (!this.L) {
-        this.L = await import('leaflet');
+        if (!MiniMapaGpxComponent.cachedLeafletModule) {
+          MiniMapaGpxComponent.cachedLeafletModule = await import('leaflet');
+        }
+        this.L = MiniMapaGpxComponent.cachedLeafletModule;
       }
 
       if (this.map) {

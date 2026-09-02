@@ -525,8 +525,13 @@ export class GpxAnimationComponent implements OnInit, OnDestroy {
     document.removeEventListener('click', this.globalPopupClickHandler);
   }
 
+  private static cachedLeafletModule: any = null;
+
   private async initMap() {
-    this.L = await import('leaflet');
+    if (!GpxAnimationComponent.cachedLeafletModule) {
+      GpxAnimationComponent.cachedLeafletModule = await import('leaflet');
+    }
+    this.L = GpxAnimationComponent.cachedLeafletModule;
 
     const initialLat = this.points.length > 0 ? this.points[0].lat : 0;
     const initialLng = this.points.length > 0 ? this.points[0].lng : 0;
