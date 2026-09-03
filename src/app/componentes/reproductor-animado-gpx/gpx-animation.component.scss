@@ -293,25 +293,27 @@
 .custom-transport-marker {
   background: none !important;
   border: none !important;
-  width: 120px !important;
-  height: 120px !important;
-  margin-left: -60px !important;
-  margin-top: -60px !important;
+  width: 48px !important;
+  height: 48px !important;
+  margin-left: -24px !important;
+  margin-top: -24px !important;
+  will-change: transform;
+  transition: none !important;
 }
 
 .transport-icon-wrapper {
-  width: 120px;
-  height: 120px;
+  width: 48px;
+  height: 48px;
   background: #FFD600;
-  border: 6px solid #FFFFFF;
+  border: 3px solid #FFFFFF;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 90px;
+  font-size: 26px;
   line-height: 1;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.7);
-  animation: marker-bounce 2s infinite ease-in-out;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  will-change: transform;
 }
 
 .custom-poi-pin-marker {

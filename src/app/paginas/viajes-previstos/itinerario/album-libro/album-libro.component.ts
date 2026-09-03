@@ -218,6 +218,33 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   paginaVolteoEntrante: PaginaMedia | null = null;
   private pendienteAbrirLibro: { activarModoRecuerdo: boolean; modoGuiado: boolean } | null = null;
 
+  get paginaMostradaIzquierda(): PaginaMedia | null {
+    if (this.hojaVolteando3D) {
+      if (this.direccionVolteo3D === 'adelante') {
+        // Al voltear hacia adelante, la página izquierda bajo la hoja permanece en la página previa (N-1)
+        return this.paginaActual > 0 ? this.paginas[this.paginaActual - 1] : null;
+      } else {
+        // Al voltear hacia atrás, la página izquierda bajo la hoja revela la página previa a la que vuelve (N-2)
+        const idx = this.paginaActual - 2;
+        return idx >= 0 ? this.paginas[idx] : null;
+      }
+    }
+    return this.paginaActual > 0 ? this.paginas[this.paginaActual - 1] : null;
+  }
+
+  get paginaMostradaDerecha(): PaginaMedia | null {
+    if (this.hojaVolteando3D) {
+      if (this.direccionVolteo3D === 'adelante') {
+        // Al voltear hacia adelante, la página derecha bajo la hoja YA revela de inmediato la nueva foto (Photo B / N+1)
+        return this.paginaVolteoEntrante || (this.paginaActual + 1 < this.paginas.length ? this.paginas[this.paginaActual + 1] : null);
+      } else {
+        // Al voltear hacia atrás, la página derecha bajo la hoja mantiene la foto actual hasta que aterrice la hoja que regresa
+        return this.paginas[this.paginaActual];
+      }
+    }
+    return this.paginas[this.paginaActual];
+  }
+
   toggleModoVintage(): void {
     this.modoAlbumVintage = !this.modoAlbumVintage;
     localStorage.setItem('album_modo_vintage', String(this.modoAlbumVintage));
@@ -2803,6 +2830,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         setTimeout(() => {
           this.paginaActual = nuevaPagina;
           this.hojaVolteando3D = false;
+          this.paginaVolteoSaliente = null;
+          this.paginaVolteoEntrante = null;
 
           const pagina = this.paginas[this.paginaActual];
           if (pagina?.tipoMedia === 'video' || pagina?.tipoMedia === 'audio') {

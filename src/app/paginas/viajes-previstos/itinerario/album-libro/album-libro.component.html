@@ -122,6 +122,43 @@
     <!-- Sombra proyectada volumétrica del libro en la mesa -->
     <div class="sombra-libro-mesa" aria-hidden="true"></div>
 
+    <!-- PÁGINA INTERIOR DERECHA BASE (Visible inmediatamente bajo la tapa cuando se abre el libro) -->
+    <div class="hoja-vintage-spread pagina-base-apertura-der" *ngIf="paginas && paginas.length > 0">
+      <div class="textura-papel-antiguo" aria-hidden="true"></div>
+      <div class="sombra-lomo-der" aria-hidden="true"></div>
+
+      <div class="contenido-vintage-der" *ngIf="paginas[0] as primerPag">
+        <!-- Detalle de Itinerario / Carta de Bienvenida -->
+        <div class="vintage-carta-full" *ngIf="primerPag.esCartaManuscrita || primerPag.esIndice">
+          <h3 class="titulo-carta-vintage">{{ primerPag.titulo || ('ITINERARIO: ' + (infoViaje?.nombre || 'RUTA')) }}</h3>
+          <p class="fecha-carta-vintage" *ngIf="primerPag.fecha">{{ formatearFecha(primerPag.fecha) }}</p>
+          <div class="texto-carta-vintage">{{ primerPag.descripcion || getDescripcionContextual() }}</div>
+          <div class="firma-vintage"><em>— Diario de viaje —</em></div>
+        </div>
+
+        <div class="foto-vintage-container" *ngIf="!primerPag.esCartaManuscrita && !primerPag.esIndice">
+          <div class="foto-polaroid-vintage">
+            <span class="esquinera-foto sup-izq"></span>
+            <span class="esquinera-foto sup-der"></span>
+            <span class="esquinera-foto inf-izq"></span>
+            <span class="esquinera-foto inf-der"></span>
+            <img *ngIf="primerPag.tipoMedia === 'imagen'" [src]="primerPag.url" [alt]="primerPag.titulo" class="imagen-foto-vintage" />
+            <div *ngIf="primerPag.tipoMedia === 'video'" class="video-preview-vintage">
+              <video *ngIf="primerPag.url" [src]="primerPag.url + '#t=0.5'" class="video-foto-vintage" muted playsinline></video>
+            </div>
+          </div>
+          <div class="pie-foto-vintage" *ngIf="primerPag.titulo || primerPag.fecha">
+            <h4 class="titulo-pie-vintage">{{ primerPag.titulo }}</h4>
+            <p class="fecha-pie-vintage" *ngIf="primerPag.fecha">{{ formatearFecha(primerPag.fecha) }}</p>
+          </div>
+        </div>
+
+        <div class="numero-pagina-difuminado num-der">
+          <span>Pág. 1 / {{ paginas.length - 1 }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Tapa del Libro 3D -->
     <div class="tapa-libro-vintage" role="button" tabindex="0" (click)="abrirLibro()"
       aria-label="Abrir álbum de recuerdos">
@@ -731,8 +768,8 @@
           <div class="textura-papel-antiguo" aria-hidden="true"></div>
           <div class="sombra-lomo-izq" aria-hidden="true"></div>
 
-          <!-- Si estamos en la página 0: Portada / Introducción de Viaje -->
-          <div class="contenido-vintage-izq intro-viaje-vintage" *ngIf="paginaActual === 0">
+          <!-- Si estamos en la página 0 o no hay página izquierda: Portada / Introducción de Viaje -->
+          <div class="contenido-vintage-izq intro-viaje-vintage" *ngIf="!paginaMostradaIzquierda">
             <div class="marco-pergamino-decorativo">
               <span class="adorno-esquina sup-izq"></span>
               <span class="adorno-esquina sup-der"></span>
@@ -767,8 +804,8 @@
             </div>
           </div>
 
-          <!-- Si estamos en página > 0: Muestra la foto / contenido de la página anterior -->
-          <div class="contenido-vintage-izq" *ngIf="paginaActual > 0 && paginas[paginaActual - 1] as pagIzq">
+          <!-- Muestra la foto / contenido de la página izquierda persistente -->
+          <div class="contenido-vintage-izq" *ngIf="paginaMostradaIzquierda as pagIzq">
             
             <!-- Caso Carta Manuscrita en página izquierda -->
             <div class="vintage-carta-full" *ngIf="pagIzq.esCartaManuscrita">
@@ -828,7 +865,7 @@
         <!-- ============================== -->
         <!-- PÁGINA DERECHA (Página activa) -->
         <!-- ============================== -->
-        <div class="hoja-vintage-spread pagina-derecha-3d" *ngIf="paginas[paginaActual] as pagDer"
+        <div class="hoja-vintage-spread pagina-derecha-3d" *ngIf="paginaMostradaDerecha as pagDer"
           (click)="hayPaginaSiguiente && cambiarPagina(1)"
           [title]="hayPaginaSiguiente ? 'Click para ir a la página siguiente' : ''">
           <div class="textura-papel-antiguo" aria-hidden="true"></div>
@@ -928,23 +965,67 @@
         <div class="hoja-volteando-3d" *ngIf="hojaVolteando3D"
           [class.volteando-adelante]="direccionVolteo3D === 'adelante'"
           [class.volteando-atras]="direccionVolteo3D === 'atras'">
+          
+          <!-- Cara Anverso: Foto levantándose hacia la izquierda -->
           <div class="cara-hoja cara-anverso">
             <div class="textura-papel-antiguo"></div>
             <div class="sombra-curvatura-papel"></div>
-            <!-- Contenido que se va -->
-            <div class="preview-mini-volteo" *ngIf="paginaVolteoSaliente as pSal">
-              <img *ngIf="pSal.tipoMedia === 'imagen'" [src]="pSal.url" class="img-volteo" />
-              <h4 *ngIf="pSal.titulo">{{ pSal.titulo }}</h4>
-            </div>
+
+            <ng-container *ngIf="direccionVolteo3D === 'adelante'">
+              <div class="foto-vintage-container" *ngIf="paginaVolteoSaliente as pSal">
+                <div class="foto-polaroid-vintage" *ngIf="pSal.tipoMedia === 'imagen' || !pSal.esCartaManuscrita">
+                  <span class="esquinera-foto sup-izq"></span>
+                  <span class="esquinera-foto sup-der"></span>
+                  <span class="esquinera-foto inf-izq"></span>
+                  <span class="esquinera-foto inf-der"></span>
+                  <img *ngIf="pSal.tipoMedia === 'imagen'" [src]="pSal.url" [alt]="pSal.titulo" class="imagen-foto-vintage" />
+                  <div *ngIf="pSal.tipoMedia === 'video'" class="video-preview-vintage">
+                    <video *ngIf="pSal.url" [src]="pSal.url + '#t=0.5'" class="video-foto-vintage" muted></video>
+                  </div>
+                </div>
+                <div class="pie-foto-vintage" *ngIf="pSal.titulo || pSal.fecha">
+                  <h4 class="titulo-pie-vintage">{{ pSal.titulo }}</h4>
+                  <p class="fecha-pie-vintage" *ngIf="pSal.fecha">{{ formatearFecha(pSal.fecha) }}</p>
+                </div>
+              </div>
+            </ng-container>
+
+            <ng-container *ngIf="direccionVolteo3D === 'atras'">
+              <div class="reverso-papel-antiguo-vacio">
+                <div class="sello-vintage-dorso">✦ DIARIO DE RECUERDOS ✦</div>
+              </div>
+            </ng-container>
           </div>
+
+          <!-- Cara Reverso: Dorso que aterriza en la página izquierda -->
           <div class="cara-hoja cara-reverso">
             <div class="textura-papel-antiguo"></div>
             <div class="sombra-curvatura-papel"></div>
-            <!-- Contenido que entra -->
-            <div class="preview-mini-volteo" *ngIf="paginaVolteoEntrante as pEnt">
-              <img *ngIf="pEnt.tipoMedia === 'imagen'" [src]="pEnt.url" class="img-volteo" />
-              <h4 *ngIf="pEnt.titulo">{{ pEnt.titulo }}</h4>
-            </div>
+
+            <ng-container *ngIf="direccionVolteo3D === 'adelante'">
+              <div class="reverso-papel-antiguo-vacio">
+                <div class="sello-vintage-dorso">✦ DIARIO DE RECUERDOS ✦</div>
+                <div class="pie-foto-vintage" *ngIf="paginaVolteoSaliente?.descripcion">
+                  <p class="desc-pie-vintage">{{ paginaVolteoSaliente?.descripcion }}</p>
+                </div>
+              </div>
+            </ng-container>
+
+            <ng-container *ngIf="direccionVolteo3D === 'atras'">
+              <div class="foto-vintage-container" *ngIf="paginaVolteoEntrante as pEnt">
+                <div class="foto-polaroid-vintage" *ngIf="pEnt.tipoMedia === 'imagen' || !pEnt.esCartaManuscrita">
+                  <span class="esquinera-foto sup-izq"></span>
+                  <span class="esquinera-foto sup-der"></span>
+                  <span class="esquinera-foto inf-izq"></span>
+                  <span class="esquinera-foto inf-der"></span>
+                  <img *ngIf="pEnt.tipoMedia === 'imagen'" [src]="pEnt.url" [alt]="pEnt.titulo" class="imagen-foto-vintage" />
+                </div>
+                <div class="pie-foto-vintage" *ngIf="pEnt.titulo || pEnt.fecha">
+                  <h4 class="titulo-pie-vintage">{{ pEnt.titulo }}</h4>
+                  <p class="fecha-pie-vintage" *ngIf="pEnt.fecha">{{ formatearFecha(pEnt.fecha) }}</p>
+                </div>
+              </div>
+            </ng-container>
           </div>
         </div>
 

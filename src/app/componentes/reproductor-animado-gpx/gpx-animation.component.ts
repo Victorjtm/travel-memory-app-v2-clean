@@ -509,12 +509,21 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
 
     console.log(`📌 [displayAllPois] TOTAL PIs: ${grupos.length}, boundsPoints: ${boundsPoints.length}`);
 
-    // Encuadrar únicamente puntos válidos o en su defecto toda la ruta GPX
-    if (boundsPoints.length > 0) {
-      this.map.fitBounds(this.L.latLngBounds(boundsPoints), { padding: [60, 60] });
-    } else if (this.points && this.points.length > 0) {
-      const gpxBounds = this.points.map(p => [p.lat, p.lng]);
-      this.map.fitBounds(this.L.latLngBounds(gpxBounds), { padding: [60, 60] });
+    // Encuadrar la totalidad de la ruta GPX Y los puntos de interés con encuadre perfectamente centrado
+    const allCoords: [number, number][] = [];
+    if (this.points && this.points.length > 0) {
+      this.points.forEach(p => allCoords.push([p.lat, p.lng]));
+    }
+    boundsPoints.forEach(pt => allCoords.push(pt));
+
+    if (allCoords.length > 0 && this.map) {
+      this.map.invalidateSize();
+      const fullBounds = this.L.latLngBounds(allCoords);
+      this.map.fitBounds(fullBounds, {
+        padding: [60, 60],
+        maxZoom: 15
+      });
+      console.log(`🗺️ [displayAllPois] Ruta completa encuadrada de forma equilibrada con ${allCoords.length} puntos`);
     }
   }
 
@@ -603,6 +612,10 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
       this.cargandoMapa = false;
       if (this.map) {
         this.map.invalidateSize();
+        if (this.points && this.points.length > 0) {
+          const allCoords = this.points.map(p => [p.lat, p.lng] as [number, number]);
+          this.map.fitBounds(this.L.latLngBounds(allCoords), { padding: [60, 60], maxZoom: 15 });
+        }
       }
       this.cdr.detectChanges();
       if (this.autoPlay && !this.isPlaying) {
@@ -683,15 +696,15 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Marcador de posición (Icono dinámico de transporte)
     const initialMode = this.currentMode || 'walking';
-    const iconHtml = `<div class="transport-icon-wrapper" style="width:120px;height:120px;background:#FFD600;border:6px solid #FFFFFF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:90px;line-height:1;box-shadow:0 10px 30px rgba(0,0,0,0.7);">${this.getModeIcon(initialMode)}</div>`;
+    const iconHtml = `<div class="transport-icon-wrapper">${this.getModeIcon(initialMode)}</div>`;
 
     if (this.points.length > 0) {
       this.marker = this.L.marker([this.points[0].lat, this.points[0].lng], {
         icon: this.L.divIcon({
           className: 'custom-transport-marker',
           html: iconHtml,
-          iconSize: [120, 120],
-          iconAnchor: [60, 60]
+          iconSize: [48, 48],
+          iconAnchor: [24, 24]
         })
       }).addTo(this.map);
     }
@@ -777,7 +790,8 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
       bounds = this.L.latLngBounds(boatPoints.length > 0 ? boatPoints : [[p1.lat, p1.lng], [p2.lat, p2.lng]]);
       console.log(`🚢 [Panorámica Mar] Encuadrando travesía completa (${boatPoints.length} puntos de navegación)`);
     } else {
-      bounds = this.L.latLngBounds([
+      const segCoords = this.points.slice(currentPiIdx, nextPiIdx + 1).map(p => [p.lat, p.lng] as [number, number]);
+      bounds = this.L.latLngBounds(segCoords.length > 0 ? segCoords : [
         [p1.lat, p1.lng],
         [p2.lat, p2.lng]
       ]);
@@ -1698,12 +1712,12 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private updateMarkerIcon(mode: string) {
     if (!this.marker || !this.L) return;
-    const iconHtml = `<div class="transport-icon-wrapper" style="width:120px;height:120px;background:#FFD600;border:6px solid #FFFFFF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:90px;line-height:1;box-shadow:0 10px 30px rgba(0,0,0,0.7);">${this.getModeIcon(mode)}</div>`;
+    const iconHtml = `<div class="transport-icon-wrapper">${this.getModeIcon(mode)}</div>`;
     this.marker.setIcon(this.L.divIcon({
       className: 'custom-transport-marker',
       html: iconHtml,
-      iconSize: [120, 120],
-      iconAnchor: [60, 60]
+      iconSize: [48, 48],
+      iconAnchor: [24, 24]
     }));
   }
 
@@ -1867,14 +1881,6 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
   private updateCameraTracking(markerLatLng: [number, number]) {
     if (this.cameraMode !== 'TRACKING' || !this.map) return;
 
-    // En Fase 4, si autoCamera está activado y no pausado, el `fitBounds` del tramo
-    // ya se encarga de que todo esté en pantalla, por lo que NO necesitamos hacer pan ni zoom continuo,
-    // permitiendo que el marcador recorra la ruta libremente por la pantalla de PI a PI.
-    if (this.narrativeService.cameraState$.value.autoCameraEnabled && !this.autoZoomPaused) {
-      return;
-    }
-
-    // Si el usuario intervino (autoZoomPaused = true), hacemos PAN suave para que no se pierda el marcador
     const now = performance.now();
     if (now - this.lastCameraUpdateTime < this.CAMERA_THROTTLE_MS) return;
 
@@ -1882,7 +1888,7 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
     const containerWidth = container.clientWidth;
     const containerHeight = container.clientHeight;
 
-    const SAFE_ZONE_RATIO = 0.25;
+    const SAFE_ZONE_RATIO = 0.20;
     const marginX = containerWidth * SAFE_ZONE_RATIO;
     const marginY = containerHeight * SAFE_ZONE_RATIO;
 
@@ -1895,7 +1901,7 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
       markerPoint.y > containerHeight - marginY;
 
     if (outOfSafeZone) {
-      this.map.panTo(markerLatLng, { animate: true, duration: 0.3, easeLinearity: 1 });
+      this.map.panTo(markerLatLng, { animate: false });
       this.lastCameraUpdateTime = now;
     }
   }
