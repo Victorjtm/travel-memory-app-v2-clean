@@ -73,6 +73,7 @@ interface ContextoViaje {
 
 interface InfoViaje {
   nombre: string;
+  descripcion?: string;
   fechaInicio?: string;
   fechaFin?: string;
   imagen?: string;
@@ -218,31 +219,39 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   paginaVolteoEntrante: PaginaMedia | null = null;
   private pendienteAbrirLibro: { activarModoRecuerdo: boolean; modoGuiado: boolean } | null = null;
 
-  get paginaMostradaIzquierda(): PaginaMedia | null {
-    if (this.hojaVolteando3D) {
-      if (this.direccionVolteo3D === 'adelante') {
-        // Al voltear hacia adelante, la página izquierda bajo la hoja permanece en la página previa (N-1)
-        return this.paginaActual > 0 ? this.paginas[this.paginaActual - 1] : null;
-      } else {
-        // Al voltear hacia atrás, la página izquierda bajo la hoja revela la página previa a la que vuelve (N-2)
-        const idx = this.paginaActual - 2;
-        return idx >= 0 ? this.paginas[idx] : null;
-      }
+  spreadActual: number = 0;
+  videoMuted: boolean = true;
+
+  get totalSpreads(): number {
+    if (!this.paginas || this.paginas.length === 0) return 1;
+    // Spread 0: Izquierda = Guarda interior / portada, Derecha = paginas[0] (Carta "ITINERARIO: ESPAÑA")
+    // Spreads 1..N: Contienen 2 fotos completamente nuevas cada uno (paginas[1] y paginas[2], paginas[3] y paginas[4], etc.)
+    const elementosRestantes = Math.max(0, this.paginas.length - 1);
+    return 1 + Math.ceil(elementosRestantes / 2);
+  }
+
+  get paginaSpreadIzquierda(): PaginaMedia | null {
+    if (this.spreadActual === 0) {
+      return null; // En la apertura (Spread 0), la izquierda es la guarda interior de la tapa
     }
-    return this.paginaActual > 0 ? this.paginas[this.paginaActual - 1] : null;
+    const idx = (this.spreadActual - 1) * 2 + 1;
+    return (idx < this.paginas.length) ? this.paginas[idx] : null;
+  }
+
+  get paginaSpreadDerecha(): PaginaMedia | null {
+    if (this.spreadActual === 0) {
+      return this.paginas[0] || null; // En la apertura (Spread 0), la derecha es la Carta "ITINERARIO: ESPAÑA"
+    }
+    const idx = (this.spreadActual - 1) * 2 + 2;
+    return (idx < this.paginas.length) ? this.paginas[idx] : null;
+  }
+
+  get paginaMostradaIzquierda(): PaginaMedia | null {
+    return this.paginaSpreadIzquierda;
   }
 
   get paginaMostradaDerecha(): PaginaMedia | null {
-    if (this.hojaVolteando3D) {
-      if (this.direccionVolteo3D === 'adelante') {
-        // Al voltear hacia adelante, la página derecha bajo la hoja YA revela de inmediato la nueva foto (Photo B / N+1)
-        return this.paginaVolteoEntrante || (this.paginaActual + 1 < this.paginas.length ? this.paginas[this.paginaActual + 1] : null);
-      } else {
-        // Al voltear hacia atrás, la página derecha bajo la hoja mantiene la foto actual hasta que aterrice la hoja que regresa
-        return this.paginas[this.paginaActual];
-      }
-    }
-    return this.paginas[this.paginaActual];
+    return this.paginaSpreadDerecha;
   }
 
   toggleModoVintage(): void {
@@ -1693,12 +1702,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       // NIVEL ITINERARIO: Solo descripción del itinerario actual
       // Ordenar fotos por fecha y hora reales (más antiguas primero)
       paginasNormales.sort((a, b) => this.obtenerTimestampReal(a) - this.obtenerTimestampReal(b));
+      const nombreItin = (this.infoViaje?.nombre || 'ESPAÑA').toUpperCase();
+      const tituloItin = nombreItin.startsWith('ITINERARIO') ? nombreItin : `ITINERARIO: ${nombreItin}`;
+      const descItin = this.infoViaje?.descripcion || 'Diario de viaje, memorias y recorrido detallado del itinerario.';
       const paginaDescripcion: PaginaMedia = {
         archivo: {} as Archivo,
         url: '',
-        titulo: 'Descripción del Itinerario',
-        descripcion: '',
-        fecha: '',
+        titulo: tituloItin,
+        descripcion: descItin,
+        fecha: this.infoViaje?.fechaInicio || '',
         tipoMedia: 'carta-manuscrita',
         mimeType: '',
         esCartaManuscrita: true
@@ -1709,22 +1721,23 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       paginasFinales = await this.crearPaginasConDescripcionesItinerarios(paginasNormales);
 
     } else {
-      // NIVEL ACTIVIDAD: Solo página de índice normal
-      // Ordenar fotos por fecha y hora reales (más antiguas primero)
+      // NIVEL ACTIVIDAD: Carta manuscrita inicial y fotos ordenadas
       paginasNormales.sort((a, b) => this.obtenerTimestampReal(a) - this.obtenerTimestampReal(b));
 
-      const paginaIndice: PaginaMedia = {
+      const nombreAct = (this.infoViaje?.nombre || 'ESPAÑA').toUpperCase();
+      const tituloAct = nombreAct.startsWith('ITINERARIO') ? nombreAct : `ITINERARIO: ${nombreAct}`;
+      const paginaIntroAct: PaginaMedia = {
         archivo: {} as Archivo,
         url: '',
-        titulo: 'Índice del álbum',
-        descripcion: '',
-        fecha: '',
-        tipoMedia: 'desconocido',
+        titulo: tituloAct,
+        descripcion: this.infoViaje?.descripcion || 'Diario de viaje, memorias y recorrido detallado.',
+        fecha: this.infoViaje?.fechaInicio || '',
+        tipoMedia: 'carta-manuscrita',
         mimeType: '',
-        esIndice: true
+        esCartaManuscrita: true
       };
 
-      paginasFinales = [paginaIndice, ...paginasNormales];
+      paginasFinales = [paginaIntroAct, ...paginasNormales];
     }
 
     // Guardar paginas base y generar mapas animados según configuración
@@ -2330,18 +2343,21 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     const paginasFinales: PaginaMedia[] = [];
 
-    // Página de índice general del viaje
-    const paginaIndice: PaginaMedia = {
+    // Página 1 inicial: Carta manuscrita de Introducción del Itinerario ("ITINERARIO: ESPAÑA")
+    const nombreViaje = (this.infoViaje?.nombre || 'ESPAÑA').toUpperCase();
+    const tituloIntroViaje = nombreViaje.startsWith('ITINERARIO') ? nombreViaje : `ITINERARIO: ${nombreViaje}`;
+    const descIntroViaje = this.infoViaje?.descripcion || 'Diario de viaje, memorias fotográficas y recorrido detallado del itinerario.';
+    const paginaIntroViaje: PaginaMedia = {
       archivo: {} as Archivo,
       url: '',
-      titulo: 'Índice del álbum',
-      descripcion: '',
-      fecha: '',
-      tipoMedia: 'desconocido',
+      titulo: tituloIntroViaje,
+      descripcion: descIntroViaje,
+      fecha: this.infoViaje?.fechaInicio || '',
+      tipoMedia: 'carta-manuscrita',
       mimeType: '',
-      esIndice: true
+      esCartaManuscrita: true
     };
-    paginasFinales.push(paginaIndice);
+    paginasFinales.push(paginaIntroViaje);
 
     // Agrupar archivos por itinerario (usando itinerarioId directo o buscando su actividadId)
     const archivosPorItinerario = new Map<number, PaginaMedia[]>();
@@ -2681,9 +2697,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.modoRecuerdoActivo = activarModoRecuerdo;
         this.modoGuiadoActivo = activarModoRecuerdo ? modoGuiado : false;
 
-        this.paginaActual = activarModoRecuerdo ? this.obtenerPrimeraPaginaMemoria() : 0;
+        this.spreadActual = 0;
+        this.paginaActual = 0;
         this.precargarSiguienteVideo();
-        this.precargarContenidoVentana(this.paginaActual);
+        this.precargarContenidoVentana(0);
+        this.iniciarSecuenciaVideosSpread();
         if (activarModoRecuerdo) {
           this.intentarReproducirAudioViaje();
           setTimeout(() => {
@@ -2701,11 +2719,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.estado = 'abierto';
     this.modoRecuerdoActivo = activarModoRecuerdo;
     this.modoGuiadoActivo = activarModoRecuerdo ? modoGuiado : false;
-
-    // Siempre abrir en la página de índice (página 0)
-    this.paginaActual = activarModoRecuerdo ? this.obtenerPrimeraPaginaMemoria() : 0;
+    this.spreadActual = 0;
+    this.paginaActual = 0;
     this.precargarSiguienteVideo();
-    this.precargarContenidoVentana(this.paginaActual);
+    this.precargarContenidoVentana(0);
+    this.iniciarSecuenciaVideosSpread();
     if (activarModoRecuerdo) {
       this.intentarReproducirAudioViaje();
       setTimeout(() => {
@@ -2715,7 +2733,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.iniciarSlideshow();
       }, 120);
     }
-    console.log('✅ Libro abierto en el índice, página actual:', this.paginaActual, 'modoGuiado:', this.modoGuiadoActivo);
+    console.log('✅ Libro abierto en Spread 0 (Página 1: ITINERARIO: ESPAÑA)');
     this.cdr.detectChanges();
   }
 
@@ -2794,7 +2812,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   abrirPaginaActualEnFullscreen(): void {
-    const pagina = this.paginaActualData;
+    const pagina = this.paginaSpreadDerecha || this.paginaSpreadIzquierda || this.paginaActualData;
     if (!pagina || pagina.esIndice) return;
 
     if (pagina.esCartaManuscrita) {
@@ -2817,121 +2835,79 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   cambiarPagina(direccion: number): void {
-    console.log(`🔄 Cambiando página, dirección: ${direccion}`);
-    const nuevaPagina = this.paginaActual + direccion;
+    console.log(`🔄 Cambiando página doble (spread), dirección: ${direccion}`);
+    const nuevoSpread = this.spreadActual + direccion;
 
-    if (nuevaPagina >= 0 && nuevaPagina < this.paginas.length) {
+    if (nuevoSpread >= 0 && nuevoSpread < this.totalSpreads) {
       if (this.modoAlbumVintage && !this.hojaVolteando3D) {
-        this.paginaVolteoSaliente = this.paginas[this.paginaActual];
-        this.paginaVolteoEntrante = this.paginas[nuevaPagina];
         this.direccionVolteo3D = direccion > 0 ? 'adelante' : 'atras';
+
+        if (direccion > 0) {
+          this.paginaVolteoSaliente = this.paginaSpreadDerecha;
+          const nuevoIdxIzq = (nuevoSpread - 1) * 2 + 1;
+          this.paginaVolteoEntrante = (nuevoSpread > 0 && nuevoIdxIzq < this.paginas.length) ? this.paginas[nuevoIdxIzq] : null;
+        } else {
+          this.paginaVolteoSaliente = this.paginaSpreadIzquierda;
+          const nuevoIdxDer = nuevoSpread === 0 ? 0 : ((nuevoSpread - 1) * 2 + 2);
+          this.paginaVolteoEntrante = (nuevoIdxDer < this.paginas.length) ? this.paginas[nuevoIdxDer] : null;
+        }
+
         this.hojaVolteando3D = true;
+        this.spreadActual = nuevoSpread;
+        this.paginaActual = nuevoSpread === 0 ? 0 : ((nuevoSpread - 1) * 2 + 1);
+
+        this.detenerVideosActuales();
 
         setTimeout(() => {
-          this.paginaActual = nuevaPagina;
           this.hojaVolteando3D = false;
           this.paginaVolteoSaliente = null;
           this.paginaVolteoEntrante = null;
 
-          const pagina = this.paginas[this.paginaActual];
-          if (pagina?.tipoMedia === 'video' || pagina?.tipoMedia === 'audio') {
-            this.bajarVolumenAudioViaje();
-          } else {
-            this.restaurarVolumenAudioViaje();
-          }
+          // Iniciar secuencia de reproducción de video en el nuevo spread (Regla 3)
+          this.iniciarSecuenciaVideosSpread();
+
           this.verificarSincronizacionAudioItinerario();
           this.centrarMiniaturaActiva(this.paginaActual);
           this.precargarSiguienteVideo();
           this.precargarContenidoVentana(this.paginaActual);
 
           if (this.reproduciendoSlideshow) {
-            if (pagina?.esMapaAnimado && !this.modoRutaImagen) {
-              this.limpiarTimerSlideshow();
-            } else if (pagina?.tipoMedia === 'video' && this.reproducirVideosCompletos) {
-              this.limpiarTimerSlideshow();
-            } else {
+            const tieneVideo = this.paginaSpreadIzquierda?.tipoMedia === 'video' || this.paginaSpreadDerecha?.tipoMedia === 'video';
+            if (!tieneVideo) {
               this.reiniciarTimerSlideshow();
+            } else {
+              this.limpiarTimerSlideshow();
             }
           }
 
           this.cdr.detectChanges();
         }, 650);
       } else {
-        this.paginaActual = nuevaPagina;
-
-        const pagina = this.paginas[this.paginaActual];
-        if (pagina?.tipoMedia === 'video' || pagina?.tipoMedia === 'audio') {
-          this.bajarVolumenAudioViaje();
-        } else {
-          this.restaurarVolumenAudioViaje();
-        }
+        this.spreadActual = nuevoSpread;
+        this.paginaActual = nuevoSpread === 0 ? 0 : ((nuevoSpread - 1) * 2 + 1);
+        this.iniciarSecuenciaVideosSpread();
         this.verificarSincronizacionAudioItinerario();
         this.centrarMiniaturaActiva(this.paginaActual);
         this.precargarSiguienteVideo();
-        this.precargarContenidoVentana(this.paginaActual);
-
-        if (this.reproduciendoSlideshow) {
-          if (pagina?.esMapaAnimado && !this.modoRutaImagen) {
-            this.limpiarTimerSlideshow();
-          } else if (pagina?.tipoMedia === 'video' && this.reproducirVideosCompletos) {
-            this.limpiarTimerSlideshow();
-          } else {
-            this.reiniciarTimerSlideshow();
-          }
-        }
+        this.cdr.detectChanges();
       }
-      console.log('✅ Nueva página:', this.paginaActual);
-      this.cdr.detectChanges();
-    } else if (nuevaPagina >= this.paginas.length && this.contextoViaje?.itinerarioId && !this.contextoViaje.actividadId) {
-      console.log('📈 Fin del itinerario, cambiando a nivel viaje...');
-      this.cambiarANivelViaje();
-    } else if (nuevaPagina < 0 && this.contextoViaje?.itinerarioId && !this.contextoViaje.actividadId) {
-      console.log('📈 Inicio del itinerario, cambiando a nivel viaje...');
-      this.cambiarANivelViaje();
-    } else {
-      console.log('❌ No se puede cambiar de página, límite alcanzado');
     }
-  }
-
-  private async cambiarANivelViaje(): Promise<void> {
-    console.log('📈 Cambiando a nivel de viaje completo...');
-
-    const nuevoContexto = {
-      viajeId: this.contextoViaje!.viajeId
-    };
-
-    this.contextoViaje = nuevoContexto;
-    await this.cargarItinerariosDelViaje(nuevoContexto.viajeId);
-    await this.cargarDatosAlbum();
-
-    this.estado = 'abierto';
-    this.paginaActual = 0;
-    this.centrarMiniaturaActiva(0);
-
-    console.log('✅ Cambiado a nivel viaje completo');
   }
 
   cerrarLibro(): void {
     console.log('📕 Cerrando libro...');
+    this.detenerVideosActuales();
     this.estado = 'portada';
+    this.spreadActual = 0;
     this.paginaActual = 0;
   }
 
   irAPagina(index: number): void {
-    if (index >= 0 && index < this.paginas.length && index !== this.paginaActual) {
-      if (this.modoAlbumVintage && !this.hojaVolteando3D) {
-        this.paginaVolteoSaliente = this.paginas[this.paginaActual];
-        this.paginaVolteoEntrante = this.paginas[index];
-        this.direccionVolteo3D = index > this.paginaActual ? 'adelante' : 'atras';
-        this.hojaVolteando3D = true;
-
-        setTimeout(() => {
-          this.paginaActual = index;
-          this.hojaVolteando3D = false;
-          this.precargarContenidoVentana(this.paginaActual);
-          this.cdr.detectChanges();
-        }, 650);
-      } else {
+    if (index >= 0 && index < this.paginas.length) {
+      const targetSpread = index === 0 ? 0 : (Math.floor((index - 1) / 2) + 1);
+      if (targetSpread !== this.spreadActual || index !== this.paginaActual) {
+        this.detenerVideosActuales();
+        this.spreadActual = targetSpread;
         this.paginaActual = index;
         this.precargarContenidoVentana(this.paginaActual);
       }
@@ -2943,6 +2919,82 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
       this.centrarMiniaturaActiva(index);
       this.cdr.detectChanges();
+    }
+  }
+
+  toggleMuteVideos(event?: Event): void {
+    event?.stopPropagation();
+    this.videoMuted = !this.videoMuted;
+    const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
+    const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
+    if (vIzq) vIzq.muted = this.videoMuted;
+    if (vDer) vDer.muted = this.videoMuted;
+    this.cdr.detectChanges();
+  }
+
+  iniciarSecuenciaVideosSpread(): void {
+    this.detenerVideosActuales();
+
+    setTimeout(() => {
+      const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
+      const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
+
+      const tieneVideoIzq = this.paginaSpreadIzquierda?.tipoMedia === 'video' && !!vIzq;
+      const tieneVideoDer = this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer;
+
+      console.log('🎬 [Secuencia Videos] Spread:', this.spreadActual, '| Video Izq:', tieneVideoIzq, '| Video Der:', tieneVideoDer);
+
+      if (tieneVideoIzq && tieneVideoDer) {
+        // Regla 3.1: Reproducir el video IZQUIERDO primero (más antiguo)
+        console.log('▶️ [Video 1/2] Autoplay video izquierdo...');
+        vIzq.currentTime = 0;
+        vIzq.play().catch(err => console.warn('Autoplay video izquierdo:', err));
+      } else if (tieneVideoIzq) {
+        // Regla 3.3: Solo video izquierdo
+        console.log('▶️ [Video Único] Autoplay video izquierdo...');
+        vIzq.currentTime = 0;
+        vIzq.play().catch(err => console.warn('Autoplay video izquierdo:', err));
+      } else if (tieneVideoDer) {
+        // Regla 3.3: Solo video derecho
+        console.log('▶️ [Video Único] Autoplay video derecho...');
+        vDer.currentTime = 0;
+        vDer.play().catch(err => console.warn('Autoplay video derecho:', err));
+      }
+    }, 150);
+  }
+
+  onVideoIzquierdoTerminado(): void {
+    console.log('⏹️ Video izquierdo completado');
+    const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
+    const tieneVideoDer = this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer;
+
+    if (tieneVideoDer) {
+      // Regla 3.2: Una vez terminado el izquierdo, activar el video DERECHO (más reciente)
+      console.log('▶️ [Video 2/2] Encadenando autoplay del video derecho...');
+      vDer.currentTime = 0;
+      vDer.play().catch(err => console.warn('Autoplay video derecho:', err));
+    } else {
+      if (this.reproduciendoSlideshow) {
+        setTimeout(() => this.cambiarPagina(1), 1000);
+      }
+    }
+  }
+
+  onVideoDerechoTerminado(): void {
+    console.log('⏹️ Video derecho completado');
+    if (this.reproduciendoSlideshow) {
+      setTimeout(() => this.cambiarPagina(1), 1000);
+    }
+  }
+
+  detenerVideosActuales(): void {
+    const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
+    const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
+    if (vIzq) {
+      try { vIzq.pause(); } catch (e) {}
+    }
+    if (vDer) {
+      try { vDer.pause(); } catch (e) {}
     }
   }
 
@@ -3411,11 +3463,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // ==========================================
 
   get hayPaginaAnterior(): boolean {
-    return this.paginaActual > 0;
+    return this.spreadActual > 0;
   }
 
   get hayPaginaSiguiente(): boolean {
-    return this.paginaActual < this.paginas.length - 1;
+    return this.spreadActual < this.totalSpreads - 1;
   }
 
   get paginaActualData(): PaginaMedia | null {

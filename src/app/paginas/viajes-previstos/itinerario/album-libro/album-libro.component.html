@@ -826,10 +826,11 @@
 
                 <img *ngIf="pagIzq.tipoMedia === 'imagen'" [src]="pagIzq.url" [alt]="pagIzq.titulo" class="imagen-foto-vintage" loading="lazy" decoding="async" />
                 <div *ngIf="pagIzq.tipoMedia === 'video'" class="video-preview-vintage">
-                  <video *ngIf="pagIzq.url" [src]="pagIzq.url + '#t=0.5'" class="video-foto-vintage video-miniatura-estatica" preload="metadata" muted playsinline></video>
-                  <div class="play-overlay-vintage">
-                    <i class="fas fa-play"></i>
-                  </div>
+                  <video id="video-spread-izq" *ngIf="pagIzq.url" [src]="pagIzq.url" class="video-foto-vintage"
+                    playsinline [muted]="videoMuted" preload="auto" (ended)="onVideoIzquierdoTerminado()"></video>
+                  <button class="btn-sonido-video-vintage" (click)="toggleMuteVideos($event)" [title]="videoMuted ? 'Activar sonido' : 'Silenciar'">
+                    <i class="fas" [class.fa-volume-mute]="videoMuted" [class.fa-volume-up]="!videoMuted"></i>
+                  </button>
                 </div>
                 <!-- Miniatura de audio página izquierda -->
                 <div *ngIf="pagIzq.tipoMedia === 'audio'" class="audio-preview-vintage">
@@ -852,7 +853,7 @@
 
             <!-- Numeración difuminada esquina inferior izquierda -->
             <div class="numero-pagina-difuminado num-izq">
-              <span>Pág. {{ paginaActual }} / {{ paginas.length - 1 }}</span>
+              <span>Pág. {{ spreadActual === 0 ? 'Portada' : (spreadActual - 1) * 2 + 1 }} / {{ paginas.length - 1 }}</span>
             </div>
           </div>
         </div>
@@ -929,7 +930,13 @@
                 <span class="esquinera-foto inf-der"></span>
 
                 <img *ngIf="pagDer.tipoMedia === 'imagen'" [src]="pagDer.url" [alt]="pagDer.titulo" class="imagen-foto-vintage" loading="lazy" decoding="async" />
-                <video *ngIf="pagDer.tipoMedia === 'video'" [src]="pagDer.url" class="video-foto-vintage" controls (click)="$event.stopPropagation()"></video>
+                <div *ngIf="pagDer.tipoMedia === 'video'" class="video-preview-vintage">
+                  <video id="video-spread-der" *ngIf="pagDer.url" [src]="pagDer.url" class="video-foto-vintage"
+                    playsinline [muted]="videoMuted" preload="auto" (ended)="onVideoDerechoTerminado()"></video>
+                  <button class="btn-sonido-video-vintage" (click)="toggleMuteVideos($event)" [title]="videoMuted ? 'Activar sonido' : 'Silenciar'">
+                    <i class="fas" [class.fa-volume-mute]="videoMuted" [class.fa-volume-up]="!videoMuted"></i>
+                  </button>
+                </div>
                 
                 <!-- Reproductor de Audio Vintage -->
                 <div *ngIf="pagDer.tipoMedia === 'audio'" class="audio-vintage-box" (click)="$event.stopPropagation()">
@@ -951,7 +958,7 @@
 
             <!-- Numeración difuminada esquina inferior derecha -->
             <div class="numero-pagina-difuminado num-der">
-              <span>Pág. {{ paginaActual + 1 }} / {{ paginas.length - 1 }}</span>
+              <span>Pág. {{ spreadActual === 0 ? 1 : (spreadActual - 1) * 2 + 2 }} / {{ paginas.length - 1 }}</span>
             </div>
           </div>
         </div>
