@@ -127,29 +127,37 @@
       <div class="textura-papel-antiguo" aria-hidden="true"></div>
       <div class="sombra-lomo-der" aria-hidden="true"></div>
 
-      <div class="contenido-vintage-der" *ngIf="paginas[0] as primerPag">
-        <!-- Detalle de Itinerario / Carta de Bienvenida -->
-        <div class="vintage-carta-full" *ngIf="primerPag.esCartaManuscrita || primerPag.esIndice">
-          <h3 class="titulo-carta-vintage">{{ primerPag.titulo || ('ITINERARIO: ' + (infoViaje?.nombre || 'RUTA')) }}</h3>
-          <p class="fecha-carta-vintage" *ngIf="primerPag.fecha">{{ formatearFecha(primerPag.fecha) }}</p>
-          <div class="texto-carta-vintage">{{ primerPag.descripcion || getDescripcionContextual() }}</div>
-          <div class="firma-vintage"><em>— Diario de viaje —</em></div>
-        </div>
+      <div class="contenido-vintage-der primer-pagina-intro-layout">
+        <div class="marco-pergamino-decorativo">
+          <span class="adorno-esquina sup-izq"></span>
+          <span class="adorno-esquina sup-der"></span>
+          <span class="adorno-esquina inf-izq"></span>
+          <span class="adorno-esquina inf-der"></span>
 
-        <div class="foto-vintage-container" *ngIf="!primerPag.esCartaManuscrita && !primerPag.esIndice">
-          <div class="foto-polaroid-vintage">
-            <span class="esquinera-foto sup-izq"></span>
-            <span class="esquinera-foto sup-der"></span>
-            <span class="esquinera-foto inf-izq"></span>
-            <span class="esquinera-foto inf-der"></span>
-            <img *ngIf="primerPag.tipoMedia === 'imagen'" [src]="primerPag.url" [alt]="primerPag.titulo" class="imagen-foto-vintage" />
-            <div *ngIf="primerPag.tipoMedia === 'video'" class="video-preview-vintage">
-              <video *ngIf="primerPag.url" [src]="primerPag.url + '#t=0.5'" class="video-foto-vintage" muted playsinline></video>
+          <!-- Resumen principal solicitado -->
+          <h2 class="titulo-intro-vintage">{{ (infoViaje?.nombre || 'ESPAÑA').toUpperCase() }} - {{ (infoViaje?.fechaInicio | date:'dd/MM/yyyy') || '01/07/2026' }} - {{ distanciaTotalKm | number:'1.1-1' }} KM</h2>
+          <div class="linea-divisoria-oro"></div>
+
+          <div class="estadisticas-intro-vintage">
+            <div class="stat-item-vintage">
+              <strong>{{ totalRecuerdosDisplay }}</strong>
+              <span>Recuerdos</span>
+            </div>
+            <div class="stat-item-vintage">
+              <strong>{{ listaItinerarios.length || 1 }}</strong>
+              <span>Itinerarios</span>
+            </div>
+            <div class="stat-item-vintage">
+              <strong>{{ distanciaTotalKm | number:'1.1-1' }} km</strong>
+              <span>Recorrido</span>
             </div>
           </div>
-          <div class="pie-foto-vintage" *ngIf="primerPag.titulo || primerPag.fecha">
-            <h4 class="titulo-pie-vintage">{{ primerPag.titulo }}</h4>
-            <p class="fecha-pie-vintage" *ngIf="primerPag.fecha">{{ formatearFecha(primerPag.fecha) }}</p>
+
+          <p class="descripcion-intro-vintage">{{ getDescripcionContextual() }}</p>
+
+          <div class="btn-comenzar-itinerario-vintage">
+            <span>Abrir Itinerario</span>
+            <i class="fas fa-chevron-right"></i>
           </div>
         </div>
 
@@ -755,7 +763,7 @@
       <div class="mesa-madera-fondo" aria-hidden="true"></div>
 
       <!-- Contenedor del Libro 3D Abierto -->
-      <div class="libro-vintage-abierto-3d" [class.animando-volteo]="hojaVolteando3D">
+      <div class="libro-vintage-abierto-3d" [class.spread-intro-primera-pagina]="spreadActual === 0" [class.animando-volteo]="hojaVolteando3D">
         
         <!-- Borde volumétrico de hojas apiladas a la izquierda -->
         <div class="grosor-hojas grosor-izq" aria-hidden="true"></div>
@@ -873,8 +881,44 @@
           <div class="sombra-lomo-der" aria-hidden="true"></div>
 
           <div class="contenido-vintage-der">
-            <!-- Caso: Índice -->
-            <div class="vintage-indice-grid" *ngIf="pagDer.esIndice">
+            <!-- Caso Spread 0: Primera Página Introductoria Compacta Centrada -->
+            <div class="primer-pagina-intro-layout" *ngIf="spreadActual === 0">
+              <div class="marco-pergamino-decorativo">
+                <span class="adorno-esquina sup-izq"></span>
+                <span class="adorno-esquina sup-der"></span>
+                <span class="adorno-esquina inf-izq"></span>
+                <span class="adorno-esquina inf-der"></span>
+
+                <!-- Resumen principal solicitado -->
+                <h2 class="titulo-intro-vintage">{{ (infoViaje?.nombre || 'ESPAÑA').toUpperCase() }} - {{ (infoViaje?.fechaInicio | date:'dd/MM/yyyy') || '01/07/2026' }} - {{ distanciaTotalKm | number:'1.1-1' }} KM</h2>
+                <div class="linea-divisoria-oro"></div>
+
+                <div class="estadisticas-intro-vintage">
+                  <div class="stat-item-vintage">
+                    <strong>{{ totalRecuerdosDisplay }}</strong>
+                    <span>Recuerdos</span>
+                  </div>
+                  <div class="stat-item-vintage">
+                    <strong>{{ listaItinerarios.length || 1 }}</strong>
+                    <span>Itinerarios</span>
+                  </div>
+                  <div class="stat-item-vintage">
+                    <strong>{{ distanciaTotalKm | number:'1.1-1' }} km</strong>
+                    <span>Recorrido</span>
+                  </div>
+                </div>
+
+                <p class="descripcion-intro-vintage">{{ getDescripcionContextual() }}</p>
+
+                <div class="btn-comenzar-itinerario-vintage" (click)="cambiarPagina(1); $event.stopPropagation()">
+                  <span>Abrir Itinerario</span>
+                  <i class="fas fa-chevron-right"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- Caso: Índice (spreadActual > 0) -->
+            <div class="vintage-indice-grid" *ngIf="spreadActual > 0 && pagDer.esIndice">
               <h3 class="titulo-indice-vintage"><i class="fas fa-compass"></i> Índice de Itinerarios</h3>
               <div class="itinerarios-vintage-lista">
                 <button *ngFor="let it of listaItinerarios" class="btn-itinerario-vintage" (click)="verAlbumItinerario(it.id); $event.stopPropagation()">
@@ -884,16 +928,16 @@
               </div>
             </div>
 
-            <!-- Caso: Carta Manuscrita -->
-            <div class="vintage-carta-full" *ngIf="pagDer.esCartaManuscrita">
+            <!-- Caso: Carta Manuscrita (spreadActual > 0) -->
+            <div class="vintage-carta-full" *ngIf="spreadActual > 0 && pagDer.esCartaManuscrita">
               <h3 class="titulo-carta-vintage">{{ pagDer.titulo }}</h3>
               <p class="fecha-carta-vintage" *ngIf="pagDer.fecha">{{ formatearFecha(pagDer.fecha) }}</p>
               <div class="texto-carta-vintage">{{ pagDer.descripcion }}</div>
               <div class="firma-vintage"><em>— Diario de viaje —</em></div>
             </div>
 
-            <!-- Caso: Mapa de Tramo (Imagen o Animado) -->
-            <div class="vintage-mapa-box" *ngIf="pagDer.esMapaAnimado">
+            <!-- Caso: Mapa de Tramo (spreadActual > 0) -->
+            <div class="vintage-mapa-box" *ngIf="spreadActual > 0 && pagDer.esMapaAnimado">
               <div class="header-mapa-vintage">
                 <span class="badge-vintage-distancia"><i class="fas fa-route"></i> Recorrido: {{ pagDer.distanciaTramoKm | number:'1.1-2' }} km</span>
               </div>
@@ -921,8 +965,8 @@
               </div>
             </div>
 
-            <!-- Caso: Foto / Vídeo / Audio Estándar -->
-            <div class="foto-vintage-container" *ngIf="!pagDer.esIndice && !pagDer.esCartaManuscrita && !pagDer.esMapaAnimado">
+            <!-- Caso: Foto / Vídeo / Audio Estándar (spreadActual > 0) -->
+            <div class="foto-vintage-container" *ngIf="spreadActual > 0 && !pagDer.esIndice && !pagDer.esCartaManuscrita && !pagDer.esMapaAnimado">
               <div class="foto-polaroid-vintage foto-principal">
                 <span class="esquinera-foto sup-izq"></span>
                 <span class="esquinera-foto sup-der"></span>

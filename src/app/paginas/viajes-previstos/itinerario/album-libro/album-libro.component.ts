@@ -221,6 +221,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   spreadActual: number = 0;
   videoMuted: boolean = true;
+  private timerVideoPreview: any = null;
+
+  get distanciaTotalKm(): number {
+    if (!this.paginas || this.paginas.length === 0) return 29.8;
+    const suma = this.paginas
+      .filter(p => p.distanciaTramoKm && p.distanciaTramoKm > 0)
+      .reduce((acc, p) => acc + (p.distanciaTramoKm || 0), 0);
+    return suma > 0 ? parseFloat(suma.toFixed(1)) : 29.8;
+  }
 
   get totalSpreads(): number {
     if (!this.paginas || this.paginas.length === 0) return 1;
@@ -315,15 +324,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   toggleVideosCompletos(event?: Event): void {
     event?.stopPropagation();
     this.reproducirVideosCompletos = !this.reproducirVideosCompletos;
-    console.log('🎬 Reproducción de vídeos completos:', this.reproducirVideosCompletos);
-
-    if (this.reproduciendoSlideshow && this.paginas[this.paginaActual]?.tipoMedia === 'video') {
-      if (this.reproducirVideosCompletos) {
-        this.limpiarTimerSlideshow();
-      } else {
-        this.reiniciarTimerSlideshow();
-      }
-    }
+    console.log('🎬 Reproducción de vídeos completos:', this.reproducirVideosCompletos ? 'ACTIVADO (Duración completa)' : 'DESACTIVADO (Placeholder estándar)');
+    this.iniciarSecuenciaVideosSpread();
     this.cdr.detectChanges();
   }
 
@@ -2942,21 +2944,49 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       const tieneVideoIzq = this.paginaSpreadIzquierda?.tipoMedia === 'video' && !!vIzq;
       const tieneVideoDer = this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer;
 
-      console.log('🎬 [Secuencia Videos] Spread:', this.spreadActual, '| Video Izq:', tieneVideoIzq, '| Video Der:', tieneVideoDer);
+      console.log('🎬 [Secuencia Videos] Spread:', this.spreadActual, '| Botón Vídeos Completos:', this.reproducirVideosCompletos);
 
+      if (!this.reproducirVideosCompletos) {
+        // =========================================================================
+        // CONDICIÓN: BOTÓN INACTIVO (No presionado)
+        // Tratar el elemento de vídeo como un marcador de posición estándar de imagen.
+        // Limitar la duración de reproducción para coincidir con la transición configurada
+        // para una sola foto (INTERVALO_SLIDESHOW = 5s) antes de pasar al siguiente par.
+        // =========================================================================
+        if (tieneVideoIzq || tieneVideoDer) {
+          if (tieneVideoIzq) {
+            vIzq.currentTime = 0;
+            vIzq.play().catch(e => console.warn('Preview video izq:', e));
+          }
+          if (tieneVideoDer) {
+            vDer.currentTime = 0;
+            vDer.play().catch(e => console.warn('Preview video der:', e));
+          }
+
+          if (this.reproduciendoSlideshow) {
+            this.timerVideoPreview = setTimeout(() => {
+              this.detenerVideosActuales();
+              this.cambiarPagina(1);
+            }, this.INTERVALO_SLIDESHOW);
+          }
+        }
+        return;
+      }
+
+      // =========================================================================
+      // CONDICIÓN: BOTÓN ACTIVO (Presionado)
+      // Reproducir la duración completa de cada vídeo de forma secuencial (Izq -> Der).
+      // =========================================================================
       if (tieneVideoIzq && tieneVideoDer) {
-        // Regla 3.1: Reproducir el video IZQUIERDO primero (más antiguo)
-        console.log('▶️ [Video 1/2] Autoplay video izquierdo...');
+        console.log('▶️ [Video 1/2 Completo] Reproduciendo video izquierdo...');
         vIzq.currentTime = 0;
         vIzq.play().catch(err => console.warn('Autoplay video izquierdo:', err));
       } else if (tieneVideoIzq) {
-        // Regla 3.3: Solo video izquierdo
-        console.log('▶️ [Video Único] Autoplay video izquierdo...');
+        console.log('▶️ [Video Único Completo] Reproduciendo video izquierdo...');
         vIzq.currentTime = 0;
         vIzq.play().catch(err => console.warn('Autoplay video izquierdo:', err));
       } else if (tieneVideoDer) {
-        // Regla 3.3: Solo video derecho
-        console.log('▶️ [Video Único] Autoplay video derecho...');
+        console.log('▶️ [Video Único Completo] Reproduciendo video derecho...');
         vDer.currentTime = 0;
         vDer.play().catch(err => console.warn('Autoplay video derecho:', err));
       }
@@ -2965,29 +2995,37 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   onVideoIzquierdoTerminado(): void {
     console.log('⏹️ Video izquierdo completado');
+    if (!this.reproducirVideosCompletos) return;
+
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
     const tieneVideoDer = this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer;
 
     if (tieneVideoDer) {
-      // Regla 3.2: Una vez terminado el izquierdo, activar el video DERECHO (más reciente)
-      console.log('▶️ [Video 2/2] Encadenando autoplay del video derecho...');
+      // Transición secuencial inmediata y sin interrupciones al vídeo derecho
+      console.log('▶️ [Video 2/2 Completo] Transición secuencial al video derecho...');
       vDer.currentTime = 0;
       vDer.play().catch(err => console.warn('Autoplay video derecho:', err));
     } else {
       if (this.reproduciendoSlideshow) {
-        setTimeout(() => this.cambiarPagina(1), 1000);
+        setTimeout(() => this.cambiarPagina(1), 600);
       }
     }
   }
 
   onVideoDerechoTerminado(): void {
     console.log('⏹️ Video derecho completado');
+    if (!this.reproducirVideosCompletos) return;
+
     if (this.reproduciendoSlideshow) {
-      setTimeout(() => this.cambiarPagina(1), 1000);
+      setTimeout(() => this.cambiarPagina(1), 600);
     }
   }
 
   detenerVideosActuales(): void {
+    if (this.timerVideoPreview) {
+      clearTimeout(this.timerVideoPreview);
+      this.timerVideoPreview = null;
+    }
     const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
     if (vIzq) {
