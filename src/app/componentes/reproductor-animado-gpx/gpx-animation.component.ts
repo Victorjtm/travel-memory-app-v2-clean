@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, AfterViewInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, ViewEncapsulation, ViewChild, ElementRef } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges, AfterViewInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, ViewEncapsulation, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DragDropModule } from '@angular/cdk/drag-drop';
@@ -30,7 +30,7 @@ import { environment } from '../../../environments/environment';
     ])
   ]
 })
-export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
+export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, OnDestroy {
   @ViewChild('mapElement', { static: false }) mapElement!: ElementRef<HTMLDivElement>;
 
   @Input() gpxText!: string;
@@ -143,6 +143,8 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
   isPlaying = false;
   speed = 2; // Multiplicador de velocidad
   progress = 0;
+  animationStarted = false;
+  isFinished = false;
   cargandoMapa: boolean = true;
 
   // Real-time Metrics
@@ -229,6 +231,34 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
 
   public hasCanonicalStats: boolean = false;
 
+  resetAnimationState(): void {
+    console.log('🔄 [GPX Reset] Restableciendo estado completo de animación (progress=0, animationStarted=false, isFinished=false)');
+    this.stopAnimation();
+    this.progress = 0;
+    this.currentIndex = 0;
+    this.animationStarted = false;
+    this.isFinished = false;
+    this.isPlaying = false;
+    this.lastTimestamp = 0;
+    this.currentDistKm = 0;
+    this.currentSteps = 0;
+    this.currentTimeSeg = 0;
+    this.smoothedKmh = 0;
+    this.autoZoomPaused = false;
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if ((changes['gpxText'] && !changes['gpxText'].firstChange) ||
+        (changes['transportSegments'] && !changes['transportSegments'].firstChange)) {
+      console.log('🔄 [GpxAnimationComponent] Cambio en gpxText/transportSegments detectado. Reiniciando animación desde cero...');
+      this.resetAnimationState();
+      this.ngOnInit();
+      if (this.map) {
+        this.initMap();
+      }
+    }
+  }
+
   constructor(
     private animationService: GpxAnimationService,
     private archivoService: ArchivoService,
@@ -239,6 +269,7 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
   ) { }
 
   async ngOnInit() {
+    this.resetAnimationState();
     console.log(`🎬 [GpxAnimationComponent] Iniciando animación... (Modo Recorrido Guiado: ${this.modoRecorridoGuiado})`);
     console.log('📊 [GpxAnimationComponent] Datos de transporte recibidos:', this.transportSegments);
 
@@ -964,6 +995,7 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private animate() {
     if (!this.isPlaying) return;
+    this.animationStarted = true;
 
     this.animationFrameId = requestAnimationFrame((timestamp) => {
       this.update(timestamp);
@@ -1125,8 +1157,12 @@ export class GpxAnimationComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.currentIndex >= this.points.length - 1) {
       this.isPlaying = false;
       this.currentIndex = this.points.length - 1;
-      // Notificar que la animación ha terminado (para auto-avance en el álbum)
-      this.onAnimacionCompletada.emit();
+      this.progress = 100;
+      if (!this.isFinished && this.animationStarted) {
+        this.isFinished = true;
+        console.log('🏁 [GPX Completado] Trayecto terminado. Emitiendo onAnimacionCompletada');
+        this.onAnimacionCompletada.emit();
+      }
     }
 
     this.renderCurrentFrame();

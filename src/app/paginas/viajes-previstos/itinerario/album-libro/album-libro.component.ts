@@ -222,6 +222,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   spreadActual: number = 0;
   videoMuted: boolean = true;
   private timerVideoPreview: any = null;
+  mapaRenderKey: string = 'map_init';
+
+  reiniciarInstanciaMapa(): void {
+    this.mapaRenderKey = '';
+    this.cdr.detectChanges();
+    setTimeout(() => {
+      this.mapaRenderKey = `map_s${this.spreadActual}_p${this.paginaActual}_${Date.now()}`;
+      this.cdr.detectChanges();
+    }, 60);
+  }
 
   get distanciaTotalKm(): number {
     if (!this.paginas || this.paginas.length === 0) return 29.8;
@@ -2701,6 +2711,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
         this.spreadActual = 0;
         this.paginaActual = 0;
+        this.reiniciarInstanciaMapa();
         this.precargarSiguienteVideo();
         this.precargarContenidoVentana(0);
         this.iniciarSecuenciaVideosSpread();
@@ -2859,6 +2870,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.paginaActual = nuevoSpread === 0 ? 0 : ((nuevoSpread - 1) * 2 + 1);
 
         this.detenerVideosActuales();
+        this.reiniciarInstanciaMapa();
 
         setTimeout(() => {
           this.hojaVolteando3D = false;
@@ -2887,6 +2899,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       } else {
         this.spreadActual = nuevoSpread;
         this.paginaActual = nuevoSpread === 0 ? 0 : ((nuevoSpread - 1) * 2 + 1);
+        this.reiniciarInstanciaMapa();
         this.iniciarSecuenciaVideosSpread();
         this.verificarSincronizacionAudioItinerario();
         this.centrarMiniaturaActiva(this.paginaActual);
@@ -2911,6 +2924,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.detenerVideosActuales();
         this.spreadActual = targetSpread;
         this.paginaActual = index;
+        this.reiniciarInstanciaMapa();
         this.precargarContenidoVentana(this.paginaActual);
       }
       const pagina = this.paginas[this.paginaActual];
@@ -2963,12 +2977,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             vDer.play().catch(e => console.warn('Preview video der:', e));
           }
 
-          if (this.reproduciendoSlideshow) {
-            this.timerVideoPreview = setTimeout(() => {
-              this.detenerVideosActuales();
+          // Detener el vídeo tras la duración asignada a una foto (5s)
+          this.timerVideoPreview = setTimeout(() => {
+            this.detenerVideosActuales();
+            if (this.reproduciendoSlideshow) {
               this.cambiarPagina(1);
-            }, this.INTERVALO_SLIDESHOW);
-          }
+            }
+          }, this.INTERVALO_SLIDESHOW);
         }
         return;
       }

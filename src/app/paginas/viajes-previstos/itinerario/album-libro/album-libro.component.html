@@ -616,7 +616,7 @@
 
           <!-- Modo 2: Ruta Animada con Movimiento -->
           <app-gpx-animation 
-            *ngIf="!modoRutaImagen && paginaActual.trackGpx"
+            *ngIf="mapaRenderKey && !modoRutaImagen && paginaActual.trackGpx"
             [gpxText]="paginaActual.trackGpx" 
             [multimedia]="paginaActual.multimedia || []"
             [transportSegments]="paginaActual.transportSegments || []"
@@ -950,7 +950,7 @@
 
                 <!-- Modo 2: Ruta Animada con Movimiento -->
                 <app-gpx-animation 
-                  *ngIf="!modoRutaImagen && pagDer.trackGpx"
+                  *ngIf="mapaRenderKey && !modoRutaImagen && pagDer.trackGpx"
                   [gpxText]="pagDer.trackGpx" 
                   [multimedia]="pagDer.multimedia || []"
                   [transportSegments]="pagDer.transportSegments || []"
@@ -1334,7 +1334,7 @@
         <div class="header-mapa-fullscreen">
           <h3><i class="fas fa-route"></i> {{ paginaActualData?.titulo }}</h3>
         </div>
-        <div class="mapa-fullscreen-container" *ngIf="paginaActualData?.trackGpx">
+        <div class="mapa-fullscreen-container" *ngIf="mapaRenderKey && paginaActualData?.trackGpx">
           <app-gpx-animation 
             [gpxText]="paginaActualData!.trackGpx!" 
             [multimedia]="paginaActualData?.multimedia || []"
@@ -1501,7 +1501,7 @@
 
                 <!-- Modo 2: Ruta Animada con Movimiento -->
                 <app-gpx-animation 
-                  *ngIf="!modoRutaImagen && pagDer.trackGpx"
+                  *ngIf="mapaRenderKey && !modoRutaImagen && pagDer.trackGpx"
                   [gpxText]="pagDer.trackGpx" 
                   [multimedia]="pagDer.multimedia || []"
                   [transportSegments]="pagDer.transportSegments || []"
