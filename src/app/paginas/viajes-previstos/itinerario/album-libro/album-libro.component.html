@@ -763,16 +763,75 @@
       <div class="mesa-madera-fondo" aria-hidden="true"></div>
 
       <!-- Contenedor del Libro 3D Abierto -->
-      <div class="libro-vintage-abierto-3d" [class.spread-intro-primera-pagina]="spreadActual === 0" [class.animando-volteo]="hojaVolteando3D">
+      <div class="libro-vintage-abierto-3d" 
+        [class.spread-intro-primera-pagina]="spreadActualData?.tipo === 'intro'" 
+        [class.spread-mapa-panoramico]="spreadActualData?.tipo === 'mapa'" 
+        [class.animando-volteo]="hojaVolteando3D">
         
         <!-- Borde volumétrico de hojas apiladas a la izquierda -->
-        <div class="grosor-hojas grosor-izq" aria-hidden="true"></div>
+        <div class="grosor-hojas grosor-izq" aria-hidden="true" *ngIf="spreadActualData?.tipo !== 'mapa'"></div>
 
-        <!-- ============================== -->
-        <!-- PÁGINA IZQUIERDA (Página n-1 o Intro) -->
-        <!-- ============================== -->
-        <div class="hoja-vintage-spread pagina-izquierda-3d" (click)="hayPaginaAnterior && cambiarPagina(-1)"
-          [title]="hayPaginaAnterior ? 'Click para ir a la página anterior' : ''">
+        <!-- ======================================================== -->
+        <!-- MODO ITINERARIO: MAPA PANORÁMICO QUE CUBRE AMBAS PÁGINAS -->
+        <!-- ======================================================== -->
+        <div class="lienzo-mapa-doble-pagina" *ngIf="spreadActualData?.tipo === 'mapa' && spreadActualData?.paginaMapa as pagMapa"
+          (click)="hayPaginaSiguiente && cambiarPagina(1)"
+          title="Click para ir a las siguientes páginas">
+          <div class="textura-papel-antiguo" aria-hidden="true"></div>
+          
+          <div class="header-mapa-panoramico">
+            <h3 class="titulo-itinerario-mapa">
+              <i class="fas fa-route"></i>
+              <span>{{ pagMapa.titulo || 'Itinerario de Ruta' }}</span>
+              <span class="badge-vintage-distancia" *ngIf="pagMapa.distanciaTramoKm">
+                {{ pagMapa.distanciaTramoKm | number:'1.1-2' }} km
+              </span>
+            </h3>
+            <p class="fecha-itinerario-mapa" *ngIf="pagMapa.fecha">{{ formatearFecha(pagMapa.fecha) }}</p>
+          </div>
+
+          <div class="mapa-panoramico-wrapper">
+            <!-- Modo 1: Ruta en Imagen Estática -->
+            <div *ngIf="modoRutaImagen && pagMapa.trackGpx" class="mapa-estatico-vintage-view" 
+              (click)="abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()" 
+              title="Hacer clic para ver animación a pantalla completa">
+              <app-mini-mapa-gpx [trackGpx]="pagMapa.trackGpx" [fullPage]="true" [distanciaKm]="pagMapa.distanciaTramoKm" [transportMode]="pagMapa.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
+              <div class="mapa-hint-play-overlay"><i class="fas fa-play"></i> Ver animación</div>
+            </div>
+
+            <!-- Modo 2: Ruta Animada con Movimiento -->
+            <app-gpx-animation 
+              *ngIf="mapaRenderKey && !modoRutaImagen && pagMapa.trackGpx"
+              [gpxText]="pagMapa.trackGpx" 
+              [multimedia]="pagMapa.multimedia || []"
+              [transportSegments]="pagMapa.transportSegments || []"
+              [visualSessionData]="pagMapa.visualSessionData"
+              [isHighFidelityMode]="pagMapa.isHighFidelityMode || false"
+              [modoRecorridoGuiado]="modoGuiadoActivo"
+              [interactiveMode]="false"
+              [autoPlay]="true"
+              (onAnimacionCompletada)="onFinAnimacionMapa()"
+              (onCerrar)="onFinAnimacionMapa()">
+            </app-gpx-animation>
+          </div>
+
+          <!-- Pliegue central sutil del lomo sobre el mapa -->
+          <div class="pliegue-central-mapa-overlay" aria-hidden="true"></div>
+
+          <div class="numero-pagina-difuminado num-der">
+            <span>Ruta: {{ pagMapa.distanciaTramoKm ? (pagMapa.distanciaTramoKm | number:'1.1-1') + ' km' : 'Itinerario' }}</span>
+          </div>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- MODO FOTO / INTRO: PÁGINA IZQUIERDA Y DERECHA ESTÁNDAR   -->
+        <!-- ======================================================== -->
+        <ng-container *ngIf="spreadActualData?.tipo !== 'mapa'">
+          <!-- ============================== -->
+          <!-- PÁGINA IZQUIERDA (Página n-1 o Intro) -->
+          <!-- ============================== -->
+          <div class="hoja-vintage-spread pagina-izquierda-3d" (click)="hayPaginaAnterior && cambiarPagina(-1)"
+            [title]="hayPaginaAnterior ? 'Click para ir a la página anterior' : ''">
           <div class="textura-papel-antiguo" aria-hidden="true"></div>
           <div class="sombra-lomo-izq" aria-hidden="true"></div>
 
@@ -861,7 +920,7 @@
 
             <!-- Numeración difuminada esquina inferior izquierda -->
             <div class="numero-pagina-difuminado num-izq">
-              <span>Pág. {{ spreadActual === 0 ? 'Portada' : (spreadActual - 1) * 2 + 1 }} / {{ paginas.length - 1 }}</span>
+              <span>Pág. {{ spreadActualData?.tipo === 'intro' ? 'Portada' : (spreadActualData?.indices ? spreadActualData!.indices[0] : 1) }} / {{ paginas.length - 1 }}</span>
             </div>
           </div>
         </div>
@@ -1002,13 +1061,14 @@
 
             <!-- Numeración difuminada esquina inferior derecha -->
             <div class="numero-pagina-difuminado num-der">
-              <span>Pág. {{ spreadActual === 0 ? 1 : (spreadActual - 1) * 2 + 2 }} / {{ paginas.length - 1 }}</span>
+              <span>Pág. {{ spreadActualData?.indices && spreadActualData!.indices.length > 1 ? spreadActualData!.indices[1] : (spreadActualData?.indices ? spreadActualData!.indices[0] : 1) }} / {{ paginas.length - 1 }}</span>
             </div>
           </div>
         </div>
+        </ng-container>
 
         <!-- Borde volumétrico de hojas apiladas a la derecha -->
-        <div class="grosor-hojas grosor-der" aria-hidden="true"></div>
+        <div class="grosor-hojas grosor-der" aria-hidden="true" *ngIf="spreadActualData?.tipo !== 'mapa'"></div>
 
         <!-- ============================================== -->
         <!-- HOJA 3D VOLTEANDO FÍSICAMENTE (PAGE FLIP 3D)  -->
@@ -1144,7 +1204,7 @@
           <button *ngFor="let pagina of paginas; let i = index" 
             [id]="'thumb-item-' + i"
             class="miniatura-card"
-            [class.activo]="i === paginaActual"
+            [class.activo]="estaMiniaturaActiva(i)"
             [class.indice]="pagina.esIndice"
             [class.carta]="pagina.esCartaManuscrita"
             [class.mapa]="pagina.esMapaAnimado"

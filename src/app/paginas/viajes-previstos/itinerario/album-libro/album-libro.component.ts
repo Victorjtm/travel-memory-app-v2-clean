@@ -65,6 +65,14 @@ interface PaginaMedia {
   itinerarioId?: number;
 }
 
+export interface SpreadLibro {
+  tipo: 'intro' | 'mapa' | 'fotos';
+  indices: number[];
+  paginaIzquierda: PaginaMedia | null;
+  paginaDerecha: PaginaMedia | null;
+  paginaMapa?: PaginaMedia | null;
+}
+
 interface ContextoViaje {
   viajeId: number;
   itinerarioId?: number;
@@ -241,28 +249,93 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     return suma > 0 ? parseFloat(suma.toFixed(1)) : 29.8;
   }
 
+  spreads: SpreadLibro[] = [];
+
+  construirSpreads(): void {
+    if (!this.paginas || this.paginas.length === 0) {
+      this.spreads = [];
+      return;
+    }
+
+    const nuevosSpreads: SpreadLibro[] = [];
+
+    // Spread 0: Siempre la carta introductoria (paginas[0])
+    nuevosSpreads.push({
+      tipo: 'intro',
+      indices: [0],
+      paginaIzquierda: null,
+      paginaDerecha: this.paginas[0] || null
+    });
+
+    let i = 1;
+    while (i < this.paginas.length) {
+      const pag = this.paginas[i];
+
+      if (pag.esMapaAnimado) {
+        // REGLA 1: MODO ITINERARIO (MAPAS ANIMADOS)
+        // Bloque único de pantalla completa que CUBRE AMBAS PÁGINAS (Izquierda y Derecha como un solo lienzo).
+        // Durante un itinerario, NO se renderiza ninguna foto complementaria al lado.
+        // Al pasar de página, avanza limpiamente al siguiente elemento disponible (+1).
+        nuevosSpreads.push({
+          tipo: 'mapa',
+          indices: [i],
+          paginaIzquierda: null,
+          paginaDerecha: null,
+          paginaMapa: pag
+        });
+        i++;
+      } else {
+        // REGLA 2: MODO FOTO (FOTOS Y VÍDEOS)
+        // Maquetación de doble página estándar: Elemento N a la izquierda, Elemento N+1 a la derecha.
+        const pagIzq = pag;
+        let pagDer: PaginaMedia | null = null;
+        const indices = [i];
+
+        if (i + 1 < this.paginas.length && !this.paginas[i + 1].esMapaAnimado) {
+          pagDer = this.paginas[i + 1];
+          indices.push(i + 1);
+          i += 2; // Avanza estrictamente de dos en dos (+2)
+        } else {
+          // Si el siguiente elemento es un mapa animado o el fin del array, este pliego muestra solo esta foto
+          i += 1;
+        }
+
+        nuevosSpreads.push({
+          tipo: 'fotos',
+          indices,
+          paginaIzquierda: pagIzq,
+          paginaDerecha: pagDer
+        });
+      }
+    }
+
+    this.spreads = nuevosSpreads;
+    console.log(`📚 [Spreads Dinámicos] Generados ${this.spreads.length} pliegos para ${this.paginas.length} páginas`);
+  }
+
   get totalSpreads(): number {
-    if (!this.paginas || this.paginas.length === 0) return 1;
-    // Spread 0: Izquierda = Guarda interior / portada, Derecha = paginas[0] (Carta "ITINERARIO: ESPAÑA")
-    // Spreads 1..N: Contienen 2 fotos completamente nuevas cada uno (paginas[1] y paginas[2], paginas[3] y paginas[4], etc.)
-    const elementosRestantes = Math.max(0, this.paginas.length - 1);
-    return 1 + Math.ceil(elementosRestantes / 2);
+    return this.spreads.length > 0 ? this.spreads.length : 1;
+  }
+
+  get spreadActualData(): SpreadLibro | null {
+    if (this.spreads.length === 0 && this.paginas && this.paginas.length > 0) {
+      this.construirSpreads();
+    }
+    if (this.spreadActual >= 0 && this.spreadActual < this.spreads.length) {
+      return this.spreads[this.spreadActual];
+    }
+    return null;
   }
 
   get paginaSpreadIzquierda(): PaginaMedia | null {
-    if (this.spreadActual === 0) {
-      return null; // En la apertura (Spread 0), la izquierda es la guarda interior de la tapa
-    }
-    const idx = (this.spreadActual - 1) * 2 + 1;
-    return (idx < this.paginas.length) ? this.paginas[idx] : null;
+    return this.spreadActualData?.paginaIzquierda || null;
   }
 
   get paginaSpreadDerecha(): PaginaMedia | null {
-    if (this.spreadActual === 0) {
-      return this.paginas[0] || null; // En la apertura (Spread 0), la derecha es la Carta "ITINERARIO: ESPAÑA"
+    if (this.spreadActualData?.tipo === 'intro') {
+      return this.paginas[0] || null;
     }
-    const idx = (this.spreadActual - 1) * 2 + 2;
-    return (idx < this.paginas.length) ? this.paginas[idx] : null;
+    return this.spreadActualData?.paginaDerecha || null;
   }
 
   get paginaMostradaIzquierda(): PaginaMedia | null {
@@ -271,6 +344,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   get paginaMostradaDerecha(): PaginaMedia | null {
     return this.paginaSpreadDerecha;
+  }
+
+  estaMiniaturaActiva(index: number): boolean {
+    const spread = this.spreadActualData;
+    if (!spread) return index === this.paginaActual;
+    return spread.indices.includes(index);
   }
 
   toggleModoVintage(): void {
@@ -1755,6 +1834,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     // Guardar paginas base y generar mapas animados según configuración
     this.paginasBase = paginasFinales;
     this.paginas = await this.generarPaginasConAnimaciones(this.paginasBase);
+    this.construirSpreads();
 
     console.log('📖 Páginas multimedia creadas:', this.paginas.length);
     console.log('📊 Tipos de archivos:', this.obtenerEstadisticasTipos());
@@ -1793,6 +1873,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.isLoading = true;
     try {
       this.paginas = await this.generarPaginasConAnimaciones(this.paginasBase);
+      this.construirSpreads();
       if (this.paginaActual >= this.paginas.length) {
         this.paginaActual = Math.max(0, this.paginas.length - 1);
       }
@@ -2848,26 +2929,30 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   cambiarPagina(direccion: number): void {
-    console.log(`🔄 Cambiando página doble (spread), dirección: ${direccion}`);
+    console.log(`🔄 Cambiando pliego (spread), dirección: ${direccion}`);
+    if (this.spreads.length === 0 && this.paginas && this.paginas.length > 0) {
+      this.construirSpreads();
+    }
     const nuevoSpread = this.spreadActual + direccion;
 
     if (nuevoSpread >= 0 && nuevoSpread < this.totalSpreads) {
+      const spreadDestino = this.spreads[nuevoSpread];
+      const nuevaPaginaIdx = spreadDestino?.indices[0] ?? 0;
+
       if (this.modoAlbumVintage && !this.hojaVolteando3D) {
         this.direccionVolteo3D = direccion > 0 ? 'adelante' : 'atras';
 
         if (direccion > 0) {
           this.paginaVolteoSaliente = this.paginaSpreadDerecha;
-          const nuevoIdxIzq = (nuevoSpread - 1) * 2 + 1;
-          this.paginaVolteoEntrante = (nuevoSpread > 0 && nuevoIdxIzq < this.paginas.length) ? this.paginas[nuevoIdxIzq] : null;
+          this.paginaVolteoEntrante = spreadDestino?.paginaIzquierda || null;
         } else {
           this.paginaVolteoSaliente = this.paginaSpreadIzquierda;
-          const nuevoIdxDer = nuevoSpread === 0 ? 0 : ((nuevoSpread - 1) * 2 + 2);
-          this.paginaVolteoEntrante = (nuevoIdxDer < this.paginas.length) ? this.paginas[nuevoIdxDer] : null;
+          this.paginaVolteoEntrante = spreadDestino?.paginaDerecha || null;
         }
 
         this.hojaVolteando3D = true;
         this.spreadActual = nuevoSpread;
-        this.paginaActual = nuevoSpread === 0 ? 0 : ((nuevoSpread - 1) * 2 + 1);
+        this.paginaActual = nuevaPaginaIdx;
 
         this.detenerVideosActuales();
         this.reiniciarInstanciaMapa();
@@ -2887,7 +2972,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
           if (this.reproduciendoSlideshow) {
             const tieneVideo = this.paginaSpreadIzquierda?.tipoMedia === 'video' || this.paginaSpreadDerecha?.tipoMedia === 'video';
-            if (!tieneVideo) {
+            const tieneMapa = this.spreadActualData?.tipo === 'mapa';
+            if (!tieneVideo && !tieneMapa) {
               this.reiniciarTimerSlideshow();
             } else {
               this.limpiarTimerSlideshow();
@@ -2898,7 +2984,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         }, 650);
       } else {
         this.spreadActual = nuevoSpread;
-        this.paginaActual = nuevoSpread === 0 ? 0 : ((nuevoSpread - 1) * 2 + 1);
+        this.paginaActual = nuevaPaginaIdx;
         this.reiniciarInstanciaMapa();
         this.iniciarSecuenciaVideosSpread();
         this.verificarSincronizacionAudioItinerario();
@@ -2919,10 +3005,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   irAPagina(index: number): void {
     if (index >= 0 && index < this.paginas.length) {
-      const targetSpread = index === 0 ? 0 : (Math.floor((index - 1) / 2) + 1);
-      if (targetSpread !== this.spreadActual || index !== this.paginaActual) {
+      if (this.spreads.length === 0 && this.paginas && this.paginas.length > 0) {
+        this.construirSpreads();
+      }
+      const targetSpread = this.spreads.findIndex(s => s.indices.includes(index));
+      const spreadIdx = targetSpread >= 0 ? targetSpread : 0;
+
+      if (spreadIdx !== this.spreadActual || index !== this.paginaActual) {
         this.detenerVideosActuales();
-        this.spreadActual = targetSpread;
+        this.spreadActual = spreadIdx;
         this.paginaActual = index;
         this.reiniciarInstanciaMapa();
         this.precargarContenidoVentana(this.paginaActual);
