@@ -1413,6 +1413,22 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
   }
 
+  @HostListener('document:keydown.arrowright', ['$event'])
+  handleArrowRight(event: Event): void {
+    if (this.estado === 'abierto' && this.hayPaginaSiguiente) {
+      event.preventDefault();
+      this.cambiarPagina(1);
+    }
+  }
+
+  @HostListener('document:keydown.arrowleft', ['$event'])
+  handleArrowLeft(event: Event): void {
+    if (this.estado === 'abierto' && this.hayPaginaAnterior) {
+      event.preventDefault();
+      this.cambiarPagina(-1);
+    }
+  }
+
   /**
    * Maneja el evento de resize para cambiar entre tooltip y modal
    */
@@ -3224,6 +3240,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.mostrarFullscreen = true;
     document.body.style.overflow = 'hidden';
 
+    if (this.modoAlbumVintage) {
+      this.reiniciarInstanciaMapa();
+      setTimeout(() => {
+        this.iniciarSecuenciaVideosSpread();
+        this.cdr.detectChanges();
+      }, 100);
+    }
+
     // 👇 AÑADIR ESTO
     if (tipo === 'video') {
       this.bajarVolumenAudioViaje();
@@ -3298,6 +3322,18 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       return;
     }
 
+    if (this.modoAlbumVintage) {
+      const siguienteSpread = this.spreadActual + 1;
+      if (siguienteSpread < this.totalSpreads) {
+        this.cambiarPagina(1);
+        this.cdr.detectChanges();
+      } else {
+        console.log('🏁 Fin del álbum alcanzado en slideshow');
+        this.detenerSlideshow();
+      }
+      return;
+    }
+
     const SIGUIENTE_PAGINA = this.paginaActual + 1;
 
     if (SIGUIENTE_PAGINA < this.paginas.length) {
@@ -3318,6 +3354,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   cerrarFullscreen(): void {
     console.log('❌ Cerrando pantalla completa');
+    this.detenerVideosActuales(); // Detener cualquier vídeo que estuviese reproduciéndose
     this.detenerSlideshow(); // Detener si estaba activo
     this.mostrarFullscreen = false;
     this.tipoFullscreen = 'imagen';
@@ -3325,10 +3362,22 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.fullscreenDescripcion = '';
     this.hojaVolteando3D = false;
     document.body.style.overflow = '';
+    if (this.modoAlbumVintage) {
+      this.reiniciarInstanciaMapa();
+      setTimeout(() => {
+        this.iniciarSecuenciaVideosSpread();
+        this.cdr.detectChanges();
+      }, 100);
+    }
     this.cdr.detectChanges();
   }
 
   navegarEnFullscreen(direccion: number): void {
+    if (this.modoAlbumVintage) {
+      this.cambiarPagina(direccion);
+      return;
+    }
+
     console.log(`🖼️ Navegando en fullscreen, dirección: ${direccion}`);
     const nuevaPagina = this.paginaActual + direccion;
     if (nuevaPagina >= 0 && nuevaPagina < this.paginas.length && !this.paginas[nuevaPagina].esIndice) {

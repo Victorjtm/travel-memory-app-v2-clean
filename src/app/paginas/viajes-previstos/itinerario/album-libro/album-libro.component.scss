@@ -5727,6 +5727,49 @@
       height: min(86vh, 860px);
       min-height: min(86vh, 860px);
 
+      &.spread-mapa-panoramico {
+        max-width: min(96vw, 1550px);
+        width: min(96vw, 1550px);
+        height: min(88vh, 880px);
+        min-height: min(88vh, 880px);
+
+        .lienzo-mapa-doble-pagina {
+          padding: 16px 24px 24px 24px;
+
+          .header-mapa-panoramico {
+            .titulo-itinerario-mapa {
+              font-size: 1.35rem;
+            }
+            .fecha-itinerario-mapa {
+              font-size: 0.95rem;
+            }
+          }
+
+          .mapa-panoramico-wrapper {
+            min-height: 520px;
+          }
+        }
+      }
+
+      &.spread-intro-primera-pagina {
+        max-width: min(720px, 92vw);
+
+        .primer-pagina-intro-layout {
+          padding: 24px 32px;
+
+          .titulo-intro-vintage {
+            font-size: 1.45rem;
+          }
+          .descripcion-intro-vintage {
+            font-size: 1.05rem;
+            line-height: 1.6;
+          }
+          .stat-item-vintage strong {
+            font-size: 1.5rem;
+          }
+        }
+      }
+
       .hoja-vintage-spread {
         padding: 14px 20px 24px 20px;
       }
@@ -5743,6 +5786,28 @@
           .video-foto-vintage,
           .video-miniatura-estatica {
             max-height: 520px;
+          }
+
+          .video-preview-vintage {
+            width: 100%;
+            height: 100%;
+
+            .video-foto-vintage {
+              max-height: 520px;
+            }
+          }
+
+          .audio-preview-vintage {
+            width: 440px;
+            max-width: 95%;
+            height: 240px;
+          }
+
+          .audio-vintage-box {
+            width: 420px;
+            max-width: 95%;
+            min-height: 260px;
+            padding: 24px 20px;
           }
         }
 
