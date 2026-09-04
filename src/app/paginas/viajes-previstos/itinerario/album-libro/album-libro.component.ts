@@ -148,6 +148,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   mediaFullscreen = '';
   tipoFullscreen: TipoMedia = 'imagen';
   mostrarFullscreen = false;
+  fullscreenSinglePageMode = false;
+  paginaSinglePageActual: PaginaMedia | null = null;
   // Nuevas propiedades para carta-manuscrita en fullscreen
   fullscreenTitulo = '';
   fullscreenDescripcion = '';
@@ -1415,17 +1417,35 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown.arrowright', ['$event'])
   handleArrowRight(event: Event): void {
-    if (this.estado === 'abierto' && this.hayPaginaSiguiente) {
-      event.preventDefault();
-      this.cambiarPagina(1);
+    if (this.estado === 'abierto') {
+      if (this.mostrarFullscreen && this.fullscreenSinglePageMode) {
+        if (this.hayPaginaSiguiente) {
+          event.preventDefault();
+          this.navegarSinglePage(1);
+        }
+        return;
+      }
+      if (this.hayPaginaSiguiente) {
+        event.preventDefault();
+        this.cambiarPagina(1);
+      }
     }
   }
 
   @HostListener('document:keydown.arrowleft', ['$event'])
   handleArrowLeft(event: Event): void {
-    if (this.estado === 'abierto' && this.hayPaginaAnterior) {
-      event.preventDefault();
-      this.cambiarPagina(-1);
+    if (this.estado === 'abierto') {
+      if (this.mostrarFullscreen && this.fullscreenSinglePageMode) {
+        if (this.hayPaginaAnterior) {
+          event.preventDefault();
+          this.navegarSinglePage(-1);
+        }
+        return;
+      }
+      if (this.hayPaginaAnterior) {
+        event.preventDefault();
+        this.cambiarPagina(-1);
+      }
     }
   }
 
@@ -3323,6 +3343,17 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
 
     if (this.modoAlbumVintage) {
+      if (this.mostrarFullscreen && this.fullscreenSinglePageMode) {
+        if (this.hayPaginaSiguiente) {
+          this.navegarSinglePage(1);
+          this.cdr.detectChanges();
+        } else {
+          console.log('🏁 Fin del álbum alcanzado en slideshow');
+          this.detenerSlideshow();
+        }
+        return;
+      }
+
       const siguienteSpread = this.spreadActual + 1;
       if (siguienteSpread < this.totalSpreads) {
         this.cambiarPagina(1);
@@ -3357,6 +3388,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.detenerVideosActuales(); // Detener cualquier vídeo que estuviese reproduciéndose
     this.detenerSlideshow(); // Detener si estaba activo
     this.mostrarFullscreen = false;
+    this.fullscreenSinglePageMode = false;
+    this.paginaSinglePageActual = null;
     this.tipoFullscreen = 'imagen';
     this.fullscreenTitulo = '';
     this.fullscreenDescripcion = '';
@@ -3374,6 +3407,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   navegarEnFullscreen(direccion: number): void {
     if (this.modoAlbumVintage) {
+      if (this.fullscreenSinglePageMode) {
+        this.navegarSinglePage(direccion);
+        return;
+      }
       this.cambiarPagina(direccion);
       return;
     }
@@ -3652,14 +3689,110 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   // ==========================================
+  // MÉTODOS DE PÁGINA ÚNICA EN FULLSCREEN (ÁLBUM VINTAGE 3D)
+  // ==========================================
+
+  onFotoClick(pagina: PaginaMedia | null, isFullscreen: boolean, event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    if (isFullscreen) {
+      this.toggleFullscreenSinglePage(pagina, event);
+    }
+  }
+
+  toggleFullscreenSinglePage(pagina: PaginaMedia | null, event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    if (!this.mostrarFullscreen) {
+      return;
+    }
+
+    if (this.fullscreenSinglePageMode) {
+      // Salir de vista de 1 página -> volver a díptico de 2 páginas
+      this.fullscreenSinglePageMode = false;
+      if (this.paginaSinglePageActual) {
+        const idx = this.paginas.indexOf(this.paginaSinglePageActual);
+        if (idx !== -1) {
+          const spreadIdx = this.spreads.findIndex(s => s.indices.includes(idx));
+          if (spreadIdx !== -1) {
+            this.spreadActual = spreadIdx;
+            this.paginaActual = this.spreads[spreadIdx].indices[0] ?? idx;
+          }
+        }
+      }
+      this.paginaSinglePageActual = null;
+      this.reiniciarInstanciaMapa();
+      setTimeout(() => {
+        this.iniciarSecuenciaVideosSpread();
+        this.cdr.detectChanges();
+      }, 100);
+    } else {
+      // Entrar a vista de 1 página maximizada
+      this.detenerVideosActuales();
+      this.fullscreenSinglePageMode = true;
+      this.paginaSinglePageActual = pagina || this.paginaSpreadDerecha || this.paginaSpreadIzquierda || this.paginas[this.paginaActual];
+      if (this.paginaSinglePageActual) {
+        const idx = this.paginas.indexOf(this.paginaSinglePageActual);
+        if (idx !== -1) {
+          this.paginaActual = idx;
+        }
+      }
+    }
+    this.cdr.detectChanges();
+  }
+
+  navegarSinglePage(direccion: number): void {
+    let idx = this.paginaSinglePageActual ? this.paginas.indexOf(this.paginaSinglePageActual) : this.paginaActual;
+    if (idx === -1) idx = this.paginaActual;
+    const nuevoIdx = idx + direccion;
+    if (nuevoIdx >= 0 && nuevoIdx < this.paginas.length) {
+      this.detenerVideosActuales();
+      this.paginaActual = nuevoIdx;
+      this.paginaSinglePageActual = this.paginas[nuevoIdx];
+      const spreadIdx = this.spreads.findIndex(s => s.indices.includes(nuevoIdx));
+      if (spreadIdx !== -1) {
+        this.spreadActual = spreadIdx;
+      }
+      this.cdr.detectChanges();
+    }
+  }
+
+  getNumeroPaginaSingle(): number {
+    if (!this.paginaSinglePageActual) return this.paginaActual + 1;
+    const idx = this.paginas.indexOf(this.paginaSinglePageActual);
+    return idx !== -1 ? idx + 1 : this.paginaActual + 1;
+  }
+
+  onVideoSingleTerminado(): void {
+    console.log('🎬 Vídeo en página única completado');
+    if (this.reproduciendoSlideshow) {
+      if (this.hayPaginaSiguiente) {
+        this.navegarSinglePage(1);
+      } else {
+        this.detenerSlideshow();
+      }
+    }
+  }
+
+  // ==========================================
   // GETTERS Y MÉTODOS DE INFORMACIÓN CONTEXTUAL
   // ==========================================
 
   get hayPaginaAnterior(): boolean {
+    if (this.modoAlbumVintage && this.mostrarFullscreen && this.fullscreenSinglePageMode) {
+      const idx = this.paginaSinglePageActual ? this.paginas.indexOf(this.paginaSinglePageActual) : this.paginaActual;
+      return idx > 0;
+    }
     return this.spreadActual > 0;
   }
 
   get hayPaginaSiguiente(): boolean {
+    if (this.modoAlbumVintage && this.mostrarFullscreen && this.fullscreenSinglePageMode) {
+      const idx = this.paginaSinglePageActual ? this.paginas.indexOf(this.paginaSinglePageActual) : this.paginaActual;
+      return idx < this.paginas.length - 1;
+    }
     return this.spreadActual < this.totalSpreads - 1;
   }
 

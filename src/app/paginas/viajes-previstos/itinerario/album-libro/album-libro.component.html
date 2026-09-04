@@ -1357,12 +1357,109 @@
   <!-- Contenedor del Libro 3D Abierto -->
   <div class="libro-vintage-abierto-3d" 
     [class.fullscreen-libro-3d]="fullscreen"
-    [class.spread-intro-primera-pagina]="spreadActualData?.tipo === 'intro'" 
-    [class.spread-mapa-panoramico]="spreadActualData?.tipo === 'mapa'" 
-    [class.animando-volteo]="hojaVolteando3D">
+    [class.fullscreen-pagina-unica]="fullscreen && fullscreenSinglePageMode"
+    [class.spread-intro-primera-pagina]="spreadActualData?.tipo === 'intro' && (!fullscreen || !fullscreenSinglePageMode)" 
+    [class.spread-mapa-panoramico]="spreadActualData?.tipo === 'mapa' && (!fullscreen || !fullscreenSinglePageMode)" 
+    [class.animando-volteo]="hojaVolteando3D && (!fullscreen || !fullscreenSinglePageMode)">
     
-    <!-- Borde volumétrico de hojas apiladas a la izquierda -->
-    <div class="grosor-hojas grosor-izq" aria-hidden="true" *ngIf="spreadActualData?.tipo !== 'mapa'"></div>
+    <!-- ======================================================== -->
+    <!-- MODO FULLSCREEN: PÁGINA ÚNICA MAXIMIZADA EN PANTALLA      -->
+    <!-- ======================================================== -->
+    <ng-container *ngIf="fullscreen && fullscreenSinglePageMode && paginaSinglePageActual as pagSingle">
+      <div class="hoja-vintage-spread pagina-unica-maximizada-3d">
+        <div class="textura-papel-antiguo" aria-hidden="true"></div>
+
+        <div class="contenido-vintage-single">
+          <!-- Caso Carta Manuscrita -->
+          <div class="vintage-carta-full" *ngIf="pagSingle.esCartaManuscrita">
+            <h3 class="titulo-carta-vintage">{{ pagSingle.titulo }}</h3>
+            <p class="fecha-carta-vintage" *ngIf="pagSingle.fecha">{{ formatearFecha(pagSingle.fecha) }}</p>
+            <div class="texto-carta-vintage">{{ pagSingle.descripcion }}</div>
+            <div class="firma-vintage"><em>— Diario de viaje —</em></div>
+          </div>
+
+          <!-- Caso Foto / Vídeo / Audio Estándar -->
+          <div class="foto-vintage-container container-single-maximizada" *ngIf="!pagSingle.esIndice && !pagSingle.esCartaManuscrita && !pagSingle.esMapaAnimado">
+            <div class="foto-polaroid-vintage polaroid-single-maximizada"
+                 (click)="toggleFullscreenSinglePage(null, $event)"
+                 title="Hacer clic en la foto para volver a 2 páginas">
+              <!-- 4 esquineras doradas -->
+              <span class="esquinera-foto sup-izq"></span>
+              <span class="esquinera-foto sup-der"></span>
+              <span class="esquinera-foto inf-izq"></span>
+              <span class="esquinera-foto inf-der"></span>
+
+              <!-- Imagen -->
+              <img *ngIf="pagSingle.tipoMedia === 'imagen'" [src]="pagSingle.url" [alt]="pagSingle.titulo" class="imagen-foto-vintage imagen-single-maximizada" loading="lazy" decoding="async" />
+
+              <!-- Vídeo -->
+              <div *ngIf="pagSingle.tipoMedia === 'video'" class="video-preview-vintage video-single-container">
+                <video id="video-single-page" *ngIf="pagSingle.url" [src]="pagSingle.url" class="video-foto-vintage video-single-maximizada"
+                  playsinline autoplay [muted]="videoMuted" preload="auto" (ended)="onVideoSingleTerminado()"></video>
+                <button class="btn-sonido-video-vintage" (click)="toggleMuteVideos($event); $event.stopPropagation()" [title]="videoMuted ? 'Activar sonido' : 'Silenciar'">
+                  <i class="fas" [class.fa-volume-mute]="videoMuted" [class.fa-volume-up]="!videoMuted"></i>
+                </button>
+              </div>
+
+              <!-- Audio -->
+              <div *ngIf="pagSingle.tipoMedia === 'audio'" class="audio-vintage-box" (click)="$event.stopPropagation()">
+                <div class="vinilo-vintage-disco">
+                  <i class="fas fa-compact-disc"></i>
+                </div>
+                <audio [src]="pagSingle.url" controls autoplay preload="auto" class="audio-vintage-control" (play)="onAudioItemPlay()" (pause)="onAudioItemPause()" (ended)="onAudioItemEnded()"></audio>
+              </div>
+
+              <!-- Overlay explicativo al hover -->
+              <div class="overlay-volver-dos-paginas">
+                <i class="fas fa-book-open"></i>
+                <span>Volver a 2 páginas</span>
+              </div>
+            </div>
+
+            <div class="pie-foto-vintage pie-single-maximizada">
+              <h4 class="titulo-pie-vintage">{{ pagSingle.titulo }}</h4>
+              <p class="fecha-pie-vintage" *ngIf="pagSingle.fecha">{{ formatearFecha(pagSingle.fecha) }}</p>
+              <p class="desc-pie-vintage" *ngIf="pagSingle.descripcion">{{ pagSingle.descripcion }}</p>
+            </div>
+          </div>
+
+          <!-- Caso Mapa de Tramo en Single Page -->
+          <div class="vintage-mapa-box mapa-single-maximizada" *ngIf="pagSingle.esMapaAnimado">
+            <div class="header-mapa-vintage">
+              <span class="badge-vintage-distancia"><i class="fas fa-route"></i> Recorrido: {{ pagSingle.distanciaTramoKm | number:'1.1-2' }} km</span>
+            </div>
+            <div class="mapa-vintage-wrapper">
+              <div *ngIf="modoRutaImagen && pagSingle.trackGpx" class="mapa-estatico-vintage-view">
+                <app-mini-mapa-gpx [trackGpx]="pagSingle.trackGpx" [fullPage]="true" [distanciaKm]="pagSingle.distanciaTramoKm" [transportMode]="pagSingle.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
+              </div>
+              <app-gpx-animation 
+                *ngIf="mapaRenderKey && !modoRutaImagen && pagSingle.trackGpx"
+                [gpxText]="pagSingle.trackGpx" 
+                [multimedia]="pagSingle.multimedia || []"
+                [transportSegments]="pagSingle.transportSegments || []"
+                [visualSessionData]="pagSingle.visualSessionData"
+                [isHighFidelityMode]="pagSingle.isHighFidelityMode || false"
+                [modoRecorridoGuiado]="modoGuiadoActivo"
+                [interactiveMode]="false"
+                [autoPlay]="true">
+              </app-gpx-animation>
+            </div>
+          </div>
+        </div>
+
+        <!-- Numeración difuminada -->
+        <div class="numero-pagina-difuminado num-der">
+          <span>Pág. {{ getNumeroPaginaSingle() }} / {{ paginas.length - 1 }}</span>
+        </div>
+      </div>
+    </ng-container>
+
+    <!-- ======================================================== -->
+    <!-- MODO HABITUAL: DÍPTICO 2 PÁGINAS (NORMAL Y FULLSCREEN)    -->
+    <!-- ======================================================== -->
+    <ng-container *ngIf="!fullscreen || !fullscreenSinglePageMode">
+      <!-- Borde volumétrico de hojas apiladas a la izquierda -->
+      <div class="grosor-hojas grosor-izq" aria-hidden="true" *ngIf="spreadActualData?.tipo !== 'mapa'"></div>
 
     <!-- ======================================================== -->
     <!-- MODO ITINERARIO: MAPA PANORÁMICO QUE CUBRE AMBAS PÁGINAS -->
@@ -1477,7 +1574,10 @@
 
         <!-- Caso Foto / Vídeo / Mapa Estándar en página izquierda -->
         <div class="foto-vintage-container" *ngIf="!pagIzq.esIndice && !pagIzq.esCartaManuscrita">
-          <div class="foto-polaroid-vintage">
+          <div class="foto-polaroid-vintage"
+            [class.polaroid-clickable-fullscreen]="fullscreen"
+            (click)="onFotoClick(pagIzq, fullscreen, $event)"
+            [title]="fullscreen ? 'Hacer clic para ver en 1 página maximizada' : ''">
             <!-- Esquinas de montaje vintage -->
             <span class="esquinera-foto sup-izq"></span>
             <span class="esquinera-foto sup-der"></span>
@@ -1621,7 +1721,10 @@
 
         <!-- Caso: Foto / Vídeo / Audio Estándar (spreadActual > 0) -->
         <div class="foto-vintage-container" *ngIf="spreadActual > 0 && !pagDer.esIndice && !pagDer.esCartaManuscrita && !pagDer.esMapaAnimado">
-          <div class="foto-polaroid-vintage foto-principal">
+          <div class="foto-polaroid-vintage foto-principal"
+            [class.polaroid-clickable-fullscreen]="fullscreen"
+            (click)="onFotoClick(pagDer, fullscreen, $event)"
+            [title]="fullscreen ? 'Hacer clic para ver en 1 página maximizada' : ''">
             <span class="esquinera-foto sup-izq"></span>
             <span class="esquinera-foto sup-der"></span>
             <span class="esquinera-foto inf-izq"></span>
@@ -1734,6 +1837,8 @@
         </ng-container>
       </div>
     </div>
+
+    </ng-container>
 
   </div>
 </ng-template>
