@@ -150,30 +150,17 @@ class AnalizadorFotosIAService {
   async llamarGeminiVision(imagenBase64, mimeType, cantidadVariaciones, contextoGeo, apiKey) {
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) {
-      throw new Error('No se ha configurado GEMINI_API_KEY.');
+      throw new Error('No se ha configurado GEMINI_API_KEY. Introduce tu clave en la modal de análisis.');
     }
 
-    // Modelos a intentar en orden de preferencia (rápido y multimodal)
-    const modelos = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    // Cambiar los modelos antiguos por el modelo activo recomendado por Google (2026)
+    const modelos = ['gemini-3.6-flash'];
 
-    let promptText = '';
-    if (cantidadVariaciones <= 1) {
-      promptText = `Eres un redactor de cuadernos de viaje vintage. Analiza esta fotografía turística.
-${contextoGeo ? `Contexto de ubicación aproximada: ${contextoGeo}.` : ''}
-Instrucciones:
-- Genera exactamente UNA descripción breve y evocadora con el formato: [Lugar o Monumento] / [Perspectiva o Acción o Vistas].
-- Máximo 10-12 palabras.
-- Responde ÚNICAMENTE con el texto de la descripción, sin introducciones ni comillas.`;
-    } else {
-      promptText = `Eres un redactor de cuadernos de viaje vintage. Esta foto es representativa de un grupo de ${cantidadVariaciones} fotos tomadas en el mismo lugar turístico.
-${contextoGeo ? `Contexto de ubicación aproximada: ${contextoGeo}.` : ''}
-Instrucciones:
-- Genera exactamente ${cantidadVariaciones} descripciones distintas y secuenciales para este hito (ej. toma general o panorámica, perspectiva arquitectónica, detalle, ambiente).
-- Todas deben seguir el formato: [Lugar o Monumento] / [Perspectiva o Detalle].
-- Responde ÚNICAMENTE con un array JSON válido de strings, por ejemplo:
-["Catedral de Cagliari / Fachada principal y escalinatas", "Catedral de Cagliari / Detalle del campanario histórico", "Catedral de Cagliari / Vista lateral desde la plaza"]
-- Sin bloques de código markdown, solo el array JSON puro.`;
-    }
+    const promptText = `Analiza detalladamente esta foto de viaje y describe lo que se ve físicamente en ella (objetos, personas, entorno). 
+Devuelve la respuesta estrictamente como un array de texto en JSON, donde cada elemento sea una descripción corta siguiendo el formato: [Lugar o Elemento principal] / [Perspectiva o Acción de lo que ocurre]. 
+Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
+
+    const base64Limpio = (imagenBase64 || '').replace(/^data:image\/[a-z0-9+.-]+;base64,/i, '').trim();
 
     const payload = {
       contents: [
@@ -182,59 +169,122 @@ Instrucciones:
             { text: promptText },
             {
               inlineData: {
-                mimeType: mimeType || 'image/webp',
-                data: imagenBase64
+                mimeType: 'image/webp', // Forzar siempre webp ya que sharp entrega este formato
+                data: base64Limpio
               }
             }
           ]
         }
       ],
       generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 300
+        temperature: 0.2,
+        maxOutputTokens: 1000,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: 'Lista de descripciones secuenciales para las fotos del clúster.'
+        }
       }
     };
 
     let ultimoError = null;
     for (const modelo of modelos) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`;
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`;
         const res = await axios.post(url, payload, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 20000
+          timeout: 25000
         });
 
         const texto = res.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-        if (texto) {
-          if (cantidadVariaciones <= 1) {
-            return [texto.replace(/^["'`]|["'`]$/g, '').trim()];
-          } else {
-            // Intentar parsear array JSON
-            try {
-              const limpio = texto.replace(/```json/gi, '').replace(/```/g, '').trim();
-              const arrayDesc = JSON.parse(limpio);
-              if (Array.isArray(arrayDesc) && arrayDesc.length > 0) {
-                return arrayDesc;
+        const descripciones = this.parsearRespuestaGemini(texto, modelo);
+        if (descripciones && descripciones.length > 0) {
+          return descripciones;
+        }
+
+        throw new Error(`El texto recibido no contiene un array válido: ${texto}`);
+      } catch (error) {
+        const errorData = error.response?.data || error.message;
+        const errorStr = typeof errorData === 'object' ? JSON.stringify(errorData, null, 2) : errorData;
+        ultimoError = errorStr;
+        console.error(`[Gemini API Error] (${modelo}) Detalles del fallo:`, errorStr);
+
+        // Registrar en archivo de log para diagnóstico directo
+        try {
+          fs.appendFileSync(
+            path.join(process.cwd(), 'gemini_debug.log'),
+            `\n[${new Date().toISOString()}] MODELO: ${modelo}\nFALLO:\n${errorStr}\n`
+          );
+        } catch (e) {}
+
+        // Si falló por incompatibilidad de responseSchema (error 400), reintentar sin responseSchema
+        if (error.response?.status === 400 && payload.generationConfig?.responseSchema) {
+          try {
+            console.log(`[Gemini Vision] Reintentando ${modelo} sin responseSchema estricto...`);
+            const payloadSimple = {
+              ...payload,
+              generationConfig: {
+                temperature: 0.2,
+                maxOutputTokens: 1000,
+                responseMimeType: 'application/json'
               }
-            } catch (e) {
-              // Si no devuelve JSON válido, partir por líneas o generar variaciones
-              const lineas = texto.split('\n').map(l => l.replace(/^[-*\d.)\s"]+|["\s]+$/g, '').trim()).filter(Boolean);
-              if (lineas.length >= cantidadVariaciones) {
-                return lineas.slice(0, cantidadVariaciones);
-              }
-              // Rellenar si faltan
-              const base = lineas[0] || contextoGeo || 'Recuerdo de viaje';
-              return Array.from({ length: cantidadVariaciones }, (_, i) => `${base} (Vista ${i + 1})`);
+            };
+            const res2 = await axios.post(url, payloadSimple, {
+              headers: { 'Content-Type': 'application/json' },
+              timeout: 25000
+            });
+            const texto2 = res2.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+            const desc2 = this.parsearRespuestaGemini(texto2, modelo);
+            if (desc2 && desc2.length > 0) {
+              return desc2;
             }
+          } catch (retryErr) {
+            console.error(`[Gemini API Error] Reintento sin schema también falló:`, retryErr.response?.data || retryErr.message);
           }
         }
-      } catch (err) {
-        ultimoError = err.response?.data?.error?.message || err.message;
-        console.warn(`[Gemini Vision] Modelo ${modelo} falló: ${ultimoError}, probando siguiente...`);
       }
     }
 
-    throw new Error(`Error en llamada a Gemini Vision: ${ultimoError || 'Sin respuesta'}`);
+    throw new Error(`Error en llamada a Gemini Vision: ${typeof ultimoError === 'object' ? JSON.stringify(ultimoError) : ultimoError}`);
+  }
+
+  /**
+   * Helper para extraer un array de descripciones desde la respuesta JSON de Gemini
+   */
+  parsearRespuestaGemini(texto, modelo) {
+    if (!texto) return null;
+    const limpio = texto.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    let arrayDesc = null;
+
+    try {
+      arrayDesc = JSON.parse(limpio);
+    } catch (parseErr) {
+      const match = limpio.match(/\[[\s\S]*\]/);
+      if (match) {
+        try {
+          arrayDesc = JSON.parse(match[0]);
+        } catch (e) {}
+      }
+    }
+
+    if (Array.isArray(arrayDesc)) {
+      const validas = arrayDesc
+        .map(item => (typeof item === 'string' ? item.trim() : (item?.descripcion || item?.text || '')))
+        .filter(item => Boolean(item && item.length > 0 && item.toLowerCase() !== 'recuerdo de viaje'));
+
+      if (validas.length > 0) {
+        console.log(`[Gemini Vision] ${modelo} generó ${validas.length} descripciones exitosamente:`, validas);
+        return validas;
+      }
+    } else if (typeof arrayDesc === 'object' && arrayDesc !== null) {
+      const primerArray = Object.values(arrayDesc).find(v => Array.isArray(v));
+      if (Array.isArray(primerArray) && primerArray.length > 0) {
+        return primerArray.map(v => String(v).trim()).filter(Boolean);
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -272,23 +322,43 @@ Instrucciones:
       job.estado = 'PROCESANDO';
       this.emitirEvento(job, 'estado', { estado: 'PROCESANDO', totalArchivos: archivos.length });
 
-      // 1. Preparar lista ordenada cronológicamente
+      // 1. Preparar lista ordenada cronológicamente con resolución de ruta física real en disco
       const fotosOrdenadas = archivos
         .filter(a => a.tipo === 'imagen' || a.tipo === 'foto' || /\.(jpe?g|png|webp|avif)$/i.test(a.nombreArchivo || ''))
         .map(a => {
-          const rutaLocal = path.join(uploadsDir, a.nombreArchivo);
+          // Resolver ruta en disco: a.rutaArchivo guarda la ruta relativa dentro de uploads (ej. "255/414/fotos/IMG_...jpg")
+          let rutaLocal = a.rutaArchivo ? path.join(uploadsDir, a.rutaArchivo) : path.join(uploadsDir, a.nombreArchivo);
+          if (!fs.existsSync(rutaLocal) && a.nombreArchivo) {
+            const rutaDirecta = path.join(uploadsDir, a.nombreArchivo);
+            if (fs.existsSync(rutaDirecta)) {
+              rutaLocal = rutaDirecta;
+            }
+          }
+
           let timestamp = Date.now();
           if (a.fechaCreacion && a.horaCaptura) {
             timestamp = new Date(`${a.fechaCreacion.split('T')[0]}T${a.horaCaptura}`).getTime();
           } else if (a.fechaCreacion) {
             timestamp = new Date(a.fechaCreacion).getTime();
           }
+
+          let lat = a.latitud || null;
+          let lng = a.longitud || null;
+          if ((!lat || !lng) && a.geolocalizacion) {
+            try {
+              const geo = typeof a.geolocalizacion === 'string' ? JSON.parse(a.geolocalizacion) : a.geolocalizacion;
+              lat = geo?.latitud || geo?.latitude || geo?.lat || null;
+              lng = geo?.longitud || geo?.longitude || geo?.lng || null;
+            } catch (e) {}
+          }
+
           return {
             id: a.id,
             nombreArchivo: a.nombreArchivo,
+            rutaArchivo: a.rutaArchivo,
             rutaLocal,
-            latitud: a.latitud || (a.geolocalizacion ? a.geolocalizacion.lat : null),
-            longitud: a.longitud || (a.geolocalizacion ? a.geolocalizacion.lng : null),
+            latitud: lat,
+            longitud: lng,
             timestamp
           };
         })
@@ -326,32 +396,62 @@ Instrucciones:
           contextoGeo = await this.geocodificarCoordenada(fotoTestigo.latitud, fotoTestigo.longitud);
         }
 
-        let descripcionesGrupo = [];
+        // Inferencia visual con Gemini Vision
+        let descripcionesDesdeGemini = [];
         try {
           // Optimizar foto testigo a WebP 768px (<60 KB)
           const { base64, mimeType } = await this.optimizarParaVision(fotoTestigo.rutaLocal);
 
-          // Llamada a Gemini Vision solicitando grupo.length variaciones
-          descripcionesGrupo = await this.llamarGeminiVision(
+          // Llamada a Gemini Vision solicitando grupo.length variaciones estructuradas
+          descripcionesDesdeGemini = await this.llamarGeminiVision(
             base64,
             mimeType,
             grupo.length,
             contextoGeo,
             apiKey
           );
+          console.log(`[Job ${job.id}] Clúster ${i + 1}/${clusters.length} analizado por Gemini:`, descripcionesDesdeGemini);
         } catch (visionErr) {
-          console.warn(`[Job ${job.id}] Fallo visión en cluster ${i + 1}: ${visionErr.message}. Usando fallback geoespacial.`);
-          // Fallback en caso de error de API o cuota: usar geocodificación
-          const base = contextoGeo || 'Recuerdo de viaje';
-          descripcionesGrupo = grupo.map((_, idx) =>
-            grupo.length > 1 ? `${base} / Perspectiva ${idx + 1}` : base
-          );
+          console.warn(`[Job ${job.id}] Fallo visión en clúster ${i + 1}: ${visionErr.message}. Aplicando fallback contextual.`);
+          descripcionesDesdeGemini = [];
         }
 
-        // Asignar descripciones al grupo
+        // Asegurar que las descripciones obtenidas tengan contenido real y no vacío
+        const descripcionesValidas = (Array.isArray(descripcionesDesdeGemini) ? descripcionesDesdeGemini : [])
+          .map(d => (typeof d === 'string' ? d.trim() : ''))
+          .filter(d => Boolean(d && d.length > 0 && d.toLowerCase() !== 'recuerdo de viaje'));
+
+        // Asignar descripciones al grupo garantizando contenido real
         const itemsCluster = [];
         grupo.forEach((foto, idx) => {
-          const desc = descripcionesGrupo[idx] || descripcionesGrupo[0] || 'Recuerdo de viaje';
+          let desc = '';
+
+          // 1. Asignar la descripción directa devuelta por Gemini para esta foto
+          if (descripcionesValidas[idx] && descripcionesValidas[idx].trim().length > 0) {
+            desc = descripcionesValidas[idx].trim();
+          }
+          // 2. Si hay menos variaciones que fotos en el clúster, derivar de la primera descripción real
+          else if (descripcionesValidas.length > 0 && descripcionesValidas[0].trim().length > 0) {
+            const baseGemini = descripcionesValidas[0].trim();
+            const lugar = baseGemini.includes(' / ') ? baseGemini.split(' / ')[0].trim() : baseGemini;
+            desc = `${lugar} / Perspectiva ${idx + 1}`;
+          }
+          // 3. Fallback con geocodificación si Gemini no respondió
+          else if (contextoGeo && contextoGeo.trim().length > 0) {
+            desc = grupo.length > 1 ? `${contextoGeo.trim()} / Vista ${idx + 1}` : contextoGeo.trim();
+          }
+          // 4. Último recurso contextual basado en el nombre del archivo
+          else {
+            const nombreLimpio = (foto.nombreArchivo || '')
+              .replace(/\.[^/.]+$/, '')
+              .replace(/[-_]/g, ' ')
+              .replace(/IMG|DSC|PANO|PHOTO|\d{4,}/gi, '')
+              .trim();
+            desc = nombreLimpio.length > 2
+              ? `${nombreLimpio} / Vista ${idx + 1}`
+              : `Punto de interés / Vista ${idx + 1}`;
+          }
+
           const item = {
             id: foto.id,
             nombreArchivo: foto.nombreArchivo,
