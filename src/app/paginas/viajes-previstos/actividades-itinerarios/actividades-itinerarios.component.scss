@@ -1993,3 +1993,51 @@ textarea:focus {
     transform: scale(1);
   }
 }
+
+// ==============================================================================
+// BOTÓN Y MODAL DE ANÁLISIS DE FOTOS CON IA (GEMINI VISION)
+// ==============================================================================
+.btn-analizar-ia {
+  background: linear-gradient(135deg, #673ab7, #9c27b0);
+  color: #ffffff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(103, 58, 183, 0.3);
+
+  &:hover:not(:disabled) {
+    background: linear-gradient(135deg, #5e35b1, #8e24aa);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(103, 58, 183, 0.45);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+}
+
+.modal-analisis-ia {
+  max-width: 580px;
+  width: 92%;
+  border-radius: 12px;
+  padding: 24px;
+  background: #ffffff;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+
+  .progress-bar-container {
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
+  }
+
+  .streaming-items-box {
+    box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.06);
+  }
+}

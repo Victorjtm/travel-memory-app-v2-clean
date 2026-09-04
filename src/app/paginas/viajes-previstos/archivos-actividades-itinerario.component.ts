@@ -10,7 +10,7 @@ import { Itinerario } from '../../modelos/itinerario.model';
 import { forkJoin, firstValueFrom } from 'rxjs';
 import { Archivo } from '../../modelos/archivo';
 import { ArchivoAsociado, ArchivoEncontrado } from '../../modelos/archivo-asociado.model';
-import { HttpClientModule } from '@angular/common/http';
+import { HttpClient, HttpClientModule } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import { take } from 'rxjs/operators';
 
@@ -75,6 +75,20 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   }[] = [];
   guardandoDescripciones = false;
 
+  // ✨ Modo Análisis Visual con IA (Gemini Vision + SSE)
+  mostrarModalAnalisisIA = false;
+  analizandoConIA = false;
+  apiKeyGeminiInput = '';
+  jobIdIA = '';
+  progresoIA = 0;
+  clusterActualIA = 0;
+  totalClustersIA = 0;
+  totalGeneradosIA = 0;
+  estadoTextoIA = '';
+  errorAnalisisIA = '';
+  eventSourceIA: EventSource | null = null;
+  itemsRecientesIA: { id?: number; nombreArchivo?: string; descripcion: string }[] = [];
+
   // ✨ NUEVAS PROPIEDADES PARA GPX INDIVIDUAL
   mostrarModalGPXIndividual = false;
   mapaGPXIndividual: any = null;
@@ -108,7 +122,8 @@ export class ArchivosComponent implements OnInit, OnDestroy {
     private route: ActivatedRoute,
     private router: Router,
     private cdr: ChangeDetectorRef,
-    private ngZone: NgZone
+    private ngZone: NgZone,
+    private http: HttpClient
   ) { }
 
 
@@ -575,6 +590,11 @@ export class ArchivosComponent implements OnInit, OnDestroy {
 
 
   ngOnDestroy(): void {
+    if (this.eventSourceIA) {
+      this.eventSourceIA.close();
+      this.eventSourceIA = null;
+    }
+
     Object.values(this.urlsArchivos).forEach(url => {
       if (url.startsWith('blob:')) {
         URL.revokeObjectURL(url);
@@ -1779,6 +1799,181 @@ Formatos soportados:
     this.cambiosDescripcionesPendientes = [];
     this.cdr.detectChanges();
     alert('↩️ Se han descartado los cambios de descripción propuestos.');
+  }
+
+  // ============================================
+  // ✨ MÉTODOS DE ANÁLISIS CON IA (GEMINI VISION + SSE)
+  // ============================================
+
+  abrirModalAnalisisIA(): void {
+    const savedKey = localStorage.getItem('gemini_api_key') || localStorage.getItem('ia_api_key') || '';
+    this.apiKeyGeminiInput = savedKey;
+    this.errorAnalisisIA = '';
+    this.progresoIA = 0;
+    this.clusterActualIA = 0;
+    this.totalClustersIA = 0;
+    this.totalGeneradosIA = 0;
+    this.itemsRecientesIA = [];
+    this.estadoTextoIA = '';
+    this.mostrarModalAnalisisIA = true;
+    this.cdr.detectChanges();
+  }
+
+  cerrarModalAnalisisIA(): void {
+    if (this.analizandoConIA) {
+      if (!confirm('¿Deseas cancelar el análisis en curso?')) {
+        return;
+      }
+      this.cancelarAnalisisIA();
+    }
+    this.mostrarModalAnalisisIA = false;
+    this.cdr.detectChanges();
+  }
+
+  async iniciarAnalisisIA(): Promise<void> {
+    if (!this.actividadId) {
+      alert('⚠️ No se ha seleccionado una actividad válida.');
+      return;
+    }
+
+    if (this.apiKeyGeminiInput) {
+      localStorage.setItem('gemini_api_key', this.apiKeyGeminiInput);
+    }
+
+    this.analizandoConIA = true;
+    this.errorAnalisisIA = '';
+    this.progresoIA = 0;
+    this.clusterActualIA = 0;
+    this.totalClustersIA = 0;
+    this.itemsRecientesIA = [];
+    this.estadoTextoIA = 'Iniciando conexión con el servidor...';
+    this.cdr.detectChanges();
+
+    try {
+      const resp = await firstValueFrom(
+        this.http.post<any>(`${environment.apiUrl}/api/actividades/${this.actividadId}/analizar-fotos-ia`, {
+          apiKey: this.apiKeyGeminiInput.trim() || undefined
+        })
+      );
+
+      if (!resp || !resp.jobId) {
+        throw new Error('No se recibió identificador del trabajo.');
+      }
+
+      this.jobIdIA = resp.jobId;
+      this.estadoTextoIA = `Analizando ${resp.totalArchivos} fotos...`;
+      this.conectarStreamSSE(this.jobIdIA);
+    } catch (err: any) {
+      console.error('Error iniciando análisis IA:', err);
+      this.analizandoConIA = false;
+      this.errorAnalisisIA = err?.error?.error || err.message || 'Error iniciando análisis';
+      this.cdr.detectChanges();
+    }
+  }
+
+  conectarStreamSSE(jobId: string): void {
+    if (this.eventSourceIA) {
+      this.eventSourceIA.close();
+    }
+
+    const sseUrl = `${environment.apiUrl}/api/jobs/${jobId}/stream`;
+    this.eventSourceIA = new EventSource(sseUrl);
+
+    this.eventSourceIA.addEventListener('conexion', (event: any) => {
+      this.ngZone.run(() => {
+        try {
+          const datos = JSON.parse(event.data);
+          if (datos.totalClusters) this.totalClustersIA = datos.totalClusters;
+        } catch (e) {}
+        this.cdr.detectChanges();
+      });
+    });
+
+    this.eventSourceIA.addEventListener('clusters_identificados', (event: any) => {
+      this.ngZone.run(() => {
+        try {
+          const datos = JSON.parse(event.data);
+          this.totalClustersIA = datos.totalClusters;
+          this.estadoTextoIA = `Identificados ${datos.totalClusters} hitos turísticos en ${datos.totalFotos} fotos.`;
+        } catch (e) {}
+        this.cdr.detectChanges();
+      });
+    });
+
+    this.eventSourceIA.addEventListener('progreso', (event: any) => {
+      this.ngZone.run(() => {
+        try {
+          const datos = JSON.parse(event.data);
+          this.progresoIA = datos.progreso;
+          this.clusterActualIA = datos.clusterActual;
+          this.totalClustersIA = datos.totalClusters;
+          this.totalGeneradosIA = datos.totalGenerados;
+          this.estadoTextoIA = `Procesando hito ${datos.clusterActual} de ${datos.totalClusters}...`;
+          if (datos.itemsRecientes && datos.itemsRecientes.length > 0) {
+            this.itemsRecientesIA = [...datos.itemsRecientes, ...this.itemsRecientesIA].slice(0, 8);
+          }
+        } catch (e) {}
+        this.cdr.detectChanges();
+      });
+    });
+
+    this.eventSourceIA.addEventListener('completado', (event: any) => {
+      this.ngZone.run(() => {
+        try {
+          const datos = JSON.parse(event.data);
+          this.progresoIA = 100;
+          this.analizandoConIA = false;
+          if (this.eventSourceIA) {
+            this.eventSourceIA.close();
+            this.eventSourceIA = null;
+          }
+
+          if (datos.jsonFinal && Array.isArray(datos.jsonFinal)) {
+            this.elementosDetectadosJson = datos.jsonFinal;
+            this.mostrarModalAnalisisIA = false;
+            // Pasar directamente al flujo de previsualización
+            this.previsualizarDescripcionesJson();
+          }
+        } catch (e) {
+          console.error('Error parseando JSON final de IA:', e);
+        }
+        this.cdr.detectChanges();
+      });
+    });
+
+    this.eventSourceIA.addEventListener('error', (event: any) => {
+      this.ngZone.run(() => {
+        console.error('Error en stream SSE:', event);
+        try {
+          const datos = JSON.parse(event.data);
+          this.errorAnalisisIA = datos.error || 'Error durante el análisis';
+        } catch (e) {
+          this.errorAnalisisIA = 'Error de conexión durante el streaming';
+        }
+        this.analizandoConIA = false;
+        if (this.eventSourceIA) {
+          this.eventSourceIA.close();
+          this.eventSourceIA = null;
+        }
+        this.cdr.detectChanges();
+      });
+    });
+  }
+
+  cancelarAnalisisIA(): void {
+    if (this.jobIdIA) {
+      this.http.post(`${environment.apiUrl}/api/jobs/${this.jobIdIA}/cancelar`, {}).subscribe({
+        next: () => console.log('Job cancelado'),
+        error: err => console.error('Error cancelando:', err)
+      });
+    }
+    if (this.eventSourceIA) {
+      this.eventSourceIA.close();
+      this.eventSourceIA = null;
+    }
+    this.analizandoConIA = false;
+    this.estadoTextoIA = 'Análisis cancelado.';
+    this.cdr.detectChanges();
   }
 
   // ============================================

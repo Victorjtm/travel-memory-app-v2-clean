@@ -50,6 +50,13 @@
     <i class="fa fa-clipboard-list"></i> Importar Descripciones (JSON)
   </button>
 
+  <!-- ✨ NUEVO BOTÓN: Analizar Fotos con IA (Gemini Vision) -->
+  <button (click)="abrirModalAnalisisIA()" class="btn-analizar-ia"
+    [disabled]="!archivos || archivos.length === 0 || modoAsignandoDescripciones || analizandoConIA"
+    title="Analiza automáticamente las fotos usando Gemini Vision con clustering geo-temporal y streaming SSE">
+    <i class="fa fa-wand-magic-sparkles"></i> Analizar Fotos con IA
+  </button>
+
   <!-- 🎨 SELECTOR DE VISTA: Lista / Galería -->
   <div class="selector-vista" *ngIf="archivos && archivos.length > 0">
     <button (click)="toggleVista()" [class.active]="!modoGaleria" title="Vista de Lista Detallada">
@@ -358,6 +365,99 @@
     </div>
   </div>
   <!-- FIN: Modal Importar Descripciones JSON -->
+
+  <!-- ============================================================================ -->
+  <!-- ✨ MODAL 6: ANÁLISIS VISUAL AUTOMÁTICO CON GEMINI VISION Y STREAMING SSE     -->
+  <!-- ============================================================================ -->
+  <div class="modal-backdrop" *ngIf="mostrarModalAnalisisIA" (click)="cerrarModalAnalisisIA()" role="dialog"
+    aria-label="Análisis de fotos con IA">
+
+    <div class="modal-content modal-analisis-ia" (click)="$event.stopPropagation()">
+
+      <!-- Botón cerrar -->
+      <button class="btn-cerrar-modal" (click)="cerrarModalAnalisisIA()" title="Cerrar modal">
+        <i class="fa fa-times"></i>
+      </button>
+
+      <h2 style="margin-top: 0; color: #673ab7; display: flex; align-items: center; gap: 10px;">
+        <i class="fa fa-wand-magic-sparkles"></i> Análisis Inteligente con Gemini Vision
+      </h2>
+      <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+        Optimiza las fotos a 768px, las agrupa en clústeres geo-temporales por proximidad y genera descripciones narrativas variadas en streaming.
+      </p>
+
+      <!-- Si no está analizando: Configuración previa -->
+      <div *ngIf="!analizandoConIA" class="config-analisis-ia">
+        <div class="form-group" style="margin-bottom: 15px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #444;">
+            Clave de API de Gemini (Opcional si está en .env del servidor):
+          </label>
+          <input type="password" [(ngModel)]="apiKeyGeminiInput" placeholder="Pega tu GEMINI_API_KEY..."
+            class="input-apikey-ia" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box;">
+          <span style="font-size: 11px; color: #888; display: block; margin-top: 4px;">
+            Se guardará en tu navegador para futuras sesiones.
+          </span>
+        </div>
+
+        <div class="info-caracteristicas-ia" style="background: #f3f0fb; border: 1px solid #d1c4e9; border-radius: 8px; padding: 14px; margin-bottom: 20px;">
+          <h4 style="margin: 0 0 8px 0; color: #512da8; font-size: 13px;"><i class="fa fa-bolt"></i> Pipeline de Alto Rendimiento:</h4>
+          <ul style="margin: 0; padding-left: 18px; font-size: 12px; color: #4527a0; line-height: 1.6;">
+            <li><strong>Compresión Sharp 768px:</strong> Fotos ultra ligeras (~55 KB) para lectura nítida de letreros.</li>
+            <li><strong>Clustering Geo-temporal:</strong> Agrupa fotos cercanas en 35m y 5min, ahorrando llamadas redundantes.</li>
+            <li><strong>Variaciones Secuenciales:</strong> Descripciones fluidas para cada foto del grupo sin textos repetitivos.</li>
+            <li><strong>Previsualización y Rollback:</strong> Podrás revisar y editar antes de guardar en la base de datos.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Si está analizando: Monitor de Progreso en Vivo SSE -->
+      <div *ngIf="analizandoConIA" class="progreso-analisis-ia" style="margin: 20px 0;">
+        <div class="progress-bar-container" style="background: #e0e0e0; border-radius: 8px; height: 18px; overflow: hidden; position: relative;">
+          <div class="progress-bar-fill" [style.width.%]="progresoIA"
+            style="background: linear-gradient(90deg, #673ab7, #9c27b0); height: 100%; transition: width 0.3s ease;">
+          </div>
+          <span style="position: absolute; width: 100%; text-align: center; top: 1px; font-size: 11px; font-weight: bold; color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">
+            {{ progresoIA }}%
+          </span>
+        </div>
+
+        <div class="estado-monitor-texto" style="margin-top: 10px; font-size: 13px; color: #333; display: flex; justify-content: space-between;">
+          <span><i class="fa fa-spinner fa-spin" style="color: #673ab7;"></i> {{ estadoTextoIA }}</span>
+          <span *ngIf="totalClustersIA > 0" style="font-weight: 600; color: #673ab7;">
+            Hito {{ clusterActualIA }} / {{ totalClustersIA }}
+          </span>
+        </div>
+
+        <!-- Muestra de descripciones en streaming en tiempo real -->
+        <div class="streaming-items-box" *ngIf="itemsRecientesIA.length > 0"
+          style="margin-top: 15px; max-height: 180px; overflow-y: auto; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 10px;">
+          <div *ngFor="let item of itemsRecientesIA" style="font-size: 12px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px dashed #e0e0e0; display: flex; gap: 8px; align-items: center;">
+            <i class="fa fa-check" style="color: #4caf50;"></i>
+            <span style="font-weight: 500; color: #333;">{{ item.nombreArchivo }}:</span>
+            <span style="color: #673ab7; font-style: italic;">{{ item.descripcion }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Errores si los hay -->
+      <div *ngIf="errorAnalisisIA" class="status-json-error" style="margin-top: 15px;">
+        <i class="fa fa-exclamation-triangle"></i> {{ errorAnalisisIA }}
+      </div>
+
+      <!-- Acciones del Modal -->
+      <div class="modal-acciones" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+        <button class="btn-volver" (click)="cerrarModalAnalisisIA()">
+          {{ analizandoConIA ? 'Cancelar Análisis' : 'Cerrar' }}
+        </button>
+        <button class="btn-iniciar-analisis-ia" *ngIf="!analizandoConIA" (click)="iniciarAnalisisIA()"
+          style="background: #673ab7; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+          <i class="fa fa-wand-magic-sparkles"></i> Iniciar Análisis con IA
+        </button>
+      </div>
+
+    </div>
+  </div>
+  <!-- FIN: Modal Análisis Automático con IA -->
 
 </div>
 <!-- FIN: Contenedor principal -->

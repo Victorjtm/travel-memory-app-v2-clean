@@ -5194,6 +5194,57 @@ app.post('/archivos/actualizar-descripciones-masivas', async (req, res) => {
   }
 });
 
+// ==============================================================================
+// ENDPOINTS DE ANÁLISIS VISUAL CON GEMINI Y STREAMING SSE
+// ==============================================================================
+const analizadorFotosIA = require('./backend-services/analizador-fotos-ia.service');
+
+app.post('/api/actividades/:actividadId/analizar-fotos-ia', async (req, res) => {
+  const { actividadId } = req.params;
+  const { apiKey } = req.body || {};
+
+  try {
+    const archivos = await dbQuery.all(
+      `SELECT * FROM archivos WHERE actividadId = ? ORDER BY id ASC`,
+      [actividadId]
+    );
+
+    if (!archivos || archivos.length === 0) {
+      return res.status(404).json({ error: 'No se encontraron fotos en esta actividad para analizar.' });
+    }
+
+    const job = analizadorFotosIA.iniciarJob({
+      actividadId,
+      archivos,
+      uploadsDir: uploadsPath,
+      apiKey: apiKey || process.env.GEMINI_API_KEY
+    });
+
+    console.log(`🚀 [ANALISIS IA] Iniciado Job ${job.id} para actividad ${actividadId} (${archivos.length} archivos)`);
+    res.status(202).json({
+      jobId: job.id,
+      totalArchivos: job.totalArchivos,
+      mensaje: 'Análisis con IA iniciado en segundo plano'
+    });
+  } catch (error) {
+    console.error('❌ Error iniciando análisis con IA:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Canal de streaming Server-Sent Events (SSE)
+app.get('/api/jobs/:jobId/stream', (req, res) => {
+  const { jobId } = req.params;
+  analizadorFotosIA.suscribirStream(jobId, res);
+});
+
+// Cancelar un job en ejecución
+app.post('/api/jobs/:jobId/cancelar', (req, res) => {
+  const { jobId } = req.params;
+  const cancelado = analizadorFotosIA.cancelarJob(jobId);
+  res.json({ cancelado });
+});
+
 app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
   const { actividadId, tipo, descripcion, horaCaptura, geolocalizacion, fechaCreacion, actividadesCoincidentes, actividadSeleccionada } = req.body;
   const archivos = req.files;
