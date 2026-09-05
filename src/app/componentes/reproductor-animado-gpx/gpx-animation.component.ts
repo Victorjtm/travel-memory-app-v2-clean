@@ -773,15 +773,22 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     let currentPiIdx = Math.floor(this.currentIndex);
     let nextPiIdx = -1;
 
-    for (let i = currentPiIdx + 1; i < this.points.length; i++) {
-      if (this.points[i].event) {
-        nextPiIdx = i;
-        break;
-      }
-    }
-
-    if (nextPiIdx === -1) {
+    // 🛡️ BIFURCACIÓN DE SEGURIDAD EXCLUSIVA PARA ÁLBUM-LIBRO (interactiveMode === false)
+    if (this.interactiveMode === false) {
+      // En Álbum-Libro: ignorar eventos intermedios y abarcar toda la ruta completa del itinerario
+      currentPiIdx = 0;
       nextPiIdx = this.points.length - 1;
+    } else {
+      for (let i = currentPiIdx + 1; i < this.points.length; i++) {
+        if (this.points[i].event) {
+          nextPiIdx = i;
+          break;
+        }
+      }
+
+      if (nextPiIdx === -1) {
+        nextPiIdx = this.points.length - 1;
+      }
     }
 
     if (currentPiIdx === nextPiIdx) {
@@ -806,7 +813,12 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     let bounds: any;
     const isBoat = this.isBoatMode(segMode);
 
-    if (isBoat) {
+    if (this.interactiveMode === false) {
+      // 📖 Vista Panorámica Estática en Álbum-Libro: Toda la ruta completa
+      const allCoords = this.points.map(p => [p.lat, p.lng] as [number, number]);
+      bounds = this.L.latLngBounds(allCoords.length > 0 ? allCoords : [[p1.lat, p1.lng], [p2.lat, p2.lng]]);
+      console.log(`📖 [Álbum-Libro] Encuadrando ruta GPX completa con vista aérea global (${allCoords.length} puntos)`);
+    } else if (isBoat) {
       // 🚢 EN EL MAR: Encuadre panorámico completo (desde puerto de salida hasta puerto de llegada)
       let boatStart = currentPiIdx;
       while (boatStart > 0 && this.isBoatMode(this.points[boatStart - 1]?.mode || this.points[boatStart - 1]?.hfMode)) {
@@ -839,12 +851,17 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         const point2 = this.map.latLngToContainerPoint([p2.lat, p2.lng]);
         const visualDistPx = Math.sqrt(Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2));
 
-        // Velocidad visual deseada (ej: 150 píxeles por segundo)
-        const targetPxPerSec = isBoat ? 100 : 150;
-        const targetDurationSeconds = Math.max(0.5, visualDistPx / targetPxPerSec);
-
         // Distancia geográfica real del tramo (en metros)
         const segmentDistM = Math.abs((p2.distAcum - p1.distAcum)) || 1;
+
+        // Velocidad visual deseada (ej: 150 píxeles por segundo)
+        const targetPxPerSec = isBoat ? 100 : 150;
+        let safeVisualDistPx = visualDistPx;
+        if (this.interactiveMode === false && segmentDistM > 1000 && safeVisualDistPx < 100) {
+          const cont = this.map.getContainer();
+          safeVisualDistPx = Math.max(cont?.clientWidth || 600, cont?.clientHeight || 400) * 0.6;
+        }
+        const targetDurationSeconds = Math.max(0.5, safeVisualDistPx / targetPxPerSec);
         const speedFactor = this.getSpeedFactor(this.currentMode);
 
         // Para distancias largas (> 2 km), acelerar suavemente el tiempo objetivo del tramo
@@ -858,7 +875,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         let calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
         calculatedSpeed = Math.max(1, Math.min(3000, Math.round(calculatedSpeed)));
 
-        console.log(`🎯 [Tramo] pixels=${visualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${targetDurationSeconds.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
+        console.log(`🎯 [Tramo] pixels=${safeVisualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${targetDurationSeconds.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
 
         // SIEMPRE aplicar la velocidad calculada (sin depender de autoSpeedEnabled)
         this.speed = calculatedSpeed;
@@ -873,9 +890,15 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
     // Encuadrar la cámara
     this.map.once('moveend', onFrameComplete);
+
+    // Cota de seguridad de maxZoom: límite rígido para Álbum-Libro (interactiveMode === false)
+    const safeMaxZoom = this.interactiveMode === false
+      ? (isBoat ? 11 : 14)
+      : (isBoat ? 11 : undefined);
+
     this.map.fitBounds(bounds, {
-      padding: isBoat ? [70, 70] : [50, 50],
-      maxZoom: isBoat ? 11 : undefined,
+      padding: isBoat ? [70, 70] : (this.interactiveMode === false ? [60, 60] : [50, 50]),
+      maxZoom: safeMaxZoom,
       animate: true,
       duration: 1.5
     });
@@ -1187,8 +1210,8 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
       this.marker.setLatLng(latlng);
 
-      // Fase 2: Seguimiento de cámara throttled con Safe Zone - ya no se llama setView cada frame
-      if (!this.pendingEvent && !this.activeEvent && this.cameraMode === 'TRACKING') {
+      // Fase 2: Seguimiento de cámara throttled con Safe Zone (desactivado en Álbum-Libro)
+      if (!this.pendingEvent && !this.activeEvent && this.cameraMode === 'TRACKING' && this.interactiveMode !== false) {
         this.updateCameraTracking(latlng as [number, number]);
       }
 
@@ -1915,7 +1938,8 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   }
 
   private updateCameraTracking(markerLatLng: [number, number]) {
-    if (this.cameraMode !== 'TRACKING' || !this.map) return;
+    // 🛡️ En Álbum-Libro (interactiveMode === false), la cámara permanece estática en su encuadre aéreo
+    if (this.interactiveMode === false || this.cameraMode !== 'TRACKING' || !this.map) return;
 
     const now = performance.now();
     if (now - this.lastCameraUpdateTime < this.CAMERA_THROTTLE_MS) return;
