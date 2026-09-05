@@ -69,11 +69,26 @@ export class IAService {
             this.cargarHistorial(savedSessionId);
         }
 
-        // Cargar API Key guardada
-        const savedApiKey = localStorage.getItem('ia_api_key');
-        if (savedApiKey) {
-            this.apiKeyUsuario = savedApiKey;
+        // Cargar API Key guardada de forma prioritaria (Gemini AI Studio)
+        this.apiKeyUsuario = this.resolverApiKeyGuardada();
+    }
+
+    /**
+     * Resuelve la API Key de Gemini guardada en el almacenamiento local
+     */
+    public resolverApiKeyGuardada(): string | null {
+        const geminiKey = localStorage.getItem('gemini_api_key');
+        if (geminiKey && geminiKey.trim()) return geminiKey.trim();
+
+        const iaKey = localStorage.getItem('ia_api_key');
+        if (iaKey && iaKey.trim()) return iaKey.trim();
+
+        const contextoKey = localStorage.getItem('contexto_viajeros_ia');
+        if (contextoKey && (contextoKey.trim().startsWith('AIza') || contextoKey.trim().length > 30)) {
+            return contextoKey.trim();
         }
+
+        return null;
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -116,14 +131,16 @@ export class IAService {
     // ══════════════════════════════════════════════════════════════════════
 
     /**
-     * Configura API Key del usuario
+     * Configura API Key del usuario sincronizándola en el almacenamiento
      */
     setApiKey(apiKey: string | null): void {
-        this.apiKeyUsuario = apiKey;
-        if (apiKey) {
-            localStorage.setItem('ia_api_key', apiKey);
-            console.log('🔑 API Key configurada');
+        this.apiKeyUsuario = apiKey ? apiKey.trim() : null;
+        if (this.apiKeyUsuario) {
+            localStorage.setItem('gemini_api_key', this.apiKeyUsuario);
+            localStorage.setItem('ia_api_key', this.apiKeyUsuario);
+            console.log('🔑 API Key de Gemini configurada y sincronizada');
         } else {
+            localStorage.removeItem('gemini_api_key');
             localStorage.removeItem('ia_api_key');
             console.log('🔑 API Key eliminada');
         }
@@ -133,6 +150,9 @@ export class IAService {
      * Obtiene API Key guardada
      */
     getApiKey(): string | null {
+        if (!this.apiKeyUsuario) {
+            this.apiKeyUsuario = this.resolverApiKeyGuardada();
+        }
         return this.apiKeyUsuario;
     }
 

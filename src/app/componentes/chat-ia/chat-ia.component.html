@@ -1,14 +1,22 @@
 <div class="chat-container">
   <div class="chat-header">
     <div class="header-left">
-      <h2>Planificador inteligente</h2>
-      <span class="session-id">Sesion {{ sessionId.substring(0, 8) }}</span>
+      <div class="header-title-wrapper">
+        <h2>Planificador inteligente</h2>
+        <span class="badge-gemini activo" *ngIf="apiKeyConfigurada">
+          🟢 Usando clave de Gemini AI Studio activa
+        </span>
+        <span class="badge-gemini inactivo" *ngIf="!apiKeyConfigurada">
+          🔴 Clave de Gemini AI Studio no configurada
+        </span>
+      </div>
+      <span class="session-id">Sesión {{ sessionId.substring(0, 8) }} · Google Gemini 3.6 Flash</span>
     </div>
 
     <div class="header-right">
       <button class="btn-header btn-api-key" [class.configurada]="apiKeyConfigurada"
         (click)="apiKeyConfigurada ? eliminarApiKey() : configurarApiKey()"
-        [title]="apiKeyConfigurada ? 'API Key configurada. Click para eliminar.' : 'Configurar API Key'">
+        [title]="apiKeyConfigurada ? '🟢 Usando clave de Gemini AI Studio activa. Click para gestionar.' : 'Configurar API Key de Gemini AI Studio'">
         <i class="fa-solid fa-key"></i>
       </button>
 
@@ -169,10 +177,10 @@
     </div>
 
     <small class="footer-text">
-      Powered by Perplexity AI ·
+      Powered by Google Gemini 3.6 Flash (Google AI Studio) ·
       {{ mensajes.length }} mensajes ·
-      <span *ngIf="!apiKeyConfigurada" class="advertencia">API Key no configurada</span>
-      <span *ngIf="apiKeyConfigurada" class="ok">API Key configurada</span>
+      <span *ngIf="!apiKeyConfigurada" class="advertencia">🔴 Clave no configurada</span>
+      <span *ngIf="apiKeyConfigurada" class="ok">🟢 Usando clave de Gemini AI Studio activa</span>
     </small>
   </div>
 </div>

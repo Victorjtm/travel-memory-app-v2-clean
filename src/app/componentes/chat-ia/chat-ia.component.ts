@@ -142,7 +142,7 @@ export class ChatIAComponent implements OnInit, OnDestroy, AfterViewChecked {
         }
 
         if (!this.apiKeyConfigurada) {
-            alert('⚠️ No hay API Key configurada.\n\nPor favor, configura tu API Key de Perplexity primero.');
+            alert('⚠️ No hay API Key configurada.\n\nPor favor, configura tu API Key de Gemini (Google AI Studio) primero.');
             this.configurarApiKey();
             return;
         }
@@ -220,24 +220,25 @@ export class ChatIAComponent implements OnInit, OnDestroy, AfterViewChecked {
     // ══════════════════════════════════════════════════════════════════════
 
     /**
-     * Configura la API Key de Perplexity
+     * Configura la API Key de Google AI Studio (Gemini)
      */
     configurarApiKey(): void {
-        const apiKey = prompt('Introduce tu API Key de Perplexity:\n\n(Se guardará de forma segura en tu navegador)');
+        const keyActual = this.iaService.getApiKey() || '';
+        const apiKey = prompt('Introduce tu API Key de Google AI Studio (Gemini):\n\n(Se guardará en tu navegador y se reutilizará en toda la aplicación):', keyActual);
 
         if (!apiKey || !apiKey.trim()) {
             return;
         }
 
-        console.log('🔑 Validando API Key...');
+        console.log('🔑 Validando API Key de Gemini...');
 
         this.iaService.validarApiKey(apiKey.trim()).subscribe({
             next: (resultado) => {
                 if (resultado.valida) {
                     this.iaService.setApiKey(apiKey.trim());
                     this.apiKeyConfigurada = true;
-                    alert('✅ API Key configurada correctamente');
-                    console.log('✅ API Key válida y guardada');
+                    alert('✅ API Key de Gemini configurada correctamente.\n\n🟢 Usando clave de Gemini AI Studio activa.');
+                    console.log('✅ API Key de Gemini válida y guardada');
                 } else {
                     alert(`❌ API Key inválida:\n\n${resultado.error}`);
                     console.error('❌ API Key inválida:', resultado.error);
@@ -254,7 +255,7 @@ export class ChatIAComponent implements OnInit, OnDestroy, AfterViewChecked {
      * Elimina la API Key guardada
      */
     eliminarApiKey(): void {
-        const confirmar = confirm('¿Eliminar la API Key guardada?\n\nTendrás que configurarla de nuevo para usar el chat.');
+        const confirmar = confirm('¿Eliminar la API Key de Gemini guardada?\n\nTendrás que configurarla de nuevo para usar el chat.');
         if (!confirmar) return;
 
         this.iaService.setApiKey(null);

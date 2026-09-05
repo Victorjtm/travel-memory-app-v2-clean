@@ -27,17 +27,15 @@ console.log('🎬 [FFMPEG] Binario de ffmpeg configurado en:', FFMPEG_BIN);
 const procesosTranscripcionActivos = new Set();
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MÓDULO 6: CLIENTE PERPLEXITY
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const PerplexityClient = require('./backend-services/perplexity-client');
+// MÓDULO 6: CLIENTE GEMINI AI STUDIO (PLANIFICADOR DE VIAJES)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const PlanificadorViajesIAService = require('./backend-services/planificador-viajes-ia.service');
 
-// Inicializar cliente con API Key del .env
-const perplexityClient = new PerplexityClient();
+// Inicializar servicio de planificación con Gemini 3.6 Flash
+const planificadorViajesIA = new PlanificadorViajesIAService();
 
-console.log('🤖 Cliente Perplexity inicializado');
-console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-console.log('🤖 Cliente Perplexity inicializado');
+console.log('🤖 Cliente Gemini 3.6 Flash (Planificador de Viajes) inicializado');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -45,13 +43,13 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const rateLimit = require('express-rate-limit');
 
-// 1. RATE LIMITING: Limitar peticiones a endpoints de IA (10 cada 15 min)
+// 1. RATE LIMITING: Limitar peticiones a endpoints de IA (60 cada 15 min - Gratuito Google AI Studio)
 const iaRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 60,
   message: {
     error: 'Demasiadas peticiones a la IA',
-    detalles: 'Por favor, espera 15 minutos antes de volver a intentar',
+    detalles: 'Por favor, espera unos minutos antes de volver a intentar',
     reintentar_en: '15 minutos'
   },
   standardHeaders: true,
@@ -61,7 +59,7 @@ const iaRateLimiter = rateLimit({
     console.log(`⚠️ [RATE LIMIT] IP bloqueada temporalmente: ${req.ip}`);
     res.status(429).json({
       error: 'Demasiadas peticiones a la IA',
-      mensaje: 'Has alcanzado el límite de 10 peticiones cada 15 minutos',
+      mensaje: 'Has alcanzado el límite de peticiones cada 15 minutos',
       reintentar_en_segundos: 900,
       ip: req.ip
     });
@@ -69,11 +67,11 @@ const iaRateLimiter = rateLimit({
 });
 
 
-console.log('🛡️ Rate limiting configurado: 10 peticiones cada 15 minutos');
+console.log('🛡️ Rate limiting configurado: 60 peticiones cada 15 minutos');
 
 
-// 2. LÍMITE DE TOKENS POR SESIÓN (10,000 tokens máximo)
-const MAX_TOKENS_POR_SESION = 10000;
+// 2. LÍMITE DE TOKENS POR SESIÓN (100,000 tokens máximo con Gemini)
+const MAX_TOKENS_POR_SESION = 100000;
 
 /**
  * Middleware para verificar el consumo de tokens de una sesión
@@ -1556,8 +1554,8 @@ app.post('/viajes-futuros/desde-ia', async (req, res) => {
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MÓDULO 6: ENDPOINTS IA - INTEGRACIÓN CON PERPLEXITY
-// Fecha: 2026-02-04
+// MÓDULO 6: ENDPOINTS IA - INTEGRACIÓN CON GEMINI 3.6 FLASH (GOOGLE AI STUDIO)
+// Fecha: 2026-09-05
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
@@ -1589,88 +1587,19 @@ app.post('/ia/chat', iaRateLimiter, verificarLimiteTokens, async (req, res) => {
       [sessionId]
     );
 
-    // 3. Preparar mensajes para Perplexity
-    const mensajesPerplexity = [
-      {
-        role: 'system',
-        content: `Eres un asistente experto en planificación de viajes. 
+    // 3. Llamar al nuevo motor Gemini 3.6 Flash
+    const historialPrevio = historial.slice(0, -1);
+    const respuestaGemini = await planificadorViajesIA.chat(historialPrevio, mensaje, apiKey);
 
-Tu objetivo es ayudar al usuario a crear un plan de viaje estructurado con:
-- Nombre del viaje
-- Destino principal
-- Fechas de inicio y fin (formato YYYY-MM-DD)
-- Itinerarios por día con actividades detalladas (nombre, horario, descripción)
+    const respuestaIA = respuestaGemini.mensaje;
+    const tokensUsados = respuestaGemini.tokens;
+    const tiempoRespuesta = respuestaGemini.tiempo_ms;
+    const planDetectado = respuestaGemini.plan_detectado;
+    const datosEstructurados = respuestaGemini.datos_estructurados;
 
-Cuando el plan esté completo, incluye al final de tu respuesta un bloque JSON con este formato exacto:
+    console.log(`📥 [IA Gemini] Respuesta recibida (${tokensUsados} tokens, ${tiempoRespuesta}ms, planDetectado: ${planDetectado})`);
 
-\`\`\`json
-{
-  "plan_completo": true,
-  "viaje": {
-    "nombre": "Viaje a Barcelona",
-    "destino": "Barcelona",
-    "fecha_inicio": "2026-03-15",
-    "fecha_fin": "2026-03-18",
-    "descripcion": "Escapada cultural y gastronómica"
-  },
-  "itinerarios": [
-    {
-      "fecha": "2026-03-15",
-      "descripcion": "Llegada y zona gótica",
-      "tipo_viaje": "urbana",
-      "actividades": [
-        {
-          "nombre": "Check-in hotel",
-          "descripcion": "Hotel en Las Ramblas",
-          "hora_inicio": "14:00",
-          "hora_fin": "15:00",
-          "tipo_actividad": "alojamiento",
-          "ubicacion": "Las Ramblas, Barcelona"
-        }
-      ]
-    }
-  ]
-}
-\`\`\`
-
-IMPORTANTE: 
-- Los tipos de viaje válidos son: costa, naturaleza, rural, urbana, cultural, trabajo
-- Los horarios deben estar en formato HH:MM (24 horas)
-- Las fechas en formato YYYY-MM-DD
-- Sé conversacional y amigable
-- Haz preguntas si falta información importante`
-      },
-      ...historial.map(m => ({
-        role: m.rol === 'user' ? 'user' : 'assistant',
-        content: m.mensaje
-      }))
-    ];
-
-    // 4. Llamar a Perplexity usando el cliente
-    const respuestaPerplexity = await perplexityClient.chat(mensajesPerplexity, apiKey);
-
-    const respuestaIA = respuestaPerplexity.contenido;
-    const tokensUsados = respuestaPerplexity.tokens;
-    const tiempoRespuesta = respuestaPerplexity.tiempo_ms;
-
-    console.log(`📥 [IA] Respuesta recibida (${tokensUsados} tokens, ${tiempoRespuesta}ms)`);
-
-    // 5. Detectar si hay un plan estructurado en la respuesta
-    let planDetectado = false;
-    let datosEstructurados = null;
-
-    const jsonMatch = respuestaIA.match(/```json\n([\s\S]*?)\n```/);
-    if (jsonMatch) {
-      try {
-        datosEstructurados = JSON.parse(jsonMatch[1]);
-        planDetectado = datosEstructurados.plan_completo === true;
-        console.log('✨ [IA] Plan estructurado detectado');
-      } catch (error) {
-        console.warn('⚠️ [IA] Error parseando JSON del plan:', error.message);
-      }
-    }
-
-    // 6. Guardar respuesta de la IA en BD
+    // 4. Guardar respuesta de la IA en BD
     const resultadoInsert = await dbQuery.run(
       `INSERT INTO conversaciones_ia 
        (sessionId, rol, mensaje, timestamp, tokens_usados, tiempo_respuesta, datos_estructurados, modelo) 
@@ -1681,11 +1610,11 @@ IMPORTANTE:
         tokensUsados,
         tiempoRespuesta,
         datosEstructurados ? JSON.stringify(datosEstructurados) : null,
-        respuestaPerplexity.modelo
+        respuestaGemini.modelo
       ]
     );
 
-    // 7. Responder al frontend
+    // 5. Responder al frontend
     res.json({
       id: resultadoInsert.lastID,
       mensaje: respuestaIA,
@@ -1693,8 +1622,8 @@ IMPORTANTE:
       tiempo_ms: tiempoRespuesta,
       plan_detectado: planDetectado,
       datos_estructurados: datosEstructurados,
-      citations: respuestaPerplexity.citations || [],
-      // ✨ Información de límites de seguridad
+      citations: [],
+      // Información de cuota de sesión
       limite_tokens: {
         consumidos: (req.tokensConsumidos || 0) + tokensUsados,
         maximo: MAX_TOKENS_POR_SESION,
@@ -1704,10 +1633,10 @@ IMPORTANTE:
     });
 
   } catch (error) {
-    console.error('❌ [IA] Error en chat:', error.message);
+    console.error('❌ [IA Gemini] Error en chat:', error.message || error);
 
     res.status(error.status || 500).json({
-      error: error.message || 'Error al procesar mensaje con IA',
+      error: error.message || 'Error al procesar mensaje con Gemini',
       tiempo_ms: error.tiempo_ms || Date.now() - inicio
     });
   }
@@ -1728,8 +1657,8 @@ app.post('/ia/validar-apikey', async (req, res) => {
   }
 
   try {
-    console.log('🔑 Validando API Key de Perplexity...');
-    const resultado = await perplexityClient.validarApiKey(apiKey);
+    console.log('🔑 Validando API Key de Gemini (Google AI Studio)...');
+    const resultado = await planificadorViajesIA.validarApiKey(apiKey);
     res.json(resultado);
   } catch (error) {
     console.error('❌ [IA] Error validando API Key:', error.message);
@@ -8350,7 +8279,7 @@ app.post('/ia/validar-apikey', (req, res) => {
     });
   }
 
-  perplexityClient.validarApiKey(apiKey)
+  planificadorViajesIA.validarApiKey(apiKey)
     .then(resultado => {
       res.json(resultado);
     })

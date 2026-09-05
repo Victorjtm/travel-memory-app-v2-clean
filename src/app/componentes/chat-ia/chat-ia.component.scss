@@ -24,6 +24,13 @@
 .header-left {
   min-width: 0;
 
+  .header-title-wrapper {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
   h2 {
     margin: 0;
     color: var(--app-ink);
@@ -32,9 +39,35 @@
     line-height: 1.15;
   }
 
+  .badge-gemini {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    font-weight: 680;
+    letter-spacing: 0.01em;
+    user-select: none;
+    transition: all var(--app-fast);
+
+    &.activo {
+      background: rgba(16, 185, 129, 0.12);
+      color: #065f46;
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      box-shadow: 0 2px 6px rgba(16, 185, 129, 0.12);
+    }
+
+    &.inactivo {
+      background: rgba(239, 68, 68, 0.1);
+      color: #991b1b;
+      border: 1px solid rgba(239, 68, 68, 0.28);
+    }
+  }
+
   .session-id {
     display: block;
-    margin-top: 3px;
+    margin-top: 4px;
     color: var(--app-text-subtle);
     font-size: 0.78rem;
     font-weight: 620;
