@@ -288,14 +288,253 @@ Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
   }
 
   /**
+   * Genera un hash de diferencia dHash (64 bits) para deduplicar ráfagas idénticas
+   */
+  async calcularDHash(rutaLocal) {
+    try {
+      if (!fs.existsSync(rutaLocal)) return null;
+      const { data } = await sharp(rutaLocal)
+        .rotate()
+        .resize(9, 8, { fit: 'fill' })
+        .grayscale()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+
+      let hash = '';
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+          const left = data[y * 9 + x];
+          const right = data[y * 9 + (x + 1)];
+          hash += left > right ? '1' : '0';
+        }
+      }
+      return hash;
+    } catch (err) {
+      console.warn(`[dHash] Error calculando hash para ${rutaLocal}:`, err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Distancia de Hamming entre dos hashes binarios
+   */
+  distanciaHamming(hash1, hash2) {
+    if (!hash1 || !hash2 || hash1.length !== hash2.length) return 999;
+    let dist = 0;
+    for (let i = 0; i < hash1.length; i++) {
+      if (hash1[i] !== hash2[i]) dist++;
+    }
+    return dist;
+  }
+
+  /**
+   * Inferencia Multimodal en Lote (5 fotos por petición) con Gemini Vision
+   * - Payload entrelazado (texto con ID + imagen WebP)
+   * - Schema estricto { id, descripcion }
+   * - Backoff exponencial con Jitter ante error 429 / 503
+   */
+  async llamarGeminiLoteMultimodal(loteFotos, contextoGeo, apiKey, job) {
+    const key = apiKey || process.env.GEMINI_API_KEY;
+    if (!key) {
+      throw new Error('No se ha configurado GEMINI_API_KEY. Introduce tu clave en la modal de análisis.');
+    }
+
+    const modelo = 'gemini-3.6-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`;
+
+    // Construcción entrelazada de Parts (Texto con ID + WebP 768px inlineData)
+    const parts = [];
+    for (let idx = 0; idx < loteFotos.length; idx++) {
+      const foto = loteFotos[idx];
+      try {
+        const { base64 } = await this.optimizarParaVision(foto.rutaLocal);
+        parts.push({ text: `Foto con ID "${foto.id}" (Archivo: ${foto.nombreArchivo}):` });
+        parts.push({
+          inlineData: {
+            mimeType: 'image/webp',
+            data: base64
+          }
+        });
+      } catch (optErr) {
+        console.warn(`[Gemini Batch] No se pudo optimizar foto ${foto.nombreArchivo}:`, optErr.message);
+      }
+    }
+
+    // Prompt Maestro al final del lote
+    const promptMaestro = `Analiza detalladamente cada una de las imágenes anteriores individualmente y describe con precisión física y concisa lo que se ve en cada una de ellas (monumento, edificio, paisaje, comida, vehículo, actividad o elemento destacado).
+Contexto geográfico orientativo: ${contextoGeo || 'Viaje turístico'}.
+
+REGLAS OBLIGATORIAS:
+1. Devuelve ESTRICTAMENTE un array JSON plano de objetos, con exactamente una entrada por cada foto analizada.
+2. Cada objeto debe tener obligatoriamente dos propiedades:
+   - "id": el ID exacto asignado a la foto (en formato texto, por ejemplo: "${loteFotos[0]?.id}").
+   - "descripcion": descripción concisa en formato "[Lugar o Elemento principal] / [Perspectiva o Acción]".
+3. No inventes fotos adicionales. Debes incluir exactamente los IDs de las ${loteFotos.length} fotos recibidas.`;
+
+    parts.push({ text: promptMaestro });
+
+    const payloadConSchema = {
+      contents: [{ parts }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 2048,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              id: { type: 'STRING' },
+              descripcion: { type: 'STRING' }
+            },
+            required: ['id', 'descripcion']
+          }
+        }
+      }
+    };
+
+    const maxIntentos = 4;
+    let ultimoError = null;
+
+    for (let intento = 1; intento <= maxIntentos; intento++) {
+      try {
+        const res = await axios.post(url, payloadConSchema, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 45000
+        });
+
+        const texto = res.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        const parseado = this.parsearRespuestaLote(texto);
+        if (parseado && parseado.length > 0) {
+          return parseado;
+        }
+
+        throw new Error(`Respuesta no contiene array JSON válido: ${texto.substring(0, 120)}`);
+      } catch (error) {
+        const status = error.response?.status;
+        const errorData = error.response?.data || error.message;
+        const errorStr = typeof errorData === 'object' ? JSON.stringify(errorData, null, 2) : errorData;
+        ultimoError = errorStr;
+
+        console.error(`[Gemini Batch Error] Intento ${intento}/${maxIntentos} (Status: ${status}):`, errorStr.substring(0, 200));
+
+        // Registro en log de debug
+        try {
+          fs.appendFileSync(
+            path.join(process.cwd(), 'gemini_debug.log'),
+            `\n[${new Date().toISOString()}] BATCH INTENTO ${intento} (Status: ${status}):\n${errorStr}\n`
+          );
+        } catch (e) {}
+
+        // Si falló por 400 (incompatibilidad con responseSchema), intentar sin schema
+        if (status === 400 && intento === 1) {
+          try {
+            console.log('[Gemini Batch] Reintentando sin responseSchema estricto...');
+            const payloadSinSchema = {
+              ...payloadConSchema,
+              generationConfig: {
+                temperature: 0.2,
+                maxOutputTokens: 2048,
+                responseMimeType: 'application/json'
+              }
+            };
+            const res2 = await axios.post(url, payloadSinSchema, {
+              headers: { 'Content-Type': 'application/json' },
+              timeout: 45000
+            });
+            const texto2 = res2.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+            const parseado2 = this.parsearRespuestaLote(texto2);
+            if (parseado2 && parseado2.length > 0) {
+              return parseado2;
+            }
+          } catch (retry400Err) {
+            console.error('[Gemini Batch] Reintento sin schema también falló:', retry400Err.message);
+          }
+        }
+
+        // Manejo de Rate Limit (429) o Spikes temporales (503) con Backoff Exponencial + Jitter
+        if (status === 429 || status === 503) {
+          let segundosEspera = 0;
+
+          // Verificar si Google envía retryDelay
+          const violations = error.response?.data?.error?.details || [];
+          for (const d of violations) {
+            if (d.retryDelay) {
+              const segs = parseInt(String(d.retryDelay).replace('s', ''), 10);
+              if (!isNaN(segs) && segs > 0) {
+                segundosEspera = segs + 2; // margen de seguridad
+                break;
+              }
+            }
+          }
+
+          if (segundosEspera <= 0) {
+            // Backoff exponencial: 4s, 8s, 16s... con jitter aleatorio
+            segundosEspera = Math.min(45, Math.pow(2, intento + 1) + Math.floor(Math.random() * 3) + 2);
+          }
+
+          console.warn(`[Gemini Batch 429/503] Saturación de cuota. Esperando ${segundosEspera}s antes de reintentar (intento ${intento}/${maxIntentos})...`);
+          this.emitirEvento(job, 'esperando_cuota', {
+            intento,
+            segundosEspera,
+            mensaje: `Esperando cuota de API (${segundosEspera}s) para continuar...`
+          });
+
+          await new Promise(r => setTimeout(r, segundosEspera * 1000));
+          continue; // Reintentar siguiente iteración del bucle
+        }
+
+        // Si es otro error y quedan intentos, pausa corta
+        if (intento < maxIntentos) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+    }
+
+    throw new Error(`Error en lote tras ${maxIntentos} intentos: ${typeof ultimoError === 'object' ? JSON.stringify(ultimoError) : ultimoError}`);
+  }
+
+  /**
+   * Helper para parsear la respuesta estructurada de un lote
+   */
+  parsearRespuestaLote(texto) {
+    if (!texto) return null;
+    const limpio = texto.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    let array = null;
+
+    try {
+      array = JSON.parse(limpio);
+    } catch (err) {
+      const match = limpio.match(/\[[\s\S]*\]/);
+      if (match) {
+        try {
+          array = JSON.parse(match[0]);
+        } catch (e) {}
+      }
+    }
+
+    if (Array.isArray(array)) {
+      return array
+        .map(item => ({
+          id: String(item?.id || '').trim(),
+          descripcion: String(item?.descripcion || item?.description || '').trim()
+        }))
+        .filter(item => item.id && item.descripcion && item.descripcion.toLowerCase() !== 'recuerdo de viaje');
+    }
+
+    return null;
+  }
+
+  /**
    * Inicia el Job asíncrono y devuelve el jobId
    */
-  iniciarJob({ actividadId, archivos, uploadsDir, apiKey }) {
+  iniciarJob({ actividadId, archivos, uploadsDir, apiKey, modo = 'testigo' }) {
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     const job = {
       id: jobId,
       actividadId,
+      modo, // 'testigo' o 'batch_total'
       estado: 'INICIADO', // INICIADO, PROCESANDO, COMPLETADO, ERROR, CANCELADO
       progreso: 0,
       clusterActual: 0,
@@ -308,8 +547,12 @@ Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
 
     this.jobs.set(jobId, job);
 
-    // Arrancar procesamiento en segundo plano
-    this.procesarJobEnBackground(job, archivos, uploadsDir, apiKey);
+    // Derivar al pipeline seleccionado
+    if (modo === 'batch_total') {
+      this.procesarJobVisionTotal(job, archivos, uploadsDir, apiKey);
+    } else {
+      this.procesarJobEnBackground(job, archivos, uploadsDir, apiKey);
+    }
 
     return job;
   }
@@ -488,6 +731,241 @@ Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
       }
     } catch (err) {
       console.error(`[Job ${job.id}] Error general:`, err);
+      job.estado = 'ERROR';
+      job.error = err.message;
+      this.emitirEvento(job, 'error', { error: err.message });
+    }
+  }
+
+  /**
+   * Pipeline de Visión Total (Multi-Image Batching)
+   * - Deduplicación dHash express en memoria para detectar ráfagas idénticas
+   * - Lotes de 5 imágenes enviadas entrelazadas directamente a Gemini
+   * - Respuesta estructurada 100% fidedigna para cada imagen real
+   * - Streaming reactivo por SSE
+   */
+  async procesarJobVisionTotal(job, archivos, uploadsDir, apiKey) {
+    try {
+      job.estado = 'PROCESANDO';
+      this.emitirEvento(job, 'estado', { estado: 'PROCESANDO', totalArchivos: archivos.length, modo: 'batch_total' });
+
+      // 1. Filtrar imágenes válidas y ordenar cronológicamente
+      const fotosOrdenadas = archivos
+        .filter(a => a.tipo === 'imagen' || a.tipo === 'foto' || /\.(jpe?g|png|webp|avif)$/i.test(a.nombreArchivo || ''))
+        .map(a => {
+          let rutaLocal = a.rutaArchivo ? path.join(uploadsDir, a.rutaArchivo) : path.join(uploadsDir, a.nombreArchivo);
+          if (!fs.existsSync(rutaLocal) && a.nombreArchivo) {
+            const rutaDirecta = path.join(uploadsDir, a.nombreArchivo);
+            if (fs.existsSync(rutaDirecta)) {
+              rutaLocal = rutaDirecta;
+            }
+          }
+
+          let timestamp = Date.now();
+          if (a.fechaCreacion && a.horaCaptura) {
+            timestamp = new Date(`${a.fechaCreacion.split('T')[0]}T${a.horaCaptura}`).getTime();
+          } else if (a.fechaCreacion) {
+            timestamp = new Date(a.fechaCreacion).getTime();
+          }
+
+          let lat = a.latitud || null;
+          let lng = a.longitud || null;
+          if ((!lat || !lng) && a.geolocalizacion) {
+            try {
+              const geo = typeof a.geolocalizacion === 'string' ? JSON.parse(a.geolocalizacion) : a.geolocalizacion;
+              lat = geo?.latitud || geo?.latitude || geo?.lat || null;
+              lng = geo?.longitud || geo?.longitude || geo?.lng || null;
+            } catch (e) {}
+          }
+
+          return {
+            id: a.id,
+            nombreArchivo: a.nombreArchivo,
+            rutaArchivo: a.rutaArchivo,
+            rutaLocal,
+            latitud: lat,
+            longitud: lng,
+            timestamp
+          };
+        })
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      if (fotosOrdenadas.length === 0) {
+        throw new Error('No hay imágenes válidas para analizar en esta actividad.');
+      }
+
+      // 2. Deduplicación local en memoria con dHash (detectar ráfagas idénticas consecutivas)
+      const fotosParaVision = [];
+      const rafagasAsociadas = new Map(); // idFotoPrincipal -> [fotosDeRafaga]
+      let anteriorHash = null;
+      let anteriorFoto = null;
+
+      for (const foto of fotosOrdenadas) {
+        const hash = await this.calcularDHash(foto.rutaLocal);
+        foto.dHash = hash;
+
+        let esRafaga = false;
+        if (anteriorHash && hash && anteriorFoto) {
+          const distH = this.distanciaHamming(hash, anteriorHash);
+          const difSeg = Math.abs(foto.timestamp - anteriorFoto.timestamp) / 1000;
+
+          // Si la diferencia visual es mínima (<= 4 bits) o si fue en menos de 10s con <= 6 bits
+          if (distH <= 4 || (distH <= 6 && difSeg <= 10)) {
+            esRafaga = true;
+            foto.esRafagaDe = anteriorFoto.id;
+            if (!rafagasAsociadas.has(anteriorFoto.id)) {
+              rafagasAsociadas.set(anteriorFoto.id, []);
+            }
+            rafagasAsociadas.get(anteriorFoto.id).push(foto);
+          }
+        }
+
+        if (!esRafaga) {
+          fotosParaVision.push(foto);
+          if (!rafagasAsociadas.has(foto.id)) {
+            rafagasAsociadas.set(foto.id, []);
+          }
+          anteriorFoto = foto;
+          anteriorHash = hash;
+        }
+      }
+
+      // 3. Fragmentación en Lotes Multimodales (5 fotos por lote)
+      const tamanoLote = 5;
+      const lotes = [];
+      for (let i = 0; i < fotosParaVision.length; i += tamanoLote) {
+        lotes.push(fotosParaVision.slice(i, i + tamanoLote));
+      }
+
+      job.totalClusters = lotes.length;
+      const totalRafagas = fotosOrdenadas.length - fotosParaVision.length;
+
+      this.emitirEvento(job, 'clusters_identificados', {
+        totalClusters: lotes.length,
+        totalFotos: fotosOrdenadas.length,
+        fotosParaVision: fotosParaVision.length,
+        rafagasDetectadas: totalRafagas,
+        modo: 'batch_total'
+      });
+
+      console.log(`[Job ${job.id}] Visión Total: ${fotosOrdenadas.length} fotos (${fotosParaVision.length} para análisis visual en ${lotes.length} lotes, ${totalRafagas} ráfagas detectadas).`);
+
+      const resultadosFinales = [];
+
+      // 4. Procesar cada lote multimodal con Gemini Vision
+      for (let i = 0; i < lotes.length; i++) {
+        if (job.estado === 'CANCELADO') break;
+
+        job.clusterActual = i + 1;
+        const lote = lotes[i];
+
+        // Obtener contexto geográfico de la primera foto del lote que tenga GPS
+        let contextoGeo = null;
+        const fotoConGPS = lote.find(f => f.latitud && f.longitud);
+        if (fotoConGPS) {
+          contextoGeo = await this.geocodificarCoordenada(fotoConGPS.latitud, fotoConGPS.longitud);
+        }
+
+        let descripcionesLote = [];
+        try {
+          descripcionesLote = await this.llamarGeminiLoteMultimodal(lote, contextoGeo, apiKey, job);
+        } catch (loteErr) {
+          console.warn(`[Job ${job.id}] Fallo completo en lote ${i + 1}:`, loteErr.message);
+          descripcionesLote = [];
+        }
+
+        // Mapear descripciones obtenidas por ID
+        const mapaDesc = new Map();
+        if (Array.isArray(descripcionesLote)) {
+          descripcionesLote.forEach(item => {
+            if (item && item.id) {
+              mapaDesc.set(String(item.id).trim(), String(item.descripcion || '').trim());
+            }
+          });
+        }
+
+        const itemsRecientesLote = [];
+
+        // Asignar descripción a cada foto del lote
+        lote.forEach((foto, idx) => {
+          let desc = mapaDesc.get(String(foto.id));
+
+          // Si no vino mapeado por ID pero coincide la posición
+          if (!desc && descripcionesLote && descripcionesLote[idx]?.descripcion) {
+            desc = descripcionesLote[idx].descripcion.trim();
+          }
+
+          // Fallback con geocodificación si la IA no devolvió esta foto
+          if (!desc || desc.length === 0) {
+            if (contextoGeo) {
+              desc = `${contextoGeo} / Punto de interés`;
+            } else {
+              const nombreLimpio = (foto.nombreArchivo || '')
+                .replace(/\.[^/.]+$/, '')
+                .replace(/[-_]/g, ' ')
+                .replace(/IMG|DSC|PANO|PHOTO|\d{4,}/gi, '')
+                .trim();
+              desc = nombreLimpio.length > 2 ? `${nombreLimpio} / Vista` : 'Recuerdo de viaje / Vista';
+            }
+          }
+
+          const item = {
+            id: foto.id,
+            nombreArchivo: foto.nombreArchivo,
+            descripcion: desc
+          };
+          resultadosFinales.push(item);
+          itemsRecientesLote.push(item);
+
+          // Asignar misma descripción a las ráfagas deduplicadas asociadas a esta foto
+          const rList = rafagasAsociadas.get(foto.id) || [];
+          rList.forEach((rFoto, rIdx) => {
+            const descRafaga = `${desc} / Toma continua`;
+            const itemR = {
+              id: rFoto.id,
+              nombreArchivo: rFoto.nombreArchivo,
+              descripcion: descRafaga
+            };
+            resultadosFinales.push(itemR);
+            itemsRecientesLote.push(itemR);
+          });
+        });
+
+        // Actualizar progreso
+        job.progreso = Math.round(((i + 1) / lotes.length) * 100);
+        job.itemsGenerados = resultadosFinales;
+
+        // Notificar por SSE el progreso del lote procesado
+        this.emitirEvento(job, 'progreso', {
+          progreso: job.progreso,
+          clusterActual: i + 1,
+          totalClusters: lotes.length,
+          itemsRecientes: itemsRecientesLote,
+          totalGenerados: resultadosFinales.length,
+          modo: 'batch_total'
+        });
+
+        // Pausa de cortesía de 800ms entre lotes para respetar cuota RPM de Google AI Studio
+        await new Promise(r => setTimeout(r, 800));
+      }
+
+      if (job.estado !== 'CANCELADO') {
+        job.estado = 'COMPLETADO';
+        job.progreso = 100;
+
+        // Reordenar resultados para asegurar que coincidan con el orden de entrada
+        const mapaResultados = new Map(resultadosFinales.map(r => [r.id, r]));
+        const resultadosOrdenados = fotosOrdenadas
+          .map(f => mapaResultados.get(f.id))
+          .filter(Boolean);
+
+        this.emitirEvento(job, 'completado', {
+          estado: 'COMPLETADO',
+          jsonFinal: resultadosOrdenados.length > 0 ? resultadosOrdenados : resultadosFinales
+        });
+      }
+    } catch (err) {
+      console.error(`[Job ${job.id}] Error en Vision Total:`, err);
       job.estado = 'ERROR';
       job.error = err.message;
       this.emitirEvento(job, 'error', { error: err.message });

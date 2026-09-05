@@ -78,6 +78,7 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   // ✨ Modo Análisis Visual con IA (Gemini Vision + SSE)
   mostrarModalAnalisisIA = false;
   analizandoConIA = false;
+  modoAnalisisIA: 'testigo' | 'batch_total' = 'batch_total';
   apiKeyGeminiInput = '';
   jobIdIA = '';
   progresoIA = 0;
@@ -1805,7 +1806,8 @@ Formatos soportados:
   // ✨ MÉTODOS DE ANÁLISIS CON IA (GEMINI VISION + SSE)
   // ============================================
 
-  abrirModalAnalisisIA(): void {
+  abrirModalAnalisisIA(modo: 'testigo' | 'batch_total' = 'batch_total'): void {
+    this.modoAnalisisIA = modo;
     const savedKey = localStorage.getItem('gemini_api_key') || localStorage.getItem('ia_api_key') || '';
     this.apiKeyGeminiInput = savedKey;
     this.errorAnalisisIA = '';
@@ -1852,7 +1854,8 @@ Formatos soportados:
     try {
       const resp = await firstValueFrom(
         this.http.post<any>(`${environment.apiUrl}/api/actividades/${this.actividadId}/analizar-fotos-ia`, {
-          apiKey: this.apiKeyGeminiInput.trim() || undefined
+          apiKey: this.apiKeyGeminiInput.trim() || undefined,
+          modo: this.modoAnalisisIA
         })
       );
 
@@ -1861,7 +1864,7 @@ Formatos soportados:
       }
 
       this.jobIdIA = resp.jobId;
-      this.estadoTextoIA = `Analizando ${resp.totalArchivos} fotos...`;
+      this.estadoTextoIA = `Analizando ${resp.totalArchivos} fotos (${this.modoAnalisisIA === 'batch_total' ? 'Visión Total en Lotes' : 'Foto Testigo'})...`;
       this.conectarStreamSSE(this.jobIdIA);
     } catch (err: any) {
       console.error('Error iniciando análisis IA:', err);
@@ -1894,7 +1897,22 @@ Formatos soportados:
         try {
           const datos = JSON.parse(event.data);
           this.totalClustersIA = datos.totalClusters;
-          this.estadoTextoIA = `Identificados ${datos.totalClusters} hitos turísticos en ${datos.totalFotos} fotos.`;
+          if (datos.modo === 'batch_total') {
+            const rafagas = datos.rafagasDetectadas > 0 ? ` (${datos.rafagasDetectadas} ráfagas continuas deduplicadas)` : '';
+            this.estadoTextoIA = `Organizado en ${datos.totalClusters} lotes multimodales para ${datos.totalFotos} fotos${rafagas}.`;
+          } else {
+            this.estadoTextoIA = `Identificados ${datos.totalClusters} hitos turísticos en ${datos.totalFotos} fotos.`;
+          }
+        } catch (e) {}
+        this.cdr.detectChanges();
+      });
+    });
+
+    this.eventSourceIA.addEventListener('esperando_cuota', (event: any) => {
+      this.ngZone.run(() => {
+        try {
+          const datos = JSON.parse(event.data);
+          this.estadoTextoIA = `⏳ Esperando cuota de API (${datos.segundosEspera}s) para continuar...`;
         } catch (e) {}
         this.cdr.detectChanges();
       });
@@ -1908,7 +1926,11 @@ Formatos soportados:
           this.clusterActualIA = datos.clusterActual;
           this.totalClustersIA = datos.totalClusters;
           this.totalGeneradosIA = datos.totalGenerados;
-          this.estadoTextoIA = `Procesando hito ${datos.clusterActual} de ${datos.totalClusters}...`;
+          if (this.modoAnalisisIA === 'batch_total' || datos.modo === 'batch_total') {
+            this.estadoTextoIA = `Procesando lote ${datos.clusterActual} de ${datos.totalClusters} (${datos.totalGenerados} fotos analizadas)...`;
+          } else {
+            this.estadoTextoIA = `Procesando hito ${datos.clusterActual} de ${datos.totalClusters}...`;
+          }
           if (datos.itemsRecientes && datos.itemsRecientes.length > 0) {
             this.itemsRecientesIA = [...datos.itemsRecientes, ...this.itemsRecientesIA].slice(0, 8);
           }

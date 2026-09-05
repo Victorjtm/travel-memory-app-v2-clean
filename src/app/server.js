@@ -5201,7 +5201,7 @@ const analizadorFotosIA = require('./backend-services/analizador-fotos-ia.servic
 
 app.post('/api/actividades/:actividadId/analizar-fotos-ia', async (req, res) => {
   const { actividadId } = req.params;
-  const { apiKey } = req.body || {};
+  const { apiKey, modo } = req.body || {};
 
   try {
     const archivos = await dbQuery.all(
@@ -5217,14 +5217,16 @@ app.post('/api/actividades/:actividadId/analizar-fotos-ia', async (req, res) => 
       actividadId,
       archivos,
       uploadsDir: uploadsPath,
-      apiKey: apiKey || process.env.GEMINI_API_KEY
+      apiKey: apiKey || process.env.GEMINI_API_KEY,
+      modo: modo || 'testigo'
     });
 
-    console.log(`🚀 [ANALISIS IA] Iniciado Job ${job.id} para actividad ${actividadId} (${archivos.length} archivos)`);
+    console.log(`🚀 [ANALISIS IA] Iniciado Job ${job.id} (Modo: ${job.modo}) para actividad ${actividadId} (${archivos.length} archivos)`);
     res.status(202).json({
       jobId: job.id,
+      modo: job.modo,
       totalArchivos: job.totalArchivos,
-      mensaje: 'Análisis con IA iniciado en segundo plano'
+      mensaje: `Análisis con IA (${job.modo}) iniciado en segundo plano`
     });
   } catch (error) {
     console.error('❌ Error iniciando análisis con IA:', error);
