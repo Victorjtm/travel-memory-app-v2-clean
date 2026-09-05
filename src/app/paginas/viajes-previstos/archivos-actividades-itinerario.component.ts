@@ -79,6 +79,13 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   mostrarModalAnalisisIA = false;
   analizandoConIA = false;
   modoAnalisisIA: 'testigo' | 'batch_total' = 'batch_total';
+  contextoViajeros = '';
+  grabandoVozViajeros = false;
+  soportaVozViajeros = true;
+  recognitionViajeros: any = null;
+  mensajeErrorVozViajeros = '';
+  textoEnTiempoRealViajeros = '';
+  private timeoutVozViajeros: any = null;
   apiKeyGeminiInput = '';
   jobIdIA = '';
   progresoIA = 0;
@@ -1810,6 +1817,8 @@ Formatos soportados:
     this.modoAnalisisIA = modo;
     const savedKey = localStorage.getItem('gemini_api_key') || localStorage.getItem('ia_api_key') || '';
     this.apiKeyGeminiInput = savedKey;
+    const savedContexto = localStorage.getItem('contexto_viajeros_ia') || '';
+    this.contextoViajeros = savedContexto;
     this.errorAnalisisIA = '';
     this.progresoIA = 0;
     this.clusterActualIA = 0;
@@ -1817,11 +1826,15 @@ Formatos soportados:
     this.totalGeneradosIA = 0;
     this.itemsRecientesIA = [];
     this.estadoTextoIA = '';
+    this.grabandoVozViajeros = false;
+    this.mensajeErrorVozViajeros = '';
+    this.textoEnTiempoRealViajeros = '';
     this.mostrarModalAnalisisIA = true;
     this.cdr.detectChanges();
   }
 
   cerrarModalAnalisisIA(): void {
+    this.detenerDictadoVozViajeros();
     if (this.analizandoConIA) {
       if (!confirm('¿Deseas cancelar el análisis en curso?')) {
         return;
@@ -1829,6 +1842,211 @@ Formatos soportados:
       this.cancelarAnalisisIA();
     }
     this.mostrarModalAnalisisIA = false;
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Solicita permisos explícitos de micrófono al navegador
+   */
+  async solicitarPermisosMicrofono(): Promise<void> {
+    if (navigator?.mediaDevices?.getUserMedia) {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+    }
+  }
+
+  /**
+   * Inicia o detiene el dictado por voz para el contexto de viajeros
+   */
+  async toggleDictadoVozViajeros(): Promise<void> {
+    this.mensajeErrorVozViajeros = '';
+
+    // 1. Detectar si el navegador bloquea el micrófono por ser HTTP con IP (no localhost/HTTPS)
+    const esLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if (location.protocol === 'http:' && !esLocal) {
+      this.mensajeErrorVozViajeros = '⚠️ Tu navegador bloquea el micrófono en conexiones HTTP con IP (' + location.hostname + '). Accede desde http://localhost:4200/ o usa HTTPS.';
+      this.cdr.detectChanges();
+      return;
+    }
+
+    // 2. Si ya está grabando, detener
+    if (this.grabandoVozViajeros) {
+      this.detenerDictadoVozViajeros();
+      return;
+    }
+
+    // 3. Comprobar soporte de Web Speech API
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      this.mensajeErrorVozViajeros = 'Tu navegador no soporta reconocimiento de voz nativo. Por favor usa Google Chrome o Microsoft Edge.';
+      this.soportaVozViajeros = false;
+      this.cdr.detectChanges();
+      return;
+    }
+
+    // 4. Solicitar permisos de micrófono al usuario
+    try {
+      await this.solicitarPermisosMicrofono();
+    } catch (permErr: any) {
+      console.warn('[Voz] Permisos de micrófono no concedidos:', permErr);
+      this.mensajeErrorVozViajeros = 'Permiso de micrófono no concedido. Haz clic en el icono del candado o cámara en la barra de direcciones del navegador y permite el micrófono.';
+      this.cdr.detectChanges();
+      return;
+    }
+
+    // 5. Iniciar la sesión de reconocimiento
+    this.grabandoVozViajeros = true;
+    this.iniciarInstanciaReconocimientoVoz();
+  }
+
+  /**
+   * Arranca una instancia fresca de SpeechRecognition
+   */
+  private iniciarInstanciaReconocimientoVoz(): void {
+    if (!this.grabandoVozViajeros) return;
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    try {
+      if (this.recognitionViajeros) {
+        try { this.recognitionViajeros.abort(); } catch (e) {}
+      }
+
+      this.recognitionViajeros = new SpeechRecognition();
+      this.recognitionViajeros.continuous = false; // Más reactivo en Chrome/Edge
+      this.recognitionViajeros.interimResults = true;
+      this.recognitionViajeros.lang = 'es-ES';
+      this.recognitionViajeros.maxAlternatives = 1;
+
+      let textoUltimoFragmento = '';
+
+      this.recognitionViajeros.onstart = () => {
+        this.ngZone.run(() => {
+          this.mensajeErrorVozViajeros = '';
+          this.textoEnTiempoRealViajeros = '';
+          this.cdr.detectChanges();
+        });
+      };
+
+      this.recognitionViajeros.onresult = (event: any) => {
+        this.ngZone.run(() => {
+          let textoTemporal = '';
+          let textoFinal = '';
+
+          for (let i = 0; i < event.results.length; i++) {
+            const transcript = event.results[i][0]?.transcript || '';
+            if (event.results[i].isFinal) {
+              textoFinal += transcript + ' ';
+            } else {
+              textoTemporal += transcript;
+            }
+          }
+
+          this.textoEnTiempoRealViajeros = (textoFinal + textoTemporal).trim();
+
+          if (textoFinal.trim()) {
+            textoUltimoFragmento = textoFinal.trim();
+            this.incorporarTextoViajeros(textoFinal.trim());
+            this.textoEnTiempoRealViajeros = '';
+          }
+          this.cdr.detectChanges();
+        });
+      };
+
+      this.recognitionViajeros.onerror = (event: any) => {
+        this.ngZone.run(() => {
+          console.warn('[Voz Viajeros Error]:', event?.error);
+          if (event?.error === 'not-allowed') {
+            this.mensajeErrorVozViajeros = 'El navegador no tiene permiso para acceder al micrófono.';
+            this.grabandoVozViajeros = false;
+          } else if (event?.error === 'no-speech') {
+            // Silencio detectado, si sigue activo intentamos continuar escuchando
+          } else if (event?.error === 'network') {
+            this.mensajeErrorVozViajeros = 'Error de red en el servicio de voz de Google. Comprueba tu conexión a internet.';
+            this.grabandoVozViajeros = false;
+          } else if (event?.error !== 'aborted') {
+            this.mensajeErrorVozViajeros = `Aviso de micrófono: ${event?.error || 'error'}`;
+            this.grabandoVozViajeros = false;
+          }
+          this.cdr.detectChanges();
+        });
+      };
+
+      this.recognitionViajeros.onend = () => {
+        this.ngZone.run(() => {
+          // Si había texto temporal no consolidado, incorporarlo
+          if (this.textoEnTiempoRealViajeros && this.textoEnTiempoRealViajeros !== textoUltimoFragmento) {
+            this.incorporarTextoViajeros(this.textoEnTiempoRealViajeros);
+            this.textoEnTiempoRealViajeros = '';
+          }
+
+          // Si el usuario sigue en modo grabación, rearmar escucha para pausas naturales
+          if (this.grabandoVozViajeros && !this.mensajeErrorVozViajeros) {
+            setTimeout(() => {
+              if (this.grabandoVozViajeros) {
+                this.iniciarInstanciaReconocimientoVoz();
+              }
+            }, 250);
+          } else {
+            this.grabandoVozViajeros = false;
+            this.textoEnTiempoRealViajeros = '';
+            this.cdr.detectChanges();
+          }
+        });
+      };
+
+      this.recognitionViajeros.start();
+
+      // Timeout de seguridad: parar después de 30 segundos si no hay interacción
+      if (this.timeoutVozViajeros) clearTimeout(this.timeoutVozViajeros);
+      this.timeoutVozViajeros = setTimeout(() => {
+        if (this.grabandoVozViajeros) {
+          this.detenerDictadoVozViajeros();
+        }
+      }, 30000);
+
+    } catch (err: any) {
+      console.error('[Voz Viajeros] Error instanciando SpeechRecognition:', err);
+      this.mensajeErrorVozViajeros = 'No se pudo activar el micrófono: ' + (err?.message || err);
+      this.grabandoVozViajeros = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  /**
+   * Concatena de forma limpia y legible el texto dictado al contexto existente
+   */
+  incorporarTextoViajeros(texto: string): void {
+    if (!texto || !texto.trim()) return;
+    const limpio = texto.trim();
+    const previo = (this.contextoViajeros || '').trim();
+
+    if (!previo) {
+      this.contextoViajeros = limpio.charAt(0).toUpperCase() + limpio.slice(1);
+    } else {
+      const separador = previo.endsWith('.') || previo.endsWith('!') || previo.endsWith('?') ? ' ' : '. ';
+      this.contextoViajeros = `${previo}${separador}${limpio.charAt(0).toUpperCase() + limpio.slice(1)}`;
+    }
+
+    localStorage.setItem('contexto_viajeros_ia', this.contextoViajeros);
+  }
+
+  /**
+   * Detiene la sesión de dictado de voz
+   */
+  detenerDictadoVozViajeros(): void {
+    this.grabandoVozViajeros = false;
+    if (this.timeoutVozViajeros) {
+      clearTimeout(this.timeoutVozViajeros);
+      this.timeoutVozViajeros = null;
+    }
+    if (this.recognitionViajeros) {
+      try {
+        this.recognitionViajeros.stop();
+      } catch (e) {}
+    }
+    this.textoEnTiempoRealViajeros = '';
     this.cdr.detectChanges();
   }
 
@@ -1842,6 +2060,17 @@ Formatos soportados:
       localStorage.setItem('gemini_api_key', this.apiKeyGeminiInput);
     }
 
+    if (this.contextoViajeros) {
+      localStorage.setItem('contexto_viajeros_ia', this.contextoViajeros);
+    }
+
+    if (!this.apiKeyGeminiInput || !this.apiKeyGeminiInput.trim()) {
+      this.errorAnalisisIA = '⚠️ Debes introducir tu clave de API de Gemini en el campo superior para poder realizar el análisis visual.';
+      this.analizandoConIA = false;
+      this.cdr.detectChanges();
+      return;
+    }
+
     this.analizandoConIA = true;
     this.errorAnalisisIA = '';
     this.progresoIA = 0;
@@ -1852,11 +2081,17 @@ Formatos soportados:
     this.cdr.detectChanges();
 
     try {
+      const payload: any = {
+        apiKey: this.apiKeyGeminiInput.trim(),
+        modo: this.modoAnalisisIA
+      };
+
+      if (this.modoAnalisisIA === 'batch_total' && this.contextoViajeros.trim()) {
+        payload.contextoViajeros = this.contextoViajeros.trim();
+      }
+
       const resp = await firstValueFrom(
-        this.http.post<any>(`${environment.apiUrl}/api/actividades/${this.actividadId}/analizar-fotos-ia`, {
-          apiKey: this.apiKeyGeminiInput.trim() || undefined,
-          modo: this.modoAnalisisIA
-        })
+        this.http.post<any>(`${environment.apiUrl}/api/actividades/${this.actividadId}/analizar-fotos-ia`, payload)
       );
 
       if (!resp || !resp.jobId) {

@@ -413,6 +413,55 @@
           </span>
         </div>
 
+        <!-- ✍️ Personalización del Diario de Viaje con Reconocimiento de Voz -->
+        <div *ngIf="modoAnalisisIA === 'batch_total'" class="form-group campo-contexto-viajeros" style="margin-bottom: 15px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label style="font-weight: 600; font-size: 13px; color: #0277bd; display: flex; align-items: center; gap: 6px; margin: 0;">
+              ✍️ Personaliza tu diario de viaje (Opcional)
+            </label>
+            <button type="button" 
+              class="btn-dictar-voz-viajeros"
+              (click)="toggleDictadoVozViajeros()"
+              [class.grabando]="grabandoVozViajeros"
+              title="Haz clic o pulsa Ctrl+M (o F2) en la caja para activar/detener el dictado por voz">
+              <i class="fa" [ngClass]="grabandoVozViajeros ? 'fa-stop-circle fa-beat' : 'fa-microphone'"></i>
+              <span>{{ grabandoVozViajeros ? 'Detener Dictado' : 'Dictar por Voz' }}</span>
+            </button>
+          </div>
+
+          <div style="position: relative;">
+            <textarea [(ngModel)]="contextoViajeros" rows="3"
+              (keydown.control.m)="toggleDictadoVozViajeros(); $event.preventDefault()"
+              (keydown.f2)="toggleDictadoVozViajeros(); $event.preventDefault()"
+              placeholder="Ej: En este viaje viajamos Víctor y Belén. Es nuestro viaje de aniversario en coche buscando naturaleza y buena comida."
+              class="textarea-contexto-viajeros"
+              [class.borde-grabando]="grabandoVozViajeros"
+              style="width: 100%; padding: 10px; border: 1px solid #81d4fa; border-radius: 6px; box-sizing: border-box; font-family: inherit; font-size: 13px; resize: vertical; background: #fdfdfd; transition: all 0.25s ease;"></textarea>
+
+            <div *ngIf="grabandoVozViajeros" class="indicador-escuchando-voz">
+              <span class="punto-rojo-pulso"></span>
+              <span><b>Micrófono activo:</b> Habla ahora... (Ctrl+M o F2 para parar)</span>
+            </div>
+
+            <!-- Transcripción en vivo mientras habla -->
+            <div *ngIf="grabandoVozViajeros && textoEnTiempoRealViajeros" class="texto-tiempo-real-viajeros">
+              <i class="fa fa-comment-dots"></i>
+              <span>"{{ textoEnTiempoRealViajeros }}"</span>
+            </div>
+
+            <!-- Alerta visual si hay problema de micrófono/permiso/HTTPS -->
+            <div *ngIf="mensajeErrorVozViajeros" class="mensaje-error-voz-viajeros">
+              <i class="fa fa-exclamation-triangle"></i>
+              <span>{{ mensajeErrorVozViajeros }}</span>
+            </div>
+          </div>
+
+          <span style="font-size: 11px; color: #546e7a; display: flex; justify-content: space-between; margin-top: 4px;">
+            <span>La IA identificará a los viajeros por sus nombres reales e integrará el contexto.</span>
+            <span style="font-style: italic; color: #0288d1;">🎙️ Atajo: <b>Ctrl+M</b> o <b>F2</b> en la caja</span>
+          </span>
+        </div>
+
         <!-- Tarjeta de características para Visión Total -->
         <div *ngIf="modoAnalisisIA === 'batch_total'" class="info-caracteristicas-ia" style="background: #e8f4fd; border: 1px solid #b3e5fc; border-radius: 8px; padding: 14px; margin-bottom: 20px;">
           <h4 style="margin: 0 0 8px 0; color: #0277bd; font-size: 13px;"><i class="fa fa-eye"></i> Pipeline de Visión Total (100% Fotos Reales):</h4>

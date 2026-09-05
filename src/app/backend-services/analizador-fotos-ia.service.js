@@ -333,14 +333,28 @@ Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
    * - Schema estricto { id, descripcion }
    * - Backoff exponencial con Jitter ante error 429 / 503
    */
-  async llamarGeminiLoteMultimodal(loteFotos, contextoGeo, apiKey, job) {
+  async llamarGeminiLoteMultimodal(loteFotos, contextoGeo, apiKey, job, contextoViajeros) {
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) {
-      throw new Error('No se ha configurado GEMINI_API_KEY. Introduce tu clave en la modal de análisis.');
+      const msg = 'No se ha configurado GEMINI_API_KEY. Introduce tu clave en la modal de análisis antes de iniciar.';
+      try {
+        fs.appendFileSync(
+          path.join(process.cwd(), 'gemini_debug.log'),
+          `\n[${new Date().toISOString()}] ERROR CRÍTICO: ${msg}\n`
+        );
+      } catch (e) {}
+      throw new Error(msg);
     }
 
     const modelo = 'gemini-3.6-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`;
+
+    try {
+      fs.appendFileSync(
+        path.join(process.cwd(), 'gemini_debug.log'),
+        `\n[${new Date().toISOString()}] >>> INICIANDO LOTE: Modelo=${modelo}, ${loteFotos.length} fotos, Key=${key.substring(0, 6)}... (Contexto viajeros: "${contextoViajeros || 'ninguno'}")\n`
+      );
+    } catch (e) {}
 
     // Construcción entrelazada de Parts (Texto con ID + WebP 768px inlineData)
     const parts = [];
@@ -348,11 +362,12 @@ Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
       const foto = loteFotos[idx];
       try {
         const { base64 } = await this.optimizarParaVision(foto.rutaLocal);
+        const base64Limpio = String(base64 || '').replace(/^data:image\/[a-z0-9+.-]+;base64,/i, '').trim();
         parts.push({ text: `Foto con ID "${foto.id}" (Archivo: ${foto.nombreArchivo}):` });
         parts.push({
           inlineData: {
             mimeType: 'image/webp',
-            data: base64
+            data: base64Limpio
           }
         });
       } catch (optErr) {
@@ -360,16 +375,16 @@ Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
       }
     }
 
-    // Prompt Maestro al final del lote
-    const promptMaestro = `Analiza detalladamente cada una de las imágenes anteriores individualmente y describe con precisión física y concisa lo que se ve en cada una de ellas (monumento, edificio, paisaje, comida, vehículo, actividad o elemento destacado).
-Contexto geográfico orientativo: ${contextoGeo || 'Viaje turístico'}.
+    // Prompt Maestro al final del lote con personalización de viajeros
+    const promptMaestro = `INDICACIONES DE IDENTIDAD Y ESTILO NARRATIVO:
+- Contexto personalizado del viaje y sus integrantes: ${contextoViajeros || 'Una pareja de viajeros realizando turismo.'}. 
+- Si identificas visualmente a las personas descritas en el contexto anterior dentro de una imagen, utiliza sus nombres propios reales (ej: Víctor, Belén) en lugar de términos genéricos como "un hombre", "una mujer" o "una pareja".
 
-REGLAS OBLIGATORIAS:
-1. Devuelve ESTRICTAMENTE un array JSON plano de objetos, con exactamente una entrada por cada foto analizada.
-2. Cada objeto debe tener obligatoriamente dos propiedades:
-   - "id": el ID exacto asignado a la foto (en formato texto, por ejemplo: "${loteFotos[0]?.id}").
-   - "descripcion": descripción concisa en formato "[Lugar o Elemento principal] / [Perspectiva o Acción]".
-3. No inventes fotos adicionales. Debes incluir exactamente los IDs de las ${loteFotos.length} fotos recibidas.`;
+Analiza individualmente cada una de las imágenes presentadas arriba. 
+Genera para cada una de ellas una descripción corta basándote estrictamente en lo que se observa físicamente.
+Sigue el formato estricto: [Lugar o Elemento predominante] / [Perspectiva o Acción visual concreta donde participen los viajeros si aparecen]. Max 12 palabras por foto.
+Contexto geográfico de apoyo: ${contextoGeo || 'Ruta de viaje'}.
+Devuelve la respuesta mapeando el array JSON respetando los IDs proporcionados.`;
 
     parts.push({ text: promptMaestro });
 
@@ -406,6 +421,12 @@ REGLAS OBLIGATORIAS:
         const texto = res.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
         const parseado = this.parsearRespuestaLote(texto);
         if (parseado && parseado.length > 0) {
+          try {
+            fs.appendFileSync(
+              path.join(process.cwd(), 'gemini_debug.log'),
+              `\n[${new Date().toISOString()}] BATCH ÉXITO: ${parseado.length} descripciones devueltas por ${modelo}.\n`
+            );
+          } catch (e) {}
           return parseado;
         }
 
@@ -520,6 +541,16 @@ REGLAS OBLIGATORIAS:
           descripcion: String(item?.descripcion || item?.description || '').trim()
         }))
         .filter(item => item.id && item.descripcion && item.descripcion.toLowerCase() !== 'recuerdo de viaje');
+    } else if (typeof array === 'object' && array !== null) {
+      const arr = Object.values(array).find(v => Array.isArray(v));
+      if (Array.isArray(arr)) {
+        return arr
+          .map(item => ({
+            id: String(item?.id || '').trim(),
+            descripcion: String(item?.descripcion || item?.description || '').trim()
+          }))
+          .filter(item => item.id && item.descripcion && item.descripcion.toLowerCase() !== 'recuerdo de viaje');
+      }
     }
 
     return null;
@@ -528,13 +559,14 @@ REGLAS OBLIGATORIAS:
   /**
    * Inicia el Job asíncrono y devuelve el jobId
    */
-  iniciarJob({ actividadId, archivos, uploadsDir, apiKey, modo = 'testigo' }) {
+  iniciarJob({ actividadId, archivos, uploadsDir, apiKey, modo = 'testigo', contextoViajeros = null }) {
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     const job = {
       id: jobId,
       actividadId,
       modo, // 'testigo' o 'batch_total'
+      contextoViajeros: contextoViajeros || null,
       estado: 'INICIADO', // INICIADO, PROCESANDO, COMPLETADO, ERROR, CANCELADO
       progreso: 0,
       clusterActual: 0,
@@ -549,7 +581,7 @@ REGLAS OBLIGATORIAS:
 
     // Derivar al pipeline seleccionado
     if (modo === 'batch_total') {
-      this.procesarJobVisionTotal(job, archivos, uploadsDir, apiKey);
+      this.procesarJobVisionTotal(job, archivos, uploadsDir, apiKey, contextoViajeros);
     } else {
       this.procesarJobEnBackground(job, archivos, uploadsDir, apiKey);
     }
@@ -744,7 +776,7 @@ REGLAS OBLIGATORIAS:
    * - Respuesta estructurada 100% fidedigna para cada imagen real
    * - Streaming reactivo por SSE
    */
-  async procesarJobVisionTotal(job, archivos, uploadsDir, apiKey) {
+  async procesarJobVisionTotal(job, archivos, uploadsDir, apiKey, contextoViajeros) {
     try {
       job.estado = 'PROCESANDO';
       this.emitirEvento(job, 'estado', { estado: 'PROCESANDO', totalArchivos: archivos.length, modo: 'batch_total' });
@@ -868,9 +900,24 @@ REGLAS OBLIGATORIAS:
 
         let descripcionesLote = [];
         try {
-          descripcionesLote = await this.llamarGeminiLoteMultimodal(lote, contextoGeo, apiKey, job);
+          descripcionesLote = await this.llamarGeminiLoteMultimodal(lote, contextoGeo, apiKey, job, contextoViajeros);
         } catch (loteErr) {
           console.warn(`[Job ${job.id}] Fallo completo en lote ${i + 1}:`, loteErr.message);
+          try {
+            fs.appendFileSync(
+              path.join(process.cwd(), 'gemini_debug.log'),
+              `\n[${new Date().toISOString()}] [Job ${job.id}] Fallo en lote ${i + 1}: ${loteErr.message}\n`
+            );
+          } catch (e) {}
+
+          // Si falta la API Key o es inválida, abortar el job de inmediato con error visible en UI
+          if (loteErr.message && (loteErr.message.includes('GEMINI_API_KEY') || loteErr.message.includes('API_KEY_INVALID') || loteErr.message.includes('API key not valid'))) {
+            job.estado = 'ERROR';
+            job.error = loteErr.message;
+            this.emitirEvento(job, 'error', { error: loteErr.message });
+            return;
+          }
+
           descripcionesLote = [];
         }
 
