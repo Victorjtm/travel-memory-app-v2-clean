@@ -1,4 +1,4 @@
-<div class="reproductor-container">
+<div class="reproductor-container" [class.modo-embebido]="!interactiveMode">
   <!-- Loading Spinner Overlay mientras se cargan los fotogramas del mapa -->
   <div class="cargando-mapa-overlay" *ngIf="cargandoMapa">
     <div class="spinner-mapa"></div>

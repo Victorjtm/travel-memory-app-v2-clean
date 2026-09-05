@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnChanges, SimpleChanges, AfterViewInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, ViewEncapsulation, ViewChild, ElementRef } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges, AfterViewInit, OnDestroy, Output, EventEmitter, ChangeDetectorRef, NgZone, ViewEncapsulation, ViewChild, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DragDropModule } from '@angular/cdk/drag-drop';
@@ -201,6 +201,15 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   visualSessionGroup: any = null;
   private poiLayerGroup: any = null; // ✨ Grupo independiente para POIs (no colisiona con HF)
 
+  // 📐 Observador reactivo de redimensionamiento físico del contenedor (Full Screen <-> Pantalla Reducida)
+  private resizeObserver: ResizeObserver | null = null;
+  private resizeDebounceTimer: any = null;
+
+  @HostListener('window:resize')
+  onWindowResize(): void {
+    this.programarReajusteMapa();
+  }
+
   private animationFrameId: number | null = null;
   private lastTimestamp = 0;
 
@@ -399,6 +408,19 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       this.displayAllPois();
       console.log(`🛣️ Primera polilínea (HF) y POIs creados en ngAfterViewInit. Color: ${this.currentHfColor || 'default'}`);
     }
+
+    // 📐 Iniciar observador de redimensionamiento del contenedor físico
+    if (typeof ResizeObserver !== 'undefined' && this.mapElement?.nativeElement) {
+      this.resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width, height } = entry.contentRect;
+          if (width > 0 && height > 0) {
+            this.programarReajusteMapa();
+          }
+        }
+      });
+      this.resizeObserver.observe(this.mapElement.nativeElement);
+    }
   }
 
   // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
@@ -561,6 +583,14 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   ngOnDestroy() {
     this.stopAnimation();
     if (this.zoomStrategyInterval) clearInterval(this.zoomStrategyInterval);
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    if (this.resizeDebounceTimer) {
+      clearTimeout(this.resizeDebounceTimer);
+      this.resizeDebounceTimer = null;
+    }
     if (this.map) this.map.remove();
     // Limpieza de evento global
     document.removeEventListener('click', this.globalPopupClickHandler);
@@ -897,7 +927,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       : (isBoat ? 11 : undefined);
 
     this.map.fitBounds(bounds, {
-      padding: isBoat ? [70, 70] : (this.interactiveMode === false ? [60, 60] : [50, 50]),
+      padding: isBoat ? [70, 70] : (this.interactiveMode === false ? [40, 40] : [50, 50]),
       maxZoom: safeMaxZoom,
       animate: true,
       duration: 1.5
@@ -910,6 +940,66 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         onFrameComplete();
       }
     }, 2500);
+  }
+
+  /**
+   * Programa la ejecución del reajuste del mapa con un retardo asíncrono controlado
+   * para permitir que las transiciones CSS y el reflow del DOM se asienten por completo.
+   */
+  public programarReajusteMapa(delayMs?: number): void {
+    if (this.resizeDebounceTimer) {
+      clearTimeout(this.resizeDebounceTimer);
+    }
+    // 🛡️ En Álbum-Libro (interactiveMode === false), dar 250ms de cortesía para el reflow del DOM
+    const delayEfectivo = delayMs ?? (this.interactiveMode === false ? 250 : 80);
+    this.resizeDebounceTimer = setTimeout(() => {
+      this.reajustarDimensionesYLimites();
+      // Segundo pulso de confirmación en Álbum-Libro por si hay transiciones 3D de larga duración
+      if (this.interactiveMode === false) {
+        setTimeout(() => this.reajustarDimensionesYLimites(), 200);
+      }
+    }, delayEfectivo);
+  }
+
+  /**
+   * Ejecuta en cascada invalidateSize() y fitBounds() para reescalar
+   * el trazado dentro del nuevo contenedor físico (especialmente al volver a pantalla reducida).
+   */
+  public reajustarDimensionesYLimites(customPadding?: [number, number]): void {
+    if (!this.map) return;
+
+    // 1. Forzar a Leaflet a recalcular de inmediato los píxeles reales del nuevo contenedor físico
+    this.map.invalidateSize({ animate: false });
+
+    // 2. Obtener los límites geográficos exactos del recorrido
+    let bounds: any = null;
+
+    if (this.interactiveMode === false) {
+      // 📖 Álbum-Libro: Abarcar la totalidad de las coordenadas de la ruta GPX completa
+      if (this.points && this.points.length > 0) {
+        const allCoords = this.points.map(p => [p.lat, p.lng] as [number, number]);
+        bounds = this.L.latLngBounds(allCoords);
+      }
+    } else if (this.currentPolyline && this.currentPolyline.getLatLngs()?.length > 1) {
+      // Modo interactivo / estándar: límites de la polilínea activa
+      bounds = this.currentPolyline.getBounds();
+    } else if (this.points && this.points.length > 0) {
+      const allCoords = this.points.map(p => [p.lat, p.lng] as [number, number]);
+      bounds = this.L.latLngBounds(allCoords);
+    }
+
+    // 3. Reencuadrar y reescalar de forma estricta con padding y cota de seguridad
+    if (bounds && bounds.isValid()) {
+      const paddingFinal = customPadding ?? (this.interactiveMode === false ? [40, 40] : [20, 20]);
+      const safeMaxZoom = (this.interactiveMode === false) ? 14 : undefined;
+      this.map.fitBounds(bounds, {
+        padding: paddingFinal,
+        maxZoom: safeMaxZoom,
+        animate: true,
+        duration: 0.3
+      });
+      console.log(`📐 [GpxAnimation] Mapa reescalado a contenedor reducido con éxito (${paddingFinal[0]}px padding, maxZoom=${safeMaxZoom})`);
+    }
   }
 
   isBoatMode(mode?: string): boolean {

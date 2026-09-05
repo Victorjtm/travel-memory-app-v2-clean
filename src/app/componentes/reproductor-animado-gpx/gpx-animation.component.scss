@@ -10,6 +10,19 @@
   background: #000;
   display: flex;
   flex-direction: column;
+
+  /* 🛡️ Modo Embebido (Álbum-Libro u otros marcos contenedores elásticos) */
+  &.modo-embebido {
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    top: auto !important;
+    left: auto !important;
+    z-index: 1 !important;
+    overflow: hidden !important;
+  }
 }
 
 .mapa-fullscreen {
