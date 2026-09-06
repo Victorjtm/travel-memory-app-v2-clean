@@ -98,6 +98,13 @@
         <i class="fas" [class.fa-volume-high]="musicaActivada" [class.fa-volume-xmark]="!musicaActivada"></i>
       </button>
 
+      <!-- 7b. Sonido de vídeos (activado por defecto) -->
+      <button class="toolbar-icon toolbar-action-btn btn-toolbar-video-audio" [class.active]="!videoMuted" (click)="toggleMuteVideos($event)"
+        [title]="!videoMuted ? 'Sonido de vídeos: Activado por defecto (Click para silenciar vídeos)' : 'Sonido de vídeos: Silenciado (Click para activar sonido)'"
+        aria-label="Conmutar sonido de los vídeos">
+        <i class="fas" [class.fa-volume-up]="!videoMuted" [class.fa-volume-mute]="videoMuted"></i>
+      </button>
+
       <!-- 8. Vídeos completos -->
       <button class="toolbar-icon toolbar-action-btn" [class.active]="reproducirVideosCompletos" (click)="toggleVideosCompletos($event)"
         [title]="reproducirVideosCompletos ? 'Vídeos completos: Activado' : 'Vídeos completos: Desactivado'">
@@ -456,6 +463,14 @@
         title="Reproducir vídeos completos sin cortar en el pase de diapositivas" aria-label="Reproducir vídeos completos">
         <i class="fas fa-film"></i>
         <span>Vídeos completos</span>
+      </button>
+
+      <!-- --- Botón Sonido Vídeos --- -->
+      <button class="btn-toggle-videos btn-toggle-sonido-videos" [class.activo]="!videoMuted" (click)="toggleMuteVideos($event)"
+        [title]="!videoMuted ? 'Sonido de vídeos: Activado por defecto (Click para silenciar)' : 'Sonido de vídeos: Silenciado (Click para activar)'"
+        aria-label="Conmutar sonido de vídeos">
+        <i class="fas" [class.fa-volume-up]="!videoMuted" [class.fa-volume-mute]="videoMuted"></i>
+        <span>{{ !videoMuted ? 'Audio vídeos' : 'Vídeos mudos' }}</span>
       </button>
     </div>
 
@@ -1520,7 +1535,8 @@
               <!-- Vídeo -->
               <div *ngIf="pagSingle.tipoMedia === 'video'" class="video-preview-vintage video-single-container">
                 <video id="video-single-page" *ngIf="pagSingle.url" [src]="pagSingle.url" class="video-foto-vintage video-single-maximizada"
-                  playsinline autoplay [muted]="videoMuted" preload="auto" (ended)="onVideoSingleTerminado()"></video>
+                  playsinline autoplay [muted]="videoMuted" preload="auto"
+                  (play)="onVideoSpreadPlay('single')" (pause)="onVideoSpreadPause('single')" (ended)="onVideoSingleTerminado()"></video>
                 <button class="btn-sonido-video-vintage" (click)="toggleMuteVideos($event); $event.stopPropagation()" [title]="videoMuted ? 'Activar sonido' : 'Silenciar'">
                   <i class="fas" [class.fa-volume-mute]="videoMuted" [class.fa-volume-up]="!videoMuted"></i>
                 </button>
@@ -1711,7 +1727,8 @@
             <img *ngIf="pagIzq.tipoMedia === 'imagen'" [src]="pagIzq.url" [alt]="pagIzq.titulo" class="imagen-foto-vintage" loading="lazy" decoding="async" />
             <div *ngIf="pagIzq.tipoMedia === 'video'" class="video-preview-vintage">
               <video id="video-spread-izq" *ngIf="pagIzq.url" [src]="pagIzq.url" class="video-foto-vintage"
-                playsinline [muted]="videoMuted" preload="auto" (ended)="onVideoIzquierdoTerminado()"></video>
+                playsinline [muted]="videoMuted" preload="auto"
+                (play)="onVideoSpreadPlay('izq')" (pause)="onVideoSpreadPause('izq')" (ended)="onVideoIzquierdoTerminado()"></video>
               <button class="btn-sonido-video-vintage" (click)="toggleMuteVideos($event)" [title]="videoMuted ? 'Activar sonido' : 'Silenciar'">
                 <i class="fas" [class.fa-volume-mute]="videoMuted" [class.fa-volume-up]="!videoMuted"></i>
               </button>
@@ -1856,7 +1873,8 @@
             <img *ngIf="pagDer.tipoMedia === 'imagen'" [src]="pagDer.url" [alt]="pagDer.titulo" class="imagen-foto-vintage" loading="lazy" decoding="async" />
             <div *ngIf="pagDer.tipoMedia === 'video'" class="video-preview-vintage">
               <video id="video-spread-der" *ngIf="pagDer.url" [src]="pagDer.url" class="video-foto-vintage"
-                playsinline [muted]="videoMuted" preload="auto" (ended)="onVideoDerechoTerminado()"></video>
+                playsinline [muted]="videoMuted" preload="auto"
+                (play)="onVideoSpreadPlay('der')" (pause)="onVideoSpreadPause('der')" (ended)="onVideoDerechoTerminado()"></video>
               <button class="btn-sonido-video-vintage" (click)="toggleMuteVideos($event)" [title]="videoMuted ? 'Activar sonido' : 'Silenciar'">
                 <i class="fas" [class.fa-volume-mute]="videoMuted" [class.fa-volume-up]="!videoMuted"></i>
               </button>

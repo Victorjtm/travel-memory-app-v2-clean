@@ -243,7 +243,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   private pendienteAbrirLibro: { activarModoRecuerdo: boolean; modoGuiado: boolean } | null = null;
 
   spreadActual: number = 0;
-  videoMuted: boolean = true;
+  videoMuted: boolean = false; // Por defecto el volumen de los vídeos está abierto (se oyen)
+  videoActualSecuencia: 'izq' | 'der' | 'single' | null = null;
   private timerVideoPreview: any = null;
   mapaRenderKey: string = 'map_init';
 
@@ -2038,17 +2039,18 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.itinerarioActualAudioId = null;
   }
 
-  private bajarVolumenAudioViaje(): void {
+  bajarVolumenAudioViaje(forzar: boolean = false): void {
+    if (!forzar && this.videoMuted) return; // Si los vídeos están silenciados, mantener volumen normal de la música
     if (this.audioViaje && this.audioDisponible) {
-      this.audioViaje.volume = 0.05; // Casi silencio
-      console.log('🔉 Volumen del audio reducido');
+      this.audioViaje.volume = 0.08; // Atenuación suave para escuchar el vídeo con total claridad
+      console.log('🔉 Música atenuada (audio ducking activo para vídeo/audio)');
     }
   }
 
-  private restaurarVolumenAudioViaje(): void {
+  restaurarVolumenAudioViaje(): void {
     if (this.audioViaje && this.audioDisponible) {
       this.audioViaje.volume = this.volumenOriginal || 0.72;
-      console.log('🔊 Volumen del audio restaurado');
+      console.log('🔊 Música ambiental restaurada al volumen original');
     }
   }
 
@@ -3804,7 +3806,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.precargarSiguienteVideo();
         if (this.reproduciendoSlideshow) {
           const currentPag = this.paginas[this.paginaActual];
-          const tieneVideo = currentPag?.tipoMedia === 'video' && this.reproducirVideosCompletos;
+          const tieneVideo = currentPag?.tipoMedia === 'video';
           const tieneMapa = currentPag?.esMapaAnimado && !this.modoRutaImagen;
           if (!tieneVideo && !tieneMapa) {
             this.reiniciarTimerSlideshow();
@@ -3858,7 +3860,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           this.precargarContenidoVentana(this.paginaActual);
 
           if (this.reproduciendoSlideshow) {
-            const tieneVideo = (this.paginaSpreadIzquierda?.tipoMedia === 'video' || this.paginaSpreadDerecha?.tipoMedia === 'video') && this.reproducirVideosCompletos;
+            const tieneVideo = (this.paginaSpreadIzquierda?.tipoMedia === 'video' || this.paginaSpreadDerecha?.tipoMedia === 'video');
             const tieneMapa = this.spreadActualData?.tipo === 'mapa' && !this.modoRutaImagen;
             if (!tieneVideo && !tieneMapa) {
               this.reiniciarTimerSlideshow();
@@ -3878,7 +3880,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.centrarMiniaturaActiva(this.paginaActual);
         this.precargarSiguienteVideo();
         if (this.reproduciendoSlideshow) {
-          const tieneVideo = (this.paginaSpreadIzquierda?.tipoMedia === 'video' || this.paginaSpreadDerecha?.tipoMedia === 'video') && this.reproducirVideosCompletos;
+          const tieneVideo = (this.paginaSpreadIzquierda?.tipoMedia === 'video' || this.paginaSpreadDerecha?.tipoMedia === 'video');
           const tieneMapa = this.spreadActualData?.tipo === 'mapa' && !this.modoRutaImagen;
           if (!tieneVideo && !tieneMapa) {
             this.reiniciarTimerSlideshow();
@@ -3928,11 +3930,60 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   toggleMuteVideos(event?: Event): void {
     event?.stopPropagation();
     this.videoMuted = !this.videoMuted;
+    console.log('🔊 [Sonido Vídeos] Conmutado a:', this.videoMuted ? 'SILENCIADO' : 'ABIERTO / CON SONIDO');
+    
     const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
+    const vSingle = document.getElementById('video-single-page') as HTMLVideoElement;
     if (vIzq) vIzq.muted = this.videoMuted;
     if (vDer) vDer.muted = this.videoMuted;
+    if (vSingle) vSingle.muted = this.videoMuted;
+
+    const algunVideoSonando = 
+      (vIzq && !vIzq.paused && !vIzq.ended) || 
+      (vDer && !vDer.paused && !vDer.ended) || 
+      (vSingle && !vSingle.paused && !vSingle.ended);
+
+    if (this.videoMuted) {
+      this.restaurarVolumenAudioViaje();
+    } else if (algunVideoSonando) {
+      this.bajarVolumenAudioViaje();
+    }
     this.cdr.detectChanges();
+  }
+
+  onVideoSpreadPlay(origen: 'izq' | 'der' | 'single'): void {
+    if (!this.videoMuted) {
+      this.bajarVolumenAudioViaje();
+    }
+  }
+
+  onVideoSpreadPause(origen: 'izq' | 'der' | 'single'): void {
+    const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
+    const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
+    const vSingle = document.getElementById('video-single-page') as HTMLVideoElement;
+
+    const otroVideoReproduciendo = 
+      (origen !== 'izq' && vIzq && !vIzq.paused && !vIzq.ended) ||
+      (origen !== 'der' && vDer && !vDer.paused && !vDer.ended) ||
+      (origen !== 'single' && vSingle && !vSingle.paused && !vSingle.ended);
+
+    if (!otroVideoReproduciendo) {
+      this.restaurarVolumenAudioViaje();
+    }
+  }
+
+  private reproducirVideoSeguro(video: HTMLVideoElement): void {
+    if (!video) return;
+    video.play().catch(err => {
+      if (err && err.name === 'NotAllowedError' && !this.videoMuted) {
+        console.warn('⚠️ Autoplay con sonido bloqueado por política del navegador; reproduciendo silenciado como fallback');
+        video.muted = true;
+        video.play().catch(e => console.warn('Error autoplay fallback:', e));
+      } else {
+        console.warn('Error al reproducir video:', err);
+      }
+    });
   }
 
   iniciarSecuenciaVideosSpread(): void {
@@ -3945,81 +3996,132 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       const tieneVideoIzq = this.paginaSpreadIzquierda?.tipoMedia === 'video' && !!vIzq;
       const tieneVideoDer = this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer;
 
-      console.log('🎬 [Secuencia Videos] Spread:', this.spreadActual, '| Botón Vídeos Completos:', this.reproducirVideosCompletos);
+      console.log('🎬 [Secuencia Videos] Spread:', this.spreadActual, '| Izq:', tieneVideoIzq, '| Der:', tieneVideoDer, '| Videos Completos:', this.reproducirVideosCompletos, '| Sonido Videos:', !this.videoMuted);
 
-      if (!this.reproducirVideosCompletos) {
-        // =========================================================================
-        // CONDICIÓN: BOTÓN INACTIVO (No presionado)
-        // Tratar el elemento de vídeo como un marcador de posición estándar de imagen.
-        // Limitar la duración de reproducción para coincidir con la transición configurada
-        // para una sola foto (INTERVALO_SLIDESHOW = 5s) antes de pasar al siguiente par.
-        // =========================================================================
-        if (tieneVideoIzq || tieneVideoDer) {
-          if (tieneVideoIzq) {
-            vIzq.currentTime = 0;
-            vIzq.play().catch(e => console.warn('Preview video izq:', e));
-          }
-          if (tieneVideoDer) {
-            vDer.currentTime = 0;
-            vDer.play().catch(e => console.warn('Preview video der:', e));
-          }
-
-          // Detener el vídeo tras la duración asignada a una foto (5s)
-          this.timerVideoPreview = setTimeout(() => {
-            this.detenerVideosActuales();
-            if (this.reproduciendoSlideshow) {
-              this.cambiarPagina(1);
-            }
-          }, this.INTERVALO_SLIDESHOW);
-        }
+      if (!tieneVideoIzq && !tieneVideoDer) {
+        this.videoActualSecuencia = null;
         return;
       }
 
-      // =========================================================================
-      // CONDICIÓN: BOTÓN ACTIVO (Presionado)
-      // Reproducir la duración completa de cada vídeo de forma secuencial (Izq -> Der).
-      // =========================================================================
-      if (tieneVideoIzq && tieneVideoDer) {
-        console.log('▶️ [Video 1/2 Completo] Reproduciendo video izquierdo...');
+      // Preparar vídeos: pausar ambos y configurar volumen/mute
+      if (vIzq) {
+        try { vIzq.pause(); } catch (e) {}
         vIzq.currentTime = 0;
-        vIzq.play().catch(err => console.warn('Autoplay video izquierdo:', err));
-      } else if (tieneVideoIzq) {
-        console.log('▶️ [Video Único Completo] Reproduciendo video izquierdo...');
-        vIzq.currentTime = 0;
-        vIzq.play().catch(err => console.warn('Autoplay video izquierdo:', err));
-      } else if (tieneVideoDer) {
-        console.log('▶️ [Video Único Completo] Reproduciendo video derecho...');
-        vDer.currentTime = 0;
-        vDer.play().catch(err => console.warn('Autoplay video derecho:', err));
+        vIzq.muted = this.videoMuted;
       }
-    }, 150);
+      if (vDer) {
+        try { vDer.pause(); } catch (e) {}
+        vDer.currentTime = 0;
+        vDer.muted = this.videoMuted;
+      }
+
+      // =========================================================================
+      // REGLA CRÍTICA DE REPRODUCCIÓN SECUENCIAL:
+      // Cuando existen dos vídeos (izq y der), SIEMPRE se reproduce PRIMERO el de
+      // la izquierda y DESPUÉS el de la derecha. NUNCA a la vez.
+      // =========================================================================
+      if (tieneVideoIzq) {
+        this.videoActualSecuencia = 'izq';
+        console.log('▶️ [Secuencia Videos 1/2] Reproduciendo PRIMERO video izquierdo...');
+        this.reproducirVideoSeguro(vIzq);
+        if (!this.videoMuted) {
+          this.bajarVolumenAudioViaje();
+        }
+
+        if (!this.reproducirVideosCompletos) {
+          this.timerVideoPreview = setTimeout(() => {
+            console.log('⏱️ [Secuencia Videos] Fin de preview (5s) para video izquierdo');
+            try { vIzq.pause(); } catch (e) {}
+            this.onVideoIzquierdoTerminado();
+          }, this.INTERVALO_SLIDESHOW);
+        }
+      } else if (tieneVideoDer) {
+        this.videoActualSecuencia = 'der';
+        console.log('▶️ [Secuencia Videos] Solo hay video derecho, reproduciendo...');
+        this.reproducirVideoSeguro(vDer);
+        if (!this.videoMuted) {
+          this.bajarVolumenAudioViaje();
+        }
+
+        if (!this.reproducirVideosCompletos) {
+          this.timerVideoPreview = setTimeout(() => {
+            console.log('⏱️ [Secuencia Videos] Fin de preview (5s) para video derecho');
+            try { vDer.pause(); } catch (e) {}
+            this.onVideoDerechoTerminado();
+          }, this.INTERVALO_SLIDESHOW);
+        }
+      }
+    }, 200);
   }
 
   onVideoIzquierdoTerminado(): void {
-    console.log('⏹️ Video izquierdo completado');
-    if (!this.reproducirVideosCompletos) return;
+    console.log('⏹️ [Secuencia Videos] Video izquierdo completado');
+    if (this.timerVideoPreview) {
+      clearTimeout(this.timerVideoPreview);
+      this.timerVideoPreview = null;
+    }
+
+    const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
+    if (vIzq) {
+      try { vIzq.pause(); } catch (e) {}
+    }
 
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
     const tieneVideoDer = this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer;
 
     if (tieneVideoDer) {
-      // Transición secuencial inmediata y sin interrupciones al vídeo derecho
-      console.log('▶️ [Video 2/2 Completo] Transición secuencial al video derecho...');
+      // REGLA CRÍTICA: Al terminar el de la izquierda, se reproduce el de la derecha
+      this.videoActualSecuencia = 'der';
+      console.log('▶️ [Secuencia Videos 2/2] Transición secuencial: reproduciendo video derecho...');
       vDer.currentTime = 0;
-      vDer.play().catch(err => console.warn('Autoplay video derecho:', err));
+      vDer.muted = this.videoMuted;
+      this.reproducirVideoSeguro(vDer);
+      if (!this.videoMuted) {
+        this.bajarVolumenAudioViaje();
+      }
+
+      if (!this.reproducirVideosCompletos) {
+        this.timerVideoPreview = setTimeout(() => {
+          console.log('⏱️ [Secuencia Videos] Fin de preview (5s) para video derecho');
+          try { vDer.pause(); } catch (e) {}
+          this.onVideoDerechoTerminado();
+        }, this.INTERVALO_SLIDESHOW);
+      }
     } else {
+      // Solo había video izquierdo y ha finalizado
+      this.videoActualSecuencia = null;
+      this.restaurarVolumenAudioViaje();
       if (this.reproduciendoSlideshow) {
-        setTimeout(() => this.cambiarPagina(1), 600);
+        setTimeout(() => {
+          if (this.reproduciendoSlideshow) {
+            this.cambiarPagina(1);
+          }
+        }, 600);
       }
     }
   }
 
   onVideoDerechoTerminado(): void {
-    console.log('⏹️ Video derecho completado');
-    if (!this.reproducirVideosCompletos) return;
+    console.log('⏹️ [Secuencia Videos] Video derecho completado');
+    if (this.timerVideoPreview) {
+      clearTimeout(this.timerVideoPreview);
+      this.timerVideoPreview = null;
+    }
+
+    const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
+    if (vDer) {
+      try { vDer.pause(); } catch (e) {}
+    }
+
+    this.videoActualSecuencia = null;
+    this.restaurarVolumenAudioViaje();
 
     if (this.reproduciendoSlideshow) {
-      setTimeout(() => this.cambiarPagina(1), 600);
+      setTimeout(() => {
+        if (this.reproduciendoSlideshow) {
+          this.cambiarPagina(1);
+        }
+      }, 600);
     }
   }
 
@@ -4028,14 +4130,20 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       clearTimeout(this.timerVideoPreview);
       this.timerVideoPreview = null;
     }
+    this.videoActualSecuencia = null;
     const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
+    const vSingle = document.getElementById('video-single-page') as HTMLVideoElement;
     if (vIzq) {
       try { vIzq.pause(); } catch (e) {}
     }
     if (vDer) {
       try { vDer.pause(); } catch (e) {}
     }
+    if (vSingle) {
+      try { vSingle.pause(); } catch (e) {}
+    }
+    this.restaurarVolumenAudioViaje();
   }
 
   centrarMiniaturaActiva(index: number): void {
@@ -4649,6 +4757,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   onVideoSingleTerminado(): void {
     console.log('🎬 Vídeo en página única completado');
+    this.videoActualSecuencia = null;
+    this.restaurarVolumenAudioViaje();
     if (this.reproduciendoSlideshow) {
       if (this.hayPaginaSiguiente) {
         this.navegarSinglePage(1);
