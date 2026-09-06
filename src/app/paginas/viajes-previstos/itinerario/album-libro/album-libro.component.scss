@@ -1223,6 +1223,67 @@
       padding: 8px 18px;
       box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
       color: #ffffff;
+
+      &.franja-doble-spread {
+        padding: 8px 22px;
+        gap: 16px;
+
+        .info-spread-columna {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          min-width: 0;
+
+          .badge-col-spread {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+
+            i {
+              color: #eab308;
+              font-size: 0.72rem;
+            }
+          }
+
+          .info-col-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 0.84rem;
+            color: #e2e8f0;
+
+            .text-fecha {
+              color: #38bdf8;
+              font-size: 0.8rem;
+            }
+
+            .text-km {
+              color: #34d399;
+              font-size: 0.8rem;
+            }
+
+            .info-col-titulo {
+              font-weight: 600;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              max-width: 260px;
+            }
+          }
+        }
+
+        .hud-separator-spread {
+          width: 1px;
+          height: 36px;
+          background: rgba(255, 255, 255, 0.2);
+          flex-shrink: 0;
+        }
+      }
     }
 
     .hud-pill {
@@ -7334,10 +7395,20 @@
 
   &.hud-fullscreen-mode {
     position: fixed;
-    top: 24px;
-    left: 24px;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 10020 !important;
     pointer-events: auto;
+
+    .telemetria-popover-card {
+      left: 50%;
+      transform: translateX(-50%) translateY(6px);
+    }
+
+    &:hover .telemetria-popover-card {
+      transform: translateX(-50%) translateY(0);
+    }
   }
 
   .telemetria-hud-inner {
@@ -7367,6 +7438,21 @@
     align-items: baseline;
     gap: 5px;
     white-space: nowrap;
+
+    &.pill-fecha {
+      align-items: center;
+      .icon-telemetria {
+        color: #38bdf8;
+        font-size: 12px;
+        margin-right: 2px;
+      }
+      .telemetria-fecha {
+        color: #f1f5f9;
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: 0.01em;
+      }
+    }
 
     &.pill-km {
       .icon-telemetria {
@@ -7593,7 +7679,8 @@
 
     &.hud-fullscreen-mode {
       top: 14px;
-      left: 12px;
+      left: 50%;
+      transform: translateX(-50%);
       z-index: 10020 !important;
       pointer-events: auto;
     }

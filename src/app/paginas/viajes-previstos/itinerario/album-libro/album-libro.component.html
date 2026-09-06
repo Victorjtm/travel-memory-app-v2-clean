@@ -1067,7 +1067,7 @@
         [title]="infoDetalleFijado ? 'Desanclar información (Fijada)' : 'Ver o anclar información del archivo'">
         <i class="fas" [class.fa-info-circle]="!infoDetalleFijado" [class.fa-thumbtack]="infoDetalleFijado"></i>
       </button>
-      <div class="metadata-hud-fullscreen">
+      <div class="metadata-hud-fullscreen" *ngIf="!mostrarTelemetriaHud">
         <span class="fecha-hora">{{ obtenerFechaFormateada(paginaActualData!) }}</span>
       </div>
 
@@ -1298,49 +1298,81 @@
     <div class="info-overlay" *ngIf="infoDetalleEsModal" (click)="cerrarInfoDetalle()"></div>
 
     <!-- Contenedor Franja Panorámica de Información -->
-    <div class="franja-hud-content">
+    <div class="franja-hud-content" [class.franja-doble-spread]="modoAlbumVintage && spreadActualData?.tipo === 'fotos' && paginaSpreadIzquierda && paginaSpreadDerecha">
 
       <!-- Botón cerrar (móvil o si está fijado) -->
       <button class="btn-hud-close" (click)="cerrarInfoDetalle(); $event.stopPropagation()" title="Cerrar información">
         <i class="fas fa-times"></i>
       </button>
 
-      <!-- 1. UBICACIÓN -->
-      <div class="hud-pill ubicacion" *ngIf="getNivelContexto()">
-        <div class="hud-icon">
-          <i class="fas fa-map-marker-alt"></i>
+      <!-- CASO A: PLIEGO DOBLE VINTAGE (Dos fotos simultáneas) -->
+      <ng-container *ngIf="modoAlbumVintage && spreadActualData?.tipo === 'fotos' && paginaSpreadIzquierda && paginaSpreadDerecha; else infoSimple">
+        <div class="info-spread-columna info-col-izq">
+          <span class="badge-col-spread"><i class="fas fa-arrow-left"></i> Foto 1 (Pág. Izquierda)</span>
+          <div class="info-col-item" *ngIf="obtenerFechaFormateada(paginaSpreadIzquierda)">
+            <i class="fas fa-calendar-alt text-fecha"></i>
+            <span>{{ obtenerFechaFormateada(paginaSpreadIzquierda) }}</span>
+          </div>
+          <div class="info-col-item" *ngIf="paginaSpreadIzquierda.titulo || paginaSpreadIzquierda.descripcion">
+            <i class="fas fa-camera text-km"></i>
+            <span class="info-col-titulo">{{ paginaSpreadIzquierda.titulo || paginaSpreadIzquierda.descripcion }}</span>
+          </div>
         </div>
-        <div class="hud-text">
-          <span class="hud-label">Ubicación</span>
-          <span class="hud-value">{{ getNivelContexto() }}</span>
-        </div>
-      </div>
 
-      <div class="hud-separator" *ngIf="getNivelContexto() && obtenerFechaFormateada(paginaActualData!)"></div>
+        <div class="hud-separator-spread"></div>
 
-      <!-- 2. FECHA Y HORA -->
-      <div class="hud-pill fecha" *ngIf="obtenerFechaFormateada(paginaActualData!)">
-        <div class="hud-icon">
-          <i class="fas fa-calendar-alt"></i>
+        <div class="info-spread-columna info-col-der">
+          <span class="badge-col-spread">Foto 2 (Pág. Derecha) <i class="fas fa-arrow-right"></i></span>
+          <div class="info-col-item" *ngIf="obtenerFechaFormateada(paginaSpreadDerecha)">
+            <i class="fas fa-calendar-alt text-fecha"></i>
+            <span>{{ obtenerFechaFormateada(paginaSpreadDerecha) }}</span>
+          </div>
+          <div class="info-col-item" *ngIf="paginaSpreadDerecha.titulo || paginaSpreadDerecha.descripcion">
+            <i class="fas fa-camera text-km"></i>
+            <span class="info-col-titulo">{{ paginaSpreadDerecha.titulo || paginaSpreadDerecha.descripcion }}</span>
+          </div>
         </div>
-        <div class="hud-text">
-          <span class="hud-label">Fecha y hora</span>
-          <span class="hud-value">{{ obtenerFechaFormateada(paginaActualData!) }}</span>
-        </div>
-      </div>
+      </ng-container>
 
-      <div class="hud-separator" *ngIf="(paginaActualData.descripcion || paginaActualData.titulo) && (getNivelContexto() || obtenerFechaFormateada(paginaActualData!))"></div>
+      <!-- CASO B: FOTO INDIVIDUAL O MAPA ESTÁNDAR -->
+      <ng-template #infoSimple>
+        <!-- 1. UBICACIÓN -->
+        <div class="hud-pill ubicacion" *ngIf="getNivelContexto()">
+          <div class="hud-icon">
+            <i class="fas fa-map-marker-alt"></i>
+          </div>
+          <div class="hud-text">
+            <span class="hud-label">Ubicación</span>
+            <span class="hud-value">{{ getNivelContexto() }}</span>
+          </div>
+        </div>
 
-      <!-- 3. DESCRIPCIÓN / NOMBRE DEL LUGAR -->
-      <div class="hud-pill descripcion" *ngIf="paginaActualData.descripcion || paginaActualData.titulo">
-        <div class="hud-icon">
-          <i class="fas fa-camera"></i>
+        <div class="hud-separator" *ngIf="getNivelContexto() && obtenerFechaFormateada(paginaActualData!)"></div>
+
+        <!-- 2. FECHA Y HORA -->
+        <div class="hud-pill fecha" *ngIf="obtenerFechaFormateada(paginaActualData!)">
+          <div class="hud-icon">
+            <i class="fas fa-calendar-alt"></i>
+          </div>
+          <div class="hud-text">
+            <span class="hud-label">Fecha y hora</span>
+            <span class="hud-value">{{ obtenerFechaFormateada(paginaActualData!) }}</span>
+          </div>
         </div>
-        <div class="hud-text">
-          <span class="hud-label">Detalle</span>
-          <span class="hud-value">{{ paginaActualData.descripcion || paginaActualData.titulo }}</span>
+
+        <div class="hud-separator" *ngIf="(paginaActualData.descripcion || paginaActualData.titulo) && (getNivelContexto() || obtenerFechaFormateada(paginaActualData!))"></div>
+
+        <!-- 3. DESCRIPCIÓN / NOMBRE DEL LUGAR -->
+        <div class="hud-pill descripcion" *ngIf="paginaActualData.descripcion || paginaActualData.titulo">
+          <div class="hud-icon">
+            <i class="fas fa-camera"></i>
+          </div>
+          <div class="hud-text">
+            <span class="hud-label">Detalle</span>
+            <span class="hud-value">{{ paginaActualData.descripcion || paginaActualData.titulo }}</span>
+          </div>
         </div>
-      </div>
+      </ng-template>
 
       <!-- Badge indicador de PIN -->
       <div class="hud-badge-pin" *ngIf="infoDetalleFijado" title="Información anclada de forma permanente">
@@ -1364,6 +1396,15 @@
     [attr.aria-label]="'Telemetría del recorrido: ' + telem.kmActual + ' km acumulados, ' + (telem.esDobleHora ? ('Foto 1: ' + telem.horaIzquierda + ', Foto 2: ' + telem.horaDerecha) : ('hora ' + telem.horaActual))">
     
     <div class="telemetria-hud-inner">
+      <!-- 0. Fecha -->
+      <div class="telemetria-pill pill-fecha" *ngIf="telem.fechaActual" [title]="'Fecha: ' + (telem.fechaFormateadaLarga || telem.fechaActual)">
+        <i class="fas fa-calendar-alt icon-telemetria text-fecha"></i>
+        <span class="telemetria-fecha">{{ telem.fechaActual }}</span>
+      </div>
+
+      <!-- Separador decorativo -->
+      <span class="telemetria-bullet" *ngIf="telem.fechaActual" aria-hidden="true">•</span>
+
       <!-- 1. Odómetro (Kilómetros) -->
       <div class="telemetria-pill pill-km" [title]="'Distancia acumulada: ' + telem.kmActual + ' km de ' + telem.kmTotal + ' km'">
         <i class="fas fa-route icon-telemetria text-km"></i>
@@ -1502,8 +1543,7 @@
 
             <div class="pie-foto-vintage pie-single-maximizada">
               <h4 class="titulo-pie-vintage">{{ pagSingle.titulo }}</h4>
-              <p class="fecha-pie-vintage" *ngIf="pagSingle.fecha">{{ formatearFecha(pagSingle.fecha) }}</p>
-              <p class="desc-pie-vintage" *ngIf="pagSingle.descripcion">{{ pagSingle.descripcion }}</p>
+              <p class="desc-pie-vintage" *ngIf="pagSingle.descripcion && !esTextoDuplicado(pagSingle.titulo, pagSingle.descripcion)">{{ pagSingle.descripcion }}</p>
             </div>
           </div>
 
@@ -1688,10 +1728,9 @@
             </div>
           </div>
 
-          <div class="pie-foto-vintage" *ngIf="pagIzq.titulo || pagIzq.fecha">
+          <div class="pie-foto-vintage" *ngIf="pagIzq.titulo || (pagIzq.descripcion && !esTextoDuplicado(pagIzq.titulo, pagIzq.descripcion))">
             <h4 class="titulo-pie-vintage">{{ pagIzq.titulo }}</h4>
-            <p class="fecha-pie-vintage" *ngIf="pagIzq.fecha">{{ formatearFecha(pagIzq.fecha) }}</p>
-            <p class="desc-pie-vintage" *ngIf="pagIzq.descripcion">{{ pagIzq.descripcion }}</p>
+            <p class="desc-pie-vintage" *ngIf="pagIzq.descripcion && !esTextoDuplicado(pagIzq.titulo, pagIzq.descripcion)">{{ pagIzq.descripcion }}</p>
           </div>
         </div>
 
@@ -1834,10 +1873,9 @@
             <div class="lupa-zoom-overlay" *ngIf="!fullscreen" (click)="abrirPaginaActualEnFullscreen(); $event.stopPropagation()"><i class="fas fa-search-plus"></i> Ampliar</div>
           </div>
 
-          <div class="pie-foto-vintage">
+          <div class="pie-foto-vintage" *ngIf="pagDer.titulo || (pagDer.descripcion && !esTextoDuplicado(pagDer.titulo, pagDer.descripcion))">
             <h4 class="titulo-pie-vintage">{{ pagDer.titulo }}</h4>
-            <p class="fecha-pie-vintage" *ngIf="pagDer.fecha">{{ formatearFecha(pagDer.fecha) }}</p>
-            <p class="desc-pie-vintage" *ngIf="pagDer.descripcion">{{ pagDer.descripcion }}</p>
+            <p class="desc-pie-vintage" *ngIf="pagDer.descripcion && !esTextoDuplicado(pagDer.titulo, pagDer.descripcion)">{{ pagDer.descripcion }}</p>
           </div>
         </div>
 
@@ -1876,9 +1914,8 @@
                 <video *ngIf="pSal.url" [src]="pSal.url + '#t=0.5'" class="video-foto-vintage" muted></video>
               </div>
             </div>
-            <div class="pie-foto-vintage" *ngIf="pSal.titulo || pSal.fecha">
+            <div class="pie-foto-vintage" *ngIf="pSal.titulo">
               <h4 class="titulo-pie-vintage">{{ pSal.titulo }}</h4>
-              <p class="fecha-pie-vintage" *ngIf="pSal.fecha">{{ formatearFecha(pSal.fecha) }}</p>
             </div>
           </div>
         </ng-container>
@@ -1898,7 +1935,7 @@
         <ng-container *ngIf="direccionVolteo3D === 'adelante'">
           <div class="reverso-papel-antiguo-vacio">
             <div class="sello-vintage-dorso">✦ DIARIO DE RECUERDOS ✦</div>
-            <div class="pie-foto-vintage" *ngIf="paginaVolteoSaliente?.descripcion">
+            <div class="pie-foto-vintage" *ngIf="paginaVolteoSaliente?.descripcion && !esTextoDuplicado(paginaVolteoSaliente?.titulo, paginaVolteoSaliente?.descripcion)">
               <p class="desc-pie-vintage">{{ paginaVolteoSaliente?.descripcion }}</p>
             </div>
           </div>
@@ -1913,9 +1950,8 @@
               <span class="esquinera-foto inf-der"></span>
               <img *ngIf="pEnt.tipoMedia === 'imagen'" [src]="pEnt.url" [alt]="pEnt.titulo" class="imagen-foto-vintage" />
             </div>
-            <div class="pie-foto-vintage" *ngIf="pEnt.titulo || pEnt.fecha">
+            <div class="pie-foto-vintage" *ngIf="pEnt.titulo">
               <h4 class="titulo-pie-vintage">{{ pEnt.titulo }}</h4>
-              <p class="fecha-pie-vintage" *ngIf="pEnt.fecha">{{ formatearFecha(pEnt.fecha) }}</p>
             </div>
           </div>
         </ng-container>

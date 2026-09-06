@@ -282,6 +282,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   get telemetriaActual(): {
     kmActual: number;
     kmTotal: number;
+    fechaActual?: string;
+    fechaFormateadaLarga?: string;
     horaActual: string;
     horaIzquierda?: string;
     horaDerecha?: string;
@@ -357,6 +359,33 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
     }
 
+    let fechaRaw = pagDer?.fecha || pagIzq?.fecha || pag?.fecha || '';
+    if (!fechaRaw && this.paginas[this.paginaActual]?.fecha) {
+      fechaRaw = this.paginas[this.paginaActual].fecha;
+    }
+    if (!fechaRaw && this.infoViaje?.fechaInicio) {
+      fechaRaw = this.infoViaje.fechaInicio;
+    }
+
+    let fechaActual = '';
+    let fechaFormateadaLarga = '';
+
+    if (esDobleFoto && pagIzq && pagDer) {
+      const fIzq = pagIzq.fecha || pagIzq.archivo?.fechaCreacion || '';
+      const fDer = pagDer.fecha || pagDer.archivo?.fechaCreacion || '';
+      const cIzq = this.formatearFechaCorta(fIzq);
+      const cDer = this.formatearFechaCorta(fDer);
+      if (cIzq && cDer && cIzq !== cDer) {
+        fechaActual = `${cIzq} ➔ ${cDer}`;
+      } else {
+        fechaActual = cDer || cIzq || this.formatearFechaCorta(fechaRaw);
+      }
+      fechaFormateadaLarga = this.formatearFecha(fDer || fIzq || fechaRaw);
+    } else {
+      fechaActual = this.formatearFechaCorta(fechaRaw);
+      fechaFormateadaLarga = this.formatearFecha(fechaRaw);
+    }
+
     let horaIzquierda = '';
     let horaDerecha = '';
     let esDobleHora = false;
@@ -375,6 +404,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     return {
       kmActual: parseFloat(kmActual.toFixed(1)),
       kmTotal: parseFloat(kmTotal.toFixed(1)),
+      fechaActual,
+      fechaFormateadaLarga,
       horaActual,
       horaIzquierda,
       horaDerecha,
@@ -386,6 +417,24 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       destino: this.itinerarioDestinoNombre || 'Destino final',
       tituloHito: pag?.titulo || ''
     };
+  }
+
+  formatearFechaCorta(fechaStr?: string): string {
+    if (!fechaStr) return '';
+    try {
+      const d = new Date(fechaStr);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+    } catch (e) {}
+    return fechaStr;
+  }
+
+  esTextoDuplicado(titulo?: string, desc?: string): boolean {
+    if (!titulo || !desc) return false;
+    const normT = titulo.trim().toLowerCase();
+    const normD = desc.trim().toLowerCase();
+    return normT === normD || normT.startsWith(normD) || normD.startsWith(normT);
   }
 
   toggleTelemetriaHud(): void {
