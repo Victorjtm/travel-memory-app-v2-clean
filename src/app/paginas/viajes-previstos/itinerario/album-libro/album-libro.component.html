@@ -946,11 +946,6 @@
     aria-modal="true" aria-label="Contenido en pantalla completa" *ngIf="mostrarFullscreen">
 
     <div class="recuerdo-ambient" *ngIf="modoRecuerdoActivo" aria-hidden="true"></div>
-    <div class="memory-status" *ngIf="modoRecuerdoActivo">
-      <span class="memory-dot" [class.sound-on]="audioReproduciendo"></span>
-      <strong>Modo recuerdo</strong>
-      <small>{{ audioReproduciendo ? 'musica ambiente activa' : 'diapositivas activas' }}</small>
-    </div>
 
     <!-- 📏⏱️ WIDGET TELEMÉTRICO FLOTANTE EN FULLSCREEN -->
     <ng-container *ngTemplateOutlet="telemetriaHudTemplate; context: { fullscreen: true }"></ng-container>
@@ -1366,7 +1361,7 @@
     *ngIf="mostrarTelemetriaHud && telemetriaActual as telem" 
     [class.hud-fullscreen-mode]="fullscreen"
     (click)="$event.stopPropagation()"
-    [attr.aria-label]="'Telemetría del recorrido: ' + telem.kmActual + ' km acumulados, hora ' + telem.horaActual">
+    [attr.aria-label]="'Telemetría del recorrido: ' + telem.kmActual + ' km acumulados, ' + (telem.esDobleHora ? ('Foto 1: ' + telem.horaIzquierda + ', Foto 2: ' + telem.horaDerecha) : ('hora ' + telem.horaActual))">
     
     <div class="telemetria-hud-inner">
       <!-- 1. Odómetro (Kilómetros) -->
@@ -1381,9 +1376,18 @@
       <span class="telemetria-bullet" aria-hidden="true">•</span>
 
       <!-- 2. Reloj (Horario de paso / foto) -->
-      <div class="telemetria-pill pill-hora" [title]="'Hora registrada en este punto: ' + telem.horaActual">
+      <div class="telemetria-pill pill-hora" [title]="telem.esDobleHora ? ('Foto 1 (izquierda): ' + telem.horaIzquierda + ' | Foto 2 (derecha): ' + telem.horaDerecha) : ('Hora registrada en este punto: ' + telem.horaActual)">
         <i class="fas fa-clock icon-telemetria text-hora"></i>
-        <span class="telemetria-num">{{ telem.horaActual }}</span>
+        <ng-container *ngIf="telem.esDobleHora; else horaSimple">
+          <span class="telemetria-doble-hora">
+            <span class="telemetria-num telemetria-hora-izq" [title]="'Foto 1 (izquierda): ' + telem.horaIzquierda">{{ telem.horaIzquierda }}</span>
+            <span class="telemetria-hora-sep" aria-hidden="true">➔</span>
+            <span class="telemetria-num telemetria-hora-der" [title]="'Foto 2 (derecha): ' + telem.horaDerecha">{{ telem.horaDerecha }}</span>
+          </span>
+        </ng-container>
+        <ng-template #horaSimple>
+          <span class="telemetria-num">{{ telem.horaActual }}</span>
+        </ng-template>
       </div>
 
       <!-- 3. Barra mini de progreso -->
@@ -1406,7 +1410,15 @@
       </div>
       <div class="popover-row actual">
         <span class="popover-badge"><i class="fas fa-camera"></i> Actual</span>
-        <span class="popover-text">{{ telem.kmActual }} km • {{ telem.horaActual }}</span>
+        <span class="popover-text">
+          {{ telem.kmActual }} km • 
+          <ng-container *ngIf="telem.esDobleHora">
+            {{ telem.horaIzquierda }} (Izq) ➔ {{ telem.horaDerecha }} (Der)
+          </ng-container>
+          <ng-container *ngIf="!telem.esDobleHora">
+            {{ telem.horaActual }}
+          </ng-container>
+        </span>
         <small class="popover-sub" *ngIf="telem.tituloHito">{{ telem.tituloHito }}</small>
       </div>
       <div class="popover-row meta">

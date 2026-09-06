@@ -283,6 +283,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     kmActual: number;
     kmTotal: number;
     horaActual: string;
+    horaIzquierda?: string;
+    horaDerecha?: string;
+    esDobleHora: boolean;
     horaInicio: string;
     horaFin: string;
     porcentaje: number;
@@ -291,6 +294,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     tituloHito?: string;
   } {
     let pag: PaginaMedia | null = null;
+    let pagIzq: PaginaMedia | null = null;
+    let pagDer: PaginaMedia | null = null;
+    let esDobleFoto = false;
+
     if (this.mostrarFullscreen) {
       if (this.fullscreenSinglePageMode && this.paginaSinglePageActual) {
         pag = this.paginaSinglePageActual;
@@ -298,12 +305,32 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         pag = this.paginas[this.paginaActual] || this.paginaActualData;
       } else {
         // En modo Vintage Fullscreen (2 páginas abiertas)
-        pag = this.paginaSpreadDerecha || this.paginaSpreadIzquierda || this.paginas[this.paginaActual] || this.paginaActualData;
+        if (this.spreadActualData?.tipo === 'mapa') {
+          pag = this.spreadActualData.paginaMapa || this.paginas[this.paginaActual] || this.paginaActualData;
+        } else {
+          pagIzq = this.paginaSpreadIzquierda;
+          pagDer = this.paginaSpreadDerecha;
+          pag = pagDer || pagIzq || this.paginas[this.paginaActual] || this.paginaActualData;
+          if (this.spreadActualData?.tipo === 'fotos' && pagIzq && pagDer) {
+            esDobleFoto = true;
+          }
+        }
       }
     } else {
-      pag = this.modoAlbumVintage
-        ? (this.paginaSpreadDerecha || this.paginaSpreadIzquierda || this.paginaActualData)
-        : this.paginaActualData;
+      if (this.modoAlbumVintage) {
+        if (this.spreadActualData?.tipo === 'mapa') {
+          pag = this.spreadActualData.paginaMapa || this.paginas[this.paginaActual] || this.paginaActualData;
+        } else {
+          pagIzq = this.paginaSpreadIzquierda;
+          pagDer = this.paginaSpreadDerecha;
+          pag = pagDer || pagIzq || this.paginaActualData;
+          if (this.spreadActualData?.tipo === 'fotos' && pagIzq && pagDer) {
+            esDobleFoto = true;
+          }
+        }
+      } else {
+        pag = this.paginaActualData;
+      }
     }
 
     const kmTotal = this.distanciaTotalKm;
@@ -330,12 +357,28 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
     }
 
+    let horaIzquierda = '';
+    let horaDerecha = '';
+    let esDobleHora = false;
+
+    if (esDobleFoto && pagIzq && pagDer) {
+      horaIzquierda = pagIzq.horaFormateada || this.formatearHoraDePagina(pagIzq, this.itinerarioHoraInicio || '09:00');
+      horaDerecha = pagDer.horaFormateada || this.formatearHoraDePagina(pagDer, this.itinerarioHoraFin || '20:00');
+      if (horaIzquierda && horaDerecha) {
+        esDobleHora = true;
+        horaActual = horaIzquierda !== horaDerecha ? `${horaIzquierda} ➔ ${horaDerecha}` : horaIzquierda;
+      }
+    }
+
     const pct = kmTotal > 0 ? Math.min(100, Math.max(0, Math.round((kmActual / kmTotal) * 100))) : 0;
 
     return {
       kmActual: parseFloat(kmActual.toFixed(1)),
       kmTotal: parseFloat(kmTotal.toFixed(1)),
       horaActual,
+      horaIzquierda,
+      horaDerecha,
+      esDobleHora,
       horaInicio: this.itinerarioHoraInicio || '09:00',
       horaFin: this.itinerarioHoraFin || '20:00',
       porcentaje: pct,
@@ -425,64 +468,99 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     const totalKm = this.distanciaTotalKm;
 
-    // 2. Mapear fotos a puntos GPX reales
+    // 2. Mapear fotos a puntos GPX reales respetando baseKm acumulado entre actividades
     const fotoGpxMap = new Map<number, { distKm: number; horaStr: string; timestamp: number }>();
     let primerHoraGpx = '';
     let ultimaHoraGpx = '';
     let minTimestamp = Infinity;
     let maxTimestamp = -Infinity;
 
-    if (this.cacheDatosActividadGpx && this.cacheDatosActividadGpx.size > 0) {
-      this.cacheDatosActividadGpx.forEach((datos) => {
-        const pts: GpxPoint[] = datos.points || [];
-        if (pts.length > 0) {
-          if (pts[0].time && !primerHoraGpx) {
-            const dt0 = new Date(pts[0].time);
-            // Evitar tomar 00:00:00Z UTC ficticia (que da 02:00 en España)
-            if (dt0.getUTCHours() !== 0 || dt0.getUTCMinutes() !== 0 || dt0.getUTCSeconds() !== 0) {
-              primerHoraGpx = dt0.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-              if (dt0.getTime() < minTimestamp) minTimestamp = dt0.getTime();
-            }
-          }
-          const lastPt = pts[pts.length - 1];
-          if (lastPt?.time) {
-            const dtLast = new Date(lastPt.time);
-            if (dtLast.getUTCHours() !== 0 || dtLast.getUTCMinutes() !== 0 || dtLast.getUTCSeconds() !== 0) {
-              ultimaHoraGpx = dtLast.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-              if (dtLast.getTime() > maxTimestamp) maxTimestamp = dtLast.getTime();
-            }
+    // Ordenar actividades según su aparición en las páginas del álbum
+    const actIdsOrdenados: number[] = [];
+    this.paginas.forEach(p => {
+      const actId = p.actividadId || p.archivo?.actividadId;
+      if (actId && !actIdsOrdenados.includes(actId) && this.cacheDatosActividadGpx.has(actId)) {
+        actIdsOrdenados.push(actId);
+      }
+    });
+    this.cacheDatosActividadGpx.forEach((_, actId) => {
+      if (!actIdsOrdenados.includes(actId)) {
+        actIdsOrdenados.push(actId);
+      }
+    });
+
+    let runningBaseKm = 0.0;
+    const actInfoMap = new Map<number, { baseKm: number; totalKm: number; horaInicio: string; horaFin: string; tsInicio: number; tsFin: number }>();
+
+    actIdsOrdenados.forEach(actId => {
+      const datos = this.cacheDatosActividadGpx.get(actId);
+      if (!datos) return;
+      const pts: GpxPoint[] = datos.points || [];
+      const actBaseKm = runningBaseKm;
+      let actDist = 0;
+      let hIni = '';
+      let hFin = '';
+      let tsIni = 0;
+      let tsFin = 0;
+
+      if (pts.length > 0) {
+        const lastPt = pts[pts.length - 1];
+        actDist = (lastPt.distAcum || 0) / 1000;
+        if (pts[0].time) {
+          const dt0 = new Date(pts[0].time);
+          if (dt0.getUTCHours() !== 0 || dt0.getUTCMinutes() !== 0 || dt0.getUTCSeconds() !== 0) {
+            hIni = dt0.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            tsIni = dt0.getTime();
           }
         }
-
-        (datos.gruposPIs || []).forEach((pi: any) => {
-          if (pi.trackIdx !== undefined && pi.trackIdx >= 0 && pi.trackIdx < pts.length) {
-            const pt = pts[pi.trackIdx];
-            const dKm = (pt.distAcum || 0) / 1000;
-            let hStr = '';
-            let ts = 0;
-            if (pt.time) {
-              const dt = new Date(pt.time);
-              ts = dt.getTime();
-              if (dt.getUTCHours() !== 0 || dt.getUTCMinutes() !== 0 || dt.getUTCSeconds() !== 0) {
-                hStr = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-              }
-              if (ts < minTimestamp) minTimestamp = ts;
-              if (ts > maxTimestamp) maxTimestamp = ts;
-            }
-            (pi.archivos || []).forEach((arch: any) => {
-              if (arch?.id) {
-                fotoGpxMap.set(arch.id, { distKm: dKm, horaStr: hStr, timestamp: ts });
-              }
-            });
+        if (lastPt?.time) {
+          const dtLast = new Date(lastPt.time);
+          if (dtLast.getUTCHours() !== 0 || dtLast.getUTCMinutes() !== 0 || dtLast.getUTCSeconds() !== 0) {
+            hFin = dtLast.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            tsFin = dtLast.getTime();
           }
-        });
+        }
+      }
+
+      const actTotalKm = actBaseKm + actDist;
+      runningBaseKm += actDist;
+      actInfoMap.set(actId, { baseKm: actBaseKm, totalKm: actTotalKm, horaInicio: hIni, horaFin: hFin, tsInicio: tsIni, tsFin: tsFin });
+
+      if (hIni && !primerHoraGpx) primerHoraGpx = hIni;
+      if (hFin) ultimaHoraGpx = hFin;
+      if (tsIni > 0 && tsIni < minTimestamp) minTimestamp = tsIni;
+      if (tsFin > 0 && tsFin > maxTimestamp) maxTimestamp = tsFin;
+
+      (datos.gruposPIs || []).forEach((pi: any) => {
+        if (pi.trackIdx !== undefined && pi.trackIdx >= 0 && pi.trackIdx < pts.length) {
+          const pt = pts[pi.trackIdx];
+          const dKm = actBaseKm + ((pt.distAcum || 0) / 1000);
+          let hStr = '';
+          let ts = 0;
+          if (pt.time) {
+            const dt = new Date(pt.time);
+            ts = dt.getTime();
+            if (dt.getUTCHours() !== 0 || dt.getUTCMinutes() !== 0 || dt.getUTCSeconds() !== 0) {
+              hStr = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            }
+            if (ts < minTimestamp) minTimestamp = ts;
+            if (ts > maxTimestamp) maxTimestamp = ts;
+          }
+          (pi.archivos || []).forEach((arch: any) => {
+            if (arch?.id) {
+              fotoGpxMap.set(arch.id, { distKm: dKm, horaStr: hStr, timestamp: ts });
+            }
+          });
+        }
       });
-    }
+    });
 
     // 3. Vincular fotos con coordenadas que no entraron en gruposPIs al punto del GPX más próximo
     this.paginas.forEach(p => {
       if (p.archivo?.id && !fotoGpxMap.has(p.archivo.id) && p.archivo.actividadId) {
         const datos = this.cacheDatosActividadGpx.get(p.archivo.actividadId);
+        const actInfo = actInfoMap.get(p.archivo.actividadId);
+        const baseKm = actInfo?.baseKm || 0;
         if (datos && datos.points && datos.points.length > 0) {
           const lat = p.coordenadas?.latitud || (p.archivo as any)?.latitud;
           const lng = p.coordenadas?.longitud || (p.archivo as any)?.longitud;
@@ -498,7 +576,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             }
             if (bestIdx >= 0 && bestDist < 1000) {
               const pt = datos.points[bestIdx];
-              const dKm = (pt.distAcum || 0) / 1000;
+              const dKm = baseKm + ((pt.distAcum || 0) / 1000);
               let hStr = '';
               let ts = 0;
               if (pt.time) {
@@ -511,6 +589,97 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               fotoGpxMap.set(p.archivo.id, { distKm: dKm, horaStr: hStr, timestamp: ts });
             }
           }
+        }
+      }
+    });
+
+    // 3.5. CORRECCIÓN DEL KILOMETRAJE TOTAL DEL TRAYECTO:
+    // Distribuir e interpolar los kilómetros del tramo final entre el último PI y la meta/fin del itinerario
+    actIdsOrdenados.forEach(actId => {
+      const datos = this.cacheDatosActividadGpx.get(actId);
+      const actInfo = actInfoMap.get(actId);
+      if (!datos || !actInfo) return;
+
+      const pts: GpxPoint[] = datos.points || [];
+      if (pts.length === 0) return;
+
+      const lastPI = datos.gruposPIs && datos.gruposPIs.length > 0 ? datos.gruposPIs[datos.gruposPIs.length - 1] : null;
+      const lastPiDistKm = lastPI && lastPI.trackIdx !== undefined
+        ? actInfo.baseKm + ((pts[lastPI.trackIdx].distAcum || 0) / 1000)
+        : actInfo.baseKm;
+
+      const deltaFinKm = actInfo.totalKm - lastPiDistKm;
+
+      // Buscar todas las páginas de esta actividad en this.paginas (excluyendo portadas/cartas manuscritas)
+      const pagsActividad = this.paginas
+        .map((p, idx) => ({ p, idx }))
+        .filter(item => !item.p.esCartaManuscrita && (item.p.actividadId === actId || item.p.archivo?.actividadId === actId));
+
+      if (pagsActividad.length === 0) return;
+
+      if (deltaFinKm > 0.05) {
+        const lastPiArchIds = new Set((lastPI?.archivos || []).map((a: any) => a.id));
+        let tramoFinal = pagsActividad.filter(item =>
+          (item.p.archivo?.id && lastPiArchIds.has(item.p.archivo.id)) ||
+          (item.p.archivo?.id && (fotoGpxMap.get(item.p.archivo.id)?.distKm ?? 0) >= lastPiDistKm - 0.05) ||
+          item.p.esMapaAnimado
+        );
+
+        if (tramoFinal.length === 0) {
+          tramoFinal = [pagsActividad[pagsActividad.length - 1]];
+        }
+
+        if (tramoFinal.length > 1) {
+          const count = tramoFinal.length;
+          tramoFinal.forEach((item, k) => {
+            const ratio = k / (count - 1);
+            const distInter = lastPiDistKm + ratio * deltaFinKm;
+            const distVal = parseFloat(distInter.toFixed(1));
+
+            if (item.p.esMapaAnimado) {
+              item.p.distanciaFinTramo = distVal;
+              item.p.distanciaAcumuladaKm = distVal;
+            } else if (item.p.archivo?.id) {
+              const prev = fotoGpxMap.get(item.p.archivo.id);
+              const hora = (ratio > 0.5 && actInfo.horaFin) ? actInfo.horaFin : (prev?.horaStr || '');
+              fotoGpxMap.set(item.p.archivo.id, {
+                distKm: distVal,
+                horaStr: hora,
+                timestamp: prev?.timestamp || (ratio > 0.5 ? actInfo.tsFin : 0)
+              });
+            }
+          });
+        } else {
+          const item = tramoFinal[0];
+          const distVal = parseFloat(actInfo.totalKm.toFixed(1));
+          if (item.p.esMapaAnimado) {
+            item.p.distanciaFinTramo = distVal;
+            item.p.distanciaAcumuladaKm = distVal;
+          } else if (item.p.archivo?.id) {
+            const prev = fotoGpxMap.get(item.p.archivo.id);
+            fotoGpxMap.set(item.p.archivo.id, {
+              distKm: distVal,
+              horaStr: actInfo.horaFin || prev?.horaStr || '',
+              timestamp: actInfo.tsFin || prev?.timestamp || 0
+            });
+          }
+        }
+      }
+
+      // Asegurar que la última página de la actividad culmine en la distancia total real
+      const lastItem = pagsActividad[pagsActividad.length - 1];
+      if (lastItem) {
+        const distFin = parseFloat(actInfo.totalKm.toFixed(1));
+        if (lastItem.p.esMapaAnimado) {
+          lastItem.p.distanciaFinTramo = distFin;
+          lastItem.p.distanciaAcumuladaKm = distFin;
+        } else if (lastItem.p.archivo?.id) {
+          const prev = fotoGpxMap.get(lastItem.p.archivo.id);
+          fotoGpxMap.set(lastItem.p.archivo.id, {
+            distKm: distFin,
+            horaStr: actInfo.horaFin || prev?.horaStr || '',
+            timestamp: actInfo.tsFin || prev?.timestamp || 0
+          });
         }
       }
     });
@@ -590,9 +759,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       } else if (p.esMapaAnimado) {
         anclas.push({
           index: i,
-          distKm: p.distanciaInicioTramo ?? 0,
+          distKm: p.distanciaFinTramo ?? p.distanciaInicioTramo ?? 0,
           ts: this.obtenerTimestampReal(p),
-          hora: p.horaInicioTramo ? p.horaInicioTramo.substring(0, 5) : this.itinerarioHoraInicio
+          hora: p.horaFinTramo ? p.horaFinTramo.substring(0, 5) : (p.horaInicioTramo ? p.horaInicioTramo.substring(0, 5) : this.itinerarioHoraInicio)
         });
       }
     }

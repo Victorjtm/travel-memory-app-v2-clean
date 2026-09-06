@@ -7409,6 +7409,25 @@
         font-size: 13px;
         font-variant-numeric: tabular-nums;
       }
+      .telemetria-doble-hora {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+
+        .telemetria-num {
+          color: #f8fafc;
+          font-weight: 700;
+          font-size: 12.5px;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .telemetria-hora-sep {
+          color: #fbbf24;
+          opacity: 0.85;
+          font-size: 9px;
+          margin: 0 1px;
+        }
+      }
     }
   }
 
@@ -7593,8 +7612,13 @@
       }
     }
 
-    .telemetria-pill.pill-hora .telemetria-num {
-      font-size: 12px;
+    .telemetria-pill.pill-hora {
+      .telemetria-num {
+        font-size: 12px;
+      }
+      .telemetria-doble-hora .telemetria-num {
+        font-size: 11.5px;
+      }
     }
 
     .telemetria-progress-track {
