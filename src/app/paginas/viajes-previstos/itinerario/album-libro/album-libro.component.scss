@@ -5347,7 +5347,7 @@
 .memory-status {
   position: fixed;
   left: 24px;
-  top: 24px;
+  top: 72px;
   z-index: 10003;
   display: inline-flex;
   align-items: center;
@@ -5472,7 +5472,7 @@
   .memory-status {
     left: 12px;
     right: 12px;
-    top: 12px;
+    top: 54px;
     justify-content: center;
   }
 }
@@ -7336,7 +7336,8 @@
     position: fixed;
     top: 24px;
     left: 24px;
-    z-index: 2600;
+    z-index: 10020 !important;
+    pointer-events: auto;
   }
 
   .telemetria-hud-inner {
@@ -7574,6 +7575,8 @@
     &.hud-fullscreen-mode {
       top: 14px;
       left: 12px;
+      z-index: 10020 !important;
+      pointer-events: auto;
     }
 
     .telemetria-hud-inner {

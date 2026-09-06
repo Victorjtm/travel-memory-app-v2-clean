@@ -47,6 +47,8 @@ interface PaginaMedia {
   esMapaAnimado?: boolean;
   trackGpx?: string;
   distanciaTramoKm?: number;
+  distanciaInicioTramo?: number;
+  distanciaFinTramo?: number;
   distanciaAcumuladaKm?: number;
   horaFormateada?: string;
   transportSegments?: any[];
@@ -288,32 +290,43 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     destino: string;
     tituloHito?: string;
   } {
-    const pag = this.mostrarFullscreen && this.fullscreenSinglePageMode && this.paginaSinglePageActual
-      ? this.paginaSinglePageActual
-      : (this.modoAlbumVintage ? (this.paginaSpreadDerecha || this.paginaSpreadIzquierda || this.paginaActualData) : this.paginaActualData);
+    let pag: PaginaMedia | null = null;
+    if (this.mostrarFullscreen) {
+      if (this.fullscreenSinglePageMode && this.paginaSinglePageActual) {
+        pag = this.paginaSinglePageActual;
+      } else if (!this.modoAlbumVintage) {
+        pag = this.paginas[this.paginaActual] || this.paginaActualData;
+      } else {
+        // En modo Vintage Fullscreen (2 páginas abiertas)
+        pag = this.paginaSpreadDerecha || this.paginaSpreadIzquierda || this.paginas[this.paginaActual] || this.paginaActualData;
+      }
+    } else {
+      pag = this.modoAlbumVintage
+        ? (this.paginaSpreadDerecha || this.paginaSpreadIzquierda || this.paginaActualData)
+        : this.paginaActualData;
+    }
 
     const kmTotal = this.distanciaTotalKm;
     let kmActual = pag?.distanciaAcumuladaKm ?? 0;
 
-    // Si estamos en la portada o spread 0
+    // Si estamos en la portada o página inicial
     if (this.estado === 'portada' || (this.modoAlbumVintage && this.spreadActual === 0) || this.paginaActual === 0) {
       kmActual = 0.0;
     } else if (this.paginaActual >= this.paginas.length - 1 && kmTotal > 0) {
       kmActual = kmTotal;
     } else if (kmActual === 0 && this.paginaActual > 0 && kmTotal > 0) {
-      // Fallback seguro de interpolación proporcional según la posición si no vino en el objeto
       const pObj = this.paginas[this.paginaActual];
       kmActual = pObj?.distanciaAcumuladaKm ?? parseFloat(((this.paginaActual / Math.max(1, this.paginas.length - 1)) * kmTotal).toFixed(1));
     }
 
     let horaActual = pag?.horaFormateada || this.paginas[this.paginaActual]?.horaFormateada || '';
-    if (!horaActual) {
-      if (this.paginaActual === 0 || this.estado === 'portada') {
-        horaActual = this.itinerarioHoraInicio || '09:00';
-      } else if (this.paginaActual >= this.paginas.length - 1) {
+    if (this.estado === 'portada' || this.paginaActual === 0) {
+      horaActual = this.itinerarioHoraInicio || '09:00';
+    } else if (!horaActual) {
+      if (this.paginaActual >= this.paginas.length - 1) {
         horaActual = this.itinerarioHoraFin || '20:00';
       } else {
-        horaActual = this.itinerarioHoraInicio || '--:--';
+        horaActual = this.itinerarioHoraInicio || '09:00';
       }
     }
 
@@ -337,11 +350,35 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   private formatearHoraDePagina(p: PaginaMedia, fallback: string): string {
+    if (p.archivo?.horaCaptura && p.archivo.horaCaptura !== '00:00:00') {
+      return p.archivo.horaCaptura.substring(0, 5);
+    }
     const ts = this.obtenerTimestampReal(p);
     if (ts && ts > 0) {
-      return new Date(ts).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      const dt = new Date(ts);
+      if (dt.getUTCHours() !== 0 || dt.getUTCMinutes() !== 0 || dt.getUTCSeconds() !== 0) {
+        return dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      }
     }
     return fallback;
+  }
+
+  private interpolarHora(hInicio: string, hFin: string, ratio: number): string {
+    const parseMins = (hStr: string, fallback: number) => {
+      if (!hStr) return fallback;
+      const parts = hStr.split(':').map(n => parseInt(n, 10));
+      if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        return parts[0] * 60 + parts[1];
+      }
+      return fallback;
+    };
+    const m1 = parseMins(hInicio, 9 * 60);
+    let m2 = parseMins(hFin, 20 * 60);
+    if (m2 <= m1) m2 = m1 + 120;
+    const mInter = Math.round(m1 + Math.max(0, Math.min(1, ratio)) * (m2 - m1));
+    const hh = String(Math.floor(mInter / 60) % 24).padStart(2, '0');
+    const mm = String(mInter % 60).padStart(2, '0');
+    return `${hh}:${mm}`;
   }
 
   /**
@@ -353,21 +390,36 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   public calcularTelemetriaItinerario(): void {
     if (!this.paginas || this.paginas.length === 0) return;
 
-    // 1. Extraer nombres de origen y destino si están disponibles
+    // 1. Extraer nombres de origen y destino, y horarios configurados del itinerario
     let origen = '';
     let destino = '';
+    let itHoraInicio = '';
+    let itHoraFin = '';
+
     if (this.contextoViaje?.itinerarioId && this.listaItinerarios?.length > 0) {
       const it = this.listaItinerarios.find(i => i.id === this.contextoViaje?.itinerarioId);
-      if (it?.destinosPorDia) {
-        const dests = (typeof it.destinosPorDia === 'string' ? it.destinosPorDia.split(',') : it.destinosPorDia)
-          .map((d: any) => String(d).replace(/["'\[\]]/g, '').trim())
-          .filter(Boolean);
-        if (dests.length > 0) {
-          origen = dests[0];
-          destino = dests[dests.length - 1];
+      if (it) {
+        if (it.horaInicio) itHoraInicio = it.horaInicio.trim().substring(0, 5);
+        if (it.horaFin) itHoraFin = it.horaFin.trim().substring(0, 5);
+        if (it.destinosPorDia) {
+          const dests = (typeof it.destinosPorDia === 'string' ? it.destinosPorDia.split(',') : it.destinosPorDia)
+            .map((d: any) => String(d).replace(/["'\[\]]/g, '').trim())
+            .filter(Boolean);
+          if (dests.length > 0) {
+            origen = dests[0];
+            destino = dests[dests.length - 1];
+          }
         }
       }
     }
+
+    if (!itHoraInicio && (this.infoViaje as any)?.horaInicio) {
+      itHoraInicio = String((this.infoViaje as any).horaInicio).trim().substring(0, 5);
+    }
+    if (!itHoraFin && (this.infoViaje as any)?.horaFin) {
+      itHoraFin = String((this.infoViaje as any).horaFin).trim().substring(0, 5);
+    }
+
     this.itinerarioOrigenNombre = origen || (this.infoViaje?.nombre ? `${this.infoViaje.nombre} (Salida)` : 'Inicio');
     this.itinerarioDestinoNombre = destino || (this.infoViaje?.nombre ? `${this.infoViaje.nombre} (Fin)` : 'Destino final');
 
@@ -386,14 +438,19 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         if (pts.length > 0) {
           if (pts[0].time && !primerHoraGpx) {
             const dt0 = new Date(pts[0].time);
-            primerHoraGpx = dt0.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-            if (dt0.getTime() < minTimestamp) minTimestamp = dt0.getTime();
+            // Evitar tomar 00:00:00Z UTC ficticia (que da 02:00 en España)
+            if (dt0.getUTCHours() !== 0 || dt0.getUTCMinutes() !== 0 || dt0.getUTCSeconds() !== 0) {
+              primerHoraGpx = dt0.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+              if (dt0.getTime() < minTimestamp) minTimestamp = dt0.getTime();
+            }
           }
           const lastPt = pts[pts.length - 1];
           if (lastPt?.time) {
             const dtLast = new Date(lastPt.time);
-            ultimaHoraGpx = dtLast.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-            if (dtLast.getTime() > maxTimestamp) maxTimestamp = dtLast.getTime();
+            if (dtLast.getUTCHours() !== 0 || dtLast.getUTCMinutes() !== 0 || dtLast.getUTCSeconds() !== 0) {
+              ultimaHoraGpx = dtLast.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+              if (dtLast.getTime() > maxTimestamp) maxTimestamp = dtLast.getTime();
+            }
           }
         }
 
@@ -406,7 +463,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             if (pt.time) {
               const dt = new Date(pt.time);
               ts = dt.getTime();
-              hStr = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+              if (dt.getUTCHours() !== 0 || dt.getUTCMinutes() !== 0 || dt.getUTCSeconds() !== 0) {
+                hStr = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+              }
               if (ts < minTimestamp) minTimestamp = ts;
               if (ts > maxTimestamp) maxTimestamp = ts;
             }
@@ -445,7 +504,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               if (pt.time) {
                 const dt = new Date(pt.time);
                 ts = dt.getTime();
-                hStr = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                if (dt.getUTCHours() !== 0 || dt.getUTCMinutes() !== 0 || dt.getUTCSeconds() !== 0) {
+                  hStr = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                }
               }
               fotoGpxMap.set(p.archivo.id, { distKm: dKm, horaStr: hStr, timestamp: ts });
             }
@@ -454,8 +515,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
     });
 
-    // 4. Revisar timestamps de fotos para determinar el rango temporal
+    // 4. Revisar fotos para extraer horaCaptura y rango temporal
+    let primerHoraFoto = '';
+    let ultimaHoraFoto = '';
     this.paginas.forEach(p => {
+      if (p.archivo?.horaCaptura && p.archivo.horaCaptura !== '00:00:00') {
+        const hc = p.archivo.horaCaptura.substring(0, 5);
+        if (!primerHoraFoto) primerHoraFoto = hc;
+        ultimaHoraFoto = hc;
+      }
       const ts = this.obtenerTimestampReal(p);
       if (ts && ts > 0) {
         if (ts < minTimestamp) minTimestamp = ts;
@@ -463,23 +531,41 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
     });
 
-    if (primerHoraGpx) {
+    // Establecer hora de inicio real (sin caer en 02:00 UTC)
+    if (itHoraInicio) {
+      this.itinerarioHoraInicio = itHoraInicio;
+    } else if (primerHoraFoto) {
+      this.itinerarioHoraInicio = primerHoraFoto;
+    } else if (primerHoraGpx) {
       this.itinerarioHoraInicio = primerHoraGpx;
-    } else if (minTimestamp < Infinity) {
-      this.itinerarioHoraInicio = new Date(minTimestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     } else {
       this.itinerarioHoraInicio = '09:00';
     }
 
-    if (ultimaHoraGpx) {
+    // Establecer hora de fin real
+    if (itHoraFin) {
+      this.itinerarioHoraFin = itHoraFin;
+    } else if (ultimaHoraFoto) {
+      this.itinerarioHoraFin = ultimaHoraFoto;
+    } else if (ultimaHoraGpx) {
       this.itinerarioHoraFin = ultimaHoraGpx;
-    } else if (maxTimestamp > -Infinity && maxTimestamp > minTimestamp) {
-      this.itinerarioHoraFin = new Date(maxTimestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     } else {
-      this.itinerarioHoraFin = '19:00';
+      this.itinerarioHoraFin = '20:00';
     }
 
-    // 5. PASO 1: Identificar puntos de anclaje fijos conocidos (Página 0, PIs del GPX, Mapas, Fin)
+    // 5. Asignar distancias acumuladas a los mapas por tramos
+    let runningTramoKm = 0.0;
+    this.paginas.forEach(p => {
+      if (p.esMapaAnimado) {
+        const d = p.distanciaTramoKm || 0;
+        p.distanciaInicioTramo = parseFloat(runningTramoKm.toFixed(1));
+        runningTramoKm += d;
+        p.distanciaFinTramo = parseFloat(runningTramoKm.toFixed(1));
+        p.distanciaAcumuladaKm = p.distanciaFinTramo;
+      }
+    });
+
+    // 6. PASO 1: Identificar puntos de anclaje fijos conocidos (Página 0, PIs del GPX, Mapas, Fin)
     const totalPags = this.paginas.length;
     interface AnclaTelemetria {
       index: number;
@@ -499,14 +585,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           index: i,
           distKm: info.distKm,
           ts: info.timestamp || this.obtenerTimestampReal(p),
-          hora: info.horaStr || ''
+          hora: info.horaStr || (p.archivo?.horaCaptura ? p.archivo.horaCaptura.substring(0, 5) : '')
         });
       } else if (p.esMapaAnimado) {
         anclas.push({
           index: i,
-          distKm: p.distanciaTramoKm || 0,
+          distKm: p.distanciaInicioTramo ?? 0,
           ts: this.obtenerTimestampReal(p),
-          hora: p.horaInicioTramo || ''
+          hora: p.horaInicioTramo ? p.horaInicioTramo.substring(0, 5) : this.itinerarioHoraInicio
         });
       }
     }
@@ -525,21 +611,28 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
     }
 
-    // 6. PASO 2: Asignar anclas e interpolar linealmente fotos intermedias por tramo
+    // 7. PASO 2: Asignar anclas e interpolar linealmente fotos intermedias por tramo
     for (let a = 0; a < anclas.length - 1; a++) {
       const anclaA = anclas[a];
       const anclaB = anclas[a + 1];
 
       // Asignar ancla A
       const pagA = this.paginas[anclaA.index];
-      pagA.distanciaAcumuladaKm = parseFloat(anclaA.distKm.toFixed(1));
+      if (pagA.distanciaAcumuladaKm === undefined) {
+        pagA.distanciaAcumuladaKm = parseFloat(anclaA.distKm.toFixed(1));
+      }
       if (!pagA.horaFormateada) {
         pagA.horaFormateada = anclaA.hora || this.formatearHoraDePagina(pagA, this.itinerarioHoraInicio);
       }
 
       const countIntermedios = anclaB.index - anclaA.index;
       if (countIntermedios > 1) {
-        const deltaDist = anclaB.distKm - anclaA.distKm;
+        let deltaDist = anclaB.distKm - anclaA.distKm;
+        // Si no hay diferencia de km entre anclas pero aún no llegamos al final, distribuir suavemente
+        if (deltaDist <= 0 && anclaB.index === totalPags - 1 && anclaB.distKm > anclaA.distKm) {
+          deltaDist = anclaB.distKm - anclaA.distKm;
+        }
+
         const deltaTs = (anclaB.ts > anclaA.ts && anclaA.ts > 0) ? (anclaB.ts - anclaA.ts) : 0;
 
         for (let j = anclaA.index + 1; j < anclaB.index; j++) {
@@ -551,15 +644,25 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             ratio = (pTs - anclaA.ts) / deltaTs;
           }
 
-          const distInter = anclaA.distKm + ratio * deltaDist;
+          const distInter = anclaA.distKm + ratio * Math.max(0, deltaDist);
           p.distanciaAcumuladaKm = parseFloat(distInter.toFixed(1));
 
-          if (!p.horaFormateada) {
-            if (pTs > 0) {
-              p.horaFormateada = new Date(pTs).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-            } else {
-              p.horaFormateada = this.formatearHoraDePagina(p, anclaA.hora || this.itinerarioHoraInicio);
+          // Determinación precisa de la hora de cada foto:
+          if (p.archivo?.horaCaptura && p.archivo.horaCaptura !== '00:00:00') {
+            p.horaFormateada = p.archivo.horaCaptura.substring(0, 5);
+          } else if (pTs > 0) {
+            const dt = new Date(pTs);
+            if (dt.getUTCHours() !== 0 || dt.getUTCMinutes() !== 0 || dt.getUTCSeconds() !== 0) {
+              p.horaFormateada = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
             }
+          }
+
+          if (!p.horaFormateada) {
+            p.horaFormateada = this.interpolarHora(
+              anclaA.hora || this.itinerarioHoraInicio,
+              anclaB.hora || this.itinerarioHoraFin,
+              ratio
+            );
           }
         }
       }
@@ -571,7 +674,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     pagFin.distanciaAcumuladaKm = parseFloat(ultimaAncla.distKm.toFixed(1));
     pagFin.horaFormateada = ultimaAncla.hora || this.itinerarioHoraFin;
 
-    console.log(`📏⏱️ [Telemetría Álbum] Interpolada para ${totalPags} páginas en ${anclas.length} anclas: 0.0 km ➔ ${totalKm} km`);
+    // Garantizar que la página 0 (Portada/Carta) siempre tenga 0.0 km y hora de salida real
+    if (this.paginas[0]) {
+      this.paginas[0].distanciaAcumuladaKm = 0.0;
+      this.paginas[0].horaFormateada = this.itinerarioHoraInicio;
+    }
+
+    console.log(`📏⏱️ [Telemetría Álbum] Interpolada para ${totalPags} páginas en ${anclas.length} anclas: 0.0 km ➔ ${totalKm} km (${this.itinerarioHoraInicio} - ${this.itinerarioHoraFin})`);
   }
 
   spreads: SpreadLibro[] = [];
@@ -3967,6 +4076,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
 
       this.paginaActual = nuevaPagina;
+      if (this.fullscreenSinglePageMode) {
+        this.paginaSinglePageActual = this.paginas[this.paginaActual];
+      }
+      if (this.spreads && this.spreads.length > 0) {
+        const spIdx = this.spreads.findIndex(s => s.indices?.includes(this.paginaActual));
+        if (spIdx >= 0) {
+          this.spreadActual = spIdx;
+        }
+      }
       const paginaActual = this.paginas[this.paginaActual];
 
       if (paginaActual?.tipoMedia === 'video' || paginaActual?.tipoMedia === 'audio') {
@@ -4116,35 +4234,42 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   obtenerFechaFormateada(pagina: PaginaMedia): string {
+    if (!pagina) return '';
     if (pagina.esIndice) return 'Índice';
     if (pagina.esCartaManuscrita) return 'Descripción del Viaje';
 
-    const fecha = pagina.fecha || pagina.fechaOriginal;
+    const fecha = pagina.fecha || pagina.fechaOriginal || this.infoViaje?.fechaInicio;
     if (!fecha) return 'Sin fecha';
 
     try {
       const fechaObj = new Date(fecha);
+      if (isNaN(fechaObj.getTime())) {
+        return 'Sin fecha';
+      }
       const fechaFormateada = fechaObj.toLocaleDateString('es-ES', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric'
       });
 
-      // Si hay horaCaptura específica, usarla, sino extraer de fechaCreacion
-      let horaFormateada;
-      if (pagina.archivo.horaCaptura) {
-        horaFormateada = pagina.archivo.horaCaptura;
-      } else {
-        horaFormateada = fechaObj.toLocaleTimeString('es-ES', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        });
+      let horaFormateada = '';
+      if (pagina.archivo?.horaCaptura && pagina.archivo.horaCaptura !== '00:00:00') {
+        horaFormateada = pagina.archivo.horaCaptura.substring(0, 5);
+      } else if (pagina.horaFormateada) {
+        horaFormateada = pagina.horaFormateada;
+      } else if (fecha.includes('T')) {
+        if (fechaObj.getUTCHours() !== 0 || fechaObj.getUTCMinutes() !== 0) {
+          horaFormateada = fechaObj.toLocaleTimeString('es-ES', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          });
+        }
       }
 
-      return `${fechaFormateada} ${horaFormateada}`;
+      return horaFormateada ? `${fechaFormateada} ${horaFormateada}` : fechaFormateada;
     } catch (error) {
-      return 'Fecha inválida';
+      return 'Sin fecha';
     }
   }
 
@@ -4290,6 +4415,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       const spreadIdx = this.spreads.findIndex(s => s.indices.includes(nuevoIdx));
       if (spreadIdx !== -1) {
         this.spreadActual = spreadIdx;
+      }
+      if (this.reproduciendoSlideshow) {
+        this.reiniciarTimerSlideshow();
       }
       this.cdr.detectChanges();
     }
