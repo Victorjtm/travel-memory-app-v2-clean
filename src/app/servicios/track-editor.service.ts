@@ -248,7 +248,10 @@ export class TrackEditorService {
       }
 
       if (bestIdx !== -1 && minDiff < 2000) {
-        return bestIdx;
+        const dist = this.getDistance(anchor.lat, anchor.lng, points[bestIdx].lat, points[bestIdx].lng);
+        if (dist < 500) {
+          return bestIdx;
+        }
       }
     }
 

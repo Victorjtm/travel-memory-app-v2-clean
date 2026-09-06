@@ -2169,7 +2169,7 @@ export class ActividadesItinerariosComponent implements OnInit {
           const points = edit.data.points.map((p: any) => ({
             lat: p.lat,
             lng: p.lng,
-            time: p.time ? new Date(p.time).toISOString() : undefined,
+            time: p.time ? (p.time instanceof Date ? p.time.toISOString() : new Date(p.time).toISOString()) : undefined,
             mode: p.mode
           }));
 

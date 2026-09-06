@@ -369,42 +369,23 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
     flushSegment(); // Último segmento
 
-    // 4. Dibujar Prolongaciones (Appends) virtuales
+    // 4. Dibujar Prolongaciones (Appends) si están en previsualización
     const appends = this.pendingEdits.filter(e => e.type === 'append_segment');
-    let finalLat = this.gpxPoints[this.gpxPoints.length - 1].lat;
-    let finalLng = this.gpxPoints[this.gpxPoints.length - 1].lng;
-
-    appends.forEach((appendEdit, index) => {
+    const finalLat = this.gpxPoints[this.gpxPoints.length - 1].lat;
+    const finalLng = this.gpxPoints[this.gpxPoints.length - 1].lng;
+    appends.forEach((appendEdit) => {
       const isPreviewing = this.previewingEditId === appendEdit.id;
+      if (!isPreviewing) return;
       const points = appendEdit.data.points;
       if (!points || points.length === 0) return;
 
       const latlngs = points.map((p: any) => [p.lat, p.lng] as L.LatLngExpression);
-      
       const mode = points[0].mode || 'driving';
-      let color = this.getModeColor(mode);
-      let weight = 5;
-      let opacity = 1;
-      let className = isPreviewing ? 'preview-blink' : '';
-
-      // Sombra blanca inferior
-      L.polyline(latlngs, {
-        color: '#FFFFFF',
-        weight: weight + 3,
-        opacity: 0.7,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(this.polylinesGroup!);
+      const color = this.getModeColor(mode);
 
       L.polyline(latlngs, {
-        color, weight, opacity, className, dashArray: '5, 5', lineCap: 'round', lineJoin: 'round'
+        color, weight: 6, opacity: 1, className: 'preview-blink', lineCap: 'round', lineJoin: 'round'
       }).addTo(this.polylinesGroup!);
-      
-      this.addDirectionArrows(L, latlngs, color, opacity);
-
-      const lastP = points[points.length - 1];
-      finalLat = lastP.lat;
-      finalLng = lastP.lng;
     });
 
     // 4.b. Dibujar Rutas Reales Recalculadas o Insertadas (recalculate_route / insert_segment)
@@ -611,7 +592,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     const p = this.gpxPoints[index];
     const anchor: TrackAnchor = {
       index: index,
-      time: p.time ? p.time.toISOString() : undefined,
+      time: p.time ? (p.time instanceof Date ? p.time.toISOString() : new Date(p.time as any).toISOString()) : undefined,
       lat: p.lat,
       lng: p.lng
     };
@@ -723,6 +704,19 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         });
       }
     }
+
+    // Puntos de inicio de prolongaciones (appends) pendientes
+    const pendingAppends = this.pendingEdits.filter(e => e.type === 'append_segment');
+    pendingAppends.forEach((appEdit, idx) => {
+      const sIdx = appEdit.data?.startAnchor?.index;
+      if (sIdx !== undefined && sIdx >= 0 && sIdx < this.gpxPoints.length) {
+        puntosClave.push({
+          gpxIdx: sIdx,
+          nombre: `Prolongación #${idx + 1} (Inicio)`,
+          tipo: 'modo'
+        });
+      }
+    });
 
     // Punto final
     puntosClave.push({
@@ -894,11 +888,31 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   revertEdit(editId: string): void {
+    const edit = this.pendingEdits.find(e => e.id === editId);
+    if (edit) {
+      if (edit.type === 'append_segment') {
+        const count = edit.data?.addedPointsCount || (edit.data?.points ? edit.data.points.length - 1 : 0);
+        if (count > 0 && this.gpxPoints.length >= count) {
+          this.gpxPoints.splice(this.gpxPoints.length - count, count);
+        }
+      } else if (edit.type === 'prepend_segment') {
+        const count = edit.data?.addedPointsCount || (edit.data?.points ? edit.data.points.length - 1 : 0);
+        if (count > 0 && this.gpxPoints.length >= count) {
+          this.gpxPoints.splice(0, count);
+        }
+      }
+    }
+
     this.pendingEdits = this.pendingEdits.filter(e => e.id !== editId);
     if (this.previewingEditId === editId) {
       this.previewingEditId = null;
     }
+    this.clearSelection();
+    this.actualizarTramosDisponibles();
     this.drawBaseAndEdits();
+    if (this.mostrarTiempos) {
+      this.updateTimeMarkers();
+    }
   }
 
   emitSaveAllEdits(): void {
@@ -1090,42 +1104,48 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     if (mode === 'auto') {
       // 1. Intentar calibrar con fotos del viaje
+      let calibratedWithPhotos = false;
       if (this.archivosMedia && this.archivosMedia.length > 0) {
+        const prevTimes = targetSegment.map(p => p.time ? new Date(p.time as any).getTime() : NaN);
         this.trackEditorService.calibratePointsWithMedia(targetSegment, this.archivosMedia);
+        const newTimes = targetSegment.map(p => p.time ? new Date(p.time as any).getTime() : NaN);
+        calibratedWithPhotos = newTimes.some((t, i) => !isNaN(t) && t !== prevTimes[i]);
       }
 
-      // 2. Si no hay fotos en el tramo o faltan timestamps, extrapolar progresivamente por velocidad del medio de transporte
-      const hasUnassignedTimes = targetSegment.some(p => !p.time || isNaN(new Date(p.time as any).getTime()));
-      if (hasUnassignedTimes) {
-        // Buscar la hora del último punto previo conocido antes de startIdx
+      // 2. Si no se calibró con fotos (o no había fotos en el tramo), calcular por velocidad del medio de transporte
+      if (!calibratedWithPhotos) {
+        // Obtener la hora inicial: primero probar el propio primer punto del tramo o su ancla
         let startTimeMs: number | null = null;
-        for (let i = min - 1; i >= 0; i--) {
-          const t = this.gpxPoints[i]?.time;
-          if (t) {
-            const tMs = t instanceof Date ? t.getTime() : new Date(t).getTime();
-            if (!isNaN(tMs)) {
-              let extraDist = 0;
-              let pPrev = this.gpxPoints[i];
-              for (let j = i + 1; j <= min; j++) {
-                extraDist += this.trackEditorService.getDistance(pPrev.lat, pPrev.lng, this.gpxPoints[j].lat, this.gpxPoints[j].lng);
-                pPrev = this.gpxPoints[j];
+        const ptStart = targetSegment[0] || this.gpxPoints[min];
+        if (ptStart?.time) {
+          const tMs = ptStart.time instanceof Date ? ptStart.time.getTime() : new Date(ptStart.time as any).getTime();
+          if (!isNaN(tMs)) {
+            startTimeMs = tMs;
+          }
+        }
+
+        // Si no hay hora en el punto 0, buscar hacia atrás el último punto con hora
+        if (!startTimeMs) {
+          for (let i = min - 1; i >= 0; i--) {
+            const t = this.gpxPoints[i]?.time;
+            if (t) {
+              const tMs = t instanceof Date ? t.getTime() : new Date(t).getTime();
+              if (!isNaN(tMs)) {
+                let extraDist = 0;
+                let pPrev = this.gpxPoints[i];
+                for (let j = i + 1; j <= min; j++) {
+                  extraDist += this.trackEditorService.getDistance(pPrev.lat, pPrev.lng, this.gpxPoints[j].lat, this.gpxPoints[j].lng);
+                  pPrev = this.gpxPoints[j];
+                }
+                const speedMps = this.trackEditorService.getModeSpeedMps(this.gpxPoints[i].mode || this.gpxPoints[i].hfMode || targetSegment[0]?.mode);
+                startTimeMs = tMs + (extraDist / speedMps) * 1000;
+                break;
               }
-              const speedMps = this.trackEditorService.getModeSpeedMps(this.gpxPoints[i].mode || this.gpxPoints[i].hfMode || targetSegment[0]?.mode);
-              startTimeMs = tMs + (extraDist / speedMps) * 1000;
-              break;
             }
           }
         }
 
-        // Si no hay punto previo con hora, intentar con el primer punto que sí tenga hora en targetSegment
-        if (!startTimeMs) {
-          const firstWithTime = targetSegment.find(p => p.time && !isNaN(new Date(p.time as any).getTime()));
-          if (firstWithTime && firstWithTime.time) {
-            startTimeMs = firstWithTime.time instanceof Date ? firstWithTime.time.getTime() : new Date(firstWithTime.time as any).getTime();
-          }
-        }
-
-        // Si no hay hora previa, buscar en las fotos del viaje (archivosMedia)
+        // Fallback a archivosMedia o Date.now()
         if (!startTimeMs && this.archivosMedia && this.archivosMedia.length > 0) {
           for (const a of this.archivosMedia) {
             const raw = a.timestampReal || a.horaCaptura || a.fechaCreacion || a.fecha;
@@ -1141,23 +1161,18 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
           startTimeMs = Date.now();
         }
 
-        const baseMode = targetSegment[0]?.mode || targetSegment[0]?.hfMode || (this.gpxPoints[min]?.mode) || 'boat';
+        const baseMode = targetSegment[0]?.mode || targetSegment[0]?.hfMode || (this.gpxPoints[min]?.mode) || 'walking';
         const speedMps = this.trackEditorService.getModeSpeedMps(baseMode);
 
+        targetSegment[0].time = new Date(startTimeMs);
         let prevPt = targetSegment[0];
-        if (!prevPt.time || isNaN(new Date(prevPt.time as any).getTime())) {
-          prevPt.time = new Date(startTimeMs);
-        }
 
         for (let i = 1; i < targetSegment.length; i++) {
           const curr = targetSegment[i];
-          const currTimeMs = curr.time ? (curr.time instanceof Date ? curr.time.getTime() : new Date(curr.time as any).getTime()) : NaN;
-          if (isNaN(currTimeMs)) {
-            const dist = this.trackEditorService.getDistance(prevPt.lat, prevPt.lng, curr.lat, curr.lng);
-            const dtSec = Math.max(1, dist / speedMps);
-            const prevTimeMs = prevPt.time ? (prevPt.time instanceof Date ? prevPt.time.getTime() : new Date(prevPt.time as any).getTime()) : startTimeMs;
-            curr.time = new Date(prevTimeMs + dtSec * 1000);
-          }
+          const dist = this.trackEditorService.getDistance(prevPt.lat, prevPt.lng, curr.lat, curr.lng);
+          const dtSec = Math.max(1, dist / speedMps);
+          const prevTimeMs = prevPt.time ? (prevPt.time instanceof Date ? prevPt.time.getTime() : new Date(prevPt.time as any).getTime()) : startTimeMs;
+          curr.time = new Date(prevTimeMs + dtSec * 1000);
           prevPt = curr;
         }
       }
@@ -1192,6 +1207,21 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // Inyectar los puntos densificados y con tiempos directamente en this.gpxPoints
     this.gpxPoints.splice(min, (max - min) + 1, ...targetSegment);
 
+    // Sincronizar los puntos de cualquier append_segment pendiente que coincida con este tramo
+    const appends = this.pendingEdits.filter(e => e.type === 'append_segment');
+    appends.forEach(appEdit => {
+      if (appEdit.data?.points && appEdit.data.points.length > 0) {
+        const appPts = appEdit.data.points;
+        const lastAppPt = appPts[appPts.length - 1];
+        const lastGpxPt = this.gpxPoints[this.gpxPoints.length - 1];
+        if (lastGpxPt && lastAppPt && Math.abs(lastGpxPt.lat - lastAppPt.lat) < 0.0001 && Math.abs(lastGpxPt.lng - lastAppPt.lng) < 0.0001) {
+          const count = appEdit.data.addedPointsCount || (appPts.length - 1);
+          const startSlice = Math.max(0, this.gpxPoints.length - count - 1);
+          appEdit.data.points = this.gpxPoints.slice(startSlice).map(p => ({ ...p }));
+        }
+      }
+    });
+
     const editId = Math.random().toString(36).substring(2, 9);
     const descTime = mode === 'manual'
       ? `Horario (${this.customStartTime} - ${this.customEndTime})`
@@ -1211,6 +1241,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.showCustomTimeInputs = false;
     this.mostrarTiempos = true;
     this.clearSelection();
+    this.actualizarTramosDisponibles();
     this.drawBaseAndEdits();
     this.updateTimeMarkers();
   }
@@ -1574,39 +1605,75 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     fullPointsArray = this.trackEditorService.densifyPoints(fullPointsArray, 300);
 
     if (this.activeFlow === 'APPEND') {
-      // Calcular tiempos hacia adelante si insertAnchorA tiene tiempo
-      if (this.insertAnchorA.time) {
-        const startMs = new Date(this.insertAnchorA.time).getTime();
-        if (!isNaN(startMs)) {
-          const speedMps = this.trackEditorService.getModeSpeedMps(appliedMode);
-          let totalDistMetros = 0;
-          for (let i = 0; i < fullPointsArray.length - 1; i++) {
-            totalDistMetros += this.trackEditorService.getDistance(
-              fullPointsArray[i].lat, fullPointsArray[i].lng,
-              fullPointsArray[i + 1].lat, fullPointsArray[i + 1].lng
-            );
-          }
-          const duracionSeg = Math.max(1, totalDistMetros / speedMps);
-          const endMs = startMs + (duracionSeg * 1000);
-
-          let currentDist = 0;
-          fullPointsArray.forEach((pt, idx) => {
-            if (idx === 0) {
-              pt.time = new Date(startMs);
-            } else if (idx === fullPointsArray.length - 1) {
-              pt.time = new Date(endMs);
-            } else {
-              const d = this.trackEditorService.getDistance(
-                fullPointsArray[idx - 1].lat, fullPointsArray[idx - 1].lng,
-                pt.lat, pt.lng
-              );
-              currentDist += d;
-              const ratio = totalDistMetros > 0 ? currentDist / totalDistMetros : (idx / (fullPointsArray.length - 1));
-              pt.time = new Date(startMs + (endMs - startMs) * ratio);
+      // 1. Obtener timestamp de inicio válido
+      let startMs = this.insertAnchorA.time ? new Date(this.insertAnchorA.time).getTime() : NaN;
+      if (isNaN(startMs)) {
+        for (let i = this.gpxPoints.length - 1; i >= 0; i--) {
+          const t = this.gpxPoints[i]?.time;
+          if (t) {
+            const dt = t instanceof Date ? t : new Date(t);
+            if (!isNaN(dt.getTime())) {
+              startMs = dt.getTime();
+              break;
             }
-          });
+          }
         }
       }
+      if (isNaN(startMs) && this.archivosMedia && this.archivosMedia.length > 0) {
+        for (const a of this.archivosMedia) {
+          const raw = a.timestampReal || a.horaCaptura || a.fechaCreacion || a.fecha;
+          const parsed = (this.trackEditorService as any)['parseFlexibleDate']?.(raw, a.nombreArchivo);
+          if (parsed) {
+            startMs = parsed;
+            break;
+          }
+        }
+      }
+      if (isNaN(startMs)) {
+        startMs = Date.now();
+      }
+
+      const speedMps = this.trackEditorService.getModeSpeedMps(appliedMode);
+      let totalDistMetros = 0;
+      for (let i = 0; i < fullPointsArray.length - 1; i++) {
+        totalDistMetros += this.trackEditorService.getDistance(
+          fullPointsArray[i].lat, fullPointsArray[i].lng,
+          fullPointsArray[i + 1].lat, fullPointsArray[i + 1].lng
+        );
+      }
+      const duracionSeg = Math.max(1, totalDistMetros / speedMps);
+      const endMs = startMs + (duracionSeg * 1000);
+
+      let currentDist = 0;
+      fullPointsArray.forEach((pt, idx) => {
+        if (idx === 0) {
+          pt.time = new Date(startMs);
+        } else if (idx === fullPointsArray.length - 1) {
+          pt.time = new Date(endMs);
+        } else {
+          const d = this.trackEditorService.getDistance(
+            fullPointsArray[idx - 1].lat, fullPointsArray[idx - 1].lng,
+            pt.lat, pt.lng
+          );
+          currentDist += d;
+          const ratio = totalDistMetros > 0 ? currentDist / totalDistMetros : (idx / (fullPointsArray.length - 1));
+          pt.time = new Date(startMs + (endMs - startMs) * ratio);
+        }
+      });
+
+      // Insertar los nuevos puntos al final de this.gpxPoints (omitiendo el primero que ya coincide con insertAnchorA)
+      const pointsToAppend = fullPointsArray.slice(1).map(pt => ({
+        lat: pt.lat,
+        lng: pt.lng,
+        time: pt.time instanceof Date ? pt.time : new Date(pt.time),
+        mode: appliedMode,
+        distAcum: 0,
+        timeAcum: 0
+      }));
+
+      const oldLastIdx = this.gpxPoints.length - 1;
+      this.gpxPoints.push(...pointsToAppend);
+      const newLastIdx = this.gpxPoints.length - 1;
 
       const editId = Math.random().toString(36).substring(2, 9);
       this.pendingEdits.push({
@@ -1614,45 +1681,90 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         type: 'append_segment',
         description: `${this.pendingEdits.length + 1} - Prolongación final (${appliedMode})`,
         data: {
-          points: fullPointsArray
+          points: fullPointsArray,
+          addedPointsCount: pointsToAppend.length,
+          startAnchor: {
+            index: oldLastIdx,
+            lat: this.insertAnchorA.lat,
+            lng: this.insertAnchorA.lng,
+            time: new Date(startMs).toISOString()
+          },
+          endAnchor: {
+            index: newLastIdx,
+            lat: fullPointsArray[fullPointsArray.length - 1].lat,
+            lng: fullPointsArray[fullPointsArray.length - 1].lng,
+            time: new Date(endMs).toISOString()
+          }
         },
-        isHidden: false // Los puntos añadidos sí se dibujan
+        isHidden: false
       });
+
+      this.cleanupInsertMode();
+      this.editorState = 'SELECTING';
+      this.actualizarTramosDisponibles();
       this.drawBaseAndEdits();
+      if (this.mostrarTiempos) {
+        this.updateTimeMarkers();
+      }
+
+      // Auto-seleccionar el nuevo tramo prolongado para edición inmediata de tiempos y modo
+      const newTramo = this.tramosDisponibles.find(t => t.endIdx === newLastIdx);
+      if (newTramo) {
+        this.onSelectTramoFromDropdown(newTramo.id);
+      } else {
+        this.setAnchor(oldLastIdx);
+        this.setAnchor(newLastIdx);
+      }
+      return;
     } else if (this.activeFlow === 'PREPEND') {
       // Calcular tiempos hacia atrás si insertAnchorB tiene tiempo
-      if (this.insertAnchorB.time) {
-        const endMs = new Date(this.insertAnchorB.time).getTime();
-        if (!isNaN(endMs)) {
-          const speedMps = this.trackEditorService.getModeSpeedMps(appliedMode);
-          let totalDistMetros = 0;
-          for (let i = 0; i < fullPointsArray.length - 1; i++) {
-            totalDistMetros += this.trackEditorService.getDistance(
-              fullPointsArray[i].lat, fullPointsArray[i].lng,
-              fullPointsArray[i + 1].lat, fullPointsArray[i + 1].lng
-            );
-          }
-          const duracionSeg = Math.max(1, totalDistMetros / speedMps);
-          const startMs = endMs - (duracionSeg * 1000);
-
-          let currentDist = 0;
-          fullPointsArray.forEach((pt, idx) => {
-            if (idx === 0) {
-              pt.time = new Date(startMs);
-            } else if (idx === fullPointsArray.length - 1) {
-              pt.time = new Date(endMs);
-            } else {
-              const d = this.trackEditorService.getDistance(
-                fullPointsArray[idx - 1].lat, fullPointsArray[idx - 1].lng,
-                pt.lat, pt.lng
-              );
-              currentDist += d;
-              const ratio = totalDistMetros > 0 ? currentDist / totalDistMetros : (idx / (fullPointsArray.length - 1));
-              pt.time = new Date(startMs + (endMs - startMs) * ratio);
-            }
-          });
-        }
+      let endMs = this.insertAnchorB.time ? new Date(this.insertAnchorB.time).getTime() : NaN;
+      if (isNaN(endMs) && this.gpxPoints[0]?.time) {
+        const t = this.gpxPoints[0].time;
+        endMs = t instanceof Date ? t.getTime() : new Date(t as any).getTime();
       }
+      if (isNaN(endMs)) {
+        endMs = Date.now();
+      }
+
+      const speedMps = this.trackEditorService.getModeSpeedMps(appliedMode);
+      let totalDistMetros = 0;
+      for (let i = 0; i < fullPointsArray.length - 1; i++) {
+        totalDistMetros += this.trackEditorService.getDistance(
+          fullPointsArray[i].lat, fullPointsArray[i].lng,
+          fullPointsArray[i + 1].lat, fullPointsArray[i + 1].lng
+        );
+      }
+      const duracionSeg = Math.max(1, totalDistMetros / speedMps);
+      const startMs = endMs - (duracionSeg * 1000);
+
+      let currentDist = 0;
+      fullPointsArray.forEach((pt, idx) => {
+        if (idx === 0) {
+          pt.time = new Date(startMs);
+        } else if (idx === fullPointsArray.length - 1) {
+          pt.time = new Date(endMs);
+        } else {
+          const d = this.trackEditorService.getDistance(
+            fullPointsArray[idx - 1].lat, fullPointsArray[idx - 1].lng,
+            pt.lat, pt.lng
+          );
+          currentDist += d;
+          const ratio = totalDistMetros > 0 ? currentDist / totalDistMetros : (idx / (fullPointsArray.length - 1));
+          pt.time = new Date(startMs + (endMs - startMs) * ratio);
+        }
+      });
+
+      // Insertar los puntos al principio de this.gpxPoints (omitiendo el último punto que coincide con insertAnchorB)
+      const pointsToPrepend = fullPointsArray.slice(0, -1).map(pt => ({
+        lat: pt.lat,
+        lng: pt.lng,
+        time: pt.time instanceof Date ? pt.time : new Date(pt.time),
+        mode: appliedMode,
+        distAcum: 0,
+        timeAcum: 0
+      }));
+      this.gpxPoints.unshift(...pointsToPrepend);
 
       const editId = Math.random().toString(36).substring(2, 9);
       this.pendingEdits.push({
@@ -1660,16 +1772,32 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         type: 'prepend_segment',
         description: `${this.pendingEdits.length + 1} - Prolongación inicio (${appliedMode})`,
         data: {
-          points: fullPointsArray
+          points: fullPointsArray,
+          addedPointsCount: pointsToPrepend.length,
+          startAnchor: {
+            index: 0,
+            lat: fullPointsArray[0].lat,
+            lng: fullPointsArray[0].lng,
+            time: new Date(startMs).toISOString()
+          },
+          endAnchor: {
+            index: pointsToPrepend.length,
+            lat: this.insertAnchorB.lat,
+            lng: this.insertAnchorB.lng,
+            time: new Date(endMs).toISOString()
+          }
         },
         isHidden: false
       });
 
-      // Insertar los puntos al principio de this.gpxPoints (omitiendo el último punto que coincide con insertAnchorB)
-      const pointsToPrepend = fullPointsArray.slice(0, -1);
-      this.gpxPoints.unshift(...pointsToPrepend);
-
+      this.cleanupInsertMode();
+      this.editorState = 'SELECTING';
+      this.actualizarTramosDisponibles();
       this.drawBaseAndEdits();
+      if (this.mostrarTiempos) {
+        this.updateTimeMarkers();
+      }
+      return;
     } else {
       const editId = Math.random().toString(36).substring(2, 9);
       this.pendingEdits.push({
@@ -1870,13 +1998,20 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.activeFlow = 'APPEND';
     this.editorState = 'APPEND_SELECTING_B';
 
-    // Para Append, siempre partimos del último punto (real o virtual de pendingEdits)
+    // Para Append, partimos del último punto existente
     const lastPt = this.getVirtualLastPoint();
+    let isoTime: string | undefined = undefined;
+    if (lastPt.time) {
+      const dt = lastPt.time instanceof Date ? lastPt.time : new Date(lastPt.time);
+      if (!isNaN(dt.getTime())) {
+        isoTime = dt.toISOString();
+      }
+    }
     
-    // Setear insertAnchorA al final (usamos un índice virtual -1 para indicar que es el final dinámico)
+    // Setear insertAnchorA al índice del punto final
     this.insertAnchorA = { 
-      index: -1, 
-      time: lastPt.time ? (lastPt.time instanceof Date ? lastPt.time.toISOString() : new Date(lastPt.time).toISOString()) : undefined, 
+      index: lastPt.index, 
+      time: isoTime, 
       lat: lastPt.lat, 
       lng: lastPt.lng 
     };
@@ -1887,19 +2022,22 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }).addTo(this.map).bindTooltip('Inicio Prolongación', { permanent: true, direction: 'right' }).openTooltip();
   }
 
-  getVirtualLastPoint(): { lat: number, lng: number, time?: any } {
-    let lastPt = this.gpxPoints[this.gpxPoints.length - 1];
+  getVirtualLastPoint(): { lat: number, lng: number, time?: any, index: number } {
+    const lastIdx = this.gpxPoints.length - 1;
+    let lastPt = this.gpxPoints[lastIdx];
     
-    // Si hay appends en memoria, cogemos el último punto de la última prolongación
-    const appends = this.pendingEdits.filter(e => e.type === 'append_segment');
-    if (appends.length > 0) {
-      const lastAppend = appends[appends.length - 1];
-      const pts = lastAppend.data.points;
-      if (pts && pts.length > 0) {
-        lastPt = pts[pts.length - 1];
+    // Si el último punto no tiene hora válida, buscar hacia atrás el último punto con hora
+    let time = (lastPt as any)?.time;
+    if (!time || isNaN(new Date(time).getTime())) {
+      for (let i = lastIdx; i >= 0; i--) {
+        const t = this.gpxPoints[i]?.time;
+        if (t && !isNaN(new Date(t as any).getTime())) {
+          time = t;
+          break;
+        }
       }
     }
-    return { lat: lastPt.lat, lng: lastPt.lng, time: (lastPt as any).time };
+    return { lat: lastPt.lat, lng: lastPt.lng, time, index: lastIdx };
   }
 
   private addAppendVertex(latlng: L.LatLng) {
