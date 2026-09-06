@@ -42,6 +42,12 @@
         <i class="fas" [class.fa-expand]="reproducirEnFullscreen" [class.fa-compress]="!reproducirEnFullscreen"></i>
       </button>
 
+      <!-- 4b. Botón Conmutable Telemetría Odómetro y Reloj -->
+      <button class="toolbar-icon toolbar-action-btn btn-toolbar-telemetria" [class.active]="mostrarTelemetriaHud" (click)="toggleTelemetriaHud()"
+        [title]="mostrarTelemetriaHud ? 'Telemetría activa: Kilómetros y horas (Click para ocultar)' : 'Telemetría desactivada (Click para mostrar)'">
+        <i class="fas fa-gauge-high" aria-hidden="true"></i>
+      </button>
+
       <!-- 5. Bloque Mapas y Rutas: Tramos y Modo Foto / Animación -->
       <div class="toolbar-animacion-container">
         <button class="toolbar-icon toolbar-action-btn" [class.active]="incluirAnimacionesMapa" (click)="toggleAnimacionesMapa()"
@@ -379,6 +385,9 @@
   <!-- ========================================= -->
   <section class="contenido-libro" [class.contenido-visible]="estado === 'abierto'" aria-label="Contenido del álbum"
     *ngIf="estado === 'abierto'">
+
+    <!-- 📏⏱️ WIDGET TELEMÉTRICO FLOTANTE (ODÓMETRO Y HORARIO) -->
+    <ng-container *ngTemplateOutlet="telemetriaHudTemplate; context: { fullscreen: false }"></ng-container>
 
     <div class="audio-autoplay-hint" *ngIf="audioAutoplayBloqueado && audioViaje">
       <i class="fas fa-music" aria-hidden="true"></i>
@@ -943,6 +952,9 @@
       <small>{{ audioReproduciendo ? 'musica ambiente activa' : 'diapositivas activas' }}</small>
     </div>
 
+    <!-- 📏⏱️ WIDGET TELEMÉTRICO FLOTANTE EN FULLSCREEN -->
+    <ng-container *ngTemplateOutlet="telemetriaHudTemplate; context: { fullscreen: true }"></ng-container>
+
     <!-- --- Contenido multimedia Clásico --- -->
     <div *ngIf="!modoAlbumVintage" class="media-fullscreen-wrapper" [class]="'transition-' + transicionActual">
       <img *ngIf="tipoFullscreen === 'imagen'" [src]="mediaFullscreen" class="media-fullscreen imagen-fullscreen"
@@ -1344,6 +1356,66 @@
     </div>
 
   </div>
+</ng-template>
+
+<!-- ================================================================ -->
+<!-- 📏⏱️ PLANTILLA REUTILIZABLE: WIDGET TELEMÉTRICO (ODÓMETRO Y HORA) -->
+<!-- ================================================================ -->
+<ng-template #telemetriaHudTemplate let-fullscreen="fullscreen">
+  <aside class="telemetria-itinerario-hud" 
+    *ngIf="mostrarTelemetriaHud && telemetriaActual as telem" 
+    [class.hud-fullscreen-mode]="fullscreen"
+    (click)="$event.stopPropagation()"
+    [attr.aria-label]="'Telemetría del recorrido: ' + telem.kmActual + ' km acumulados, hora ' + telem.horaActual">
+    
+    <div class="telemetria-hud-inner">
+      <!-- 1. Odómetro (Kilómetros) -->
+      <div class="telemetria-pill pill-km" [title]="'Distancia acumulada: ' + telem.kmActual + ' km de ' + telem.kmTotal + ' km'">
+        <i class="fas fa-route icon-telemetria text-km"></i>
+        <span class="telemetria-num">{{ telem.kmActual }}</span>
+        <span class="telemetria-unit">km</span>
+        <span class="telemetria-total" *ngIf="telem.kmTotal > 0">/ {{ telem.kmTotal }} km</span>
+      </div>
+
+      <!-- Separador decorativo -->
+      <span class="telemetria-bullet" aria-hidden="true">•</span>
+
+      <!-- 2. Reloj (Horario de paso / foto) -->
+      <div class="telemetria-pill pill-hora" [title]="'Hora registrada en este punto: ' + telem.horaActual">
+        <i class="fas fa-clock icon-telemetria text-hora"></i>
+        <span class="telemetria-num">{{ telem.horaActual }}</span>
+      </div>
+
+      <!-- 3. Barra mini de progreso -->
+      <div class="telemetria-progress-track" [title]="'Progreso de la ruta: ' + telem.porcentaje + '%'">
+        <div class="telemetria-progress-fill" [style.width.%]="telem.porcentaje"></div>
+      </div>
+    </div>
+
+    <!-- Tooltip contextual al pasar el ratón (hover) -->
+    <div class="telemetria-popover-card">
+      <div class="popover-header">
+        <i class="fas fa-compass"></i>
+        <span>Recorrido del Itinerario</span>
+        <strong class="popover-pct">{{ telem.porcentaje }}%</strong>
+      </div>
+      <div class="popover-row salida">
+        <span class="popover-badge"><i class="fas fa-play"></i> Inicio</span>
+        <span class="popover-text">0.0 km • {{ telem.horaInicio }}</span>
+        <small class="popover-sub" *ngIf="telem.origen">({{ telem.origen }})</small>
+      </div>
+      <div class="popover-row actual">
+        <span class="popover-badge"><i class="fas fa-camera"></i> Actual</span>
+        <span class="popover-text">{{ telem.kmActual }} km • {{ telem.horaActual }}</span>
+        <small class="popover-sub" *ngIf="telem.tituloHito">{{ telem.tituloHito }}</small>
+      </div>
+      <div class="popover-row meta">
+        <span class="popover-badge"><i class="fas fa-flag-checkered"></i> Fin</span>
+        <span class="popover-text">{{ telem.kmTotal }} km • {{ telem.horaFin }}</span>
+        <small class="popover-sub" *ngIf="telem.destino">({{ telem.destino }})</small>
+      </div>
+    </div>
+  </aside>
 </ng-template>
 
 <!-- Buffer oculto de precarga de vídeo siguiente -->

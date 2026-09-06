@@ -47,6 +47,8 @@ interface PaginaMedia {
   esMapaAnimado?: boolean;
   trackGpx?: string;
   distanciaTramoKm?: number;
+  distanciaAcumuladaKm?: number;
+  horaFormateada?: string;
   transportSegments?: any[];
   visualSessionData?: any;
   isHighFidelityMode?: boolean;
@@ -140,6 +142,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   infoViaje: InfoViaje | null = null;
   contextoViaje: ContextoViaje | null = null;
   listaItinerarios: any[] = [];
+
+  // ==========================================
+  // 📏⏱️ TELEMETRÍA DE RECORRIDO (ODÓMETRO Y HORARIOS)
+  // ==========================================
+  mostrarTelemetriaHud: boolean = true;
+  itinerarioHoraInicio: string = '';
+  itinerarioHoraFin: string = '';
+  itinerarioOrigenNombre: string = '';
+  itinerarioDestinoNombre: string = '';
 
   // ==========================================
   // PROPIEDADES DE FULLSCREEN
@@ -248,7 +259,246 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     const suma = this.paginas
       .filter(p => p.distanciaTramoKm && p.distanciaTramoKm > 0)
       .reduce((acc, p) => acc + (p.distanciaTramoKm || 0), 0);
-    return suma > 0 ? parseFloat(suma.toFixed(1)) : 29.8;
+
+    let gpxSumKm = 0;
+    if (this.cacheDatosActividadGpx && this.cacheDatosActividadGpx.size > 0) {
+      this.cacheDatosActividadGpx.forEach(d => {
+        if (d.points && d.points.length > 0) {
+          const lastPt = d.points[d.points.length - 1];
+          gpxSumKm += (lastPt.distAcum || 0) / 1000;
+        }
+      });
+    }
+
+    const total = Math.max(suma, gpxSumKm);
+    return total > 0 ? parseFloat(total.toFixed(1)) : 29.8;
+  }
+
+  /**
+   * 📏⏱️ Getter reactivo con la telemetría actual según la página/spread activo
+   */
+  get telemetriaActual(): {
+    kmActual: number;
+    kmTotal: number;
+    horaActual: string;
+    horaInicio: string;
+    horaFin: string;
+    porcentaje: number;
+    origen: string;
+    destino: string;
+    tituloHito?: string;
+  } {
+    const pag = this.mostrarFullscreen && this.fullscreenSinglePageMode && this.paginaSinglePageActual
+      ? this.paginaSinglePageActual
+      : (this.modoAlbumVintage ? (this.paginaSpreadDerecha || this.paginaSpreadIzquierda || this.paginaActualData) : this.paginaActualData);
+
+    const kmTotal = this.distanciaTotalKm;
+    let kmActual = pag?.distanciaAcumuladaKm ?? 0;
+
+    // Si estamos en la portada o spread 0
+    if (this.estado === 'portada' || (this.modoAlbumVintage && this.spreadActual === 0) || this.paginaActual === 0) {
+      kmActual = 0.0;
+    } else if (this.paginaActual >= this.paginas.length - 1 && kmTotal > 0) {
+      kmActual = kmTotal;
+    }
+
+    let horaActual = pag?.horaFormateada || '';
+    if (!horaActual) {
+      if (this.paginaActual === 0 || this.estado === 'portada') {
+        horaActual = this.itinerarioHoraInicio || '09:00';
+      } else if (this.paginaActual >= this.paginas.length - 1) {
+        horaActual = this.itinerarioHoraFin || '20:00';
+      } else {
+        horaActual = this.itinerarioHoraInicio || '--:--';
+      }
+    }
+
+    const pct = kmTotal > 0 ? Math.min(100, Math.max(0, Math.round((kmActual / kmTotal) * 100))) : 0;
+
+    return {
+      kmActual: parseFloat(kmActual.toFixed(1)),
+      kmTotal: parseFloat(kmTotal.toFixed(1)),
+      horaActual,
+      horaInicio: this.itinerarioHoraInicio || '09:00',
+      horaFin: this.itinerarioHoraFin || '20:00',
+      porcentaje: pct,
+      origen: this.itinerarioOrigenNombre || 'Inicio',
+      destino: this.itinerarioDestinoNombre || 'Destino final',
+      tituloHito: pag?.titulo || ''
+    };
+  }
+
+  toggleTelemetriaHud(): void {
+    this.mostrarTelemetriaHud = !this.mostrarTelemetriaHud;
+  }
+
+  /**
+   * 📏⏱️ Sincroniza y compagina la telemetría del itinerario:
+   * Asigna distancia acumulada (km) desde 0.0 hasta el total, y horarios
+   * de inicio, fotos intermedias y hora final para cada página del álbum.
+   */
+  public calcularTelemetriaItinerario(): void {
+    if (!this.paginas || this.paginas.length === 0) return;
+
+    // 1. Extraer nombres de origen y destino si están disponibles
+    let origen = '';
+    let destino = '';
+    if (this.contextoViaje?.itinerarioId && this.listaItinerarios?.length > 0) {
+      const it = this.listaItinerarios.find(i => i.id === this.contextoViaje?.itinerarioId);
+      if (it?.destinosPorDia) {
+        const dests = (typeof it.destinosPorDia === 'string' ? it.destinosPorDia.split(',') : it.destinosPorDia)
+          .map((d: any) => String(d).replace(/["'\[\]]/g, '').trim())
+          .filter(Boolean);
+        if (dests.length > 0) {
+          origen = dests[0];
+          destino = dests[dests.length - 1];
+        }
+      }
+    }
+    this.itinerarioOrigenNombre = origen || (this.infoViaje?.nombre ? `${this.infoViaje.nombre} (Salida)` : 'Inicio');
+    this.itinerarioDestinoNombre = destino || (this.infoViaje?.nombre ? `${this.infoViaje.nombre} (Fin)` : 'Destino final');
+
+    const totalKm = this.distanciaTotalKm;
+
+    // 2. Mapear fotos a puntos GPX reales
+    const fotoGpxMap = new Map<number, { distKm: number; horaStr: string; timestamp: number }>();
+    let primerHoraGpx = '';
+    let ultimaHoraGpx = '';
+    let minTimestamp = Infinity;
+    let maxTimestamp = -Infinity;
+
+    if (this.cacheDatosActividadGpx && this.cacheDatosActividadGpx.size > 0) {
+      this.cacheDatosActividadGpx.forEach((datos) => {
+        const pts: GpxPoint[] = datos.points || [];
+        if (pts.length > 0) {
+          if (pts[0].time && !primerHoraGpx) {
+            const dt0 = new Date(pts[0].time);
+            primerHoraGpx = dt0.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            if (dt0.getTime() < minTimestamp) minTimestamp = dt0.getTime();
+          }
+          const lastPt = pts[pts.length - 1];
+          if (lastPt?.time) {
+            const dtLast = new Date(lastPt.time);
+            ultimaHoraGpx = dtLast.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            if (dtLast.getTime() > maxTimestamp) maxTimestamp = dtLast.getTime();
+          }
+        }
+
+        (datos.gruposPIs || []).forEach((pi: any) => {
+          if (pi.trackIdx !== undefined && pi.trackIdx >= 0 && pi.trackIdx < pts.length) {
+            const pt = pts[pi.trackIdx];
+            const dKm = (pt.distAcum || 0) / 1000;
+            let hStr = '';
+            let ts = 0;
+            if (pt.time) {
+              const dt = new Date(pt.time);
+              ts = dt.getTime();
+              hStr = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+              if (ts < minTimestamp) minTimestamp = ts;
+              if (ts > maxTimestamp) maxTimestamp = ts;
+            }
+            (pi.archivos || []).forEach((arch: any) => {
+              if (arch?.id) {
+                fotoGpxMap.set(arch.id, { distKm: dKm, horaStr: hStr, timestamp: ts });
+              }
+            });
+          }
+        });
+      });
+    }
+
+    // 3. Revisar timestamps de fotos para determinar el rango temporal
+    this.paginas.forEach(p => {
+      const ts = this.obtenerTimestampReal(p);
+      if (ts && ts > 0) {
+        if (ts < minTimestamp) minTimestamp = ts;
+        if (ts > maxTimestamp) maxTimestamp = ts;
+      }
+    });
+
+    if (primerHoraGpx) {
+      this.itinerarioHoraInicio = primerHoraGpx;
+    } else if (minTimestamp < Infinity) {
+      this.itinerarioHoraInicio = new Date(minTimestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    } else {
+      this.itinerarioHoraInicio = '09:00';
+    }
+
+    if (ultimaHoraGpx) {
+      this.itinerarioHoraFin = ultimaHoraGpx;
+    } else if (maxTimestamp > -Infinity && maxTimestamp > minTimestamp) {
+      this.itinerarioHoraFin = new Date(maxTimestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    } else {
+      this.itinerarioHoraFin = '19:00';
+    }
+
+    // 4. Asignar telemetría punto a punto garantizando orden monótono
+    const totalPags = this.paginas.length;
+    let runningKm = 0.0;
+
+    this.paginas.forEach((p, idx) => {
+      // Caso 1: Inicio / Portada / Intro
+      if (idx === 0) {
+        p.distanciaAcumuladaKm = 0.0;
+        p.horaFormateada = this.itinerarioHoraInicio;
+        return;
+      }
+
+      // Caso 2: Última página
+      if (idx === totalPags - 1) {
+        p.distanciaAcumuladaKm = totalKm > 0 ? parseFloat(totalKm.toFixed(1)) : runningKm;
+        p.horaFormateada = this.itinerarioHoraFin;
+        return;
+      }
+
+      // Caso 3: Foto con vinculación GPX directa
+      if (p.archivo?.id && fotoGpxMap.has(p.archivo.id)) {
+        const infoGpx = fotoGpxMap.get(p.archivo.id)!;
+        let km = infoGpx.distKm;
+        if (km < runningKm) km = runningKm;
+        if (totalKm > 0 && km > totalKm) km = totalKm;
+        runningKm = km;
+        p.distanciaAcumuladaKm = parseFloat(km.toFixed(1));
+        p.horaFormateada = infoGpx.horaStr || this.itinerarioHoraInicio;
+        return;
+      }
+
+      // Caso 4: Página de mapa de tramo
+      if (p.esMapaAnimado) {
+        let km = (p.distanciaTramoKm || 0);
+        if (km < runningKm) km = runningKm;
+        if (totalKm > 0 && km > totalKm) km = totalKm;
+        runningKm = km;
+        p.distanciaAcumuladaKm = parseFloat(km.toFixed(1));
+        p.horaFormateada = p.horaInicioTramo || p.horaFinTramo || this.itinerarioHoraInicio;
+        return;
+      }
+
+      // Caso 5: Foto estándar (interpolar en base a su timestamp o posición secuencial)
+      const ts = this.obtenerTimestampReal(p);
+      let dist = runningKm;
+      let hora = '';
+
+      if (ts && ts > 0 && maxTimestamp > minTimestamp) {
+        const ratio = Math.max(0, Math.min(1, (ts - minTimestamp) / (maxTimestamp - minTimestamp)));
+        dist = ratio * totalKm;
+        const dt = new Date(ts);
+        hora = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      } else {
+        const ratio = idx / (totalPags - 1 || 1);
+        dist = ratio * totalKm;
+        hora = this.itinerarioHoraInicio;
+      }
+
+      if (dist < runningKm) dist = runningKm;
+      if (totalKm > 0 && dist > totalKm) dist = totalKm;
+      runningKm = dist;
+
+      p.distanciaAcumuladaKm = parseFloat(dist.toFixed(1));
+      p.horaFormateada = hora || p.horaFormateada || this.itinerarioHoraInicio;
+    });
+
+    console.log(`📏⏱️ [Telemetría Álbum] Calculada para ${totalPags} páginas: 0.0 km (${this.itinerarioHoraInicio}) ➔ ${totalKm} km (${this.itinerarioHoraFin})`);
   }
 
   spreads: SpreadLibro[] = [];
@@ -1870,6 +2120,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     // Guardar paginas base y generar mapas animados según configuración
     this.paginasBase = paginasFinales;
     this.paginas = await this.generarPaginasConAnimaciones(this.paginasBase);
+    this.calcularTelemetriaItinerario();
     this.construirSpreads();
 
     console.log('📖 Páginas multimedia creadas:', this.paginas.length);
@@ -1909,6 +2160,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.isLoading = true;
     try {
       this.paginas = await this.generarPaginasConAnimaciones(this.paginasBase);
+      this.calcularTelemetriaItinerario();
       this.construirSpreads();
       if (this.paginaActual >= this.paginas.length) {
         this.paginaActual = Math.max(0, this.paginas.length - 1);
