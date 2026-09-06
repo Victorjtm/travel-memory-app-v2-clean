@@ -2165,7 +2165,7 @@ export class ActividadesItinerariosComponent implements OnInit {
               'user-override'
             ));
           }
-        } else if (edit.type === 'assign_timestamps' && edit.data?.points) {
+        } else if ((edit.type === 'assign_timestamps' || edit.type === 'assign_distance') && edit.data?.points) {
           const points = edit.data.points.map((p: any) => ({
             lat: p.lat,
             lng: p.lng,

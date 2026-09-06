@@ -44,3 +44,46 @@
   background: #0369a1 !important;
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.4) !important;
 }
+
+.btn-dist-float.active {
+  background: #0f766e !important;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.4) !important;
+}
+
+.btn-active-dist {
+  background: #0d9488 !important;
+  color: white !important;
+  border-color: #0d9488 !important;
+}
+
+::ng-deep .gpx-dist-badge-container {
+  background: transparent !important;
+  border: none !important;
+}
+
+::ng-deep .gpx-dist-badge {
+  background: #042f2e;
+  color: #2dd4bf;
+  border: 2px solid #0d9488;
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Courier New', Courier, monospace, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+  transition: transform 0.15s, background-color 0.15s;
+  display: inline-block;
+  letter-spacing: 0.5px;
+}
+
+::ng-deep .gpx-dist-badge:hover {
+  transform: scale(1.2);
+  background: #134e4a;
+  color: #5eead4;
+  border-color: #14b8a6;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.9);
+  z-index: 9999;
+}
+

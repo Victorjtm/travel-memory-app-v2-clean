@@ -93,6 +93,15 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   mostrarTiempos: boolean = false;
   private timeMarkersGroup: L.FeatureGroup | null = null;
 
+  // 📏 Visualizador y modificación de marcas de distancia GPX (Kilómetros / Metros)
+  mostrarDistancias: boolean = false;
+  private distanceMarkersGroup: L.FeatureGroup | null = null;
+  showCustomDistInputs: boolean = false;
+  customDistValue: number = 0;
+  customDistUnit: 'km' | 'm' = 'km';
+  customDistTimeSyncMode: 'keep_time' | 'update_time' = 'keep_time';
+  currentSegmentDistMeters: number = 0;
+
   private map: L.Map | null = null;
   private polylinesGroup: L.FeatureGroup | null = null;
   private highlightPolyline: L.Polyline | null = null;
@@ -205,6 +214,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     this.polylinesGroup = L.featureGroup().addTo(this.map);
     this.timeMarkersGroup = L.featureGroup().addTo(this.map);
+    this.distanceMarkersGroup = L.featureGroup().addTo(this.map);
 
     this.drawBaseAndEdits();
 
@@ -215,10 +225,13 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // Evento de clic en el mapa para snap
     this.map.on('click', (e: L.LeafletMouseEvent) => this.handleMapClick(e));
 
-    // Escuchador de zoom y movimiento para actualizar marcadores de tiempo adaptativamente
+    // Escuchador de zoom y movimiento para actualizar marcadores de tiempo y distancia adaptativamente
     this.map.on('zoomend moveend', () => {
       if (this.mostrarTiempos) {
         this.updateTimeMarkers();
+      }
+      if (this.mostrarDistancias) {
+        this.updateDistanceMarkers();
       }
     });
   }
@@ -610,6 +623,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       
       this.updateHighlight();
       this.initCustomTimeFields();
+      this.initCustomDistFields();
     } else {
       // Si ya hay A y B, reiniciar selección
       this.clearSelection();
@@ -645,11 +659,16 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.anchorA = null;
     this.anchorB = null;
     this.selectedTramoId = '';
+    this.showCustomTimeInputs = false;
+    this.showCustomDistInputs = false;
     if (this.markerA) { this.markerA.remove(); this.markerA = null; }
     if (this.markerB) { this.markerB.remove(); this.markerB = null; }
     if (this.highlightPolyline) { this.highlightPolyline.remove(); this.highlightPolyline = null; }
     if (this.mostrarTiempos) {
       this.updateTimeMarkers();
+    }
+    if (this.mostrarDistancias) {
+      this.updateDistanceMarkers();
     }
   }
 
@@ -752,6 +771,15 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
           this.gpxPoints[j + 1].lat, this.gpxPoints[j + 1].lng
         );
       }
+
+      // Si hay un cambio de distancia asignado en pendingEdits para este tramo, usarlo
+      const distEdit = this.pendingEdits.find(e => e.type === 'assign_distance' && e.data?.distMeters !== undefined &&
+        ((e.data.startAnchor?.index === pA.gpxIdx && e.data.endAnchor?.index === pB.gpxIdx) ||
+         (e.data.startAnchor?.index === pB.gpxIdx && e.data.endAnchor?.index === pA.gpxIdx)));
+      if (distEdit && distEdit.data?.distMeters) {
+        distMetros = distEdit.data.distMeters;
+      }
+
       const distKm = distMetros / 1000;
 
       // Extraer horas si existen
@@ -810,6 +838,9 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     if (this.mostrarTiempos) {
       this.updateTimeMarkers();
+    }
+    if (this.mostrarDistancias) {
+      this.updateDistanceMarkers();
     }
 
     // Ajustar zoom y vista del mapa para encuadrar el tramo
@@ -912,6 +943,9 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.drawBaseAndEdits();
     if (this.mostrarTiempos) {
       this.updateTimeMarkers();
+    }
+    if (this.mostrarDistancias) {
+      this.updateDistanceMarkers();
     }
   }
 
@@ -1318,6 +1352,290 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     const ss = (partesHora[2] || '00').padStart(2, '0');
     const isoString = `${fechaStr}T${hh}:${mm}:${ss}`;
     return new Date(isoString).getTime();
+  }
+
+  // ====================================================================
+  // 📏 HERRAMIENTAS DE EDICIÓN Y ASIGNACIÓN DE DISTANCIA (KM / METROS)
+  // ====================================================================
+
+  toggleCustomDistInputs(): void {
+    this.showCustomDistInputs = !this.showCustomDistInputs;
+    if (this.showCustomDistInputs) {
+      this.initCustomDistFields();
+    }
+  }
+
+  public initCustomDistFields(): void {
+    if (!this.anchorA || !this.anchorB || !this.gpxPoints) return;
+
+    let startIdx = this.anchorA.index ?? this.trackEditorService.resolveAnchor(this.anchorA, this.gpxPoints);
+    let endIdx = this.anchorB.index ?? this.trackEditorService.resolveAnchor(this.anchorB, this.gpxPoints);
+
+    if (startIdx === -1 && this.anchorA.index !== undefined && this.anchorA.index >= 0) startIdx = this.anchorA.index;
+    if (endIdx === -1 && this.anchorB.index !== undefined && this.anchorB.index >= 0) endIdx = this.anchorB.index;
+
+    if (startIdx === -1 || endIdx === -1) return;
+
+    const min = Math.min(startIdx, endIdx);
+    const max = Math.max(startIdx, endIdx);
+
+    let totalDistMetros = 0;
+    for (let i = min; i < max; i++) {
+      totalDistMetros += this.trackEditorService.getDistance(
+        this.gpxPoints[i].lat, this.gpxPoints[i].lng,
+        this.gpxPoints[i + 1].lat, this.gpxPoints[i + 1].lng
+      );
+    }
+
+    this.currentSegmentDistMeters = totalDistMetros;
+
+    // Si ya había una distancia personalizada en pendingEdits para este tramo, inicializar con ella
+    const distEdit = this.pendingEdits.find(e => e.type === 'assign_distance' && e.data?.distMeters !== undefined &&
+      ((e.data.startAnchor?.index === min && e.data.endAnchor?.index === max) ||
+       (e.data.startAnchor?.index === max && e.data.endAnchor?.index === min)));
+
+    const distToUse = (distEdit && distEdit.data?.distMeters) ? distEdit.data.distMeters : totalDistMetros;
+
+    if (distToUse >= 1000) {
+      this.customDistValue = parseFloat((distToUse / 1000).toFixed(2));
+      this.customDistUnit = 'km';
+    } else {
+      this.customDistValue = Math.round(distToUse);
+      this.customDistUnit = 'm';
+    }
+  }
+
+  public getTramoDistanciaActualTexto(): string {
+    if (!this.anchorA || !this.anchorB || !this.gpxPoints) return '0 m';
+    let startIdx = this.anchorA.index ?? this.trackEditorService.resolveAnchor(this.anchorA, this.gpxPoints);
+    let endIdx = this.anchorB.index ?? this.trackEditorService.resolveAnchor(this.anchorB, this.gpxPoints);
+    if (startIdx === -1 && this.anchorA.index !== undefined && this.anchorA.index >= 0) startIdx = this.anchorA.index;
+    if (endIdx === -1 && this.anchorB.index !== undefined && this.anchorB.index >= 0) endIdx = this.anchorB.index;
+    if (startIdx === -1 || endIdx === -1) return '0 m';
+
+    const min = Math.min(startIdx, endIdx);
+    const max = Math.max(startIdx, endIdx);
+
+    let d = 0;
+    for (let i = min; i < max; i++) {
+      d += this.trackEditorService.getDistance(
+        this.gpxPoints[i].lat, this.gpxPoints[i].lng,
+        this.gpxPoints[i + 1].lat, this.gpxPoints[i + 1].lng
+      );
+    }
+    return d >= 1000 ? `${(d / 1000).toFixed(2)} km (${Math.round(d)} m)` : `${Math.round(d)} m`;
+  }
+
+  public getCustomDistPreviewTexto(): string {
+    const val = Number(this.customDistValue);
+    if (isNaN(val) || val <= 0) return '0 m';
+    if (this.customDistUnit === 'km') {
+      const m = Math.round(val * 1000);
+      return `${val.toFixed(2)} km (${m} m)`;
+    } else {
+      const km = (val / 1000).toFixed(2);
+      return `${Math.round(val)} m (${km} km)`;
+    }
+  }
+
+  public onCustomDistChange(): void {
+    // Método para refrescar el binding de la vista
+  }
+
+  public getVelocidadResultanteTexto(): string {
+    if (!this.anchorA || !this.anchorB || !this.gpxPoints) return 'N/A';
+    let startIdx = this.anchorA.index ?? this.trackEditorService.resolveAnchor(this.anchorA, this.gpxPoints);
+    let endIdx = this.anchorB.index ?? this.trackEditorService.resolveAnchor(this.anchorB, this.gpxPoints);
+    if (startIdx === -1 && this.anchorA.index !== undefined && this.anchorA.index >= 0) startIdx = this.anchorA.index;
+    if (endIdx === -1 && this.anchorB.index !== undefined && this.anchorB.index >= 0) endIdx = this.anchorB.index;
+    if (startIdx === -1 || endIdx === -1) return 'N/A';
+
+    const min = Math.min(startIdx, endIdx);
+    const max = Math.max(startIdx, endIdx);
+
+    const ptA = this.gpxPoints[min];
+    const ptB = this.gpxPoints[max];
+
+    if (!ptA?.time || !ptB?.time) return 'N/A (sin horas)';
+
+    const tA = new Date(ptA.time as any).getTime();
+    const tB = new Date(ptB.time as any).getTime();
+    const durSec = Math.abs(tB - tA) / 1000;
+
+    if (durSec <= 0) return 'N/A';
+
+    const desiredMeters = this.customDistUnit === 'km' ? (this.customDistValue * 1000) : this.customDistValue;
+    if (!desiredMeters || desiredMeters <= 0) return 'N/A';
+
+    const speedKmh = (desiredMeters / 1000) / (durSec / 3600);
+    return `${speedKmh.toFixed(1)} km/h`;
+  }
+
+  public getHoraLlegadaRecalculadaTexto(): string {
+    if (!this.anchorA || !this.anchorB || !this.gpxPoints) return 'N/A';
+    let startIdx = this.anchorA.index ?? this.trackEditorService.resolveAnchor(this.anchorA, this.gpxPoints);
+    let endIdx = this.anchorB.index ?? this.trackEditorService.resolveAnchor(this.anchorB, this.gpxPoints);
+    if (startIdx === -1 && this.anchorA.index !== undefined && this.anchorA.index >= 0) startIdx = this.anchorA.index;
+    if (endIdx === -1 && this.anchorB.index !== undefined && this.anchorB.index >= 0) endIdx = this.anchorB.index;
+    if (startIdx === -1 || endIdx === -1) return 'N/A';
+
+    const min = Math.min(startIdx, endIdx);
+    const ptA = this.gpxPoints[min];
+    if (!ptA?.time) return 'N/A (sin hora de salida)';
+
+    const startMs = new Date(ptA.time as any).getTime();
+    if (isNaN(startMs)) return 'N/A';
+
+    const desiredMeters = this.customDistUnit === 'km' ? (this.customDistValue * 1000) : this.customDistValue;
+    if (!desiredMeters || desiredMeters <= 0) return 'N/A';
+
+    const mode = this.selectedMode || this.gpxPoints[min]?.mode || 'walking';
+    const speedMps = this.trackEditorService.getModeSpeedMps(mode);
+    const durSec = Math.max(1, desiredMeters / speedMps);
+    const endMs = startMs + (durSec * 1000);
+
+    const dtEnd = new Date(endMs);
+    return dtEnd.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  public onAssignDistance(mode: 'auto' | 'manual' = 'auto'): void {
+    if (!this.anchorA || !this.anchorB || !this.gpxPoints || this.gpxPoints.length === 0) return;
+
+    let startIdx = this.anchorA.index ?? this.trackEditorService.resolveAnchor(this.anchorA, this.gpxPoints);
+    let endIdx = this.anchorB.index ?? this.trackEditorService.resolveAnchor(this.anchorB, this.gpxPoints);
+
+    if (startIdx === -1 && this.anchorA.index !== undefined && this.anchorA.index >= 0 && this.anchorA.index < this.gpxPoints.length) {
+      startIdx = this.anchorA.index;
+    }
+    if (endIdx === -1 && this.anchorB.index !== undefined && this.anchorB.index >= 0 && this.anchorB.index < this.gpxPoints.length) {
+      endIdx = this.anchorB.index;
+    }
+
+    if (startIdx === -1 || endIdx === -1) {
+      console.warn('⚠️ [TrackEditor] No se pudieron resolver los puntos ancla para distancia:', this.anchorA, this.anchorB);
+      return;
+    }
+
+    const min = Math.min(startIdx, endIdx);
+    const max = Math.max(startIdx, endIdx);
+
+    // Calcular distancia GPS acumulada real del tramo punto a punto
+    let realDistMeters = 0;
+    const partialDistances: number[] = [0];
+    for (let i = min; i < max; i++) {
+      const d = this.trackEditorService.getDistance(
+        this.gpxPoints[i].lat, this.gpxPoints[i].lng,
+        this.gpxPoints[i + 1].lat, this.gpxPoints[i + 1].lng
+      );
+      realDistMeters += d;
+      partialDistances.push(realDistMeters);
+    }
+
+    let targetDistMeters = realDistMeters;
+
+    if (mode === 'manual') {
+      const inputVal = Number(this.customDistValue);
+      if (isNaN(inputVal) || inputVal <= 0) {
+        alert('⚠️ Por favor introduce una distancia válida mayor que 0.');
+        return;
+      }
+      targetDistMeters = this.customDistUnit === 'km' ? inputVal * 1000 : inputVal;
+
+      // Si se seleccionó "update_time", recalcular los timestamps en base a la velocidad del medio de transporte
+      if (this.customDistTimeSyncMode === 'update_time') {
+        const ptStart = this.gpxPoints[min];
+        let startMs = ptStart?.time ? new Date(ptStart.time as any).getTime() : NaN;
+        if (isNaN(startMs)) {
+          startMs = Date.now();
+          ptStart.time = new Date(startMs);
+        }
+
+        const modeVehicle = this.selectedMode || ptStart.mode || 'walking';
+        const speedMps = this.trackEditorService.getModeSpeedMps(modeVehicle);
+        const newDurationSec = Math.max(1, targetDistMeters / speedMps);
+        const endMs = startMs + (newDurationSec * 1000);
+
+        for (let i = min; i <= max; i++) {
+          const ratio = realDistMeters > 0 ? partialDistances[i - min] / realDistMeters : (i - min) / (max - min || 1);
+          this.gpxPoints[i].time = new Date(startMs + (endMs - startMs) * ratio);
+        }
+      } else {
+        // "keep_time": Si hay hora de inicio y fin, redistribuir los puntos intermedios según la nueva distancia
+        const ptA = this.gpxPoints[min];
+        const ptB = this.gpxPoints[max];
+        if (ptA?.time && ptB?.time) {
+          const tA = new Date(ptA.time as any).getTime();
+          const tB = new Date(ptB.time as any).getTime();
+          if (!isNaN(tA) && !isNaN(tB) && tB > tA) {
+            for (let i = min; i <= max; i++) {
+              const ratio = realDistMeters > 0 ? partialDistances[i - min] / realDistMeters : (i - min) / (max - min || 1);
+              this.gpxPoints[i].time = new Date(tA + (tB - tA) * ratio);
+            }
+          }
+        }
+      }
+    }
+
+    // Actualizar distAcum en this.gpxPoints
+    const startDistAcum = min > 0 ? (this.gpxPoints[min - 1].distAcum || 0) : 0;
+    for (let i = min; i <= max; i++) {
+      const ratio = realDistMeters > 0 ? partialDistances[i - min] / realDistMeters : (i - min) / (max - min || 1);
+      this.gpxPoints[i].distAcum = startDistAcum + (ratio * targetDistMeters);
+    }
+
+    // Propagar distAcum a los puntos posteriores en this.gpxPoints
+    let curDist = this.gpxPoints[max].distAcum;
+    for (let i = max + 1; i < this.gpxPoints.length; i++) {
+      const stepD = this.trackEditorService.getDistance(
+        this.gpxPoints[i - 1].lat, this.gpxPoints[i - 1].lng,
+        this.gpxPoints[i].lat, this.gpxPoints[i].lng
+      );
+      curDist += stepD;
+      this.gpxPoints[i].distAcum = curDist;
+    }
+
+    // Sincronizar con cualquier append_segment pendiente
+    const appends = this.pendingEdits.filter(e => e.type === 'append_segment');
+    appends.forEach(appEdit => {
+      if (appEdit.data?.points && appEdit.data.points.length > 0) {
+        const appPts = appEdit.data.points;
+        const lastAppPt = appPts[appPts.length - 1];
+        const lastGpxPt = this.gpxPoints[this.gpxPoints.length - 1];
+        if (lastGpxPt && lastAppPt && Math.abs(lastGpxPt.lat - lastAppPt.lat) < 0.0001 && Math.abs(lastGpxPt.lng - lastAppPt.lng) < 0.0001) {
+          const count = appEdit.data.addedPointsCount || (appPts.length - 1);
+          const startSlice = Math.max(0, this.gpxPoints.length - count - 1);
+          appEdit.data.points = this.gpxPoints.slice(startSlice).map(p => ({ ...p }));
+        }
+      }
+    });
+
+    const editId = Math.random().toString(36).substring(2, 9);
+    const distLabel = targetDistMeters >= 1000 ? `${(targetDistMeters / 1000).toFixed(2)} km` : `${Math.round(targetDistMeters)} m`;
+    const desc = mode === 'manual'
+      ? `Distancia manual (${distLabel})`
+      : `Distancia GPS real (${distLabel})`;
+
+    this.pendingEdits.push({
+      id: editId,
+      type: 'assign_distance',
+      description: `${this.pendingEdits.length + 1} - ${desc}`,
+      data: {
+        startAnchor: this.anchorA,
+        endAnchor: this.anchorB,
+        distMeters: targetDistMeters,
+        points: this.gpxPoints.slice(min, max + 1).map(p => ({ ...p }))
+      }
+    });
+
+    this.showCustomDistInputs = false;
+    this.mostrarDistancias = true;
+    this.clearSelection();
+    this.actualizarTramosDisponibles();
+    this.drawBaseAndEdits();
+    this.updateDistanceMarkers();
+    if (this.mostrarTiempos) {
+      this.updateTimeMarkers();
+    }
   }
 
   // --- MODO GEOMETRÍA SINTÉTICA ---
@@ -2187,6 +2505,9 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     } else {
       this.clearTimeMarkers();
     }
+    if (this.mostrarDistancias) {
+      this.updateDistanceMarkers();
+    }
   }
 
   private clearTimeMarkers(): void {
@@ -2235,6 +2556,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // 2. Limitar estrictamente el número máximo de marcadores a renderizar (máx. 60) para garantizar 0 cuelgues
     const MAX_VISUAL_MARKERS = 60;
     const step = Math.max(1, Math.ceil(visiblePointsWithTime.length / MAX_VISUAL_MARKERS));
+    const bothActive = this.mostrarTiempos && this.mostrarDistancias;
 
     for (let i = 0; i < visiblePointsWithTime.length; i += step) {
       const { pt, originalIdx } = visiblePointsWithTime[i];
@@ -2264,7 +2586,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         className: 'gpx-time-badge-container',
         html: `<div class="gpx-time-badge">⏱️ ${horaText}</div>`,
         iconSize: [115, 30],
-        iconAnchor: [57, 15]
+        iconAnchor: [57, bothActive ? 32 : 15]
       });
 
       const marker = L.marker([pt.lat, pt.lng], { icon });
@@ -2285,6 +2607,115 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
       marker.bindPopup(popupContent);
       this.timeMarkersGroup.addLayer(marker);
+    }
+  }
+
+  // ==========================================
+  // 📏 VISUALIZADOR DE MARCAS DE DISTANCIA GPX
+  // ==========================================
+
+  toggleMostrarDistancias(): void {
+    this.mostrarDistancias = !this.mostrarDistancias;
+    if (this.mostrarDistancias) {
+      this.updateDistanceMarkers();
+    } else {
+      this.clearDistanceMarkers();
+    }
+    if (this.mostrarTiempos) {
+      this.updateTimeMarkers();
+    }
+  }
+
+  private clearDistanceMarkers(): void {
+    if (this.distanceMarkersGroup) {
+      this.distanceMarkersGroup.clearLayers();
+    }
+  }
+
+  private updateDistanceMarkers(): void {
+    if (!this.map || !this.gpxPoints || this.gpxPoints.length === 0 || !this.distanceMarkersGroup) return;
+
+    this.clearDistanceMarkers();
+    if (!this.mostrarDistancias) return;
+
+    const bounds = this.map.getBounds().pad(0.1); // Margen del área visible actual del mapa
+
+    // Determinar rango de puntos si hay un tramo seleccionado en el desplegable o anclas activas
+    let minIdx = 0;
+    let maxIdx = this.gpxPoints.length - 1;
+
+    if (this.selectedTramoId) {
+      const tramo = this.tramosDisponibles.find(t => t.id === this.selectedTramoId);
+      if (tramo) {
+        minIdx = Math.min(tramo.startIdx, tramo.endIdx);
+        maxIdx = Math.max(tramo.startIdx, tramo.endIdx);
+      }
+    } else if (this.anchorA && this.anchorB && this.anchorA.index !== undefined && this.anchorB.index !== undefined) {
+      minIdx = Math.min(this.anchorA.index, this.anchorB.index);
+      maxIdx = Math.max(this.anchorA.index, this.anchorB.index);
+    }
+
+    // 1. Filtrar únicamente los puntos que pertenezcan al tramo seleccionado y estén dentro del área visible en pantalla
+    const visiblePoints: { pt: GpxPoint; originalIdx: number }[] = [];
+    this.gpxPoints.forEach((pt, originalIdx) => {
+      if (originalIdx >= minIdx && originalIdx <= maxIdx) {
+        if (bounds.contains([pt.lat, pt.lng])) {
+          visiblePoints.push({ pt, originalIdx });
+        }
+      }
+    });
+
+    if (visiblePoints.length === 0) return;
+
+    // 2. Limitar estrictamente el número máximo de marcadores a renderizar (máx. 60)
+    const MAX_VISUAL_MARKERS = 60;
+    const step = Math.max(1, Math.ceil(visiblePoints.length / MAX_VISUAL_MARKERS));
+    const bothActive = this.mostrarTiempos && this.mostrarDistancias;
+
+    for (let i = 0; i < visiblePoints.length; i += step) {
+      const { pt, originalIdx } = visiblePoints[i];
+
+      let distText = '';
+      const distM = pt.distAcum !== undefined ? pt.distAcum : 0;
+      if (distM >= 1000) {
+        distText = `${(distM / 1000).toFixed(2)} km`;
+      } else {
+        distText = `${Math.round(distM)} m`;
+      }
+
+      const icon = L.divIcon({
+        className: 'gpx-dist-badge-container',
+        html: `<div class="gpx-dist-badge">📏 ${distText}</div>`,
+        iconSize: [115, 30],
+        iconAnchor: [57, bothActive ? -2 : 15]
+      });
+
+      const marker = L.marker([pt.lat, pt.lng], { icon });
+
+      let horaFull = 'N/A';
+      if (pt.time) {
+        horaFull = new Date(pt.time).toLocaleString();
+      } else if (pt.timeAcum !== undefined) {
+        const totalSec = Math.floor(pt.timeAcum);
+        const hh = Math.floor(totalSec / 3600).toString().padStart(2, '0');
+        const mm = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0');
+        const ss = (totalSec % 60).toString().padStart(2, '0');
+        horaFull = `+${hh}:${mm}:${ss}`;
+      }
+
+      const popupContent = `
+        <div style="font-family: sans-serif; font-size: 13px; line-height: 1.4; color: #1e293b; padding: 4px;">
+          <div style="font-weight: 700; color: #0d9488; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 6px;">
+            📏 Punto GPX #${originalIdx + 1}
+          </div>
+          <div><strong>Distancia acum.:</strong> ${distText}</div>
+          <div><strong>Hora:</strong> ${horaFull}</div>
+          <div><strong>Modo:</strong> ${this.getModeName(pt.mode || pt.hfMode || 'walking')}</div>
+        </div>
+      `;
+
+      marker.bindPopup(popupContent);
+      this.distanceMarkersGroup.addLayer(marker);
     }
   }
 

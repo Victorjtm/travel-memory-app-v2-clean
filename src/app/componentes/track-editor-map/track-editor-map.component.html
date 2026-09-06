@@ -106,6 +106,9 @@
       <button class="btn-tool btn-time-float" [class.active]="mostrarTiempos" (click)="toggleMostrarTiempos()" title="Mostrar horas en cada punto">
         ⏱️ Tiempos {{ mostrarTiempos ? '(ON)' : '' }}
       </button>
+      <button class="btn-tool btn-dist-float" [class.active]="mostrarDistancias" (click)="toggleMostrarDistancias()" title="Mostrar distancia (km / m) en cada punto">
+        📏 Kilómetros {{ mostrarDistancias ? '(ON)' : '' }}
+      </button>
       <button class="btn-tool btn-ruta-original-float" (click)="activarModoRutaOriginal()" title="Ver y recuperar el recorrido GPS original de esta actividad">
         🔄 Ruta Original
       </button>
@@ -275,6 +278,70 @@
           <button class="btn-primary" style="width: 100%; background: #4f46e5; padding: 9px; font-size: 12px; font-weight: 700; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;" (click)="onAssignTimestamps('manual')">
             <i class="fa-solid fa-check"></i>
             <span>Aplicar Nuevo Horario</span>
+          </button>
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="action-group">
+        <h4>Sincronizar / Modificar Kilómetros</h4>
+        <p class="warning-text">Calcula o modifica los kilómetros/metros del tramo seleccionado (Punto A ➔ B).</p>
+        
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <button class="btn-primary" style="flex: 1; background: #0d9488; border-color: #0d9488; padding: 10px; font-size: 13px;" (click)="onAssignDistance('auto')" title="Recalcular distancia GPS real y sincronizar con tiempo">
+            📏 GPS Real / Auto
+          </button>
+          <button class="btn-secondary" style="flex: 1; padding: 10px; font-size: 13px;" [class.btn-active-dist]="showCustomDistInputs" (click)="toggleCustomDistInputs()" title="Fijar distancia manual en km o metros">
+            📐 Distancia Manual
+          </button>
+        </div>
+
+        <!-- Panel Desplegable de Modificación Manual de Distancia -->
+        <div *ngIf="showCustomDistInputs" class="custom-dist-panel" style="background: #f0fdfa; padding: 12px; border-radius: 8px; border: 1px solid #99f6e4; margin-bottom: 10px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);">
+          
+          <div style="font-size: 12px; font-weight: 700; color: #134e4a; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <i class="fa-solid fa-ruler" style="color: #0d9488;"></i>
+            <span>Ajustar Distancia del Tramo:</span>
+          </div>
+
+          <!-- Distancia actual GPS de referencia -->
+          <div style="font-size: 11px; color: #64748b; margin-bottom: 6px;">
+            Distancia GPS actual: <strong>{{ getTramoDistanciaActualTexto() }}</strong>
+          </div>
+
+          <!-- Input de nueva distancia y unidad -->
+          <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
+            <input type="number" step="0.01" min="0.01" [(ngModel)]="customDistValue" (ngModelChange)="onCustomDistChange()" placeholder="Ej. 3.5" style="flex: 1.5; padding: 6px 8px; border-radius: 4px; border: 1px solid #0d9488; font-size: 13px; font-weight: 600;">
+            <select [(ngModel)]="customDistUnit" (ngModelChange)="onCustomDistChange()" style="flex: 1; padding: 6px 8px; border-radius: 4px; border: 1px solid #0d9488; font-size: 12px; font-weight: 600; background: white;">
+              <option value="km">Kilómetros (km)</option>
+              <option value="m">Metros (m)</option>
+            </select>
+          </div>
+
+          <!-- Opciones de sincronización con el tiempo -->
+          <div style="margin-bottom: 8px; background: white; padding: 8px; border-radius: 6px; border: 1px solid #ccfbf1;">
+            <div style="font-size: 11px; font-weight: 700; color: #0f766e; margin-bottom: 6px;">
+              ⏱️ Sincronización con el Tiempo:
+            </div>
+            <label style="font-size: 11px; color: #1e293b; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; cursor: pointer;">
+              <input type="radio" name="distTimeSync" value="keep_time" [(ngModel)]="customDistTimeSyncMode">
+              <span>Mantener horas fijas y adaptar velocidad (<strong>{{ getVelocidadResultanteTexto() }}</strong>)</span>
+            </label>
+            <label style="font-size: 11px; color: #1e293b; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="radio" name="distTimeSync" value="update_time" [(ngModel)]="customDistTimeSyncMode">
+              <span>Recalcular llegada según velocidad de transporte (<strong>{{ getHoraLlegadaRecalculadaTexto() }}</strong>)</span>
+            </label>
+          </div>
+
+          <!-- Previsualización de Distancia -->
+          <div style="font-size: 11px; color: #065f46; background: #ccfbf1; padding: 6px 8px; border-radius: 4px; margin-bottom: 8px; text-align: center; font-weight: 600;">
+            📏 Nueva Distancia: {{ getCustomDistPreviewTexto() }}
+          </div>
+
+          <button class="btn-primary" style="width: 100%; background: #0d9488; border-color: #0d9488; padding: 9px; font-size: 12px; font-weight: 700; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;" (click)="onAssignDistance('manual')">
+            <i class="fa-solid fa-check"></i>
+            <span>Aplicar Nueva Distancia</span>
           </button>
         </div>
       </div>
