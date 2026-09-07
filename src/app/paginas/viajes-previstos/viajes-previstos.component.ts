@@ -1,8 +1,11 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { ViajesPrevistosService } from '../../servicios/viajes-previstos.service';
+import { ViajesRescateService } from '../../servicios/viajes-rescate.service';
 import { HttpClientModule } from '@angular/common/http';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatDialogModule } from '@angular/material/dialog';
 
 @Component({
   selector: 'app-viajes-previstos',
@@ -10,7 +13,9 @@ import { HttpClientModule } from '@angular/common/http';
   imports: [
     CommonModule,
     HttpClientModule,
-    RouterModule
+    RouterModule,
+    MatMenuModule,
+    MatDialogModule
   ],
   templateUrl: './viajes-previstos.component.html',
   styleUrls: ['./viajes-previstos.component.scss']
@@ -24,6 +29,9 @@ export class ViajesPrevistosComponent implements OnInit {
   vistaModo: 'viajes' | 'fechas' = 'viajes';
   itinerariosCombinados: any[] = [];
   ultimaUnificacion: any = null;
+
+  // Inyección de servicios
+  private viajesRescateService = inject(ViajesRescateService);
 
   constructor(
     private viajesPrevistosService: ViajesPrevistosService,
@@ -191,6 +199,17 @@ export class ViajesPrevistosComponent implements OnInit {
   irAlFormulario() {
     console.log('[NAVIGATE] Ir a formulario de nuevo viaje');
     this.router.navigate(['/formulario-viaje-previsto', 'nuevo']);
+  }
+
+  crearViajeRapido(): void {
+    console.log('[RESCATE] Iniciando creación de viaje rápido por defecto...');
+    this.viajesRescateService.crearViajeRapidoConConfirmacion((nuevoViaje) => {
+      // Si el usuario decide editar más tarde, insertamos el viaje en la lista visual
+      this.viajesPrevistos = [nuevoViaje, ...this.viajesPrevistos].sort((a, b) => {
+        return new Date(b.fecha_inicio).getTime() - new Date(a.fecha_inicio).getTime();
+      });
+      this.cargarRangosFechas(nuevoViaje.id);
+    });
   }
 
   irAEditarViaje(id: number) {

@@ -8,10 +8,26 @@
   </div>
 
   <div class="acciones-globales app-card">
-    <button (click)="irAlFormulario()" class="app-button primary">
+    <!-- Menú desplegable para Añadir Viaje -->
+    <button class="app-button primary" [matMenuTriggerFor]="menuNuevoViaje" title="Opciones para añadir un viaje">
       <i class="fa fa-plus"></i>
-      Anadir viaje
+      Añadir viaje
+      <i class="fa fa-chevron-down ml-1" style="font-size: 0.75rem; margin-left: 0.35rem;"></i>
     </button>
+
+    <mat-menu #menuNuevoViaje="matMenu" xPosition="after">
+      <!-- Opción 1: Flujo Normal / Formulario / IA -->
+      <button mat-menu-item (click)="irAlFormulario()">
+        <i class="fa-solid fa-wand-magic-sparkles" style="margin-right: 0.6rem; color: #4f46e5;"></i>
+        <span>Crear viaje planificado (Formulario / IA)</span>
+      </button>
+
+      <!-- Opción 2: Flujo Rápido de Rescate con datos por defecto -->
+      <button mat-menu-item (click)="crearViajeRapido()">
+        <i class="fa-solid fa-bolt" style="margin-right: 0.6rem; color: #f59e0b;"></i>
+        <span>Añadir viaje rápido con datos por defecto</span>
+      </button>
+    </mat-menu>
 
     <button (click)="ejecutarUnificacion()" class="app-button">
       <i class="fa fa-compress"></i>

@@ -203,6 +203,18 @@ export class ActividadesItinerariosComponent implements OnInit {
           this.actividades = actividades;
           this.cdr.detectChanges();
           this.scrollToTargetElement();
+
+          // 🗺️ Si se solicita abrir el editor de ruta automáticamente (Flujo de Rescate/Manual)
+          const params = this.route.snapshot.queryParams;
+          if (params['abrirEditor'] === 'true') {
+            const targetActId = params['actividadId'] ? +params['actividadId'] : (actividades[0]?.id || null);
+            if (targetActId) {
+              console.log('⚡ [AUTO-EDITOR] Abriendo track editor automáticamente para actividad:', targetActId);
+              setTimeout(() => {
+                this.abrirEditorTrack(targetActId);
+              }, 250);
+            }
+          }
         },
         error: err => console.error('Error cargando actividades:', err)
       });

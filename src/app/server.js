@@ -359,7 +359,8 @@ function migrarColumnasUbicacionViajes() {
     const columnasObjetivo = [
       { name: 'lat_representativa', sqlType: 'REAL' },
       { name: 'lng_representativa', sqlType: 'REAL' },
-      { name: 'metodo_calculo', sqlType: 'TEXT' }
+      { name: 'metodo_calculo', sqlType: 'TEXT' },
+      { name: 'estado', sqlType: "TEXT DEFAULT 'planificado'" }
     ];
 
     for (const columna of columnasObjetivo) {
@@ -2292,6 +2293,80 @@ app.post('/viajes', upload.fields([{ name: 'imagen', maxCount: 1 }, { name: 'aud
     }
   );
 });
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// RUTA: CREAR VIAJE RÁPIDO / BORRADOR PARA RESCATE O EDICIÓN MANUAL
+// POST /viajes/crear-borrador y POST /api/viajes/crear-borrador
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const handleCrearViajeBorrador = async (req, res) => {
+  try {
+    const {
+      nombre = `Ruta Manual Rescate - ${new Date().toLocaleDateString('es-ES')}`,
+      destino = 'Destino por Asignar',
+      fecha_inicio = new Date().toISOString().split('T')[0],
+      fecha_fin = new Date().toISOString().split('T')[0],
+      descripcion = 'Borrador rápido para diseño de ruta GPX en mapa'
+    } = req.body || {};
+
+    console.log('⚡ [RESCATE] Creando viaje borrador silencioso:', { nombre, destino, fecha_inicio });
+
+    // 1. Insertar viaje con estado = 'borrador'
+    const insertViajeSql = `
+      INSERT INTO viajes (nombre, destino, fecha_inicio, fecha_fin, descripcion, estado)
+      VALUES (?, ?, ?, ?, ?, 'borrador')
+    `;
+    const viajeResult = await dbQuery.run(insertViajeSql, [
+      nombre, destino, fecha_inicio, fecha_fin, descripcion
+    ]);
+    const viajeId = viajeResult.lastID;
+
+    // 2. Insertar ItinerarioGeneral (Día 1)
+    const insertItinSql = `
+      INSERT INTO ItinerarioGeneral 
+      (viajePrevistoId, fechaInicio, fechaFin, duracionDias, destinosPorDia, descripcionGeneral, horaInicio, horaFin, tipoDeViaje)
+      VALUES (?, ?, ?, 1, ?, 'Día 1 inicializado para ruta', '09:00', '20:00', 'costa')
+    `;
+    const itinResult = await dbQuery.run(insertItinSql, [
+      viajeId, fecha_inicio, fecha_fin, JSON.stringify([destino])
+    ]);
+    const itinerarioId = itinResult.lastID;
+
+    // 3. Insertar Actividad inicial asociada para que el track editor la use inmediatamente
+    // Obtener un tipo de actividad válido (primer id de TiposActividad o 1)
+    const primerTipo = await dbQuery.get('SELECT id FROM TiposActividad LIMIT 1');
+    const tipoActividadId = primerTipo?.id || 1;
+
+    const insertActSql = `
+      INSERT INTO actividades 
+      (viajePrevistoId, itinerarioId, tipoActividadId, nombre, descripcion, horaInicio, horaFin, fechaCreacion)
+      VALUES (?, ?, ?, 'Ruta Día 1', 'Trazado manual en mapa', '09:00', '20:00', datetime('now'))
+    `;
+    const actResult = await dbQuery.run(insertActSql, [
+      viajeId, itinerarioId, tipoActividadId
+    ]);
+    const actividadId = actResult.lastID;
+
+    console.log(`✅ [RESCATE] Viaje borrador creado exitosamente: Viaje #${viajeId}, Itinerario #${itinerarioId}, Actividad #${actividadId}`);
+
+    res.status(201).json({
+      id: viajeId,
+      nombre,
+      destino,
+      fecha_inicio,
+      fecha_fin,
+      descripcion,
+      estado: 'borrador',
+      itinerarioId,
+      actividadId
+    });
+  } catch (error) {
+    console.error('❌ [RESCATE] Error al crear viaje borrador:', error);
+    res.status(500).json({ error: 'Error al crear el viaje rápido borrador', detalles: error.message });
+  }
+};
+
+app.post('/viajes/crear-borrador', handleCrearViajeBorrador);
+app.post('/api/viajes/crear-borrador', handleCrearViajeBorrador);
 
 // Ruta para actualizar un viaje
 app.put('/viajes/:id', upload.fields([{ name: 'imagen', maxCount: 1 }, { name: 'audio', maxCount: 1 }]), (req, res) => {
