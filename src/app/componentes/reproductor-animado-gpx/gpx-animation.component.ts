@@ -254,6 +254,11 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     this.currentTimeSeg = 0;
     this.smoothedKmh = 0;
     this.autoZoomPaused = false;
+    if (this.points && this.points.length > 0) {
+      this.points.forEach(p => {
+        if (p.event) (p.event as any)._mostrado = false;
+      });
+    }
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -540,7 +545,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       const icon = this.L.divIcon({
         className: '',
         html: `
-        <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
+        <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer;">
           <svg width="44" height="44" viewBox="0 0 44 44" style="filter:drop-shadow(0px 3px 3px rgba(0,0,0,0.4));z-index:5;">
             <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="#E53935" />
             <circle cx="22" cy="16" r="6" fill="white" />
@@ -554,7 +559,17 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         iconAnchor: [22, 60]
       });
 
-      this.L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(this.poiLayerGroup);
+      const poiMarker = this.L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(this.poiLayerGroup);
+      poiMarker.on('click', () => {
+        console.log(`📍 [POI Click] Clic en Parada #${numeroSecuencial}`);
+        const eventData = {
+          archivos: grupo.archivos,
+          piNumero: numeroSecuencial,
+          piTotal: grupos.length,
+          esPuntoInteres: true
+        };
+        this.pauseForEvent(eventData, [lat, lng]);
+      });
       boundsPoints.push([lat, lng]);
 
       console.log(`📌 PI #${numeroSecuencial} → lat=${lat.toFixed(5)}, lng=${lng.toFixed(5)}, archivos=${grupo.archivos.length}`);
@@ -776,6 +791,14 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
     this.isPlaying = !this.isPlaying;
     if (this.isPlaying) {
+      // 📍 Si estamos al inicio y el punto 0 tiene evento (Parada #1), detenerse en él antes de avanzar
+      if (Math.floor(this.currentIndex) === 0 && this.points && this.points[0]?.event && !(this.points[0].event as any)._mostrado && this.interactiveMode !== false) {
+        console.log('📍 [Parada Inicial] Deteniendo en Parada #1 (índice 0)');
+        (this.points[0].event as any)._mostrado = true;
+        this.pauseForEvent(this.points[0].event);
+        return;
+      }
+
       // SIEMPRE encuadrar el tramo antes de arrancar la animación
       this.calculateSegmentBoundsAndSpeed();
     } else {
@@ -1426,7 +1449,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     return this.getDisplayDist(mode) * 1400;
   }
 
-  private async pauseForEvent(event: any) {
+  private async pauseForEvent(event: any, coords?: [number, number]) {
     this.isPlaying = false;
     this.stopAnimation();
     this.narrativeService.pauseAtPoi();
@@ -1445,18 +1468,20 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
     // Zoom máximo interactivo (nivel 18) - Acercarse a la ubicación
     const currentPoint = this.points[Math.floor(this.currentIndex)];
-    if (currentPoint && this.map) {
-      this.map.flyTo([currentPoint.lat, currentPoint.lng], 18, { animate: true, duration: 1.5 });
+    const targetLat = coords ? coords[0] : (currentPoint ? currentPoint.lat : null);
+    const targetLng = coords ? coords[1] : (currentPoint ? currentPoint.lng : null);
+    if (targetLat !== null && targetLng !== null && this.map) {
+      this.map.flyTo([targetLat, targetLng], 18, { animate: true, duration: 1.5 });
     }
 
     // Preparar metadatos base para la foto (Fecha y Hora) y Dirección pre-cargada si existe
     if (event.archivos && event.archivos.length > 0) {
       for (const archivo of event.archivos) {
-        if (!archivo.direccion && currentPoint) {
+        if (!archivo.direccion && targetLat !== null && targetLng !== null) {
           // Si no tiene dirección interna, la obtenemos dinámicamente con Geocoding Inverso
           try {
             // Fallback al GPS
-            const locationStr = `${currentPoint.lat},${currentPoint.lng}`;
+            const locationStr = `${targetLat},${targetLng}`;
             const locationData = await firstValueFrom(this.geocodificacionService.obtenerUbicacionPorCoordenadas(locationStr));
             if (locationData && locationData.direccion) {
               archivo.direccionDeducida = locationData.direccion;
@@ -1468,7 +1493,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
         // Adjuntar timestamp explícito para lectura directa en caso de usarse en UI
         if (!archivo.fechaCalculada) {
-          archivo.fechaCalculada = archivo.fecha ? new Date(archivo.fecha) : (currentPoint.time || new Date());
+          archivo.fechaCalculada = archivo.fecha ? new Date(archivo.fecha) : (currentPoint?.time || new Date());
         }
       }
     }

@@ -45,7 +45,9 @@ export class ViajesPrevistosComponent implements OnInit {
 
       // Ordenar por fecha de inicio (más reciente primero)
       this.viajesPrevistos = viajes.sort((a, b) => {
-        return new Date(b.fecha_inicio).getTime() - new Date(a.fecha_inicio).getTime();
+        const tB = new Date(b.fecha_inicio).getTime() || 0;
+        const tA = new Date(a.fecha_inicio).getTime() || 0;
+        return tB - tA;
       });
 
       // Cargar rangos de fechas para cada viaje
@@ -104,7 +106,9 @@ export class ViajesPrevistosComponent implements OnInit {
 
     // Ordenar por fecha de inicio descendente
     this.itinerariosCombinados = todos.sort((a, b) => {
-      return new Date(b.inicio).getTime() - new Date(a.inicio).getTime();
+      const tB = new Date(b.inicio).getTime() || 0;
+      const tA = new Date(a.inicio).getTime() || 0;
+      return tB - tA;
     });
   }
 
@@ -125,7 +129,11 @@ export class ViajesPrevistosComponent implements OnInit {
   }
 
   formatearFecha(fecha: string): string {
+    if (!fecha) return 'Sin fecha';
     const date = new Date(fecha);
+    if (isNaN(date.getTime())) {
+      return fecha;
+    }
     const dia = date.getDate().toString().padStart(2, '0');
     const mes = (date.getMonth() + 1).toString().padStart(2, '0');
     const año = date.getFullYear();

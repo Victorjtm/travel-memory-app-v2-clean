@@ -7305,37 +7305,103 @@ app.post('/import-tracking', (req, res, next) => {
         console.log(`✅ [GPS MANIFEST] Coordenadas del manifest: ${coordenadasGPS.lat}, ${coordenadasGPS.lng}`);
       }
 
-      // PRIORIDAD 2: Fecha del nombre del archivo multimedia (JPEG_YYYYMMDD_HHMMSS)
+      // Helper de validacion de ano, mes y dia
+      const esFechaValidaYMD = (y, m, d) => {
+        const iy = parseInt(y, 10);
+        const im = parseInt(m, 10);
+        const id = parseInt(d, 10);
+        if (isNaN(iy) || isNaN(im) || isNaN(id)) return false;
+        if (iy < 2000 || iy > 2100) return false;
+        if (im < 1 || im > 12) return false;
+        if (id < 1 || id > 31) return false;
+        const testD = new Date(iy, im - 1, id);
+        return testD.getFullYear() === iy && testD.getMonth() === im - 1 && testD.getDate() === id;
+      };
+
+      // PRIORIDAD 2: Timestamp en el manifest del primer multimedia
       if (!fechaRecorridoReal) {
         const primerMedia = manifestData.multimedia[0];
-        if (primerMedia.archivo) {
-          const matchFoto = primerMedia.archivo.match(/(\d{4})(\d{2})(\d{2})/);
-          if (matchFoto) {
-            const [_, y, m, d] = matchFoto;
-            fechaRecorridoReal = `${y}-${m}-${d}`;
-            console.log('✅ [MULTIMEDIA] Fecha extraída del primer archivo:', fechaRecorridoReal);
-            console.log('   Archivo:', primerMedia.archivo);
+        if (primerMedia && primerMedia.timestamp) {
+          const dt = new Date(primerMedia.timestamp);
+          if (!isNaN(dt.getTime()) && dt.getFullYear() >= 2000) {
+            fechaRecorridoReal = dt.toISOString().split("T")[0];
+            console.log("✅ [MULTIMEDIA TIMESTAMP] Fecha extraida del timestamp:", fechaRecorridoReal);
+          }
+        }
+      }
+
+      // PRIORIDAD 3: Fecha del nombre del archivo multimedia si cumple patron estricto o 13 digitos
+      if (!fechaRecorridoReal) {
+        const primerMedia = manifestData.multimedia[0];
+        if (primerMedia && primerMedia.archivo) {
+          const match13 = primerMedia.archivo.match(/(\d{13})/);
+          if (match13) {
+            const dt = new Date(parseInt(match13[1], 10));
+            if (!isNaN(dt.getTime()) && dt.getFullYear() >= 2000) {
+              fechaRecorridoReal = dt.toISOString().split("T")[0];
+              console.log("✅ [MULTIMEDIA 13-DIGITS] Fecha extraida de timestamp en nombre:", fechaRecorridoReal);
+            }
+          }
+
+          if (!fechaRecorridoReal) {
+            const matchFoto = primerMedia.archivo.match(/(?:JPEG_|IMG_|VID_|^)(\d{4})(\d{2})(\d{2})/);
+            if (matchFoto && esFechaValidaYMD(matchFoto[1], matchFoto[2], matchFoto[3])) {
+              const [_, y, m, d] = matchFoto;
+              fechaRecorridoReal = `${y}-${m}-${d}`;
+              console.log("✅ [MULTIMEDIA PATTERN] Fecha extraida del archivo:", fechaRecorridoReal);
+            }
           }
         }
       }
     }
 
-    // PRIORIDAD 3: Fecha del nombre del manifest
-    if (!fechaRecorridoReal) {
-      const matchFormato = manifestData.nombre.match(/(\d{4})(\d{2})(\d{2})/);
-      if (matchFormato) {
-        const [_, y, m, d] = matchFormato;
-        fechaRecorridoReal = `${y}-${m}-${d}`;
-        console.log('✅ [NOMBRE MANIFEST] Fecha extraída:', fechaRecorridoReal);
-        console.log('   Nombre:', manifestData.nombre);
-      } else {
-        // PRIORIDAD 4: Fecha de exportación (último recurso)
-        fechaRecorridoReal = manifestData.fecha_exportacion.split('T')[0];
-        console.log('⚠️ [FALLBACK] Usando fecha_exportacion:', fechaRecorridoReal);
+    // Helper de validacion general
+    const esFechaValidaGeneral = (y, m, d) => {
+      const iy = parseInt(y, 10);
+      const im = parseInt(m, 10);
+      const id = parseInt(d, 10);
+      if (isNaN(iy) || isNaN(im) || isNaN(id)) return false;
+      if (iy < 2000 || iy > 2100) return false;
+      if (im < 1 || im > 12) return false;
+      if (id < 1 || id > 31) return false;
+      const testD = new Date(iy, im - 1, id);
+      return testD.getFullYear() === iy && testD.getMonth() === im - 1 && testD.getDate() === id;
+    };
+
+    // PRIORIDAD 4: Fecha directa en el manifest (fecha o fecha_inicio)
+    if (!fechaRecorridoReal && (manifestData.fecha || manifestData.fecha_inicio)) {
+      const fCandidate = (manifestData.fecha_inicio || manifestData.fecha).split("T")[0];
+      const parts = fCandidate.split("-");
+      if (parts.length === 3 && esFechaValidaGeneral(parts[0], parts[1], parts[2])) {
+        fechaRecorridoReal = fCandidate;
+        console.log("✅ [MANIFEST FECHA] Fecha directa del manifest:", fechaRecorridoReal);
       }
     }
 
-    // ========================================================================
+    // PRIORIDAD 5: Fecha del nombre del manifest (ej: Recorrido_20260705)
+    if (!fechaRecorridoReal && manifestData.nombre) {
+      const matchFormato = manifestData.nombre.match(/(\d{4})(\d{2})(\d{2})/);
+      if (matchFormato && esFechaValidaGeneral(matchFormato[1], matchFormato[2], matchFormato[3])) {
+        const [_, y, m, d] = matchFormato;
+        fechaRecorridoReal = `${y}-${m}-${d}`;
+        console.log("✅ [NOMBRE MANIFEST] Fecha extraida del manifest:", fechaRecorridoReal);
+      }
+    }
+
+    // PRIORIDAD 6: Fecha de exportacion o actual (ultimo recurso)
+    if (!fechaRecorridoReal) {
+      if (manifestData.fecha_exportacion) {
+        const dt = new Date(manifestData.fecha_exportacion);
+        if (!isNaN(dt.getTime())) {
+          fechaRecorridoReal = dt.toISOString().split("T")[0];
+        }
+      }
+      if (!fechaRecorridoReal) {
+        fechaRecorridoReal = new Date().toISOString().split("T")[0];
+      }
+      console.log("⚠️ [FALLBACK] Usando fecha alternativa:", fechaRecorridoReal);
+    }
+// ========================================================================
     // GEOCODIFICACIÓN INVERSA: Obtener dirección desde coordenadas GPS
     // ========================================================================
     if (coordenadasGPS) {
@@ -7398,10 +7464,14 @@ app.post('/import-tracking', (req, res, next) => {
     console.log('📝 FECHA DEL RECORRIDO:', fechaRecorridoReal);
     console.log('📍 DESTINO COMPLETO FINAL:', destinoCompleto);
 
-    const [año, mes, dia] = fechaRecorridoReal.split('-');
+    const [año, mes, dia] = (fechaRecorridoReal || new Date().toISOString().split('T')[0]).split('-');
     const fechaFormateada = `${dia}/${mes}/${año}`;
+    const distKmViaje = (manifestData.estadisticas && manifestData.estadisticas.distancia_km !== undefined) ? manifestData.estadisticas.distancia_km : (extraStatsData.km || 0);
+    const duracionViaje = (manifestData.estadisticas && manifestData.estadisticas.duracion_formateada) ? manifestData.estadisticas.duracion_formateada : (extraStatsData.tiempoEmpleado || '00:00:00');
+    const nombreViaje = `${destinoCompleto} - ${fechaFormateada} - ${distKmViaje} km`;
 
-    const nombreViaje = `${destinoCompleto} - ${fechaFormateada} - ${manifestData.estadisticas.distancia_km} km`;
+
+
 
     console.log('📝 Nombre del viaje:', nombreViaje);
     console.log('=====================================\n');
@@ -7420,7 +7490,7 @@ app.post('/import-tracking', (req, res, next) => {
           destinoCompleto,
           fechaRecorridoReal,
           fechaRecorridoReal,
-          `Tracking importado desde AudioPhotoApp - ${manifestData.estadisticas.distancia_km} km - ${manifestData.estadisticas.duracion_formateada}`
+          `Tracking importado desde AudioPhotoApp - ${distKmViaje} km - ${duracionViaje}`
         ],
         function (err) {
           if (err) return reject(err);
@@ -7468,7 +7538,7 @@ app.post('/import-tracking', (req, res, next) => {
           fechaRecorridoReal,
           1,
           destinoCompleto,
-          `Recorrido de ${manifestData.estadisticas.distancia_km} km en ${manifestData.estadisticas.duracion_formateada}`,
+          `Recorrido de ${distKmViaje} km en ${duracionViaje}`,
           horaInicioItinerario,
           horaFinItinerario,
           tipoViaje
@@ -7564,7 +7634,15 @@ app.post('/import-tracking', (req, res, next) => {
     if (manifestData.multimedia && manifestData.multimedia.length > 0) {
       const primerMedia = manifestData.multimedia[0];
 
-      if (primerMedia.archivo) {
+      if (primerMedia.timestamp) {
+        const d = new Date(primerMedia.timestamp);
+        if (!isNaN(d.getTime())) {
+          fechaCreacionActividad = d.toISOString();
+          console.log('✅ [PRIORIDAD 1] Usando timestamp del primer media:', fechaCreacionActividad);
+        }
+      }
+
+      if (!fechaCreacionActividad && primerMedia.archivo) {
         const matchFoto = primerMedia.archivo.match(/(\d{4})(\d{2})(\d{2})_?(\d{2})(\d{2})(\d{2})/);
         if (matchFoto) {
           const [_, y, m, d, h, min, s] = matchFoto;
@@ -7572,20 +7650,24 @@ app.post('/import-tracking', (req, res, next) => {
             parseInt(y), parseInt(m) - 1, parseInt(d),
             parseInt(h), parseInt(min), parseInt(s)
           )).toISOString();
-          console.log('✅ [PRIORIDAD 1] Usando fecha del PRIMER ARCHIVO MULTIMEDIA:', fechaCreacionActividad);
+          console.log('✅ [PRIORIDAD 1B] Usando fecha del PRIMER ARCHIVO MULTIMEDIA:', fechaCreacionActividad);
           console.log('   Archivo:', primerMedia.archivo);
         } else {
-          throw new Error('No se pudo extraer fecha del archivo multimedia: ' + primerMedia.archivo);
+          const match13 = primerMedia.archivo.match(/(\d{13})/);
+          if (match13) {
+            fechaCreacionActividad = new Date(parseInt(match13[1])).toISOString();
+            console.log('✅ [PRIORIDAD 1C] Usando timestamp (13 dígitos) del archivo:', fechaCreacionActividad);
+          }
         }
-      } else if (primerMedia.timestamp) {
-        fechaCreacionActividad = primerMedia.timestamp;
-        console.log('✅ [PRIORIDAD 1B] Usando timestamp del primer media:', fechaCreacionActividad);
       }
-    } else {
-      console.log('⚠️ No hay multimedia, extrayendo del nombre del manifest...');
+    }
 
-      const matchFormato1 = manifestData.nombre.match(/(\d{2})_(\d{2})_(\d+)/);
-      const matchFormato2 = manifestData.nombre.match(/(\d{4})(\d{2})(\d{2})_?(\d{2})(\d{2})(\d{2})/);
+    if (!fechaCreacionActividad) {
+      console.log('⚠️ No hay multimedia o fecha en multimedia, extrayendo del nombre del manifest...');
+
+      const matchFormato1 = manifestData.nombre ? manifestData.nombre.match(/(\d{2})_(\d{2})_(\d+)/) : null;
+      const matchFormato2 = manifestData.nombre ? manifestData.nombre.match(/(\d{4})(\d{2})(\d{2})_?(\d{2})(\d{2})(\d{2})/) : null;
+      const matchFormatoYMD = manifestData.nombre ? manifestData.nombre.match(/(\d{4})(\d{2})(\d{2})/) : null;
 
       if (matchFormato2) {
         const [_, y, m, d, h, min, s] = matchFormato2;
@@ -7601,14 +7683,24 @@ app.post('/import-tracking', (req, res, next) => {
           año, parseInt(m) - 1, parseInt(d), 12, 0, 0
         )).toISOString();
         console.log('✅ [PRIORIDAD 2B] Nombre DD_MM_timestamp:', fechaCreacionActividad);
-      } else {
-        fechaCreacionActividad = manifestData.fecha_exportacion
-          ? new Date(manifestData.fecha_exportacion).toISOString()
-          : new Date().toISOString();
+      } else if (matchFormatoYMD) {
+        const [_, y, m, d] = matchFormatoYMD;
+        fechaCreacionActividad = new Date(Date.UTC(
+          parseInt(y), parseInt(m) - 1, parseInt(d), 12, 0, 0
+        )).toISOString();
+        console.log('✅ [PRIORIDAD 2C] Nombre YYYYMMDD:', fechaCreacionActividad);
+      } else if (manifestData.fecha || manifestData.fecha_inicio) {
+        const fStr = manifestData.fecha || manifestData.fecha_inicio;
+        fechaCreacionActividad = new Date(fStr.includes('T') ? fStr : `${fStr}T12:00:00Z`).toISOString();
+        console.log('✅ [PRIORIDAD 2D] Usando fecha/fecha_inicio:', fechaCreacionActividad);
+      } else if (manifestData.fecha_exportacion) {
+        fechaCreacionActividad = new Date(manifestData.fecha_exportacion).toISOString();
         console.log('⚠️ [PRIORIDAD 3] Usando fecha_exportacion:', fechaCreacionActividad);
+      } else {
+        fechaCreacionActividad = (fechaRecorridoReal ? new Date(`${fechaRecorridoReal}T12:00:00Z`) : new Date()).toISOString();
+        console.log('⚠️ [FALLBACK] Usando fecha alternativa:', fechaCreacionActividad);
       }
     }
-
     console.log('📝 FECHA FINAL ACTIVIDAD:', fechaCreacionActividad);
     console.log('=====================================\n');
 
@@ -8150,6 +8242,9 @@ app.post('/import-tracking', (req, res, next) => {
   } catch (error) {
     console.error('\n❌ =============== ERROR EN IMPORTACIÓN ===============');
     console.error('Error:', error.message);
+    try {
+      fs.writeFileSync(path.join(process.cwd(), 'import_error.log'), `[${new Date().toISOString()}] ${error.message}\n${error.stack}\n`, 'utf8');
+    } catch (e) {}
 
     // ========================================================================
     // ROLLBACK: Revertir todos los cambios en caso de error
@@ -8196,6 +8291,7 @@ app.post('/import-tracking', (req, res, next) => {
     res.status(500).json({
       success: false,
       error: error.message,
+      stack: error.stack,
       detalles: 'La importación falló y se revirtieron los cambios'
     });
   }
