@@ -1007,6 +1007,11 @@ button {
   }
 
   .extra-tools-cero {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+
     button {
       border: 1px solid #cbd5e1;
       background: #f8fafc;
@@ -1021,6 +1026,28 @@ button {
       &:hover {
         background: #f1f5f9;
         border-color: #94a3b8;
+      }
+
+      &.btn-paste-asistido {
+        background: #eef2ff;
+        color: #4338ca;
+        border-color: #c7d2fe;
+        font-weight: 600;
+        &:hover {
+          background: #e0e7ff;
+          border-color: #818cf8;
+        }
+      }
+
+      &.btn-paste-manual {
+        background: #f5f3ff;
+        color: #6d28d9;
+        border-color: #ddd6fe;
+        font-weight: 600;
+        &:hover {
+          background: #ede9fe;
+          border-color: #a78bfa;
+        }
       }
     }
   }

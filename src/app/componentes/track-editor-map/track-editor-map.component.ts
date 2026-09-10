@@ -1854,6 +1854,189 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.editorState = 'GET_LOCATION';
   }
 
+  /**
+   * Parsea un texto o JSON para extraer coordenadas latitud y longitud.
+   * Soporta:
+   * - JSON de "Obtener Coordenada" ({"latitud": ..., "longitud": ...})
+   * - JSON con lat/lng o latitude/longitude
+   * - JSON informal sin comillas en las claves
+   * - Texto simple de coordenadas "lat, lng", "(lat, lng)" o "lat lng"
+   */
+  parseCoordinatesInput(raw: string): { lat: number; lng: number } | null {
+    if (!raw || typeof raw !== 'string') return null;
+    const str = raw.trim();
+
+    // 1. Intento JSON estándar
+    try {
+      const obj = JSON.parse(str);
+      if (obj && typeof obj === 'object') {
+        const lat = obj.latitud ?? obj.latitude ?? obj.lat;
+        const lng = obj.longitud ?? obj.longitude ?? obj.lng ?? obj.lon;
+        if (lat !== undefined && lng !== undefined) {
+          const pLat = typeof lat === 'number' ? lat : parseFloat(String(lat));
+          const pLng = typeof lng === 'number' ? lng : parseFloat(String(lng));
+          if (!isNaN(pLat) && !isNaN(pLng) && pLat >= -90 && pLat <= 90 && pLng >= -180 && pLng <= 180) {
+            return { lat: pLat, lng: pLng };
+          }
+        }
+      }
+    } catch {
+      // Si no es JSON estricto, probamos con expresiones regulares
+    }
+
+    // 2. Regex para JSON informal o clave-valor (ej: {latitud: 41.38, longitud: 2.17})
+    const jsonRegexLat = /["']?(?:latitud|latitude|lat)["']?\s*[:=]\s*([+-]?\d+(?:\.\d+)?)/i;
+    const jsonRegexLng = /["']?(?:longitud|longitude|lng|lon)["']?\s*[:=]\s*([+-]?\d+(?:\.\d+)?)/i;
+    const matchLat = str.match(jsonRegexLat);
+    const matchLng = str.match(jsonRegexLng);
+    if (matchLat && matchLng) {
+      const lat = parseFloat(matchLat[1]);
+      const lng = parseFloat(matchLng[1]);
+      if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        return { lat, lng };
+      }
+    }
+
+    // 3. Formato pares de coordenadas: "41.385123, 2.173456", "(41.385123, -2.173456)" o "41.385123 -2.173456"
+    const cleaned = str.replace(/[()[\];]/g, ' ');
+    const pairRegex = /([+-]?\d{1,2}(?:\.\d+)?)[,\s]+([+-]?\d{1,3}(?:\.\d+)?)/;
+    const matchPair = cleaned.match(pairRegex);
+    if (matchPair) {
+      const lat = parseFloat(matchPair[1]);
+      const lng = parseFloat(matchPair[2]);
+      if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        return { lat, lng };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Intenta leer el texto del portapapeles con fallback a prompt si se deniegan permisos.
+   */
+  async obtenerTextoPortapapeles(): Promise<string | null> {
+    let clipboardText = '';
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        clipboardText = (await navigator.clipboard.readText()) || '';
+      }
+    } catch (err) {
+      console.warn('Acceso al portapapeles no disponible o bloqueado:', err);
+    }
+
+    // Si ya leímos algo que contiene coordenadas válidas, lo usamos de inmediato sin molestar
+    if (clipboardText && clipboardText.trim() && this.parseCoordinatesInput(clipboardText.trim())) {
+      return clipboardText.trim();
+    }
+
+    // Fallback con diálogo prompt
+    const promptInput = window.prompt(
+      'Pega aquí las coordenadas o el JSON de la coordenada (ej: {"latitud": 41.385, "longitud": 2.173} o "41.385, 2.173"):',
+      clipboardText.trim()
+    );
+
+    return promptInput ? promptInput.trim() : null;
+  }
+
+  /**
+   * Pega coordenadas para fijar el Punto de Inicio en actividades sin GPX (Ruta Asistida o Dibujo Manual).
+   */
+  async pegarCoordenadaInicio(modo: 'asistido' | 'manual' = 'asistido') {
+    const raw = await this.obtenerTextoPortapapeles();
+    if (!raw) return;
+
+    const coords = this.parseCoordinatesInput(raw);
+    if (!coords) {
+      alert('No se pudo reconocer una coordenada válida.\n\nFormatos soportados:\n• JSON de "Obtener Coordenada" (ej: {"latitud": 41.385, "longitud": 2.173})\n• Objeto lat/lng (ej: {"lat": 41.385, "lng": 2.173})\n• Texto "latitud, longitud" (ej: 41.385123, 2.173456)');
+      return;
+    }
+
+    const latlng = L.latLng(coords.lat, coords.lng);
+    if (this.map) {
+      this.map.setView(latlng, Math.max(this.map.getZoom(), 15));
+    }
+
+    if (modo === 'manual' || this.editorState === 'DRAWING_NEW_ROUTE') {
+      if (this.editorState !== 'DRAWING_NEW_ROUTE') {
+        this.startNewRouteManual();
+      }
+      this.addNewRouteVertex(latlng);
+    } else {
+      if (this.editorState !== 'NEW_ROUTE_SELECT_A') {
+        this.startNewRouteAssisted();
+      }
+      this.setNewRouteAnchorA(latlng);
+    }
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Pega coordenadas para fijar la Llegada (B) en Ruta Asistida.
+   */
+  async pegarCoordenadaLlegada() {
+    const raw = await this.obtenerTextoPortapapeles();
+    if (!raw) return;
+
+    const coords = this.parseCoordinatesInput(raw);
+    if (!coords) {
+      alert('No se pudo reconocer una coordenada válida.');
+      return;
+    }
+
+    const latlng = L.latLng(coords.lat, coords.lng);
+    if (this.map) {
+      this.map.setView(latlng, Math.max(this.map.getZoom(), 15));
+    }
+
+    this.setNewRouteAnchorB(latlng);
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Pega coordenadas para fijar el nuevo inicio al prolongar inicio (Prepend).
+   */
+  async pegarCoordenadaPrepend() {
+    const raw = await this.obtenerTextoPortapapeles();
+    if (!raw) return;
+
+    const coords = this.parseCoordinatesInput(raw);
+    if (!coords) {
+      alert('No se pudo reconocer una coordenada válida.');
+      return;
+    }
+
+    const latlng = L.latLng(coords.lat, coords.lng);
+    if (this.map) {
+      this.map.setView(latlng, Math.max(this.map.getZoom(), 15));
+    }
+
+    this.setInsertAnchorAVirtual(latlng);
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Pega coordenadas para fijar el nuevo fin al prolongar final (Append).
+   */
+  async pegarCoordenadaAppend() {
+    const raw = await this.obtenerTextoPortapapeles();
+    if (!raw) return;
+
+    const coords = this.parseCoordinatesInput(raw);
+    if (!coords) {
+      alert('No se pudo reconocer una coordenada válida.');
+      return;
+    }
+
+    const latlng = L.latLng(coords.lat, coords.lng);
+    if (this.map) {
+      this.map.setView(latlng, Math.max(this.map.getZoom(), 15));
+    }
+
+    this.setInsertAnchorBVirtual(latlng);
+    this.cdr.detectChanges();
+  }
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // MODOS DE TRAZADO INICIAL DESDE CERO (Ruta sin puntos previos)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

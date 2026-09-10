@@ -131,7 +131,13 @@
           </div>
         </button>
       </div>
-      <div class="extra-tools-cero" style="display: flex; gap: 8px; margin-top: 10px;">
+      <div class="extra-tools-cero" style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+        <button class="btn-tool btn-paste-asistido" (click)="pegarCoordenadaInicio('asistido')" title="Pegar coordenadas del portapapeles y comenzar Ruta Asistida fijando la Salida (A)">
+          📋 Pegar Salida (Asistida)
+        </button>
+        <button class="btn-tool btn-paste-manual" (click)="pegarCoordenadaInicio('manual')" title="Pegar coordenadas del portapapeles y fijar el primer punto de Dibujo Manual">
+          📋 Pegar Inicio (Manual)
+        </button>
         <button class="btn-tool btn-location-float" (click)="startGetLocationMode()" title="Obtener coordenadas GPS al hacer clic">
           📍 Obtener Coordenada
         </button>
@@ -468,11 +474,12 @@
   </div>
 
   <!-- Panel de Insert / Append / Prepend / Nueva Ruta (Fase 2.1.b + 2.2 Routing Asistido) -->
-  <div class="editor-sidebar insert-mode" *ngIf="editorState === 'PREPEND_SELECTING_A' || editorState === 'SELECTING_A' || editorState === 'SELECTING_B' || editorState === 'SELECTING_MODE' || editorState === 'DRAWING_INSERT' || editorState === 'PREVIEW_INSERT' || editorState === 'CALCULATING_ROUTE' || editorState === 'PREVIEW_ROUTE' || editorState === 'NEW_ROUTE_SELECT_A' || editorState === 'NEW_ROUTE_SELECT_B' || editorState === 'DRAWING_NEW_ROUTE'">
+  <div class="editor-sidebar insert-mode" *ngIf="editorState === 'PREPEND_SELECTING_A' || editorState === 'APPEND_SELECTING_B' || editorState === 'SELECTING_A' || editorState === 'SELECTING_B' || editorState === 'SELECTING_MODE' || editorState === 'DRAWING_INSERT' || editorState === 'PREVIEW_INSERT' || editorState === 'CALCULATING_ROUTE' || editorState === 'PREVIEW_ROUTE' || editorState === 'NEW_ROUTE_SELECT_A' || editorState === 'NEW_ROUTE_SELECT_B' || editorState === 'DRAWING_NEW_ROUTE'">
     <div class="sidebar-header" [style.background]="activeFlow === 'PREPEND' ? '#059669' : (activeFlow === 'APPEND' ? '#0d9488' : (activeFlow === 'NEW_ROUTE' || activeFlow === 'NEW_ROUTE_MANUAL' ? '#4f46e5' : '#8b5cf6'))">
       <h3>{{ activeFlow === 'PREPEND' ? 'Prolongar Inicio' : (activeFlow === 'APPEND' ? 'Prolongar Final' : (activeFlow === 'NEW_ROUTE' ? 'Trazar Ruta Asistida' : (activeFlow === 'NEW_ROUTE_MANUAL' ? 'Trazar Ruta Manual' : 'Insertar Tramo'))) }}</h3>
       <p class="subtitle" *ngIf="editorState === 'SELECTING_A'">Paso 1: Haz clic en la ruta para seleccionar Inicio (A)</p>
       <p class="subtitle" *ngIf="editorState === 'PREPEND_SELECTING_A'">Paso 1: Haz clic en el mapa para fijar el nuevo punto de inicio (A)</p>
+      <p class="subtitle" *ngIf="editorState === 'APPEND_SELECTING_B'">Paso 1: Haz clic en el mapa para fijar el nuevo punto final (B)</p>
       <p class="subtitle" *ngIf="editorState === 'NEW_ROUTE_SELECT_A'">Paso 1: Haz clic en el mapa para marcar la Salida (A)</p>
       <p class="subtitle" *ngIf="editorState === 'SELECTING_B'">Paso 2: Haz clic en la ruta para seleccionar Fin (B)</p>
       <p class="subtitle" *ngIf="editorState === 'NEW_ROUTE_SELECT_B'">Paso 2: Haz clic en el mapa para marcar la Llegada (B)</p>
@@ -503,6 +510,43 @@
           <span *ngIf="!insertAnchorB">Esperando clic...</span>
         </div>
       </div>
+    </div>
+
+    <!-- Acciones de pegado de coordenadas para puntos A / B -->
+    <div class="actions-panel" style="margin-top: 12px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;" *ngIf="editorState === 'NEW_ROUTE_SELECT_A'">
+      <p style="margin: 0 0 8px 0; font-size: 13px; color: #475569;">
+        Haz clic en el mapa para marcar la <strong>Salida (A)</strong> o pega su coordenada GPS:
+      </p>
+      <button class="btn-primary" style="background: #4f46e5; border-color: #4f46e5; color: white; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 600;" (click)="pegarCoordenadaInicio('asistido')">
+        📋 Pegar Coordenada Salida (A)
+      </button>
+    </div>
+
+    <div class="actions-panel" style="margin-top: 12px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;" *ngIf="editorState === 'NEW_ROUTE_SELECT_B'">
+      <p style="margin: 0 0 8px 0; font-size: 13px; color: #475569;">
+        Haz clic en el mapa para marcar la <strong>Llegada (B)</strong> o pega su coordenada GPS:
+      </p>
+      <button class="btn-primary" style="background: #ef4444; border-color: #ef4444; color: white; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 600;" (click)="pegarCoordenadaLlegada()">
+        📋 Pegar Coordenada Llegada (B)
+      </button>
+    </div>
+
+    <div class="actions-panel" style="margin-top: 12px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;" *ngIf="editorState === 'PREPEND_SELECTING_A'">
+      <p style="margin: 0 0 8px 0; font-size: 13px; color: #475569;">
+        Haz clic en el mapa para fijar el <strong>nuevo inicio</strong> o pega su coordenada GPS:
+      </p>
+      <button class="btn-primary" style="background: #059669; border-color: #059669; color: white; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 600;" (click)="pegarCoordenadaPrepend()">
+        📋 Pegar Coordenada Nuevo Inicio (A)
+      </button>
+    </div>
+
+    <div class="actions-panel" style="margin-top: 12px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;" *ngIf="editorState === 'APPEND_SELECTING_B'">
+      <p style="margin: 0 0 8px 0; font-size: 13px; color: #475569;">
+        Haz clic en el mapa para fijar el <strong>nuevo final</strong> o pega su coordenada GPS:
+      </p>
+      <button class="btn-primary" style="background: #0d9488; border-color: #0d9488; color: white; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 600;" (click)="pegarCoordenadaAppend()">
+        📋 Pegar Coordenada Nuevo Fin (B)
+      </button>
     </div>
 
     <!-- ═══ PANEL DE DECISIÓN (Fase 2.2) ═══ -->
@@ -572,6 +616,12 @@
         <p class="append-info" *ngIf="editorState !== 'DRAWING_NEW_ROUTE'">
           <strong>{{ insertPoints.length }}</strong> vértice{{ insertPoints.length !== 1 ? 's' : '' }} insertado{{ insertPoints.length !== 1 ? 's' : '' }}
         </p>
+
+        <!-- Botón para pegar coordenadas en Dibujo Manual -->
+        <button class="btn-tool" *ngIf="editorState === 'DRAWING_NEW_ROUTE'" (click)="pegarCoordenadaInicio('manual')" style="width: 100%; margin-bottom: 12px; background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe; font-weight: 600; padding: 8px 12px; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;">
+          📋 {{ newRouteManualPoints.length === 0 ? 'Pegar Coordenada de Inicio' : 'Pegar Siguiente Coordenada' }}
+        </button>
+
         <p class="warning-text" *ngIf="editorState === 'DRAWING_NEW_ROUTE'">Haz clic en el mapa para marcar los puntos de tu ruta. Puedes arrastrar los puntos para ajustar o hacer clic derecho para eliminar un punto.</p>
         <p class="warning-text" *ngIf="editorState === 'DRAWING_INSERT'">Haz clic en el mapa para añadir vértices. Arrastra los puntos violeta para ajustar.</p>
         
