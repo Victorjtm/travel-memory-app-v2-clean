@@ -112,8 +112,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   anchorA: TrackAnchor | null = null;
   anchorB: TrackAnchor | null = null;
 
-  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' | 'APPEND_SELECTING_B' | 'PREPEND_SELECTING_A' | 'IDLE' | 'SELECTING_A' | 'SELECTING_B' | 'SELECTING_MODE' | 'DRAWING_INSERT' | 'PREVIEW_INSERT' | 'CALCULATING_ROUTE' | 'PREVIEW_ROUTE' | 'GET_LOCATION' = 'SELECTING';
-  activeFlow: 'INSERT' | 'APPEND' | 'PREPEND' | null = null;
+  editorState: 'SELECTING' | 'EDITING_GEOMETRY' | 'APPENDING' | 'APPEND_SELECTING_B' | 'PREPEND_SELECTING_A' | 'IDLE' | 'SELECTING_A' | 'SELECTING_B' | 'SELECTING_MODE' | 'DRAWING_INSERT' | 'PREVIEW_INSERT' | 'CALCULATING_ROUTE' | 'PREVIEW_ROUTE' | 'GET_LOCATION' | 'NEW_ROUTE_SELECT_A' | 'NEW_ROUTE_SELECT_B' | 'DRAWING_NEW_ROUTE' = 'SELECTING';
+  activeFlow: 'INSERT' | 'APPEND' | 'PREPEND' | 'NEW_ROUTE' | 'NEW_ROUTE_MANUAL' | null = null;
 
   // --- Routing asistido (Fase 2.2) ---
   routingProfile: string = 'driving';
@@ -160,9 +160,48 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     private cdr: ChangeDetectorRef
   ) {}
 
+  // 🔍 Buscador de lugares en el mapa
+  busquedaLugar: string = '';
+  buscandoLugar: boolean = false;
+  errorBusquedaLugar: string | null = null;
+
+  async buscarLugar(): Promise<void> {
+    const q = (this.busquedaLugar || '').trim();
+    if (!q || !this.map) return;
+
+    this.buscandoLugar = true;
+    this.errorBusquedaLugar = null;
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const lat = parseFloat(data[0].lat);
+        const lon = parseFloat(data[0].lon);
+        this.map.flyTo([lat, lon], 14, { duration: 1.5 });
+      } else {
+        this.errorBusquedaLugar = 'No se encontró el lugar. Prueba con otra ciudad o dirección.';
+      }
+    } catch (err) {
+      console.warn('Error buscando lugar en mapa:', err);
+      this.errorBusquedaLugar = 'Error en el servicio de búsqueda.';
+    } finally {
+      this.buscandoLugar = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  // ✏️ Variables para dibujo manual desde cero
+  newRouteManualPoints: { lat: number; lng: number }[] = [];
+  newRouteManualVertices: L.Marker[] = [];
+  private newRouteManualLine: L.Polyline | null = null;
+
   ngOnInit() {}
 
   ngOnChanges(changes: SimpleChanges) {
+    if (!this.map && this.mapContainer) {
+      this.initMap();
+    }
     if ((changes['gpxPoints'] || changes['trackEdits'] || changes['mediaGroups']) && this.map) {
       this.drawBaseAndEdits();
     }
@@ -170,6 +209,11 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
   ngAfterViewInit() {
     this.initMap();
+    setTimeout(() => {
+      if (this.map) {
+        this.map.invalidateSize();
+      }
+    }, 250);
   }
 
   ngOnDestroy() {
@@ -179,13 +223,30 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   private initMap() {
-    if (!this.mapContainer || !this.gpxPoints || this.gpxPoints.length === 0) return;
+    if (!this.mapContainer || this.map) return;
+
+    let initialCenter: [number, number] = [40.4168, -3.7038];
+    let initialZoom = 6;
+
+    if (this.gpxPoints && this.gpxPoints.length > 0) {
+      initialCenter = [this.gpxPoints[0].lat, this.gpxPoints[0].lng];
+      initialZoom = 13;
+    } else if (this.mediaGroups && this.mediaGroups.length > 0 && this.mediaGroups[0].lat && this.mediaGroups[0].lng) {
+      initialCenter = [this.mediaGroups[0].lat, this.mediaGroups[0].lng];
+      initialZoom = 14;
+    } else if (this.archivosMedia && this.archivosMedia.length > 0) {
+      const firstWithCoords = this.archivosMedia.find(a => (a.latitud || a.lat) && (a.longitud || a.lng));
+      if (firstWithCoords) {
+        initialCenter = [firstWithCoords.latitud || firstWithCoords.lat, firstWithCoords.longitud || firstWithCoords.lng];
+        initialZoom = 14;
+      }
+    }
 
     this.map = L.map(this.mapContainer.nativeElement, {
       attributionControl: true,
       zoomControl: true,
       preferCanvas: true
-    }).setView([this.gpxPoints[0].lat, this.gpxPoints[0].lng], 13);
+    }).setView(initialCenter, initialZoom);
 
     // --- CAPAS BASE (SATÉLITE Y MAPA) ---
     const satellite = L.tileLayer(
@@ -509,6 +570,21 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     if (this.editorState === 'DRAWING_INSERT') {
       this.addInsertVertex(e.latlng);
+      return;
+    }
+
+    if (this.editorState === 'DRAWING_NEW_ROUTE') {
+      this.addNewRouteVertex(e.latlng);
+      return;
+    }
+
+    if (this.editorState === 'NEW_ROUTE_SELECT_A') {
+      this.setNewRouteAnchorA(e.latlng);
+      return;
+    }
+
+    if (this.editorState === 'NEW_ROUTE_SELECT_B') {
+      this.setNewRouteAnchorB(e.latlng);
       return;
     }
 
@@ -1754,18 +1830,169 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.editorState = 'GET_LOCATION';
   }
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // MODOS DE TRAZADO INICIAL DESDE CERO (Ruta sin puntos previos)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  startNewRouteAssisted() {
+    if (!this.map) return;
+    this.clearSelection();
+    this.cleanupInsertMode();
+    this.cleanupAppendMode();
+    this.cleanupGeometryMode();
+    this.cleanupNewRouteMode();
+
+    this.activeFlow = 'NEW_ROUTE';
+    this.editorState = 'NEW_ROUTE_SELECT_A';
+    this.cdr.detectChanges();
+  }
+
+  private setNewRouteAnchorA(latlng: L.LatLng) {
+    if (!this.map) return;
+    this.insertAnchorA = {
+      index: 0,
+      lat: latlng.lat,
+      lng: latlng.lng
+    };
+
+    if (this.insertMarkerA) { this.insertMarkerA.remove(); }
+    this.insertMarkerA = L.circleMarker([latlng.lat, latlng.lng], {
+      color: 'white', fillColor: '#22c55e', fillOpacity: 1, radius: 9, weight: 3
+    }).addTo(this.map).bindTooltip('Salida (A)', { permanent: true, direction: 'right' }).openTooltip();
+
+    this.editorState = 'NEW_ROUTE_SELECT_B';
+    this.cdr.detectChanges();
+  }
+
+  private setNewRouteAnchorB(latlng: L.LatLng) {
+    if (!this.map || !this.insertAnchorA) return;
+    this.insertAnchorB = {
+      index: 1,
+      lat: latlng.lat,
+      lng: latlng.lng
+    };
+
+    if (this.insertMarkerB) { this.insertMarkerB.remove(); }
+    this.insertMarkerB = L.circleMarker([latlng.lat, latlng.lng], {
+      color: 'white', fillColor: '#ef4444', fillOpacity: 1, radius: 9, weight: 3
+    }).addTo(this.map).bindTooltip('Llegada (B)', { permanent: true, direction: 'right' }).openTooltip();
+
+    this.editorState = 'SELECTING_MODE';
+    this.cdr.detectChanges();
+  }
+
+  startNewRouteManual() {
+    if (!this.map) return;
+    this.clearSelection();
+    this.cleanupInsertMode();
+    this.cleanupAppendMode();
+    this.cleanupGeometryMode();
+    this.cleanupNewRouteMode();
+
+    this.activeFlow = 'NEW_ROUTE_MANUAL';
+    this.editorState = 'DRAWING_NEW_ROUTE';
+    this.newRouteManualLine = L.polyline([], {
+      color: '#8b5cf6',
+      weight: 5,
+      dashArray: '5, 5'
+    }).addTo(this.map);
+    this.cdr.detectChanges();
+  }
+
+  private addNewRouteVertex(latlng: L.LatLng) {
+    if (!this.map || !this.newRouteManualLine) return;
+
+    this.newRouteManualPoints.push({ lat: latlng.lat, lng: latlng.lng });
+
+    const marker = L.marker(latlng, {
+      draggable: true,
+      icon: L.divIcon({
+        className: 'newroute-vertex-icon',
+        html: '<div style="width: 14px; height: 14px; background: #8b5cf6; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>',
+        iconSize: [14, 14],
+        iconAnchor: [7, 7]
+      })
+    }).addTo(this.map);
+
+    marker.on('drag', () => this.updateNewRouteManualLine());
+    marker.on('contextmenu', () => this.removeNewRouteVertex(marker));
+
+    this.newRouteManualVertices.push(marker);
+    this.updateNewRouteManualLine();
+    this.cdr.detectChanges();
+  }
+
+  private removeNewRouteVertex(marker: L.Marker) {
+    if (!this.map) return;
+    const idx = this.newRouteManualVertices.indexOf(marker);
+    if (idx !== -1) {
+      this.newRouteManualVertices.splice(idx, 1);
+      this.newRouteManualPoints.splice(idx, 1);
+    }
+    marker.remove();
+    this.updateNewRouteManualLine();
+    this.cdr.detectChanges();
+  }
+
+  private updateNewRouteManualLine() {
+    if (!this.newRouteManualLine) return;
+    const latLngs = this.newRouteManualVertices.map(m => m.getLatLng());
+    this.newRouteManualLine.setLatLngs(latLngs);
+    this.newRouteManualPoints = this.newRouteManualVertices.map(m => ({
+      lat: m.getLatLng().lat,
+      lng: m.getLatLng().lng
+    }));
+  }
+
+  finishNewRouteManual() {
+    if (this.newRouteManualPoints.length < 2) {
+      alert('Debes marcar al menos 2 puntos en el mapa para trazar la ruta inicial.');
+      return;
+    }
+    const first = this.newRouteManualPoints[0];
+    const last = this.newRouteManualPoints[this.newRouteManualPoints.length - 1];
+    this.insertAnchorA = { index: 0, lat: first.lat, lng: first.lng };
+    this.insertAnchorB = { index: 1, lat: last.lat, lng: last.lng };
+    this.insertPoints = this.newRouteManualPoints.slice(1, -1);
+
+    this.editorState = 'SELECTING_MODE';
+    this.cdr.detectChanges();
+  }
+
+  cancelNewRouteMode() {
+    this.cleanupNewRouteMode();
+    this.cleanupInsertMode();
+    this.editorState = 'SELECTING';
+    this.cdr.detectChanges();
+  }
+
+  private cleanupNewRouteMode() {
+    if (this.newRouteManualLine) {
+      this.newRouteManualLine.remove();
+      this.newRouteManualLine = null;
+    }
+    this.newRouteManualVertices.forEach(m => m.remove());
+    this.newRouteManualVertices = [];
+    this.newRouteManualPoints = [];
+    if (this.activeFlow === 'NEW_ROUTE' || this.activeFlow === 'NEW_ROUTE_MANUAL') {
+      this.activeFlow = null;
+    }
+  }
+
   startInsertMode() {
     if (!this.map || this.gpxPoints.length === 0) return;
     this.clearSelection();
     this.cleanupAppendMode();
     this.cleanupGeometryMode();
     this.cleanupInsertMode();
+    this.cleanupNewRouteMode();
     this.activeFlow = 'INSERT';
     this.editorState = 'SELECTING_A';
   }
 
   cancelInsertMode() {
     this.cleanupInsertMode();
+    this.cleanupNewRouteMode();
     this.editorState = 'SELECTING';
   }
 
@@ -1784,6 +2011,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.routingResult = null;
     this.routingError = null;
     this.activeFlow = null;
+    this.cleanupNewRouteMode();
 
     if (this.polylinesGroup) {
       this.polylinesGroup.setStyle({ opacity: 1 });
@@ -1922,7 +2150,81 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // Densificar automáticamente tramos largos (ej. en el mar o vuelos) para tener puntos cada ~300m
     fullPointsArray = this.trackEditorService.densifyPoints(fullPointsArray, 300);
 
-    if (this.activeFlow === 'APPEND') {
+    if (this.activeFlow === 'NEW_ROUTE' || this.activeFlow === 'NEW_ROUTE_MANUAL' || this.gpxPoints.length === 0) {
+      let startMs = Date.now();
+      if (this.archivosMedia && this.archivosMedia.length > 0) {
+        for (const a of this.archivosMedia) {
+          const raw = a.timestampReal || a.horaCaptura || a.fechaCreacion || a.fecha;
+          const parsed = (this.trackEditorService as any)['parseFlexibleDate']?.(raw, a.nombreArchivo);
+          if (parsed) {
+            startMs = parsed;
+            break;
+          }
+        }
+      }
+
+      const speedMps = this.trackEditorService.getModeSpeedMps(appliedMode);
+      let totalDistMetros = 0;
+      for (let i = 0; i < fullPointsArray.length - 1; i++) {
+        totalDistMetros += this.trackEditorService.getDistance(
+          fullPointsArray[i].lat, fullPointsArray[i].lng,
+          fullPointsArray[i + 1].lat, fullPointsArray[i + 1].lng
+        );
+      }
+      const duracionSeg = Math.max(1, totalDistMetros / speedMps);
+      const endMs = startMs + (duracionSeg * 1000);
+
+      let currentDist = 0;
+      fullPointsArray.forEach((pt, idx) => {
+        if (idx === 0) {
+          pt.time = new Date(startMs);
+        } else if (idx === fullPointsArray.length - 1) {
+          pt.time = new Date(endMs);
+        } else {
+          const d = this.trackEditorService.getDistance(
+            fullPointsArray[idx - 1].lat, fullPointsArray[idx - 1].lng,
+            pt.lat, pt.lng
+          );
+          currentDist += d;
+          const ratio = totalDistMetros > 0 ? currentDist / totalDistMetros : (idx / (fullPointsArray.length - 1));
+          pt.time = new Date(startMs + (endMs - startMs) * ratio);
+        }
+      });
+
+      this.gpxPoints = fullPointsArray.map(pt => ({
+        lat: pt.lat,
+        lng: pt.lng,
+        time: pt.time instanceof Date ? pt.time : new Date(pt.time),
+        mode: appliedMode,
+        distAcum: 0,
+        timeAcum: 0
+      }));
+
+      const editId = Math.random().toString(36).substring(2, 9);
+      this.pendingEdits.push({
+        id: editId,
+        type: 'create_route',
+        description: `${this.pendingEdits.length + 1} - Ruta inicial (${appliedMode})`,
+        data: {
+          points: fullPointsArray,
+          mode: appliedMode
+        },
+        isHidden: false
+      });
+
+      this.cleanupInsertMode();
+      this.cleanupNewRouteMode();
+      this.editorState = 'SELECTING';
+      this.actualizarTramosDisponibles();
+      this.drawBaseAndEdits();
+      if (this.map && this.polylinesGroup && this.polylinesGroup.getLayers().length > 0) {
+        this.map.fitBounds(this.polylinesGroup.getBounds());
+      }
+      if (this.mostrarTiempos) {
+        this.updateTimeMarkers();
+      }
+      return;
+    } else if (this.activeFlow === 'APPEND') {
       // 1. Obtener timestamp de inicio válido
       let startMs = this.insertAnchorA.time ? new Date(this.insertAnchorA.time).getTime() : NaN;
       if (isNaN(startMs)) {

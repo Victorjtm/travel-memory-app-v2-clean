@@ -2040,11 +2040,21 @@ export class ActividadesItinerariosComponent implements OnInit {
                 };
                 reader.readAsText(blob);
               },
-              error: err => console.error('Error cargando GPX para editor:', err)
+              error: err => {
+                console.warn('⚠️ No se encontró GPX previo para actividad (posible nueva ruta manual):', err);
+                this.gpxPointsEditor = [];
+                this.mostrarEditorTrack = true;
+                this.cdr.detectChanges();
+              }
             });
           }
         },
-        error: err => console.error('Error cargando segments para editor:', err)
+        error: err => {
+          console.error('Error cargando segments para editor:', err);
+          this.gpxPointsEditor = [];
+          this.mostrarEditorTrack = true;
+          this.cdr.detectChanges();
+        }
       });
     };
 
@@ -2143,7 +2153,7 @@ export class ActividadesItinerariosComponent implements OnInit {
             points,
             'user-append'
           ));
-        } else if (edit.type === 'insert_segment' && edit.data?.points) {
+        } else if ((edit.type === 'insert_segment' || edit.type === 'create_route') && edit.data?.points) {
           const points = edit.data.points.map((p: any) => ({
             lat: p.lat,
             lng: p.lng,
@@ -2151,10 +2161,11 @@ export class ActividadesItinerariosComponent implements OnInit {
             mode: edit.data.mode || p.mode
           }));
 
+          const source = edit.type === 'create_route' ? 'original' : 'user-insert';
           await firstValueFrom(this.trackEditorService.createSegment(
             this.actividadEditorId,
             points,
-            'user-insert'
+            source
           ));
         } else if (edit.type === 'override_mode') {
           const startIdx = this.trackEditorService.resolveAnchor(edit.data.startAnchor, this.gpxPointsEditor);
