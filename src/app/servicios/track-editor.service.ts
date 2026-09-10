@@ -905,7 +905,7 @@ export class TrackEditorService {
       }
     }
 
-    return accumulatedPoints;
+    return this.recalculateAccumulators(accumulatedPoints);
   }
 
   /**

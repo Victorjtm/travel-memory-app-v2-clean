@@ -813,6 +813,19 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
     });
 
+    // Puntos de empalme de prolongaciones de inicio (prepends) pendientes
+    const pendingPrepends = this.pendingEdits.filter(e => e.type === 'prepend_segment');
+    pendingPrepends.forEach((prepEdit, idx) => {
+      const eIdx = prepEdit.data?.endAnchor?.index;
+      if (eIdx !== undefined && eIdx >= 0 && eIdx < this.gpxPoints.length) {
+        puntosClave.push({
+          gpxIdx: eIdx,
+          nombre: `Empalme Inicio #${idx + 1}`,
+          tipo: 'modo'
+        });
+      }
+    });
+
     // Punto final
     puntosClave.push({
       gpxIdx: this.gpxPoints.length - 1,
@@ -1006,6 +1019,17 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         const count = edit.data?.addedPointsCount || (edit.data?.points ? edit.data.points.length - 1 : 0);
         if (count > 0 && this.gpxPoints.length >= count) {
           this.gpxPoints.splice(0, count);
+          for (const otherEdit of this.pendingEdits) {
+            if (otherEdit.id !== editId) {
+              if (otherEdit.data?.startAnchor?.index !== undefined && otherEdit.data.startAnchor.index >= count) {
+                otherEdit.data.startAnchor.index -= count;
+              }
+              if (otherEdit.data?.endAnchor?.index !== undefined && otherEdit.data.endAnchor.index >= count) {
+                otherEdit.data.endAnchor.index -= count;
+              }
+            }
+          }
+          this.gpxPoints = this.trackEditorService.recalculateAccumulators(this.gpxPoints);
         }
       }
     }
@@ -2337,7 +2361,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
       return;
     } else if (this.activeFlow === 'PREPEND') {
-      // Calcular tiempos hacia atrás si insertAnchorB tiene tiempo
+      // 1. Obtener timestamp de llegada (punto B, que es el inicio existente grabado)
       let endMs = this.insertAnchorB.time ? new Date(this.insertAnchorB.time).getTime() : NaN;
       if (isNaN(endMs) && this.gpxPoints[0]?.time) {
         const t = this.gpxPoints[0].time;
@@ -2347,16 +2371,34 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         endMs = Date.now();
       }
 
-      const speedMps = this.trackEditorService.getModeSpeedMps(appliedMode);
-      let totalDistMetros = 0;
+      // 2. Determinar la duración del nuevo tramo
+      // Si tenemos la duración exacta calculada por el enrutador (OSRM / RoutingService), la usamos prioritariamente
+      let duracionSeg = 0;
+      if (this.routingResult && this.routingResult.durationSeconds && this.routingResult.durationSeconds > 0) {
+        duracionSeg = Math.round(this.routingResult.durationSeconds);
+      } else {
+        const speedMps = this.trackEditorService.getModeSpeedMps(appliedMode);
+        let totalDistMetros = 0;
+        for (let i = 0; i < fullPointsArray.length - 1; i++) {
+          totalDistMetros += this.trackEditorService.getDistance(
+            fullPointsArray[i].lat, fullPointsArray[i].lng,
+            fullPointsArray[i + 1].lat, fullPointsArray[i + 1].lng
+          );
+        }
+        duracionSeg = Math.max(1, Math.round(totalDistMetros / speedMps));
+      }
+
+      // 3. El tiempo retrocede hacia atrás desde endMs
+      const startMs = endMs - (duracionSeg * 1000);
+
+      // 4. Calcular distancia acumulada del tramo nuevo para distribuir los tiempos proporcionalmente
+      let totalTramoDist = 0;
       for (let i = 0; i < fullPointsArray.length - 1; i++) {
-        totalDistMetros += this.trackEditorService.getDistance(
+        totalTramoDist += this.trackEditorService.getDistance(
           fullPointsArray[i].lat, fullPointsArray[i].lng,
           fullPointsArray[i + 1].lat, fullPointsArray[i + 1].lng
         );
       }
-      const duracionSeg = Math.max(1, totalDistMetros / speedMps);
-      const startMs = endMs - (duracionSeg * 1000);
 
       let currentDist = 0;
       fullPointsArray.forEach((pt, idx) => {
@@ -2370,12 +2412,12 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
             pt.lat, pt.lng
           );
           currentDist += d;
-          const ratio = totalDistMetros > 0 ? currentDist / totalDistMetros : (idx / (fullPointsArray.length - 1));
+          const ratio = totalTramoDist > 0 ? currentDist / totalTramoDist : (idx / (fullPointsArray.length - 1));
           pt.time = new Date(startMs + (endMs - startMs) * ratio);
         }
       });
 
-      // Insertar los puntos al principio de this.gpxPoints (omitiendo el último punto que coincide con insertAnchorB)
+      // 5. Extraer los puntos a anteponer (omitiendo el último punto que coincide con insertAnchorB)
       const pointsToPrepend = fullPointsArray.slice(0, -1).map(pt => ({
         lat: pt.lat,
         lng: pt.lng,
@@ -2384,8 +2426,25 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         distAcum: 0,
         timeAcum: 0
       }));
+
+      // 6. Desplazar los índices de las ediciones pendientes previas para evitar corrupción de anclas
+      const offsetCount = pointsToPrepend.length;
+      for (const edit of this.pendingEdits) {
+        if (edit.data?.startAnchor?.index !== undefined && edit.data.startAnchor.index >= 0) {
+          edit.data.startAnchor.index += offsetCount;
+        }
+        if (edit.data?.endAnchor?.index !== undefined && edit.data.endAnchor.index >= 0) {
+          edit.data.endAnchor.index += offsetCount;
+        }
+      }
+
+      // 7. Anteponer los puntos al track en memoria
       this.gpxPoints.unshift(...pointsToPrepend);
 
+      // 8. Recalcular limpiamente distAcum y timeAcum para toda la ruta
+      this.gpxPoints = this.trackEditorService.recalculateAccumulators(this.gpxPoints);
+
+      // 9. Registrar la edición en pendingEdits
       const editId = Math.random().toString(36).substring(2, 9);
       this.pendingEdits.push({
         id: editId,
@@ -2416,6 +2475,15 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       this.drawBaseAndEdits();
       if (this.mostrarTiempos) {
         this.updateTimeMarkers();
+      }
+
+      // Auto-seleccionar el nuevo tramo prolongado para edición inmediata
+      const newTramo = this.tramosDisponibles.find(t => t.startIdx === 0);
+      if (newTramo) {
+        this.onSelectTramoFromDropdown(newTramo.id);
+      } else {
+        this.setAnchor(0);
+        this.setAnchor(pointsToPrepend.length);
       }
       return;
     } else {
@@ -2592,16 +2660,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   getVirtualFirstPoint(): { lat: number, lng: number, time?: any } {
-    let firstPt = this.gpxPoints[0];
-    const prepends = this.pendingEdits.filter(e => e.type === 'prepend_segment');
-    if (prepends.length > 0) {
-      const firstPrepend = prepends[0];
-      const pts = firstPrepend.data.points;
-      if (pts && pts.length > 0) {
-        firstPt = pts[0];
-      }
-    }
-    return firstPt;
+    return this.gpxPoints[0];
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
