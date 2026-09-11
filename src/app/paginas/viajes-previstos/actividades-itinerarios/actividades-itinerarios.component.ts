@@ -1040,7 +1040,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         archivo.audioAsociado = audioRelacionado.rutaArchivo;
       }
 
-      // 2. Extraer Lugar (Parseo conservador de la ubicaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n texto)
+      // 2. Extraer Lugar (Parseo conservador de la ubicación texto)
       try {
         const geoData = typeof archivo.geolocalizacion === 'string'
           ? JSON.parse(archivo.geolocalizacion)
@@ -1060,14 +1060,25 @@ export class ActividadesItinerariosComponent implements OnInit {
 
         const lat = geoData.latitud ?? geoData.latitude;
         const lng = geoData.longitud ?? geoData.longitude;
-        // Reconstruimos el timestamp exacto a partir de los campos editables de la BD
+        // Reconstruimos el timestamp exacto a partir de los campos editables de la BD o metadatos
         let timestamp = 0;
-        if (archivo.fechaCreacion) {
+        if (archivo.metadatos) {
+          try {
+            const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
+            if (meta?.timestamp) {
+              timestamp = new Date(meta.timestamp).getTime();
+            }
+          } catch (e) { }
+        }
+        if (!timestamp && (archivo.fechaTomada || archivo.fechaHora || archivo.fecha)) {
+          timestamp = new Date(archivo.fechaTomada || archivo.fechaHora || archivo.fecha).getTime() || 0;
+        }
+        if (!timestamp && archivo.fechaCreacion) {
           const fecha = new Date(archivo.fechaCreacion);
           if (archivo.horaCaptura) {
-            const [horas, minutos] = archivo.horaCaptura.split(':').map(Number);
+            const [horas, minutos, segs] = archivo.horaCaptura.split(':').map(Number);
             if (!isNaN(horas) && !isNaN(minutos)) {
-              fecha.setHours(horas, minutos, 0, 0);
+              fecha.setHours(horas, minutos, segs || 0, 0);
             }
           }
           timestamp = fecha.getTime();
@@ -1075,24 +1086,46 @@ export class ActividadesItinerariosComponent implements OnInit {
 
         if (lat && lng) {
           archivo.timestampReal = timestamp; // Guardamos para mostrarlo luego
-          return { archivo, lat, lng, timestamp };
+
+          let trackIdx = 0;
+          if (this.coordenadasGPX && this.coordenadasGPX.length > 0) {
+            let minDist = Infinity;
+            for (let i = 0; i < this.coordenadasGPX.length; i++) {
+              const pt = this.coordenadasGPX[i];
+              const d = Math.hypot(pt[0] - lat, pt[1] - lng);
+              if (d < minDist) {
+                minDist = d;
+                trackIdx = i;
+                if (d < 0.0001) break;
+              }
+            }
+          }
+
+          return { archivo, lat, lng, timestamp, trackIdx };
         }
       } catch (err) {
-        console.warn(`ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Error parseando ${archivo.nombreArchivo}:`, err);
+        console.warn(`⚠️ Error parseando ${archivo.nombreArchivo}:`, err);
       }
       return null;
     }).filter(Boolean);
 
-    archivosConCoordenadas.sort((a, b) => {
-      const timeA = new Date(a!.timestamp).getTime() || 0;
-      const timeB = new Date(b!.timestamp).getTime() || 0;
-      return timeA - timeB;
-    });
+    if (this.coordenadasGPX && this.coordenadasGPX.length > 0) {
+      archivosConCoordenadas.sort((a, b) => {
+        if (a!.trackIdx !== b!.trackIdx) return a!.trackIdx - b!.trackIdx;
+        return (a!.timestamp || 0) - (b!.timestamp || 0);
+      });
+    } else {
+      archivosConCoordenadas.sort((a, b) => {
+        const timeA = new Date(a!.timestamp).getTime() || 0;
+        const timeB = new Date(b!.timestamp).getTime() || 0;
+        return timeA - timeB;
+      });
+    }
 
     const grupos = this.agruparArchivosPorUbicacion(archivosConCoordenadas);
     this.gruposEditor = grupos; // Almacenar para pasar al editor
 
-    // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚Â¨ FASE 2: Sincronizar array lineal con los grupos del mapa
+    // ✨ FASE 2: Sincronizar array lineal con los grupos del mapa
     this.fotosActividad = [];
 
     grupos.forEach((grupo, index) => {
@@ -1105,7 +1138,7 @@ export class ActividadesItinerariosComponent implements OnInit {
         numeroSecuencial
       );
 
-      // Alimentar la galerÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­a lateral con el orden y nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºmero exacto del mapa
+      // Alimentar la galería lateral con el orden y número exacto del mapa
       grupo.archivos.forEach((item: any) => {
         item.archivo.numeroSecuencial = numeroSecuencial;
         this.fotosActividad.push(item.archivo);
@@ -1114,7 +1147,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   private agruparArchivosPorUbicacion(archivosConCoordenadas: any[]): any[] {
-    const TOLERANCIA_GPS = 0.0001; // ~10 metros
+    const TOLERANCIA_GPS = 0.00015; // ~15 metros
     const MAX_TIME_GAP_MS = 60 * 60 * 1000; // 1 hora de margen máximo
     const grupos: any[] = [];
 
@@ -1125,6 +1158,9 @@ export class ActividadesItinerariosComponent implements OnInit {
         Math.abs(ultimoGrupo.lat - item.lat) < TOLERANCIA_GPS &&
         Math.abs(ultimoGrupo.lng - item.lng) < TOLERANCIA_GPS;
 
+      const trackMuyCercano = ultimoGrupo && item.trackIdx !== undefined && ultimoGrupo.trackIdx !== undefined &&
+        Math.abs(ultimoGrupo.trackIdx - item.trackIdx) < 8;
+
       const ultimoItem = ultimoGrupo ? ultimoGrupo.archivos[ultimoGrupo.archivos.length - 1] : null;
       const tsItem = item.timestamp ? new Date(item.timestamp).getTime() : 0;
       const tsUltimo = ultimoItem?.timestamp ? new Date(ultimoItem.timestamp).getTime() : 0;
@@ -1132,12 +1168,13 @@ export class ActividadesItinerariosComponent implements OnInit {
       const tiempoCercano = !tsItem || !tsUltimo ||
         Math.abs(tsItem - tsUltimo) < MAX_TIME_GAP_MS;
 
-      if (coincideUbicacion && tiempoCercano) {
+      if ((coincideUbicacion || trackMuyCercano) && tiempoCercano) {
         ultimoGrupo!.archivos.push(item);
       } else {
         grupos.push({
           lat: item.lat,
           lng: item.lng,
+          trackIdx: item.trackIdx,
           archivos: [item]
         });
       }

@@ -295,37 +295,28 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       const pis = this.obtenerGruposPIs();
       console.log(`🎬 [Recorrido Guiado] Sincronizando ${pis.length} Puntos de Interés a lo largo del trazado`);
 
-      let lastMatchedIdx = 0;
+      let lastMatchedIdx = -1;
       pis.forEach((pi, idx) => {
-        let bestIdx = -1;
-        let minScore = Infinity;
+        let bestIdx = (pi as any).trackIdx ?? -1;
 
-        // Búsqueda progresiva hacia adelante en el trazado (con leve penalización por saltos masivos)
-        for (let i = lastMatchedIdx; i < this.points.length; i++) {
-          const pt = this.points[i];
-          const dist = this.getDistance(pt.lat, pt.lng, pi.lat, pi.lng);
-          const indexAdvancePenalty = (i - lastMatchedIdx) * 0.05;
-          const score = dist + indexAdvancePenalty;
-          if (score < minScore) {
-            minScore = score;
-            bestIdx = i;
-            if (dist < 30) break; // Coincidencia directa inmediata encontrada en el tramo actual
-          }
-        }
-
-        // Si no se encontró hacia adelante, buscar globalmente
-        if (bestIdx === -1) {
+        if (bestIdx === -1 || bestIdx === undefined) {
+          let minDist = Infinity;
           for (let i = 0; i < this.points.length; i++) {
             const pt = this.points[i];
             const dist = this.getDistance(pt.lat, pt.lng, pi.lat, pi.lng);
-            if (dist < minScore) {
-              minScore = dist;
+            if (dist < minDist) {
+              minDist = dist;
               bestIdx = i;
             }
           }
         }
 
-        if (bestIdx !== -1) {
+        // Garantizar progresión monótona estricta: cada parada tiene su propio índice sin sobreescribir
+        if (idx > 0 && bestIdx <= lastMatchedIdx) {
+          bestIdx = Math.min(this.points.length - 1, lastMatchedIdx + 1);
+        }
+
+        if (bestIdx !== -1 && bestIdx < this.points.length) {
           this.points[bestIdx].event = {
             archivos: pi.archivos,
             piNumero: idx + 1,
@@ -433,8 +424,8 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
    * Extrae y agrupa los archivos multimedia en Puntos de Interés (PIs)
    * basados en proximidad geográfica (< 10m) y coherencia temporal.
    */
-  private obtenerGruposPIs(): { lat: number; lng: number; archivos: any[] }[] {
-    const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number }[] = [];
+  private obtenerGruposPIs(): { lat: number; lng: number; trackIdx?: number; archivos: any[] }[] {
+    const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; trackIdx: number }[] = [];
 
     if (this.multimedia && this.multimedia.length > 0) {
       this.multimedia.forEach((archivo: any) => {
@@ -462,29 +453,62 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
         if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
           let ts = 0;
-          if (archivo.fechaCreacion) {
+          if (archivo.metadatos) {
+            try {
+              const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
+              if (meta?.timestamp) {
+                ts = new Date(meta.timestamp).getTime();
+              }
+            } catch (e) { }
+          }
+          if (!ts && (archivo.fechaTomada || archivo.fechaHora || archivo.fecha)) {
+            ts = new Date(archivo.fechaTomada || archivo.fechaHora || archivo.fecha).getTime() || 0;
+          }
+          if (!ts && archivo.fechaCreacion) {
             const fecha = new Date(archivo.fechaCreacion);
             if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string') {
-              const [horas, minutos] = archivo.horaCaptura.split(':').map(Number);
+              const [horas, minutos, segs] = archivo.horaCaptura.split(':').map(Number);
               if (!isNaN(horas) && !isNaN(minutos)) {
-                fecha.setHours(horas, minutos, 0, 0);
+                fecha.setHours(horas, minutos, segs || 0, 0);
               }
             }
             ts = fecha.getTime();
-          } else if (archivo.fechaTomada || archivo.fecha || archivo.created_at) {
-            ts = new Date(archivo.fechaTomada || archivo.fecha || archivo.created_at).getTime() || 0;
+          } else if (!ts && archivo.created_at) {
+            ts = new Date(archivo.created_at).getTime() || 0;
           }
 
-          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts });
+          let bestTrackIdx = 0;
+          if (this.points && this.points.length > 0) {
+            let minDist = Infinity;
+            for (let i = 0; i < this.points.length; i++) {
+              const d = this.getDistance(lat, lng, this.points[i].lat, this.points[i].lng);
+              if (d < minDist) {
+                minDist = d;
+                bestTrackIdx = i;
+                if (d < 5) break;
+              }
+            }
+          }
+
+          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts, trackIdx: bestTrackIdx });
         }
       });
     }
 
-    archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
+    if (this.points && this.points.length > 0) {
+      archivosConCoordenadas.sort((a, b) => {
+        if (a.trackIdx !== b.trackIdx) {
+          return a.trackIdx - b.trackIdx;
+        }
+        return a.timestamp - b.timestamp;
+      });
+    } else {
+      archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
+    }
 
-    const TOLERANCIA_GPS = 0.0001; // ~10 metros
+    const TOLERANCIA_GPS = 0.00015; // ~15 metros
     const MAX_TIME_GAP_MS = 60 * 60 * 1000; // 1 hora
-    const grupos: { lat: number; lng: number; archivos: any[] }[] = [];
+    const grupos: { lat: number; lng: number; trackIdx: number; archivos: any[] }[] = [];
 
     archivosConCoordenadas.forEach(item => {
       const ultimoGrupo = grupos.length > 0 ? grupos[grupos.length - 1] : null;
@@ -493,16 +517,19 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         Math.abs(ultimoGrupo.lat - item.lat) < TOLERANCIA_GPS &&
         Math.abs(ultimoGrupo.lng - item.lng) < TOLERANCIA_GPS;
 
+      const trackMuyCercano = ultimoGrupo && Math.abs(ultimoGrupo.trackIdx - item.trackIdx) < 8;
+
       const ultimoItem = ultimoGrupo ? ultimoGrupo.archivos[ultimoGrupo.archivos.length - 1] : null;
       const tiempoCercano = !item.timestamp || !ultimoItem?.timestamp ||
         Math.abs(item.timestamp - (ultimoItem.timestamp || 0)) < MAX_TIME_GAP_MS;
 
-      if (coincideUbicacion && tiempoCercano) {
+      if ((coincideUbicacion || trackMuyCercano) && tiempoCercano) {
         ultimoGrupo!.archivos.push(item.archivo);
       } else {
         grupos.push({
           lat: item.lat,
           lng: item.lng,
+          trackIdx: item.trackIdx,
           archivos: [item.archivo]
         });
       }
@@ -1538,56 +1565,20 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   resumeFromEvent() {
     this.activeEvent = null;
 
-    if (this.map && this.preEventSnapshot) {
-      const snap = this.preEventSnapshot;
-      this.preEventSnapshot = null; // Limpiar antes del setView para que la guarda funcione
-
-      // 1. Restaurar variables internas ANTES de tocar el mapa
-      //    (evita que zoomend/moveend del setView las sobreescriba con valores del evento)
-      this.currentActualZoom = snap.zoom;
-      this.targetZoom = snap.targetZoom;
-      this.userSelectedZoom = snap.userSelectedZoom;
-      this.cameraMode = snap.cameraMode;
-      this.autoZoomPaused = snap.cameraMode === 'FREE';
-
-      // 2. Función de reanudación con guarda anti-doble-disparo
-      const resumePlayback = () => {
-        if (!this.isPlaying) {
-          this.isPlaying = true;
-          this.narrativeService.startSegment(Math.floor(this.currentIndex), this.currentDistKm, this.currentMode || 'walking');
-          // SIEMPRE encuadrar el siguiente tramo antes de arrancar
-          this.calculateSegmentBoundsAndSpeed();
-        }
-      };
-
-      // 3. Mecanismo principal: reanudar al terminar la animación del mapa (evento real)
-      (this.map as any).once('moveend', resumePlayback);
-
-      // 4. Fallback de seguridad: si moveend no llega en 1500ms, cancelar listener y reanudar
-      setTimeout(() => {
-        this.map.off('moveend', resumePlayback);
-        resumePlayback();
-      }, 1500);
-
-      // 5. Disparar setView — esto provocará el moveend cuando termine la animación
-      this.map.setView(snap.center, snap.zoom, { animate: true, duration: 0.8 });
-
-    } else if (this.map) {
-      // Fallback defensivo: no hay snapshot (no debería ocurrir en condiciones normales)
-      const currentPoint = this.points[Math.floor(this.currentIndex)];
-      if (currentPoint) {
-        this.map.setView(
-          [currentPoint.lat, currentPoint.lng],
-          this.userSelectedZoom || 16,
-          { animate: true, duration: 0.8 }
-        );
+    if (this.map) {
+      if (this.preEventSnapshot) {
+        const snap = this.preEventSnapshot;
+        this.preEventSnapshot = null; // Limpiar para que la guarda funcione
+        this.cameraMode = snap.cameraMode;
+        this.autoZoomPaused = snap.cameraMode === 'FREE';
       }
-      setTimeout(() => {
+
+      // Reanudar directamente hacia el siguiente tramo sin el rebote brusco al zoom general lejano
+      if (!this.isPlaying) {
         this.isPlaying = true;
-        this.lastTimestamp = performance.now();
-        this.animate();
-        this.cdr.detectChanges();
-      }, 900);
+        this.narrativeService.startSegment(Math.floor(this.currentIndex), this.currentDistKm, this.currentMode || 'walking');
+        this.calculateSegmentBoundsAndSpeed();
+      }
     }
   }
 
