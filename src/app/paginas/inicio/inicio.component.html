@@ -135,28 +135,39 @@
         <div class="video-alert" *ngIf="videosRequeridos">
           <div class="alert-content" [class.success]="videosSeleccionados" [class.ignored]="ignorarVideos">
             <div class="icon">
-              <i class="fa-solid" [ngClass]="videosSeleccionados ? 'fa-check' : (ignorarVideos ? 'fa-triangle-exclamation' : 'fa-video')"></i>
+              <i class="fa-solid" [ngClass]="videosSeleccionados ? 'fa-check' : (ignorarVideos ? 'fa-triangle-exclamation' : (buscandoVideosMtp ? 'fa-spinner fa-spin' : 'fa-video'))"></i>
             </div>
             <div class="text">
               <h4>
-                {{ videosSeleccionados ? 'Videos listos para importar' : (ignorarVideos ? 'Importacion de videos omitida' : 'Videos detectados') }}
+                <span *ngIf="esModoDynamics()" class="badge-dynamics" style="background: #2563eb; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; margin-right: 6px;">Modo Dynamics</span>
+                {{ videosSeleccionados ? 'Vídeos listos para importar' : (ignorarVideos ? 'Importación de vídeos omitida' : (buscandoVideosMtp ? 'Buscando vídeos en el móvil...' : 'Vídeos detectados')) }}
               </h4>
-              <p *ngIf="!videosSeleccionados && !ignorarVideos">
-                Selecciona la carpeta <code>DCIM/AudioPhotoApp/videos</code> para incluirlos.
+              <p *ngIf="buscandoVideosMtp">Buscando automáticamente en el dispositivo móvil (DCIM/AudioPhotoApp/videos)...</p>
+              <p *ngIf="!videosSeleccionados && !ignorarVideos && !buscandoVideosMtp">
+                <span *ngIf="mensajeMtp">{{ mensajeMtp }}<br></span>
+                <span *ngIf="esModoDynamics()">Ubicación nativa: <code>DCIM/AudioPhotoApp/videos</code> o <code>DCIM/AudioPhotoApp</code>.</span>
+                <span *ngIf="!esModoDynamics()">Selecciona la carpeta <code>DCIM/AudioPhotoApp/videos</code> para incluirlos.</span>
               </p>
-              <p *ngIf="ignorarVideos">Se importara el viaje sin archivos de video.</p>
-              <p *ngIf="videosSeleccionados">Se han cargado {{ archivosVideo.length }} videos correctamente.</p>
+              <p *ngIf="ignorarVideos">Se importará el viaje sin archivos de vídeo.</p>
+              <p *ngIf="videosSeleccionados">
+                <span *ngIf="videosExtraidosMtp.length > 0">Se han extraído {{ videosExtraidosMtp.length }} vídeos desde {{ origenVideos || 'el móvil (MTP)' }}.</span>
+                <span *ngIf="archivosVideo.length > 0">Se han cargado {{ archivosVideo.length }} vídeos correctamente.</span>
+              </p>
             </div>
           </div>
 
-          <div class="video-actions" *ngIf="!videosSeleccionados">
+          <div class="video-actions" *ngIf="!videosSeleccionados && !buscandoVideosMtp">
+            <button *ngIf="!ignorarVideos && esModoDynamics()" class="app-button" (click)="extraerVideosMtpDynamics()">
+              <i class="fa-solid fa-mobile-screen"></i>
+              Reintentar búsqueda MTP
+            </button>
             <button *ngIf="!ignorarVideos" class="app-button" (click)="seleccionarCarpetaVideos()">
               <i class="fa-solid fa-folder-open"></i>
-              Seleccionar videos
+              Seleccionar manualmente
             </button>
             <button class="app-button" (click)="ignorarVideos = !ignorarVideos">
               <i class="fa-solid" [ngClass]="ignorarVideos ? 'fa-rotate-left' : 'fa-forward'"></i>
-              {{ ignorarVideos ? 'Volver a intentar' : 'Omitir videos' }}
+              {{ ignorarVideos ? 'Volver a intentar' : 'Omitir vídeos' }}
             </button>
           </div>
         </div>

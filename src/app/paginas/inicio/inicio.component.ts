@@ -109,6 +109,12 @@ export class InicioComponent implements OnInit {
   ignorarVideos = false;
   archivosVideo: File[] = [];
 
+  // Modo Dynamics y extracción MTP
+  videosExtraidosMtp: any[] = [];
+  buscandoVideosMtp = false;
+  mensajeMtp = '';
+  origenVideos = '';
+
   constructor(
     private http: HttpClient,
     private router: Router
@@ -148,6 +154,79 @@ export class InicioComponent implements OnInit {
         ];
       }
     });
+  }
+
+  /**
+   * Determina si el manifiesto cargado corresponde a una ruta en Modo Dynamics
+   */
+  esModoDynamics(): boolean {
+    if (!this.manifestData) return false;
+    return this.manifestData.metadatos_maestros?.origen === 'AudioPhotoApp_Dynamics' ||
+           this.manifestData.estadisticas?.fuente === 'AudioPhotoApp_Dynamics' ||
+           (typeof this.manifestData.nombre === 'string' && this.manifestData.nombre.startsWith('Recorrido_Dynamics_')) ||
+           (typeof this.manifestData.viaje_id === 'string' && this.manifestData.viaje_id.startsWith('Recorrido_Dynamics_'));
+  }
+
+  /**
+   * Extrae la fecha de referencia del recorrido en formato YYYYMMDD
+   */
+  obtenerFechaTracking(): string | null {
+    if (!this.manifestData) return null;
+    const matchNombre = this.manifestData.nombre?.match(/(\d{8})/);
+    if (matchNombre) return matchNombre[1];
+
+    const matchViaje = this.manifestData.viaje_id?.match(/(\d{8})/);
+    if (matchViaje) return matchViaje[1];
+
+    const fStr = this.manifestData.fecha || this.manifestData.metadatos_maestros?.fecha_inicio || this.manifestData.estadisticas?.fecha;
+    if (fStr) {
+      const matchYMD = fStr.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
+      if (matchYMD) return `${matchYMD[1]}${matchYMD[2]}${matchYMD[3]}`;
+      const matchDMY = fStr.match(/(\d{2})[-/](\d{2})[-/](\d{4})/);
+      if (matchDMY) return `${matchDMY[3]}${matchDMY[2]}${matchDMY[1]}`;
+    }
+    return null;
+  }
+
+  /**
+   * Intenta extraer vídeos de Modo Dynamics desde el dispositivo MTP vía backend
+   */
+  async extraerVideosMtpDynamics(): Promise<boolean> {
+    this.buscandoVideosMtp = true;
+    this.mensajeMtp = 'Buscando vídeos en el dispositivo móvil (DCIM/AudioPhotoApp/videos)...';
+
+    const fechaTracking = this.obtenerFechaTracking();
+    const videosEnManifest = this.manifestData?.multimedia
+      ?.filter((m: any) => m.tipo === 'video')
+      .map((m: any) => m.nombre.toLowerCase()) || [];
+
+    try {
+      const url = `${this.API_URL}/mtp/extraer-videos-dynamics`;
+      const res: any = await this.http.post(url, {
+        fecha: fechaTracking,
+        nombresManifest: videosEnManifest
+      }).toPromise();
+
+      this.buscandoVideosMtp = false;
+
+      if (res && res.success && res.videos && res.videos.length > 0) {
+        this.videosExtraidosMtp = res.videos;
+        this.videosSeleccionados = true;
+        this.origenVideos = res.videos[0]?.origen || 'DCIM/AudioPhotoApp/videos';
+        this.mensajeMtp = `✅ Se extrajeron automáticamente ${res.videos.length} vídeos desde ${this.origenVideos}`;
+        console.log('📹 [MTP DYNAMICS]', this.mensajeMtp, res.videos);
+        return true;
+      } else {
+        this.mensajeMtp = res?.mensaje || 'No se pudieron extraer vídeos automáticamente desde el móvil. Puedes seleccionarlos manualmente.';
+        console.warn('⚠️ [MTP DYNAMICS]', this.mensajeMtp);
+        return false;
+      }
+    } catch (err: any) {
+      this.buscandoVideosMtp = false;
+      this.mensajeMtp = 'No se pudo comunicar con el servicio MTP. Puedes conectar el móvil por USB o seleccionar los vídeos manualmente.';
+      console.warn('⚠️ [MTP DYNAMICS] Error invocando servicio MTP:', err);
+      return false;
+    }
   }
 
   // ====================================================================
@@ -204,12 +283,37 @@ export class InicioComponent implements OnInit {
 
       console.log('✅ Manifest cargado:', this.manifestData.nombre);
 
+      // Limpiar estados de video previos
+      this.videosExtraidosMtp = [];
+      this.archivosVideo = [];
+      this.mensajeMtp = '';
+      this.origenVideos = '';
+
       // Verificar si el viaje tiene videos
-      const hayVideos = this.manifestData.multimedia?.some((m: any) => m.tipo === 'video');
+      const hayVideos = (this.manifestData.multimedia && this.manifestData.multimedia.some((m: any) => m.tipo === 'video')) ||
+                        (this.manifestData.estadisticas?.num_videos > 0) ||
+                        (this.manifestData.estadisticas?.numeroVideos > 0) ||
+                        (this.manifestData.estadisticas?.videos > 0) ||
+                        (this.manifestData.metadatos_maestros?.total_videos > 0);
+
       if (hayVideos) {
         this.videosRequeridos = true;
         this.videosSeleccionados = false;
-        console.log('📹 El viaje contiene videos. Se requiere seleccionar la carpeta de videos.');
+        console.log('📹 El viaje contiene videos.');
+
+        if (this.esModoDynamics()) {
+          console.log('⚡ Modo Dynamics detectado: buscando vídeos en DCIM/AudioPhotoApp/videos del móvil.');
+          await this.extraerVideosMtpDynamics();
+        } else {
+          // Sistema clásico: comprobar si los vídeos ya están en la carpeta seleccionada
+          const videosEnCarpeta = this.archivosSeleccionados.filter(f => f.name.toLowerCase().endsWith('.mp4'));
+          if (videosEnCarpeta.length > 0) {
+            console.log(`✅ ${videosEnCarpeta.length} vídeos encontrados en la carpeta seleccionada`);
+            this.archivosVideo = videosEnCarpeta;
+            this.videosSeleccionados = true;
+            this.origenVideos = 'Carpeta de la ruta (sistema clásico)';
+          }
+        }
       } else {
         this.videosRequeridos = false;
       }
@@ -433,6 +537,10 @@ export class InicioComponent implements OnInit {
     this.videosSeleccionados = false;
     this.ignorarVideos = false;
     this.archivosVideo = [];
+    this.videosExtraidosMtp = [];
+    this.buscandoVideosMtp = false;
+    this.mensajeMtp = '';
+    this.origenVideos = '';
   }
 
   /**
@@ -495,6 +603,11 @@ export class InicioComponent implements OnInit {
       const formData = new FormData();
       formData.append('destino', this.destinoViaje);
       formData.append('tipoActividadId', this.tipoActividadId.toString());
+
+      // Si se extrajeron vídeos por MTP en Modo Dynamics, enviarlos
+      if (this.videosExtraidosMtp && this.videosExtraidosMtp.length > 0) {
+        formData.append('videosMtpExtraidos', JSON.stringify(this.videosExtraidosMtp));
+      }
 
       // Añadir todos los archivos CON su ruta relativa preservada
       // COMBINAR ARCHIVOS: Exportación + Videos (si los hay)

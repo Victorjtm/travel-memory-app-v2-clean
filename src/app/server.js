@@ -7132,6 +7132,71 @@ console.log('   Método any():', typeof importUpload.any);
  * Recibe: FormData con archivos + metadata
  */
 // ✅ DESPUÉS (CORRECTO - CORS manejado globalmente)
+/**
+ * POST /mtp/extraer-videos-dynamics
+ * POST /api/mtp/extraer-videos-dynamics
+ * Extrae automáticamente los vídeos de una ruta en Modo Dynamics
+ * desde el móvil conectado por USB (DCIM/AudioPhotoApp/videos o DCIM/AudioPhotoApp)
+ */
+const manejarExtraccionMtpDynamics = async (req, res) => {
+  try {
+    const { fecha, nombresManifest } = req.body || {};
+    console.log('\n📹 [MTP DYNAMICS] Petición de extracción recibida. Fecha: ' + fecha + ', Nombres:', nombresManifest);
+
+    const tempFolder = path.join(uploadsPath, 'temp-dynamics-videos', String(Date.now()));
+    if (!fs.existsSync(tempFolder)) {
+      fs.mkdirSync(tempFolder, { recursive: true });
+    }
+
+    const scriptPath = path.join(__dirname, 'scripts', 'extraer_videos_mtp.ps1');
+    if (!fs.existsSync(scriptPath)) {
+      return res.status(500).json({ success: false, mensaje: 'No se encuentra el script: ' + scriptPath, videos: [] });
+    }
+
+    const { execFile } = require('child_process');
+    const args = [
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-File', scriptPath,
+      '-Fecha', fecha || '',
+      '-DestDir', tempFolder
+    ];
+
+    if (Array.isArray(nombresManifest) && nombresManifest.length > 0) {
+      args.push('-NombresManifest', nombresManifest.join(','));
+    }
+
+    console.log('🚀 Ejecutando script MTP: powershell ' + args.join(' '));
+
+    execFile('powershell.exe', args, { timeout: 180000, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) {
+        console.error('❌ Error ejecutando extraer_videos_mtp.ps1:', err.message);
+        return res.status(500).json({ success: false, mensaje: 'Error ejecutando script MTP: ' + err.message, videos: [] });
+      }
+
+      console.log('📄 Salida script MTP:', (stdout || '').trim().substring(0, 300));
+      try {
+        const jsonMatch = stdout.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const resultado = JSON.parse(jsonMatch[0]);
+          return res.json(resultado);
+        } else {
+          return res.json({ success: false, mensaje: 'Respuesta del script no reconocida', videos: [] });
+        }
+      } catch (parseErr) {
+        return res.status(500).json({ success: false, mensaje: parseErr.message, videos: [] });
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error en endpoint /mtp/extraer-videos-dynamics:', error);
+    res.status(500).json({ success: false, mensaje: error.message, videos: [] });
+  }
+};
+
+app.post('/mtp/extraer-videos-dynamics', manejarExtraccionMtpDynamics);
+app.post('/api/mtp/extraer-videos-dynamics', manejarExtraccionMtpDynamics);
+
 app.post('/import-tracking', (req, res, next) => {
 
   console.log('\n🔍 [DEBUG] Middleware ejecutado - Antes de multer');
@@ -7199,7 +7264,18 @@ app.post('/import-tracking', (req, res, next) => {
 
   try {
     // 1. VALIDAR DATOS RECIBIDOS
-    const { destino, tipoActividadId } = req.body;
+    const { destino, tipoActividadId, videosMtpExtraidos } = req.body;
+    let mtpVideosList = [];
+    if (videosMtpExtraidos) {
+      try {
+        mtpVideosList = typeof videosMtpExtraidos === 'string'
+          ? JSON.parse(videosMtpExtraidos)
+          : videosMtpExtraidos;
+        console.log(`📹 [MTP DYNAMICS] Recibidos ${mtpVideosList.length} vídeos extraídos por MTP`);
+      } catch (e) {
+        console.warn('⚠️ Error parseando videosMtpExtraidos:', e.message);
+      }
+    }
 
     if (!destino || !tipoActividadId) {
       throw new Error('Faltan campos obligatorios: destino, tipoActividadId');
@@ -7819,13 +7895,39 @@ app.post('/import-tracking', (req, res, next) => {
         return baseName.toLowerCase() === nombreCompletoMedia.toLowerCase();
       });
 
-      if (mediaFileIndex === -1) {
+      let mediaFile = null;
+      let mediaFilePath = null;
+      let mediaFileName = null;
+
+      if (mediaFileIndex !== -1) {
+        mediaFile = req.files[mediaFileIndex];
+        usedFileIndices.add(mediaFileIndex);
+        mediaFilePath = mediaFile.path;
+        mediaFileName = path.basename(decodeURIComponent(mediaFile.originalname));
+      } else if (dbTipo === 'video' && mtpVideosList.length > 0) {
+        const mtpMatch = mtpVideosList.find(v => {
+          if (v._used) return false;
+          const vBase = path.basename(v.nombre || v.ruta).toLowerCase();
+          const cleanVBase = vBase.replace(/\.[^.]+$/, '');
+          const cleanMediaName = media.nombre.toLowerCase().replace(/\.[^.]+$/, '');
+          return vBase === nombreCompletoMedia.toLowerCase() ||
+                 cleanVBase === cleanMediaName ||
+                 cleanVBase.includes(cleanMediaName) ||
+                 cleanMediaName.includes(cleanVBase);
+        });
+
+        if (mtpMatch && fs.existsSync(mtpMatch.ruta)) {
+          mtpMatch._used = true;
+          mediaFilePath = mtpMatch.ruta;
+          mediaFileName = path.basename(mtpMatch.nombre || mtpMatch.ruta);
+          console.log(`📹 [MTP DYNAMICS] Coincidencia para media ${media.nombre}: ${mediaFileName}`);
+        }
+      }
+
+      if (!mediaFilePath) {
         console.warn(`⚠️ Archivo no encontrado para media item: ${media.nombre} (.${extensionMedia})`);
         continue;
       }
-
-      const mediaFile = req.files[mediaFileIndex];
-      usedFileIndices.add(mediaFileIndex); // Marcar como usado
 
       // PRIORIDAD 1: Intentar extraer fecha de EXIF de la foto
       if (media.tipo === 'foto' && mediaFile.path) {
@@ -7879,9 +7981,14 @@ app.post('/import-tracking', (req, res, next) => {
         }
       }
 
-      const nombreBaseMedia = path.basename(decodeURIComponent(mediaFile.originalname));
+      const nombreBaseMedia = mediaFileName || path.basename(decodeURIComponent(mediaFile ? mediaFile.originalname : mediaFilePath));
       const destPath = path.join(actividadPath, tipoFolder, nombreBaseMedia);
-      fs.renameSync(mediaFile.path, destPath);
+      if (mediaFile && mediaFile.path && fs.existsSync(mediaFile.path)) {
+        try { fs.renameSync(mediaFile.path, destPath); } catch (e) { fs.copyFileSync(mediaFile.path, destPath); }
+      } else if (mediaFilePath && fs.existsSync(mediaFilePath)) {
+        fs.copyFileSync(mediaFilePath, destPath);
+        try { fs.unlinkSync(mediaFilePath); } catch (e) {}
+      }
 
       const rutaRelativa = path.relative(uploadsPath, destPath).replace(/\\/g, '/');
 
@@ -8094,6 +8201,78 @@ app.post('/import-tracking', (req, res, next) => {
         req.files.filter(f => f.originalname.endsWith('.png')).forEach(f => {
           console.warn(`       - ${f.originalname}`);
         });
+      }
+    }
+
+    // ========================================================================
+    // 8.1 PROCESAR VÍDEOS MTP RESTANTES (MODO DYNAMICS)
+    // ========================================================================
+    if (mtpVideosList && mtpVideosList.length > 0) {
+      console.log('\n📹 [MTP DYNAMICS] Procesando vídeos MTP adicionales...');
+      for (const extraMtp of mtpVideosList) {
+        if (extraMtp._used || !fs.existsSync(extraMtp.ruta)) continue;
+        const extraName = path.basename(extraMtp.nombre || extraMtp.ruta);
+        const extraDestPath = path.join(actividadPath, 'videos', extraName);
+        fs.copyFileSync(extraMtp.ruta, extraDestPath);
+        try { fs.unlinkSync(extraMtp.ruta); } catch (e) {}
+
+        const rutaRelativa = path.relative(uploadsPath, extraDestPath).replace(/\\/g, '/');
+
+        let fechaCreacionVideo = null;
+        const match13 = extraName.match(/(\d{13})/);
+        if (match13) {
+          try {
+            fechaCreacionVideo = new Date(parseInt(match13[1], 10)).toISOString();
+          } catch (e) {}
+        }
+        if (!fechaCreacionVideo) {
+          const matchYMD = extraName.match(/(?:VIDEO_|VID_|^)(\d{4})(\d{2})(\d{2})_?(\d{2})(\d{2})(\d{2})/);
+          if (matchYMD) {
+            const [_, y, m, d, h, min, s] = matchYMD;
+            fechaCreacionVideo = new Date(Date.UTC(parseInt(y), parseInt(m) - 1, parseInt(d), parseInt(h), parseInt(min), parseInt(s))).toISOString();
+          }
+        }
+        if (!fechaCreacionVideo) {
+          fechaCreacionVideo = fechaRecorridoReal ? `${fechaRecorridoReal}T12:00:00Z` : new Date().toISOString();
+        }
+
+        const horaCaptura = fechaCreacionVideo.includes('T') ? fechaCreacionVideo.split('T')[1].substring(0, 8) : '12:00:00';
+
+        const metadatosVideo = {
+          timestamp: fechaCreacionVideo,
+          altitude: null,
+          latitude: null,
+          longitude: null,
+          origen: extraMtp.origen || 'DCIM/AudioPhotoApp/videos'
+        };
+
+        const extraArchivoId = await new Promise((resolve, reject) => {
+          db.run(
+            `INSERT INTO archivos 
+              (actividadId, tipo, nombreArchivo, rutaArchivo, horaCaptura, geolocalizacion, metadatos, fechaCreacion) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(actividadId, nombreArchivo) DO NOTHING`,
+            [
+              actividadId,
+              'video',
+              extraName,
+              rutaRelativa,
+              horaCaptura,
+              JSON.stringify({ latitud: null, longitud: null, altitud: 0 }),
+              JSON.stringify(metadatosVideo),
+              fechaCreacionVideo
+            ],
+            function (err) {
+              if (err) return reject(err);
+              resolve(this.lastID);
+            }
+          );
+        });
+
+        if (extraArchivoId) {
+          archivosCreados.push({ id: extraArchivoId, nombre: extraName });
+        }
+        console.log(`📹 [MTP DYNAMICS] Vídeo extra incorporado a actividad: ${extraName}`);
       }
     }
 
