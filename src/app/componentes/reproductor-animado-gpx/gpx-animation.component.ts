@@ -715,14 +715,15 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       this.cargandoMapa = false;
       if (this.map) {
         this.map.invalidateSize();
-        if (this.points && this.points.length > 0) {
-          const allCoords = this.points.map(p => [p.lat, p.lng] as [number, number]);
-          this.map.fitBounds(this.L.latLngBounds(allCoords), { padding: [60, 60], maxZoom: 15 });
-        }
       }
       this.cdr.detectChanges();
-      if (this.autoPlay && !this.isPlaying) {
-        setTimeout(() => this.togglePlay(), 200);
+      if (this.autoPlay && !this.isPlaying && !this.animationStarted) {
+        // Dar 1.2s de cortesía para contemplar el mapa general completo antes de hacer zoom al tramo 1
+        setTimeout(() => {
+          if (!this.isPlaying && !this.animationStarted) {
+            this.togglePlay();
+          }
+        }, 1200);
       }
     };
 
@@ -941,21 +942,35 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
           const cont = this.map.getContainer();
           safeVisualDistPx = Math.max(cont?.clientWidth || 600, cont?.clientHeight || 400) * 0.6;
         }
-        const targetDurationSeconds = Math.max(0.5, safeVisualDistPx / targetPxPerSec);
+
+        // Pacing visual: En modo guiado, garantizar un tiempo visible y fluido
+        let minDurationSec = 2.0;
+        if (this.modoRecorridoGuiado) {
+          if (segmentDistM > 1500) {
+            minDurationSec = 4.5; // 4.5 segundos si el tramo es superior a 1.5 km (ej. tramo inicial de 9.6 km)
+          } else if (segmentDistM > 500) {
+            minDurationSec = 3.5; // 3.5 segundos para tramos medianos
+          } else {
+            minDurationSec = 2.5; // 2.5 segundos para tramos cortos
+          }
+        }
+
+        const targetDurationSeconds = Math.max(minDurationSec, safeVisualDistPx / targetPxPerSec);
         const speedFactor = this.getSpeedFactor(this.currentMode);
 
-        // Para distancias largas (> 2 km), acelerar suavemente el tiempo objetivo del tramo
         let effectiveTargetSec = targetDurationSeconds;
-        if (segmentDistM > 2000) {
+        // Solo aplicar aceleración por distancia en modo libre o en tramos masivos marítimos
+        if (!this.modoRecorridoGuiado && segmentDistM > 3000) {
           const distKm = segmentDistM / 1000;
-          const distanceSpeedBoost = Math.min(isBoat ? 3.5 : 2.2, 1 + 0.35 * Math.log10(distKm));
-          effectiveTargetSec = targetDurationSeconds / distanceSpeedBoost;
+          const distanceSpeedBoost = Math.min(isBoat ? 3.5 : 2.0, 1 + 0.3 * Math.log10(distKm));
+          effectiveTargetSec = Math.max(2.0, targetDurationSeconds / distanceSpeedBoost);
         }
 
         let calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
-        calculatedSpeed = Math.max(1, Math.min(3000, Math.round(calculatedSpeed)));
+        const maxSpeedCap = this.modoRecorridoGuiado ? 250 : 500;
+        calculatedSpeed = Math.max(1, Math.min(maxSpeedCap, Math.round(calculatedSpeed)));
 
-        console.log(`🎯 [Tramo] pixels=${safeVisualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${targetDurationSeconds.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
+        console.log(`🎯 [Tramo] pixels=${safeVisualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${effectiveTargetSec.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
 
         // SIEMPRE aplicar la velocidad calculada (sin depender de autoSpeedEnabled)
         this.speed = calculatedSpeed;
@@ -965,31 +980,40 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         this.lastTimestamp = performance.now();
         this.animate();
         this.cdr.detectChanges();
-      }, 500);
+      }, 300);
     };
 
-    // Encuadrar la cámara
-    this.map.once('moveend', onFrameComplete);
+    // Detener cualquier animación previa para evitar que un moveend residual dispare prematuramente
+    this.map.stop();
+
+    let moveEndFired = false;
+    const handleMoveEnd = () => {
+      if (moveEndFired) return;
+      moveEndFired = true;
+      this.map.off('moveend', handleMoveEnd);
+      onFrameComplete();
+    };
+
+    this.map.once('moveend', handleMoveEnd);
 
     // Cota de seguridad de maxZoom: límite rígido para Álbum-Libro (interactiveMode === false)
     const safeMaxZoom = this.interactiveMode === false
       ? (isBoat ? 11 : 14)
-      : (isBoat ? 11 : undefined);
+      : (isBoat ? 11 : 15);
 
-    this.map.fitBounds(bounds, {
-      padding: isBoat ? [70, 70] : (this.interactiveMode === false ? [40, 40] : [50, 50]),
+    // Usar flyToBounds para un zoom fluido y cinematográfico desde la vista general hacia el tramo específico
+    this.map.flyToBounds(bounds, {
+      padding: isBoat ? [70, 70] : (this.interactiveMode === false ? [40, 40] : [60, 60]),
       maxZoom: safeMaxZoom,
-      animate: true,
-      duration: 1.5
+      duration: 1.2
     });
 
     // Fallback de seguridad por si moveend no se dispara (ej. si ya estaba encuadrado)
     setTimeout(() => {
-      if (this.isFramingSegment) {
-        this.map.off('moveend', onFrameComplete);
-        onFrameComplete();
+      if (!moveEndFired && this.isFramingSegment) {
+        handleMoveEnd();
       }
-    }, 2500);
+    }, 2200);
   }
 
   /**
@@ -1020,6 +1044,11 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
     // 1. Forzar a Leaflet a recalcular de inmediato los píxeles reales del nuevo contenedor físico
     this.map.invalidateSize({ animate: false });
+
+    // 🛡️ Si la animación está activa, en proceso de encuadre o ya iniciada, NO resetear el encuadre al mapa global
+    if (this.isFramingSegment || this.isPlaying || this.animationStarted) {
+      return;
+    }
 
     // 2. Obtener los límites geográficos exactos del recorrido
     let bounds: any = null;
