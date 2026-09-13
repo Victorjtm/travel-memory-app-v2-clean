@@ -7883,7 +7883,14 @@ app.post('/import-tracking', (req, res, next) => {
       }
 
       let nombreCompletoMedia = media.nombre;
-      if (!nombreCompletoMedia.toLowerCase().endsWith('.' + extensionMedia)) {
+      const isAlreadyAudioWithExt = dbTipo === 'audio' && (
+        nombreCompletoMedia.toLowerCase().endsWith('.aac') ||
+        nombreCompletoMedia.toLowerCase().endsWith('.m4a') ||
+        nombreCompletoMedia.toLowerCase().endsWith('.mp3') ||
+        nombreCompletoMedia.toLowerCase().endsWith('.wav') ||
+        nombreCompletoMedia.toLowerCase().endsWith('.ogg')
+      );
+      if (!isAlreadyAudioWithExt && !nombreCompletoMedia.toLowerCase().endsWith('.' + extensionMedia)) {
         nombreCompletoMedia += '.' + extensionMedia;
       }
 
@@ -7995,8 +8002,8 @@ app.post('/import-tracking', (req, res, next) => {
       const metadatosMedia = {
         timestamp: fechaCreacionMedia,
         altitude: media.gps?.altitude || null,
-        latitude: media.gps?.lat || null,
-        longitude: media.gps?.lng || null,
+        latitude: media.gps?.lat ?? media.lat ?? media.coordenadas?.lat ?? null,
+        longitude: media.gps?.lng ?? media.lng ?? media.coordenadas?.lon ?? media.coordenadas?.lng ?? null,
         timestampDisplay: media.timestamp_display
       };
 
@@ -8014,9 +8021,9 @@ app.post('/import-tracking', (req, res, next) => {
             rutaRelativa,
             (fechaCreacionMedia ? fechaCreacionMedia.split('T')[1].substring(0, 8) : media.timestamp_display),
             JSON.stringify({
-              latitud: media.gps.lat,
-              longitud: media.gps.lng,
-              altitud: media.gps.altitude || 0
+              latitud: media.gps?.lat ?? media.lat ?? media.coordenadas?.lat ?? null,
+              longitud: media.gps?.lng ?? media.lng ?? media.coordenadas?.lon ?? media.coordenadas?.lng ?? null,
+              altitud: media.gps?.altitude || 0
             }),
             JSON.stringify(metadatosMedia),
             fechaCreacionMedia
