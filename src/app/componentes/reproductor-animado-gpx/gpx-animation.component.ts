@@ -948,20 +948,32 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         let effectiveTargetSec: number;
 
         if (this.modoRecorridoGuiado) {
-          // 🎬 Modo Recorrido Guiado: Pacing visual controlado para navegar entre paradas
+          // 🎬 Modo Recorrido Guiado: Pacing visual controlado y dinámico entre paradas
           let minDurationSec = 2.0;
           if (segmentDistM > 1500) {
-            minDurationSec = 4.5; // 4.5 segundos si el tramo es superior a 1.5 km (ej. tramo inicial de 9.6 km)
+            minDurationSec = 3.5; // Entre 3.5s y 4.5s para tramos largos/medios
           } else if (segmentDistM > 500) {
-            minDurationSec = 3.5; // 3.5 segundos para tramos medianos
+            minDurationSec = 2.8;
           } else {
-            minDurationSec = 2.5; // 2.5 segundos para tramos cortos
+            minDurationSec = 2.0; // 2.0s para paradas muy próximas (evita saltos instantáneos)
           }
 
           const targetDurationSeconds = Math.max(minDurationSec, safeVisualDistPx / targetPxPerSec);
           effectiveTargetSec = targetDurationSeconds;
+
+          // 🚀 Si el tramo es largo (> 2 km), acelerar dinámicamente para no aburrir al usuario
+          if (segmentDistM > 2000) {
+            const distKm = segmentDistM / 1000;
+            const distanceSpeedBoost = Math.min(isBoat ? 3.5 : 2.5, 1 + 0.4 * Math.log10(distKm));
+            effectiveTargetSec = targetDurationSeconds / distanceSpeedBoost;
+          }
+
+          // Cota temporal óptima en Recorrido Guiado: entre minDurationSec y 4.5s como máximo
+          effectiveTargetSec = Math.max(minDurationSec, Math.min(4.5, effectiveTargetSec));
+
           calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
-          calculatedSpeed = Math.max(1, Math.min(250, Math.round(calculatedSpeed)));
+          // Permitir aceleración hasta 3000 igual que en animación estándar (sin el tope artificial de 250)
+          calculatedSpeed = Math.max(1, Math.min(3000, Math.round(calculatedSpeed)));
         } else {
           // 🚀 Animación Estándar (Otros Recorridos): Comportamiento ágil original
           const targetDurationSeconds = Math.max(0.5, safeVisualDistPx / targetPxPerSec);
@@ -977,8 +989,14 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
         console.log(`🎯 [Tramo] pixels=${safeVisualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${effectiveTargetSec.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
 
-        // SIEMPRE aplicar la velocidad calculada (sin depender de autoSpeedEnabled)
-        this.speed = calculatedSpeed;
+        // Aplicar velocidad calculada respetando si el usuario fijó una velocidad manual explícita
+        const speedState = this.narrativeService?.speedState$?.value;
+        if (speedState && !speedState.autoSpeedEnabled && speedState.userSpeedValue) {
+          this.speed = speedState.userSpeedValue;
+          console.log(`⚡ [Velocidad Manual Respetada]: x${this.speed}`);
+        } else {
+          this.speed = calculatedSpeed;
+        }
 
         // Reanudar viaje
         this.isPlaying = true;
