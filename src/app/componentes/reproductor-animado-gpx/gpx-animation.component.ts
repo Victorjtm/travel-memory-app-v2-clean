@@ -943,9 +943,13 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
           safeVisualDistPx = Math.max(cont?.clientWidth || 600, cont?.clientHeight || 400) * 0.6;
         }
 
-        // Pacing visual: En modo guiado, garantizar un tiempo visible y fluido
-        let minDurationSec = 2.0;
+        const speedFactor = this.getSpeedFactor(this.currentMode);
+        let calculatedSpeed: number;
+        let effectiveTargetSec: number;
+
         if (this.modoRecorridoGuiado) {
+          // 🎬 Modo Recorrido Guiado: Pacing visual controlado para navegar entre paradas
+          let minDurationSec = 2.0;
           if (segmentDistM > 1500) {
             minDurationSec = 4.5; // 4.5 segundos si el tramo es superior a 1.5 km (ej. tramo inicial de 9.6 km)
           } else if (segmentDistM > 500) {
@@ -953,22 +957,23 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
           } else {
             minDurationSec = 2.5; // 2.5 segundos para tramos cortos
           }
+
+          const targetDurationSeconds = Math.max(minDurationSec, safeVisualDistPx / targetPxPerSec);
+          effectiveTargetSec = targetDurationSeconds;
+          calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
+          calculatedSpeed = Math.max(1, Math.min(250, Math.round(calculatedSpeed)));
+        } else {
+          // 🚀 Animación Estándar (Otros Recorridos): Comportamiento ágil original
+          const targetDurationSeconds = Math.max(0.5, safeVisualDistPx / targetPxPerSec);
+          effectiveTargetSec = targetDurationSeconds;
+          if (segmentDistM > 2000) {
+            const distKm = segmentDistM / 1000;
+            const distanceSpeedBoost = Math.min(isBoat ? 3.5 : 2.2, 1 + 0.35 * Math.log10(distKm));
+            effectiveTargetSec = targetDurationSeconds / distanceSpeedBoost;
+          }
+          calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
+          calculatedSpeed = Math.max(1, Math.min(3000, Math.round(calculatedSpeed)));
         }
-
-        const targetDurationSeconds = Math.max(minDurationSec, safeVisualDistPx / targetPxPerSec);
-        const speedFactor = this.getSpeedFactor(this.currentMode);
-
-        let effectiveTargetSec = targetDurationSeconds;
-        // Solo aplicar aceleración por distancia en modo libre o en tramos masivos marítimos
-        if (!this.modoRecorridoGuiado && segmentDistM > 3000) {
-          const distKm = segmentDistM / 1000;
-          const distanceSpeedBoost = Math.min(isBoat ? 3.5 : 2.0, 1 + 0.3 * Math.log10(distKm));
-          effectiveTargetSec = Math.max(2.0, targetDurationSeconds / distanceSpeedBoost);
-        }
-
-        let calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
-        const maxSpeedCap = this.modoRecorridoGuiado ? 250 : 500;
-        calculatedSpeed = Math.max(1, Math.min(maxSpeedCap, Math.round(calculatedSpeed)));
 
         console.log(`🎯 [Tramo] pixels=${safeVisualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${effectiveTargetSec.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
 
