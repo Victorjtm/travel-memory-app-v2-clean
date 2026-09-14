@@ -48,6 +48,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   private currentBackgroundPolyline: any;
   private marker: any;
   private L: any;
+  private baseRoutePolyline: any = null;
 
   readonly MODE_COLORS: { [key: string]: string } = {
     walking: '#059669',
@@ -264,13 +265,151 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   ngOnChanges(changes: SimpleChanges): void {
     if ((changes['gpxText'] && !changes['gpxText'].firstChange) ||
         (changes['transportSegments'] && !changes['transportSegments'].firstChange)) {
-      console.log('🔄 [GpxAnimationComponent] Cambio en gpxText/transportSegments detectado. Reiniciando animación desde cero...');
-      this.resetAnimationState();
-      this.ngOnInit();
-      if (this.map) {
-        this.initMap();
+      console.log('🔄 [GpxAnimationComponent] Cambio en gpxText/transportSegments detectado.');
+      if (this.map && this.L) {
+        this.updateTrackInPlace();
+      } else {
+        this.resetAnimationState();
+        this.ngOnInit();
       }
     }
+  }
+
+  private drawBaseRoutePolyline(): void {
+    if (!this.map || !this.L || !this.points || this.points.length < 2) return;
+    if (this.baseRoutePolyline) {
+      try { this.map.removeLayer(this.baseRoutePolyline); } catch (e) {}
+      this.baseRoutePolyline = null;
+    }
+
+    const latlngs = this.points.map(p => [p.lat, p.lng]);
+    this.baseRoutePolyline = this.L.polyline(latlngs, {
+      color: '#94a3b8',
+      weight: 5,
+      opacity: 0.5,
+      lineCap: 'round',
+      lineJoin: 'round',
+      dashArray: '4, 8'
+    }).addTo(this.map);
+  }
+
+  private updateTrackInPlace(): void {
+    console.log('⚡ [GpxAnimationComponent] Actualizando tramo in-situ preservando la instancia del mapa');
+    this.stopAnimation();
+    this.resetAnimationState();
+
+    if (this.polylines && this.polylines.length > 0) {
+      this.polylines.forEach(p => {
+        try { this.map.removeLayer(p); } catch (e) {}
+      });
+      this.polylines = [];
+    }
+    this.currentPolyline = null;
+    this.currentBackgroundPolyline = null;
+
+    if (this.baseRoutePolyline) {
+      try { this.map.removeLayer(this.baseRoutePolyline); } catch (e) {}
+      this.baseRoutePolyline = null;
+    }
+
+    if (this.poiLayerGroup) {
+      this.poiLayerGroup.clearLayers();
+    }
+
+    if (this.visualSessionGroup) {
+      this.visualSessionGroup.clearLayers();
+    }
+
+    this.points = this.animationService.parseGpx(this.gpxText);
+    this.stats = this.animationService.getStats(this.points);
+
+    if (this.modoRecorridoGuiado) {
+      this.sincronizarEventosGuiados();
+    } else {
+      this.points = this.animationService.syncMultimedia(this.points, this.multimedia);
+    }
+
+    if (this.points.length > 0) {
+      const p0 = this.points[0];
+      const pointContext = (this.isHighFidelityMode && this.hfSegments?.length > 0) ? this.hfSegments[0] : p0;
+
+      if (pointContext?.color) {
+        this.currentMode = pointContext.mode || this.currentMode;
+        this.currentHfColor = pointContext.color;
+        this.currentHfPhase = pointContext.phase || '';
+      }
+
+      this.drawBaseRoutePolyline();
+
+      if (this.marker) {
+        this.marker.setLatLng([p0.lat, p0.lng]);
+        this.updateMarkerIcon(this.currentMode || 'walking');
+      } else {
+        const initialMode = this.currentMode || 'walking';
+        const iconHtml = `<div class="transport-icon-wrapper">${this.getModeIcon(initialMode)}</div>`;
+        this.marker = this.L.marker([p0.lat, p0.lng], {
+          icon: this.L.divIcon({
+            className: 'custom-transport-marker',
+            html: iconHtml,
+            iconSize: [48, 48],
+            iconAnchor: [24, 24]
+          })
+        }).addTo(this.map);
+      }
+
+      this.createNewPolyline(this.currentMode || 'walking', [p0.lat, p0.lng], pointContext);
+      this.displayAllPois();
+    }
+
+    this.cargandoMapa = false;
+    this.cdr.detectChanges();
+
+    if (this.autoPlay) {
+      setTimeout(() => {
+        if (!this.isPlaying && !this.animationStarted) {
+          this.togglePlay();
+        }
+      }, 350);
+    }
+  }
+
+  private sincronizarEventosGuiados(): void {
+    if (!this.points || this.points.length === 0) return;
+    this.points.forEach(p => p.event = null);
+    const pis = this.obtenerGruposPIs();
+    console.log(`🎬 [Recorrido Guiado] Sincronizando ${pis.length} Puntos de Interés a lo largo del trazado`);
+
+    let lastMatchedIdx = -1;
+    pis.forEach((pi, idx) => {
+      let bestIdx = (pi as any).trackIdx ?? -1;
+
+      if (bestIdx === -1 || bestIdx === undefined) {
+        let minDist = Infinity;
+        for (let i = 0; i < this.points.length; i++) {
+          const pt = this.points[i];
+          const dist = this.getDistance(pt.lat, pt.lng, pi.lat, pi.lng);
+          if (dist < minDist) {
+            minDist = dist;
+            bestIdx = i;
+          }
+        }
+      }
+
+      // Garantizar progresión monótona estricta: cada parada tiene su propio índice sin sobreescribir
+      if (idx > 0 && bestIdx <= lastMatchedIdx) {
+        bestIdx = Math.min(this.points.length - 1, lastMatchedIdx + 1);
+      }
+
+      if (bestIdx !== -1 && bestIdx < this.points.length) {
+        this.points[bestIdx].event = {
+          archivos: pi.archivos,
+          piNumero: idx + 1,
+          piTotal: pis.length,
+          esPuntoInteres: true
+        };
+        lastMatchedIdx = bestIdx;
+      }
+    });
   }
 
   constructor(
@@ -290,42 +429,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     this.points = this.animationService.parseGpx(this.gpxText);
 
     if (this.modoRecorridoGuiado) {
-      // En modo guiado, se limpia cualquier evento difuso previo y se generan eventos estrictos por PIs
-      this.points.forEach(p => p.event = null);
-      const pis = this.obtenerGruposPIs();
-      console.log(`🎬 [Recorrido Guiado] Sincronizando ${pis.length} Puntos de Interés a lo largo del trazado`);
-
-      let lastMatchedIdx = -1;
-      pis.forEach((pi, idx) => {
-        let bestIdx = (pi as any).trackIdx ?? -1;
-
-        if (bestIdx === -1 || bestIdx === undefined) {
-          let minDist = Infinity;
-          for (let i = 0; i < this.points.length; i++) {
-            const pt = this.points[i];
-            const dist = this.getDistance(pt.lat, pt.lng, pi.lat, pi.lng);
-            if (dist < minDist) {
-              minDist = dist;
-              bestIdx = i;
-            }
-          }
-        }
-
-        // Garantizar progresión monótona estricta: cada parada tiene su propio índice sin sobreescribir
-        if (idx > 0 && bestIdx <= lastMatchedIdx) {
-          bestIdx = Math.min(this.points.length - 1, lastMatchedIdx + 1);
-        }
-
-        if (bestIdx !== -1 && bestIdx < this.points.length) {
-          this.points[bestIdx].event = {
-            archivos: pi.archivos,
-            piNumero: idx + 1,
-            piTotal: pis.length,
-            esPuntoInteres: true
-          };
-          lastMatchedIdx = bestIdx;
-        }
-      });
+      this.sincronizarEventosGuiados();
     } else {
       this.points = this.animationService.syncMultimedia(this.points, this.multimedia);
     }
@@ -400,6 +504,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         this.currentHfPhase = pointContext.hfPhase || '';
       }
 
+      this.drawBaseRoutePolyline();
       this.createNewPolyline(this.currentMode || 'walking', [p0.lat, p0.lng], pointContext);
       this.displayAllPois();
       console.log(`🛣️ Primera polilínea (HF) y POIs creados en ngAfterViewInit. Color: ${this.currentHfColor || 'default'}`);
@@ -718,17 +823,17 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       }
       this.cdr.detectChanges();
       if (this.autoPlay && !this.isPlaying && !this.animationStarted) {
-        // Dar 1.2s de cortesía para contemplar el mapa general completo antes de hacer zoom al tramo 1
+        // Breve pausa técnica para que la cámara se asiente y arrancar fluidamente
         setTimeout(() => {
           if (!this.isPlaying && !this.animationStarted) {
             this.togglePlay();
           }
-        }, 1200);
+        }, 350);
       }
     };
 
     activeTileLayer.on('load', onMapTilesReady);
-    setTimeout(onMapTilesReady, 800);
+    setTimeout(onMapTilesReady, 400);
 
     // Control de selección de capas
     const layersControl = this.L.control.layers(
@@ -1399,8 +1504,29 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       const lat = p1.lat + (p2.lat - p1.lat) * alpha;
       const lng = p1.lng + (p2.lng - p1.lng) * alpha;
       const latlng = [lat, lng];
-
       this.marker.setLatLng(latlng);
+
+      // ✨ Sincronización sub-píxel continua: la punta de la polilínea sigue exactamente al vehículo
+      if (this.currentPolyline) {
+        const polyLatLngs = this.currentPolyline.getLatLngs() as any[];
+        if (polyLatLngs.length === 1) {
+          polyLatLngs.push(this.L.latLng(lat, lng));
+          this.currentPolyline.redraw();
+        } else if (polyLatLngs.length > 1) {
+          polyLatLngs[polyLatLngs.length - 1] = this.L.latLng(lat, lng);
+          this.currentPolyline.redraw();
+        }
+      }
+      if (this.currentBackgroundPolyline) {
+        const bgLatLngs = this.currentBackgroundPolyline.getLatLngs() as any[];
+        if (bgLatLngs.length === 1) {
+          bgLatLngs.push(this.L.latLng(lat, lng));
+          this.currentBackgroundPolyline.redraw();
+        } else if (bgLatLngs.length > 1) {
+          bgLatLngs[bgLatLngs.length - 1] = this.L.latLng(lat, lng);
+          this.currentBackgroundPolyline.redraw();
+        }
+      }
 
       // Fase 2: Seguimiento de cámara throttled con Safe Zone (desactivado en Álbum-Libro)
       if (!this.pendingEvent && !this.activeEvent && this.cameraMode === 'TRACKING' && this.interactiveMode !== false) {
@@ -2129,12 +2255,18 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
     if (this.currentPolyline) {
       const latlngs = this.currentPolyline.getLatLngs() as any[];
+      if (latlngs.length > 1) {
+        latlngs.pop();
+      }
       coords.forEach(c => latlngs.push(this.L.latLng(c[0], c[1])));
       this.currentPolyline.redraw();
     }
 
     if (this.currentBackgroundPolyline) {
       const bgLatLngs = this.currentBackgroundPolyline.getLatLngs() as any[];
+      if (bgLatLngs.length > 1) {
+        bgLatLngs.pop();
+      }
       coords.forEach(c => bgLatLngs.push(this.L.latLng(c[0], c[1])));
       this.currentBackgroundPolyline.redraw();
     }

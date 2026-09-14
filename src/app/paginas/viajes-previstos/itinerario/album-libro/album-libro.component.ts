@@ -246,15 +246,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   videoMuted: boolean = false; // Por defecto el volumen de los vídeos está abierto (se oyen)
   videoActualSecuencia: 'izq' | 'der' | 'single' | null = null;
   private timerVideoPreview: any = null;
-  mapaRenderKey: string = 'map_init';
+  mapaRenderKey: string = 'map_active';
 
   reiniciarInstanciaMapa(): void {
-    this.mapaRenderKey = '';
+    if (!this.mapaRenderKey) {
+      this.mapaRenderKey = 'map_active';
+    }
     this.cdr.detectChanges();
-    setTimeout(() => {
-      this.mapaRenderKey = `map_s${this.spreadActual}_p${this.paginaActual}_${Date.now()}`;
-      this.cdr.detectChanges();
-    }, 60);
   }
 
   get distanciaTotalKm(): number {
@@ -3636,8 +3634,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.modoRecuerdoActivo = activarModoRecuerdo;
         this.modoGuiadoActivo = activarModoRecuerdo ? modoGuiado : false;
 
-        this.spreadActual = 0;
-        this.paginaActual = 0;
+        const startPag = (activarModoRecuerdo && modoGuiado) ? this.obtenerPrimeraPaginaMemoria() : 0;
+        this.paginaActual = startPag;
+        if (this.spreads && this.spreads.length > 0) {
+          const spIdx = this.spreads.findIndex(s => s.indices?.includes(startPag));
+          if (spIdx >= 0) this.spreadActual = spIdx;
+        }
         this.reiniciarInstanciaMapa();
         this.precargarSiguienteVideo();
         this.precargarContenidoVentana(0);
@@ -3659,8 +3661,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.estado = 'abierto';
     this.modoRecuerdoActivo = activarModoRecuerdo;
     this.modoGuiadoActivo = activarModoRecuerdo ? modoGuiado : false;
-    this.spreadActual = 0;
-    this.paginaActual = 0;
+    const startPag = (activarModoRecuerdo && modoGuiado) ? this.obtenerPrimeraPaginaMemoria() : 0;
+    this.paginaActual = startPag;
+    if (this.spreads && this.spreads.length > 0) {
+      const spIdx = this.spreads.findIndex(s => s.indices?.includes(startPag));
+      if (spIdx >= 0) this.spreadActual = spIdx;
+    }
     this.precargarSiguienteVideo();
     this.precargarContenidoVentana(0);
     this.iniciarSecuenciaVideosSpread();
