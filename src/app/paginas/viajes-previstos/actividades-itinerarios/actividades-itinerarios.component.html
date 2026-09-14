@@ -346,6 +346,7 @@
          <!-- Pestañas -->
          <div class="side-panel-tabs">
             <button class="tab-btn" [class.active]="activeSideTab === 'fotos'" (click)="activeSideTab = 'fotos'">📷 Fotos</button>
+            <button class="tab-btn" *ngIf="audiosActividad && audiosActividad.length > 0" [class.active]="activeSideTab === 'audios'" (click)="activeSideTab = 'audios'">🎤 Audios ({{ audiosActividad.length }})</button>
             <button class="tab-btn" [class.active]="activeSideTab === 'estadisticas'" (click)="activeSideTab = 'estadisticas'">📊 Estadísticas</button>
          </div>
          
@@ -375,6 +376,35 @@
               </div>
               <div *ngIf="!fotosActividad || fotosActividad.length === 0" class="empty-state">
                 No hay fotos para esta actividad.
+              </div>
+            </div>
+
+            <!-- Pestaña AUDIOS -->
+            <div *ngIf="activeSideTab === 'audios'" class="tab-content-audios" style="padding: 10px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100% - 45px); overflow-y: auto;">
+              <div *ngFor="let audio of audiosActividad" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="background: #D97706; color: white; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: bold;">
+                      #{{ audio.numeroSecuencial }}
+                    </span>
+                    <strong style="font-size: 12px; color: #1e293b; max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" [title]="audio.nombreArchivo">
+                      {{ audio.nombreArchivo }}
+                    </strong>
+                  </div>
+                  <button (click)="centrarEnFoto(audio)" style="background: #F59E0B; color: white; border: none; border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="Ver ubicación en el mapa">
+                    <i class="fa fa-map-marker"></i> Ver
+                  </button>
+                </div>
+                <div style="font-size: 11px; color: #64748b;" *ngIf="audio.fechaCreacion">
+                  <i class="fa fa-clock-o"></i> {{ audio.fechaCreacion | date:'medium' }}
+                </div>
+                <div *ngIf="audio.descripcion" style="font-size: 12px; color: #475569; font-style: italic;">
+                  "{{ audio.descripcion }}"
+                </div>
+                <audio controls [src]="getAudioUrl(audio.rutaArchivo)" style="width: 100%; height: 32px; border-radius: 4px;"></audio>
+              </div>
+              <div *ngIf="!audiosActividad || audiosActividad.length === 0" class="empty-state">
+                No hay notas de voz para esta actividad.
               </div>
             </div>
             

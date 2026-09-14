@@ -48,6 +48,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
   urlMapaDataURL: string | null = null;
   fotosActividad: any[] = [];
+  audiosActividad: any[] = [];
   gruposEditor: any[] = []; // NUEVO: Grupos de medios para pasar al editor
   estadisticasActuales: any = null;
   actividadSeleccionada: number | null = null;
@@ -67,7 +68,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
   // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ NUEVAS PROPIEDADES: Panel de estadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas
   showSidePanel = true;
-  activeSideTab: 'fotos' | 'estadisticas' = 'fotos';
+  activeSideTab: 'fotos' | 'audios' | 'estadisticas' = 'fotos';
   panelExpanded = false;
   trackSegments: any[] = [];
   turningPoint: any = null;
@@ -937,21 +938,23 @@ export class ActividadesItinerariosComponent implements OnInit {
           <div class="photo-popup-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 6px; margin-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 6px;">
               <span style="background: #3b82f6; color: white; border-radius: 4px; padding: 2px 6px; font-size: 12px; font-weight: bold;">#${numeroSecuencial}</span>
-              <strong style="font-size: 14px; color: #334155;">${tieneMultiples ? `${cantidadArchivos} archivos` : 'Vista Previa'}</strong>
+              <strong style="font-size: 14px; color: #334155;">${tieneMultiples ? `${cantidadArchivos} archivos` : (primerArchivo.tipo === 'audio' ? 'Nota de Voz' : 'Vista Previa')}</strong>
             </div>
-            <span style="font-size: 10px; color: #64748b;">(Clic en miniatura para ver)</span>
+            <span style="font-size: 10px; color: #64748b;">(Clic para ver)</span>
           </div>
           <div class="photo-popup-body" style="display: flex; flex-direction: column; gap: 12px; max-height: 45vh; overflow-y: auto; overflow-x: hidden; padding-right: 5px;">
       `;
 
     archivos.forEach((item, index) => {
       const archivo = item.archivo;
-      const esVideo = this.esVideo(archivo);
+      const esAudio = archivo.tipo === 'audio';
+      const esVideo = !esAudio && this.esVideo(archivo);
       const thumbUrl = this.getThumbnailUrl(archivo);
 
-      const audioTag = archivo.audioAsociado ? `
+      const audioUrl = esAudio ? this.getAudioUrl(archivo.rutaArchivo) : (archivo.audioAsociado ? `${environment.apiUrl}/uploads/${archivo.audioAsociado}` : '');
+      const audioTag = audioUrl ? `
         <div style="margin-top: 6px; width: 100%;">
-          <audio controls src="${environment.apiUrl}/uploads/${archivo.audioAsociado}" style="height: 24px; width: 100%;"></audio>
+          <audio controls src="${audioUrl}" style="height: 28px; width: 100%;"></audio>
         </div>
       ` : '';
 
@@ -960,16 +963,21 @@ export class ActividadesItinerariosComponent implements OnInit {
         if (this.direccionesCache[archivo.geolocalizacion]) {
           locationTag = `<div style="font-size: 11px; color: #64748b; margin-top: 4px;"><i class="fa fa-map-marker"></i> ${this.direccionesCache[archivo.geolocalizacion]}</div>`;
         } else {
-          locationTag = `<div id="lugar-popup-${archivo.id}" style="font-size: 11px; color: #64748b; margin-top: 4px;"><i class="fa fa-map-marker"></i> <span class="lugar-texto">ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â Cargando ubicaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n...</span></div>`;
+          locationTag = `<div id="lugar-popup-${archivo.id}" style="font-size: 11px; color: #64748b; margin-top: 4px;"><i class="fa fa-map-marker"></i> <span class="lugar-texto">Ubicación...</span></div>`;
         }
       }
 
       const dateTag = archivo.fechaCreacion ? `<div style="font-size: 11px; color: #94a3b8; margin-top: 2px;"><i class="fa fa-clock-o"></i> ${new Date(archivo.timestampReal || archivo.fechaCreacion).toLocaleString()}</div>` : '';
       const descTag = archivo.descripcion ? `<div style="font-size: 12px; color: #475569; margin-top: 6px; font-style: italic;">"${archivo.descripcion}"</div>` : '';
 
-      const mediaTag = esVideo
-        ? `<video src="${thumbUrl}#t=0.1" preload="metadata" muted playsinline style="width: 100px; height: 75px; object-fit: cover; border-radius: 6px; border: 2px solid #e2e8f0; cursor: pointer;" class="clickable-media" data-index="${index}"></video>`
-        : `<img src="${thumbUrl}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 6px; border: 2px solid #e2e8f0; cursor: pointer;" class="clickable-media" data-index="${index}" />`;
+      let mediaTag = '';
+      if (esAudio) {
+        mediaTag = `<div style="width: 75px; height: 75px; display: flex; align-items: center; justify-content: center; background: #FEF3C7; border-radius: 6px; border: 2px solid #F59E0B; font-size: 30px;">🎤</div>`;
+      } else if (esVideo) {
+        mediaTag = `<video src="${thumbUrl}#t=0.1" preload="metadata" muted playsinline style="width: 100px; height: 75px; object-fit: cover; border-radius: 6px; border: 2px solid #e2e8f0; cursor: pointer;" class="clickable-media" data-index="${index}"></video>`;
+      } else {
+        mediaTag = `<img src="${thumbUrl}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 6px; border: 2px solid #e2e8f0; cursor: pointer;" class="clickable-media" data-index="${index}" />`;
+      }
 
       popupContent += `
           <div class="archivo-item-popup" style="display: flex; gap: 10px; padding: 6px; background: #f8fafc; border-radius: 8px;">
@@ -1029,7 +1037,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   // Helper para procesar archivos, extraer metadatos anidados y crear marcadores
   private procesarArchivosYMarcadores(archivos: any[], asociados: any[]): void {
     const multimedia = archivos.filter((f: any) =>
-      (f.tipo === 'foto' || f.tipo === 'video') && f.geolocalizacion
+      (f.tipo === 'foto' || f.tipo === 'video' || f.tipo === 'audio') && f.geolocalizacion
     );
 
     // Mapear audio asociado y raspar lugar del JSON de geolocalizacion (Bloque C)
@@ -1127,6 +1135,7 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     // ✨ FASE 2: Sincronizar array lineal con los grupos del mapa
     this.fotosActividad = [];
+    this.audiosActividad = [];
 
     grupos.forEach((grupo, index) => {
       const numeroSecuencial = index + 1;
@@ -1141,7 +1150,11 @@ export class ActividadesItinerariosComponent implements OnInit {
       // Alimentar la galería lateral con el orden y número exacto del mapa
       grupo.archivos.forEach((item: any) => {
         item.archivo.numeroSecuencial = numeroSecuencial;
-        this.fotosActividad.push(item.archivo);
+        if (item.archivo.tipo === 'audio') {
+          this.audiosActividad.push(item.archivo);
+        } else {
+          this.fotosActividad.push(item.archivo);
+        }
       });
     });
   }
@@ -1192,20 +1205,21 @@ export class ActividadesItinerariosComponent implements OnInit {
       const tieneMultiples = cantidadArchivos > 1;
 
       const primerArchivo = archivos[0].archivo;
+      const esAudio = primerArchivo.tipo === 'audio';
       const esFoto = primerArchivo.tipo === 'foto';
-      const colorPrincipal = esFoto ? '#FF4444' : '#2196F3';
+      const colorPrincipal = esAudio ? '#F59E0B' : (esFoto ? '#E53935' : '#2196F3');
+      const badgeColor = esAudio ? '#D97706' : '#1E88E5';
 
       const grupoIcon = L.divIcon({
         className: 'photo-marker-custom',
         html: `
         <div style="display: flex; flex-direction: column; align-items: center;">
-          <!-- Pin clÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡sico mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³vil -->
           <svg width="44" height="44" viewBox="0 0 44 44" style="filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4)); z-index: 5;">
-            <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="#E53935" />
+            <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="${colorPrincipal}" />
             <circle cx="22" cy="16" r="6" fill="white" />
+            ${esAudio ? '<text x="22" y="19" font-size="9" text-anchor="middle">🎤</text>' : ''}
           </svg>
-          <!-- Badge numÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©rico mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³vil -->
-          <div style="margin-top: -8px; background: #1E88E5; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.4); z-index: 10; position: relative;">
+          <div style="margin-top: -8px; background: ${badgeColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.4); z-index: 10; position: relative;">
             #${numeroSecuencial}
           </div>
         </div>
@@ -1888,6 +1902,22 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     const backendUrl = environment.apiUrl;
     return `${backendUrl}/uploads/${ruta}`;
+  }
+
+  getAudioUrl(ruta: string): string {
+    if (!ruta) return '';
+    let rutaLimpia = ruta;
+    if (rutaLimpia.startsWith('uploads/') || rutaLimpia.startsWith('uploads\\')) {
+      rutaLimpia = rutaLimpia.substring(8);
+    }
+    if (rutaLimpia.startsWith('http://') || rutaLimpia.startsWith('https://')) {
+      return rutaLimpia;
+    }
+    if (rutaLimpia.includes('\\')) {
+      rutaLimpia = rutaLimpia.substring(rutaLimpia.lastIndexOf('\\') + 1);
+    }
+    const backendUrl = environment.apiUrl;
+    return `${backendUrl}/uploads/${rutaLimpia}`;
   }
 
   // ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ NUEVO: FunciÃƒÆ’Ã‚Â³n para determinar si el archivo es un vÃƒÆ’Ã‚Â­deo
