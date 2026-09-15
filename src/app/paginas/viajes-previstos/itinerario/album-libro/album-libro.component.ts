@@ -2461,13 +2461,27 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         }
       }
 
+      // Sanitización de fecha si el nombre contiene timestamp epoch (ej. recording-1789463199479... o JPEG_1789462494518...)
+      let fechaSaneada = archivo.fechaCreacion || '';
+      const matchTsNombre = archivo.nombreArchivo?.match(/(?:recording-|JPEG_|VIDEO_|audio_)?(\d{13})/i);
+      if (matchTsNombre) {
+        const epochMs = Number(matchTsNombre[1]);
+        if (epochMs > 1577836800000 && epochMs < 2051222400000) {
+          const anioActual = fechaSaneada ? new Date(fechaSaneada).getFullYear() : 0;
+          if (!fechaSaneada || anioActual < 2000 || anioActual > 2100) {
+            fechaSaneada = new Date(epochMs).toISOString();
+            archivo.fechaCreacion = fechaSaneada;
+          }
+        }
+      }
+
       return {
         archivo,
         url,
         titulo: archivo.descripcion || archivo.nombreArchivo || 'Sin título',
         descripcion: archivo.descripcion || '',
-        fecha: archivo.fechaCreacion || '',
-        fechaOriginal: archivo.fechaCreacion || '',
+        fecha: fechaSaneada,
+        fechaOriginal: fechaSaneada,
         tipoMedia,
         mimeType: archivo.tipoMime || this.inferirMimeType(archivo.nombreArchivo || ''),
         tamano: archivo.tamano,
@@ -2766,18 +2780,31 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               if (!ts && archivo.metadatos) {
                 try {
                   const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
-                  if (meta?.timestamp) ts = new Date(meta.timestamp).getTime() || 0;
+                  if (meta?.timestamp) {
+                    const parsedTs = new Date(meta.timestamp).getTime() || 0;
+                    if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
+                  }
                 } catch (e) { }
               }
-              // Prioridad 2: fechaTomada / fechaHora
+              // Prioridad 2: timestamp epoch en nombre de archivo (ej. recording-1789463199479... o JPEG_1789462494518...)
+              if (!ts && archivo.nombreArchivo) {
+                const matchNom = archivo.nombreArchivo.match(/(?:recording-|JPEG_|VIDEO_|audio_)?(\d{13})/i);
+                if (matchNom) {
+                  const epoch = Number(matchNom[1]);
+                  if (epoch > 1577836800000 && epoch < 2051222400000) ts = epoch;
+                }
+              }
+              // Prioridad 3: fechaTomada / fechaHora
               if (!ts && (archivo.fechaTomada || archivo.fechaHora)) {
-                ts = new Date(archivo.fechaTomada || archivo.fechaHora).getTime() || 0;
+                const parsedTs = new Date(archivo.fechaTomada || archivo.fechaHora).getTime() || 0;
+                if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
               }
-              // Prioridad 3: created_at
+              // Prioridad 4: created_at
               if (!ts && archivo.created_at) {
-                ts = new Date(archivo.created_at).getTime() || 0;
+                const parsedTs = new Date(archivo.created_at).getTime() || 0;
+                if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
               }
-              // Prioridad 4: fechaCreacion + horaCaptura (ignorar 'Desconocido')
+              // Prioridad 5: fechaCreacion + horaCaptura (ignorar 'Desconocido')
               if (!ts && archivo.fechaCreacion) {
                 const fecha = new Date(archivo.fechaCreacion);
                 const hc = archivo.horaCaptura;
@@ -2785,7 +2812,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                   const [horas, minutos] = hc.split(':').map(Number);
                   if (!isNaN(horas) && !isNaN(minutos)) fecha.setHours(horas, minutos, 0, 0);
                 }
-                ts = fecha.getTime();
+                const parsedTs = fecha.getTime();
+                if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
               }
               return { lat, lng, archivo, timestamp: ts };
             }
@@ -2945,15 +2973,37 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               }
               if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
                 let ts = 0;
-                if (archivo.fechaCreacion) {
+                // Prioridad 1: metadatos.timestamp
+                if (!ts && archivo.metadatos) {
+                  try {
+                    const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
+                    if (meta?.timestamp) {
+                      const parsedTs = new Date(meta.timestamp).getTime() || 0;
+                      if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
+                    }
+                  } catch (e) { }
+                }
+                // Prioridad 2: timestamp epoch en nombre de archivo (ej. recording-1789463199479... o JPEG_1789462494518...)
+                if (!ts && archivo.nombreArchivo) {
+                  const matchNom = archivo.nombreArchivo.match(/(?:recording-|JPEG_|VIDEO_|audio_)?(\d{13})/i);
+                  if (matchNom) {
+                    const epoch = Number(matchNom[1]);
+                    if (epoch > 1577836800000 && epoch < 2051222400000) ts = epoch;
+                  }
+                }
+                // Prioridad 3: fechaCreacion + horaCaptura
+                if (!ts && archivo.fechaCreacion) {
                   const fecha = new Date(archivo.fechaCreacion);
-                  if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string') {
+                  if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string' &&
+                      archivo.horaCaptura.toLowerCase() !== 'desconocido' && archivo.horaCaptura.trim() !== '') {
                     const [horas, minutos] = archivo.horaCaptura.split(':').map(Number);
                     if (!isNaN(horas) && !isNaN(minutos)) fecha.setHours(horas, minutos, 0, 0);
                   }
-                  ts = fecha.getTime();
-                } else if (archivo.fechaTomada || archivo.fecha) {
-                  ts = new Date(archivo.fechaTomada || archivo.fecha).getTime() || 0;
+                  const parsedTs = fecha.getTime();
+                  if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
+                } else if (!ts && (archivo.fechaTomada || archivo.fecha)) {
+                  const parsedTs = new Date(archivo.fechaTomada || archivo.fecha).getTime() || 0;
+                  if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
                 }
                 return { lat, lng, archivo, timestamp: ts };
               }
@@ -4002,15 +4052,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
   }
 
-  private reproducirVideoSeguro(video: HTMLVideoElement): void {
-    if (!video) return;
-    video.play().catch(err => {
-      if (err && err.name === 'NotAllowedError' && !this.videoMuted) {
-        console.warn('⚠️ Autoplay con sonido bloqueado por política del navegador; reproduciendo silenciado como fallback');
-        video.muted = true;
-        video.play().catch(e => console.warn('Error autoplay fallback:', e));
+  private reproducirMediaSeguro(media: HTMLMediaElement): void {
+    if (!media) return;
+    media.play().catch(err => {
+      if (err && err.name === 'NotAllowedError' && media instanceof HTMLVideoElement && !this.videoMuted) {
+        console.warn('⚠️ Autoplay con sonido bloqueado por política del navegador; reproduciendo vídeo silenciado como fallback');
+        media.muted = true;
+        media.play().catch(e => console.warn('Error autoplay fallback:', e));
       } else {
-        console.warn('Error al reproducir video:', err);
+        console.warn('Error al reproducir medio interactivo:', err);
       }
     });
   }
@@ -4021,61 +4071,71 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     setTimeout(() => {
       const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
       const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
+      const aIzq = document.getElementById('audio-spread-izq') as HTMLAudioElement;
+      const aDer = document.getElementById('audio-spread-der') as HTMLAudioElement;
 
-      const tieneVideoIzq = this.paginaSpreadIzquierda?.tipoMedia === 'video' && !!vIzq;
-      const tieneVideoDer = this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer;
+      // Detectar si la página izquierda o derecha tiene medio interactivo (vídeo o audio)
+      const tieneMediaIzq = (this.paginaSpreadIzquierda?.tipoMedia === 'video' && !!vIzq) ||
+                            (this.paginaSpreadIzquierda?.tipoMedia === 'audio' && !!aIzq);
+      const tieneMediaDer = (this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer) ||
+                            (this.paginaSpreadDerecha?.tipoMedia === 'audio' && !!aDer);
 
-      console.log('🎬 [Secuencia Videos] Spread:', this.spreadActual, '| Izq:', tieneVideoIzq, '| Der:', tieneVideoDer, '| Videos Completos:', this.reproducirVideosCompletos, '| Sonido Videos:', !this.videoMuted);
+      const elMediaIzq: HTMLMediaElement | null = this.paginaSpreadIzquierda?.tipoMedia === 'video' ? vIzq : (this.paginaSpreadIzquierda?.tipoMedia === 'audio' ? aIzq : null);
+      const elMediaDer: HTMLMediaElement | null = this.paginaSpreadDerecha?.tipoMedia === 'video' ? vDer : (this.paginaSpreadDerecha?.tipoMedia === 'audio' ? aDer : null);
 
-      if (!tieneVideoIzq && !tieneVideoDer) {
+      console.log('🎬 [Secuencia Medios] Spread:', this.spreadActual, '| Media Izq:', tieneMediaIzq, '| Media Der:', tieneMediaDer, '| Medios Completos:', this.reproducirVideosCompletos);
+
+      if (!tieneMediaIzq && !tieneMediaDer) {
         this.videoActualSecuencia = null;
         return;
       }
 
-      // Preparar vídeos: pausar ambos y configurar volumen/mute
-      if (vIzq) {
-        try { vIzq.pause(); } catch (e) {}
-        vIzq.currentTime = 0;
-        vIzq.muted = this.videoMuted;
+      // Preparar medios: pausar y reiniciar
+      if (elMediaIzq) {
+        try { elMediaIzq.pause(); } catch (e) {}
+        elMediaIzq.currentTime = 0;
+        if (elMediaIzq instanceof HTMLVideoElement) {
+          elMediaIzq.muted = this.videoMuted;
+        }
       }
-      if (vDer) {
-        try { vDer.pause(); } catch (e) {}
-        vDer.currentTime = 0;
-        vDer.muted = this.videoMuted;
+      if (elMediaDer) {
+        try { elMediaDer.pause(); } catch (e) {}
+        elMediaDer.currentTime = 0;
+        if (elMediaDer instanceof HTMLVideoElement) {
+          elMediaDer.muted = this.videoMuted;
+        }
       }
 
       // =========================================================================
       // REGLA CRÍTICA DE REPRODUCCIÓN SECUENCIAL:
-      // Cuando existen dos vídeos (izq y der), SIEMPRE se reproduce PRIMERO el de
+      // Cuando existen dos medios (izq y der), SIEMPRE se reproduce PRIMERO el de
       // la izquierda y DESPUÉS el de la derecha. NUNCA a la vez.
+      // Tanto vídeos como audios respetan el modo completo (reproducirVideosCompletos)
+      // o el modo parcial (preview de INTERVALO_SLIDESHOW).
       // =========================================================================
-      if (tieneVideoIzq) {
+      if (tieneMediaIzq && elMediaIzq) {
         this.videoActualSecuencia = 'izq';
-        console.log('▶️ [Secuencia Videos 1/2] Reproduciendo PRIMERO video izquierdo...');
-        this.reproducirVideoSeguro(vIzq);
-        if (!this.videoMuted) {
-          this.bajarVolumenAudioViaje();
-        }
+        console.log('▶️ [Secuencia Medios 1/2] Reproduciendo PRIMERO medio izquierdo...');
+        this.reproducirMediaSeguro(elMediaIzq);
+        this.bajarVolumenAudioViaje();
 
         if (!this.reproducirVideosCompletos) {
           this.timerVideoPreview = setTimeout(() => {
-            console.log('⏱️ [Secuencia Videos] Fin de preview (5s) para video izquierdo');
-            try { vIzq.pause(); } catch (e) {}
+            console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio izquierdo');
+            try { elMediaIzq.pause(); } catch (e) {}
             this.onVideoIzquierdoTerminado();
           }, this.INTERVALO_SLIDESHOW);
         }
-      } else if (tieneVideoDer) {
+      } else if (tieneMediaDer && elMediaDer) {
         this.videoActualSecuencia = 'der';
-        console.log('▶️ [Secuencia Videos] Solo hay video derecho, reproduciendo...');
-        this.reproducirVideoSeguro(vDer);
-        if (!this.videoMuted) {
-          this.bajarVolumenAudioViaje();
-        }
+        console.log('▶️ [Secuencia Medios] Solo hay medio derecho, reproduciendo...');
+        this.reproducirMediaSeguro(elMediaDer);
+        this.bajarVolumenAudioViaje();
 
         if (!this.reproducirVideosCompletos) {
           this.timerVideoPreview = setTimeout(() => {
-            console.log('⏱️ [Secuencia Videos] Fin de preview (5s) para video derecho');
-            try { vDer.pause(); } catch (e) {}
+            console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio derecho');
+            try { elMediaDer.pause(); } catch (e) {}
             this.onVideoDerechoTerminado();
           }, this.INTERVALO_SLIDESHOW);
         }
@@ -4084,40 +4144,43 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   onVideoIzquierdoTerminado(): void {
-    console.log('⏹️ [Secuencia Videos] Video izquierdo completado');
+    console.log('⏹️ [Secuencia Medios] Medio izquierdo completado');
     if (this.timerVideoPreview) {
       clearTimeout(this.timerVideoPreview);
       this.timerVideoPreview = null;
     }
 
     const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
-    if (vIzq) {
-      try { vIzq.pause(); } catch (e) {}
-    }
+    const aIzq = document.getElementById('audio-spread-izq') as HTMLAudioElement;
+    if (vIzq) try { vIzq.pause(); } catch (e) {}
+    if (aIzq) try { aIzq.pause(); } catch (e) {}
 
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
-    const tieneVideoDer = this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer;
+    const aDer = document.getElementById('audio-spread-der') as HTMLAudioElement;
+    const tieneMediaDer = (this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer) ||
+                          (this.paginaSpreadDerecha?.tipoMedia === 'audio' && !!aDer);
+    const elMediaDer: HTMLMediaElement | null = this.paginaSpreadDerecha?.tipoMedia === 'video' ? vDer : (this.paginaSpreadDerecha?.tipoMedia === 'audio' ? aDer : null);
 
-    if (tieneVideoDer) {
+    if (tieneMediaDer && elMediaDer) {
       // REGLA CRÍTICA: Al terminar el de la izquierda, se reproduce el de la derecha
       this.videoActualSecuencia = 'der';
-      console.log('▶️ [Secuencia Videos 2/2] Transición secuencial: reproduciendo video derecho...');
-      vDer.currentTime = 0;
-      vDer.muted = this.videoMuted;
-      this.reproducirVideoSeguro(vDer);
-      if (!this.videoMuted) {
-        this.bajarVolumenAudioViaje();
+      console.log('▶️ [Secuencia Medios 2/2] Transición secuencial: reproduciendo medio derecho...');
+      elMediaDer.currentTime = 0;
+      if (elMediaDer instanceof HTMLVideoElement) {
+        elMediaDer.muted = this.videoMuted;
       }
+      this.reproducirMediaSeguro(elMediaDer);
+      this.bajarVolumenAudioViaje();
 
       if (!this.reproducirVideosCompletos) {
         this.timerVideoPreview = setTimeout(() => {
-          console.log('⏱️ [Secuencia Videos] Fin de preview (5s) para video derecho');
-          try { vDer.pause(); } catch (e) {}
+          console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio derecho');
+          try { elMediaDer.pause(); } catch (e) {}
           this.onVideoDerechoTerminado();
         }, this.INTERVALO_SLIDESHOW);
       }
     } else {
-      // Solo había video izquierdo y ha finalizado
+      // Solo había medio izquierdo y ha finalizado
       this.videoActualSecuencia = null;
       this.restaurarVolumenAudioViaje();
       if (this.reproduciendoSlideshow) {
@@ -4131,16 +4194,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   onVideoDerechoTerminado(): void {
-    console.log('⏹️ [Secuencia Videos] Video derecho completado');
+    console.log('⏹️ [Secuencia Medios] Medio derecho completado');
     if (this.timerVideoPreview) {
       clearTimeout(this.timerVideoPreview);
       this.timerVideoPreview = null;
     }
 
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
-    if (vDer) {
-      try { vDer.pause(); } catch (e) {}
-    }
+    const aDer = document.getElementById('audio-spread-der') as HTMLAudioElement;
+    if (vDer) try { vDer.pause(); } catch (e) {}
+    if (aDer) try { aDer.pause(); } catch (e) {}
 
     this.videoActualSecuencia = null;
     this.restaurarVolumenAudioViaje();
@@ -4163,15 +4226,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
     const vSingle = document.getElementById('video-single-page') as HTMLVideoElement;
-    if (vIzq) {
-      try { vIzq.pause(); } catch (e) {}
-    }
-    if (vDer) {
-      try { vDer.pause(); } catch (e) {}
-    }
-    if (vSingle) {
-      try { vSingle.pause(); } catch (e) {}
-    }
+    const aIzq = document.getElementById('audio-spread-izq') as HTMLAudioElement;
+    const aDer = document.getElementById('audio-spread-der') as HTMLAudioElement;
+    const aSingle = document.getElementById('audio-single-page') as HTMLAudioElement;
+    if (vIzq) try { vIzq.pause(); } catch (e) {}
+    if (vDer) try { vDer.pause(); } catch (e) {}
+    if (vSingle) try { vSingle.pause(); } catch (e) {}
+    if (aIzq) try { aIzq.pause(); } catch (e) {}
+    if (aDer) try { aDer.pause(); } catch (e) {}
+    if (aSingle) try { aSingle.pause(); } catch (e) {}
     this.restaurarVolumenAudioViaje();
   }
 
@@ -4643,47 +4706,64 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     const arch = pagina.archivo || pagina;
 
+    // Extraer timestamp de 13 dígitos del nombre de archivo si existe (ej. recording-1789463199479... o JPEG_1789462494518...)
+    const nombreMatch = arch.nombreArchivo?.match(/(?:recording-|JPEG_|VIDEO_|audio_)?(\d{13})/i);
+    const tsNombre = nombreMatch ? Number(nombreMatch[1]) : 0;
+    const esTsNombreValido = tsNombre > 1577836800000 && tsNombre < 2051222400000;
+
     // Caso 2: audios grabados durante tracking → leer metadatos.timestamp
     if (arch.metadatos) {
       try {
         const meta = typeof arch.metadatos === 'string' ? JSON.parse(arch.metadatos) : arch.metadatos;
         if (meta?.timestamp) {
           const ts = new Date(meta.timestamp).getTime();
-          if (!isNaN(ts) && ts > 0) return ts;
+          if (!isNaN(ts) && ts > 0) {
+            if (new Date(ts).getFullYear() < 2000 && esTsNombreValido) return tsNombre;
+            if (new Date(ts).getFullYear() >= 2000) return ts;
+          }
         }
       } catch (e) { /* ignorar */ }
     }
 
     // Caso 3: campo timestamp / timestampReal directo en el archivo
     if (arch.timestamp && !isNaN(Number(arch.timestamp)) && Number(arch.timestamp) > 0) {
-      return Number(arch.timestamp);
+      const ts = Number(arch.timestamp);
+      if (new Date(ts).getFullYear() < 2000 && esTsNombreValido) return tsNombre;
+      if (new Date(ts).getFullYear() >= 2000) return ts;
     }
 
     // Caso 4: fechaTomada / fechaHora
     if (arch.fechaTomada || arch.fechaHora) {
       const ts = new Date(arch.fechaTomada || arch.fechaHora).getTime();
-      if (!isNaN(ts) && ts > 0) return ts;
+      if (!isNaN(ts) && ts > 0) {
+        if (new Date(ts).getFullYear() < 2000 && esTsNombreValido) return tsNombre;
+        if (new Date(ts).getFullYear() >= 2000) return ts;
+      }
     }
 
-    // Caso 5: created_at (audios del backend que no tienen fechaCreacion con hora)
+    // Caso 5: si el nombre tiene timestamp epoch válido, usarlo antes de fechas incompletas
+    if (esTsNombreValido) {
+      return tsNombre;
+    }
+
+    // Caso 6: created_at (audios del backend que no tienen fechaCreacion con hora)
     if (arch.created_at) {
       const ts = new Date(arch.created_at).getTime();
-      if (!isNaN(ts) && ts > 0) return ts;
+      if (!isNaN(ts) && ts > 0 && new Date(ts).getFullYear() >= 2000) return ts;
     }
 
-    // Caso 6: combinar fechaCreacion + horaCaptura (ignorar 'Desconocido')
+    // Caso 7: combinar fechaCreacion + horaCaptura (ignorar 'Desconocido')
     let datePart = '';
     if (pagina.fecha) {
       datePart = pagina.fecha.split('T')[0];
     } else if (arch.fechaCreacion) {
       datePart = arch.fechaCreacion.split('T')[0];
     }
-    if (!datePart) {
-      datePart = '1970-01-01';
+    if (!datePart || datePart.startsWith('1792') || datePart.startsWith('1970')) {
+      datePart = this.infoViaje?.fechaInicio?.split('T')[0] || '2026-09-15';
     }
 
     let timePart = pagina.horaInicioTramo;
-    // Ignorar horaCaptura si es 'Desconocido' o vacío
     const horaCaptura = arch.horaCaptura;
     if (!timePart && horaCaptura && typeof horaCaptura === 'string' &&
         horaCaptura.toLowerCase() !== 'desconocido' && horaCaptura.trim() !== '') {
@@ -4693,9 +4773,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       timePart = arch.fechaCreacion.split('T')[1].split('.')[0];
     }
     if (!timePart) {
-      // Sin hora conocida: si el archivo tiene coordenadas y la actividad tiene GPX,
-      // devolvemos 0 para que el sort por trackIdx tome precedencia.
-      return 0;
+      timePart = '12:00:00';
     }
 
     if (timePart.length === 5 && timePart.includes(':')) {

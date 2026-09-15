@@ -105,9 +105,9 @@
         <i class="fas" [class.fa-volume-up]="!videoMuted" [class.fa-volume-mute]="videoMuted"></i>
       </button>
 
-      <!-- 8. Vídeos completos -->
+      <!-- 8. Vídeos y audios completos -->
       <button class="toolbar-icon toolbar-action-btn" [class.active]="reproducirVideosCompletos" (click)="toggleVideosCompletos($event)"
-        [title]="reproducirVideosCompletos ? 'Vídeos completos: Activado' : 'Vídeos completos: Desactivado'">
+        [title]="reproducirVideosCompletos ? 'Vídeos y audios completos: Activado' : 'Vídeos y audios completos: Desactivado'">
         <i class="fas fa-film" aria-hidden="true"></i>
       </button>
 
@@ -1547,7 +1547,7 @@
                 <div class="vinilo-vintage-disco">
                   <i class="fas fa-compact-disc"></i>
                 </div>
-                <audio [src]="pagSingle.url" controls autoplay preload="auto" class="audio-vintage-control" (play)="onAudioItemPlay()" (pause)="onAudioItemPause()" (ended)="onAudioItemEnded()"></audio>
+                <audio id="audio-single-page" [src]="pagSingle.url" controls preload="auto" class="audio-vintage-control" (play)="onAudioItemPlay()" (pause)="onAudioItemPause()" (ended)="onVideoSingleTerminado()"></audio>
               </div>
 
               <!-- Overlay explicativo al hover -->
@@ -1735,12 +1735,13 @@
                 <i class="fas" [class.fa-volume-mute]="videoMuted" [class.fa-volume-up]="!videoMuted"></i>
               </button>
             </div>
-            <!-- Miniatura de audio página izquierda -->
-            <div *ngIf="pagIzq.tipoMedia === 'audio'" class="audio-preview-vintage">
-              <div class="vinilo-vintage-icon">
-                <i class="fas fa-music"></i>
+            <!-- Reproductor de Audio Vintage página izquierda -->
+            <div *ngIf="pagIzq.tipoMedia === 'audio'" class="audio-vintage-box" (click)="$event.stopPropagation()">
+              <div class="vinilo-vintage-disco">
+                <i class="fas fa-compact-disc"></i>
               </div>
-              <span class="audio-title-tag">{{ pagIzq.titulo }}</span>
+              <audio id="audio-spread-izq" [src]="pagIzq.url" controls preload="auto" class="audio-vintage-control"
+                (play)="onAudioItemPlay()" (pause)="onAudioItemPause()" (ended)="onVideoIzquierdoTerminado()"></audio>
             </div>
             <div *ngIf="pagIzq.esMapaAnimado" class="mapa-preview-vintage" (click)="!fullscreen && abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()">
               <app-mini-mapa-gpx *ngIf="pagIzq.trackGpx" [trackGpx]="pagIzq.trackGpx" [distanciaKm]="pagIzq.distanciaTramoKm" [transportMode]="pagIzq.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
@@ -1887,7 +1888,7 @@
               <div class="vinilo-vintage-disco">
                 <i class="fas fa-compact-disc"></i>
               </div>
-              <audio [src]="pagDer.url" controls preload="auto" class="audio-vintage-control" (play)="onAudioItemPlay()" (pause)="onAudioItemPause()" (ended)="onAudioItemEnded()"></audio>
+              <audio id="audio-spread-der" [src]="pagDer.url" controls preload="auto" class="audio-vintage-control" (play)="onAudioItemPlay()" (pause)="onAudioItemPause()" (ended)="onVideoDerechoTerminado()"></audio>
             </div>
 
             <div class="lupa-zoom-overlay" *ngIf="!fullscreen" (click)="abrirPaginaActualEnFullscreen(); $event.stopPropagation()"><i class="fas fa-search-plus"></i> Ampliar</div>
