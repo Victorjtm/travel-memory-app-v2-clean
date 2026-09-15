@@ -2461,17 +2461,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         }
       }
 
-      // Sanitización de fecha si el nombre contiene timestamp epoch (ej. recording-1789463199479... o JPEG_1789462494518...)
+      // Sanitización de fecha si el nombre contiene timestamp epoch (ej. recording-1789463199479... o JPEG_20260915_110546_1789463146411.jpg)
       let fechaSaneada = archivo.fechaCreacion || '';
-      const matchTsNombre = archivo.nombreArchivo?.match(/(?:recording-|JPEG_|VIDEO_|audio_)?(\d{13})/i);
+      const matchTsNombre = archivo.nombreArchivo?.match(/(\d{13})/);
       if (matchTsNombre) {
         const epochMs = Number(matchTsNombre[1]);
         if (epochMs > 1577836800000 && epochMs < 2051222400000) {
-          const anioActual = fechaSaneada ? new Date(fechaSaneada).getFullYear() : 0;
-          if (!fechaSaneada || anioActual < 2000 || anioActual > 2100) {
-            fechaSaneada = new Date(epochMs).toISOString();
-            archivo.fechaCreacion = fechaSaneada;
-          }
+          fechaSaneada = new Date(epochMs).toISOString();
+          archivo.fechaCreacion = fechaSaneada;
         }
       }
 
@@ -2776,7 +2773,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             }
             if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
               let ts = 0;
-              // Prioridad 1: metadatos.timestamp (audios grabados con Modo Dynamics)
+              // Prioridad 1: timestamp epoch en nombre de archivo (ej. recording-1789463199479... o JPEG_20260915_110546_1789463146411.jpg)
+              if (archivo.nombreArchivo) {
+                const matchNom = archivo.nombreArchivo.match(/(\d{13})/);
+                if (matchNom) {
+                  const epoch = Number(matchNom[1]);
+                  if (epoch > 1577836800000 && epoch < 2051222400000) ts = epoch;
+                }
+              }
+              // Prioridad 2: metadatos.timestamp (audios grabados con Modo Dynamics)
               if (!ts && archivo.metadatos) {
                 try {
                   const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
@@ -2785,14 +2790,6 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                     if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
                   }
                 } catch (e) { }
-              }
-              // Prioridad 2: timestamp epoch en nombre de archivo (ej. recording-1789463199479... o JPEG_1789462494518...)
-              if (!ts && archivo.nombreArchivo) {
-                const matchNom = archivo.nombreArchivo.match(/(?:recording-|JPEG_|VIDEO_|audio_)?(\d{13})/i);
-                if (matchNom) {
-                  const epoch = Number(matchNom[1]);
-                  if (epoch > 1577836800000 && epoch < 2051222400000) ts = epoch;
-                }
               }
               // Prioridad 3: fechaTomada / fechaHora
               if (!ts && (archivo.fechaTomada || archivo.fechaHora)) {
@@ -2973,7 +2970,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               }
               if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
                 let ts = 0;
-                // Prioridad 1: metadatos.timestamp
+                // Prioridad 1: timestamp epoch en nombre de archivo (ej. recording-1789463199479... o JPEG_20260915_110546_1789463146411.jpg)
+                if (archivo.nombreArchivo) {
+                  const matchNom = archivo.nombreArchivo.match(/(\d{13})/);
+                  if (matchNom) {
+                    const epoch = Number(matchNom[1]);
+                    if (epoch > 1577836800000 && epoch < 2051222400000) ts = epoch;
+                  }
+                }
+                // Prioridad 2: metadatos.timestamp
                 if (!ts && archivo.metadatos) {
                   try {
                     const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
@@ -2982,14 +2987,6 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                       if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
                     }
                   } catch (e) { }
-                }
-                // Prioridad 2: timestamp epoch en nombre de archivo (ej. recording-1789463199479... o JPEG_1789462494518...)
-                if (!ts && archivo.nombreArchivo) {
-                  const matchNom = archivo.nombreArchivo.match(/(?:recording-|JPEG_|VIDEO_|audio_)?(\d{13})/i);
-                  if (matchNom) {
-                    const epoch = Number(matchNom[1]);
-                    if (epoch > 1577836800000 && epoch < 2051222400000) ts = epoch;
-                  }
                 }
                 // Prioridad 3: fechaCreacion + horaCaptura
                 if (!ts && archivo.fechaCreacion) {
@@ -4706,10 +4703,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     const arch = pagina.archivo || pagina;
 
-    // Extraer timestamp de 13 dígitos del nombre de archivo si existe (ej. recording-1789463199479... o JPEG_1789462494518...)
-    const nombreMatch = arch.nombreArchivo?.match(/(?:recording-|JPEG_|VIDEO_|audio_)?(\d{13})/i);
+    // Extraer timestamp de 13 dígitos del nombre de archivo si existe (ej. recording-1789463199479... o JPEG_20260915_110546_1789463146411.jpg)
+    const nombreMatch = arch.nombreArchivo?.match(/(\d{13})/);
     const tsNombre = nombreMatch ? Number(nombreMatch[1]) : 0;
     const esTsNombreValido = tsNombre > 1577836800000 && tsNombre < 2051222400000;
+    if (esTsNombreValido) {
+      return tsNombre;
+    }
 
     // Caso 2: audios grabados durante tracking → leer metadatos.timestamp
     if (arch.metadatos) {
