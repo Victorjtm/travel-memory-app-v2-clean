@@ -20,4 +20,5 @@ export interface Archivo {
     urlPoster?: string; // ⬅️ NUEVO: Miniatura del vídeo
     transcripcion_raw?: string; // ⬅️ NUEVO: Texto original de la IA
     archivosAsociados?: ArchivoAsociado[];
+    numeroSecuencial?: number;
   }

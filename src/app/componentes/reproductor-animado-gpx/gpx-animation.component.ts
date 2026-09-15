@@ -675,10 +675,10 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     const boundsPoints: any[] = [];
 
     grupos.forEach((grupo, index) => {
-      const numeroSecuencial = index + 1;
       const { lat, lng } = grupo;
 
       const primerArchivo = (grupo.archivos && grupo.archivos.length > 0) ? (grupo.archivos[0].archivo || grupo.archivos[0]) : null;
+      const numeroSecuencial = primerArchivo?.numeroSecuencial || (index + 1);
       const tipo = (primerArchivo?.tipo || '').toLowerCase();
       const esAudio = tipo === 'audio';
       const esFoto = tipo === 'foto' || tipo === 'imagen';

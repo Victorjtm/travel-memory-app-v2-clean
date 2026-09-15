@@ -231,6 +231,9 @@ export class GpxAnimationService {
         if (orden !== null) {
           points[bestIdx].event.ordenVisita = orden;
         }
+        if (item.numeroSecuencial !== undefined) {
+          points[bestIdx].event.numeroSecuencial = item.numeroSecuencial;
+        }
       }
     });
 

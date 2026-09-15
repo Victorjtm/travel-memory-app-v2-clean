@@ -860,7 +860,7 @@
             
             <!-- Badge Número de orden cronológico -->
             <span class="badge-orden" [class.badge-especial]="pagina.esIndice || pagina.esCartaManuscrita || pagina.esMapaAnimado">
-              {{ pagina.esIndice ? 'Índice' : (pagina.esCartaManuscrita ? 'Diario' : (pagina.esMapaAnimado ? 'Ruta' : '#' + i)) }}
+              {{ obtenerBadgeOrden(pagina, i) }}
             </span>
 
             <!-- Vista previa del contenido -->

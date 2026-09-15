@@ -2703,7 +2703,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   private cachePaginasPorFiltro = new Map<string, PaginaMedia[]>();
   private cacheDatosActividadGpx = new Map<number, {
     points: GpxPoint[];
-    gruposPIs: { lat: number; lng: number; archivos: any[]; trackIdx?: number }[];
+    gruposPIs: { lat: number; lng: number; archivos: any[]; trackIdx?: number; numeroSecuencial?: number }[];
     piIndices: number[];
     modoBaseNorm: string;
     visualSessionData: any;
@@ -2822,60 +2822,60 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
           validMedia.sort((a, b) => a.timestamp - b.timestamp);
 
-          const TOLERANCIA_GPS = 0.0001; // ~10 metros
-          const gruposPIs: { lat: number; lng: number; archivos: any[]; trackIdx?: number }[] = [];
+          // 1. Mapear cada elemento de validMedia al punto más cercano del track (bestTrackIdx)
+          validMedia.forEach(item => {
+            let bestTrackIdx = 0;
+            let minDist = Infinity;
+            for (let i = 0; i < points.length; i++) {
+              const d = this.getDistanceMetros(item.lat, item.lng, points[i].lat, points[i].lng);
+              if (d < minDist) {
+                minDist = d;
+                bestTrackIdx = i;
+                if (d < 5) break;
+              }
+            }
+            (item as any).trackIdx = bestTrackIdx;
+          });
+
+          // 2. Agrupación canónica idéntica a actividades-itinerarios (Ver GPX)
+          const TOLERANCIA_GPS = 0.00015; // ~15 metros
+          const MAX_TIME_GAP_MS = 60 * 60 * 1000; // 1 hora
+          const gruposPIs: { lat: number; lng: number; trackIdx: number; archivos: any[]; numeroSecuencial?: number }[] = [];
 
           validMedia.forEach(item => {
             const ultimoGrupo = gruposPIs.length > 0 ? gruposPIs[gruposPIs.length - 1] : null;
             const coincideUbicacion = ultimoGrupo &&
               Math.abs(ultimoGrupo.lat - item.lat) < TOLERANCIA_GPS &&
               Math.abs(ultimoGrupo.lng - item.lng) < TOLERANCIA_GPS;
+            const trackMuyCercano = ultimoGrupo && Math.abs(ultimoGrupo.trackIdx - (item as any).trackIdx) < 8;
+            const ultimoItem = ultimoGrupo ? ultimoGrupo.archivos[ultimoGrupo.archivos.length - 1] : null;
+            const tsUltimo = ultimoItem ? this.obtenerTimestampReal(ultimoItem) : 0;
+            const tiempoCercano = !item.timestamp || !tsUltimo || Math.abs(item.timestamp - tsUltimo) < MAX_TIME_GAP_MS;
 
-            if (coincideUbicacion && ultimoGrupo) {
-              ultimoGrupo.archivos.push(item.archivo);
+            if ((coincideUbicacion || trackMuyCercano) && tiempoCercano) {
+              ultimoGrupo!.archivos.push(item.archivo);
             } else {
-              gruposPIs.push({ lat: item.lat, lng: item.lng, archivos: [item.archivo] });
+              gruposPIs.push({
+                lat: item.lat,
+                lng: item.lng,
+                trackIdx: (item as any).trackIdx,
+                archivos: [item.archivo]
+              });
             }
           });
 
-          // Mapear PIs a puntos del track ordenadamente hacia adelante
-          let lastMatchedIdx = 0;
+          // 3. Asignar numeroSecuencial canónico coincidente con Ver GPX a cada grupo y a sus archivos
+          gruposPIs.forEach((grupo, index) => {
+            const num = index + 1;
+            grupo.numeroSecuencial = num;
+            grupo.archivos.forEach((arch: any) => {
+              arch.numeroSecuencial = num;
+            });
+          });
+
+          // 4. Mapear índices del track para segmentación de rutas
           const piMatchedIndicesSet = new Set<number>([0]);
-
-          gruposPIs.forEach((pi) => {
-            let bestIdx = -1;
-            let minScore = Infinity;
-
-            for (let i = lastMatchedIdx; i < points.length; i++) {
-              const pt = points[i];
-              const dist = this.getDistanceMetros(pt.lat, pt.lng, pi.lat, pi.lng);
-              const penalty = (i - lastMatchedIdx) * 0.05;
-              const score = dist + penalty;
-              if (score < minScore) {
-                minScore = score;
-                bestIdx = i;
-                if (dist < 30) break;
-              }
-            }
-
-            if (bestIdx === -1) {
-              for (let i = 0; i < points.length; i++) {
-                const pt = points[i];
-                const dist = this.getDistanceMetros(pt.lat, pt.lng, pi.lat, pi.lng);
-                if (dist < minScore) {
-                  minScore = dist;
-                  bestIdx = i;
-                }
-              }
-            }
-
-            if (bestIdx !== -1) {
-              pi.trackIdx = bestIdx;
-              piMatchedIndicesSet.add(bestIdx);
-              lastMatchedIdx = bestIdx;
-            }
-          });
-
+          gruposPIs.forEach(g => piMatchedIndicesSet.add(g.trackIdx));
           piMatchedIndicesSet.add(points.length - 1);
           const piIndices = Array.from(piMatchedIndicesSet).sort((a, b) => a - b);
 
@@ -3012,60 +3012,67 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
             validMedia.sort((a, b) => a.timestamp - b.timestamp);
 
-            const TOLERANCIA_GPS = 0.0001; // ~10 metros
-            const gruposPIs: { lat: number; lng: number; archivos: any[]; trackIdx?: number }[] = [];
+            // 1. Mapear cada elemento de validMedia al punto más cercano del track (bestTrackIdx)
+            validMedia.forEach(item => {
+              let bestTrackIdx = 0;
+              let minDist = Infinity;
+              for (let i = 0; i < points.length; i++) {
+                const d = this.getDistanceMetros(item.lat, item.lng, points[i].lat, points[i].lng);
+                if (d < minDist) {
+                  minDist = d;
+                  bestTrackIdx = i;
+                  if (d < 5) break;
+                }
+              }
+              (item as any).trackIdx = bestTrackIdx;
+            });
+
+            // 2. Agrupación canónica idéntica a actividades-itinerarios (Ver GPX)
+            const TOLERANCIA_GPS = 0.00015; // ~15 metros
+            const MAX_TIME_GAP_MS = 60 * 60 * 1000; // 1 hora
+            const gruposPIs: { lat: number; lng: number; trackIdx: number; archivos: any[]; numeroSecuencial?: number }[] = [];
 
             validMedia.forEach(item => {
               const ultimoGrupo = gruposPIs.length > 0 ? gruposPIs[gruposPIs.length - 1] : null;
               const coincideUbicacion = ultimoGrupo &&
                 Math.abs(ultimoGrupo.lat - item.lat) < TOLERANCIA_GPS &&
                 Math.abs(ultimoGrupo.lng - item.lng) < TOLERANCIA_GPS;
+              const trackMuyCercano = ultimoGrupo && Math.abs(ultimoGrupo.trackIdx - (item as any).trackIdx) < 8;
+              const ultimoItem = ultimoGrupo ? ultimoGrupo.archivos[ultimoGrupo.archivos.length - 1] : null;
+              const tsUltimo = ultimoItem ? this.obtenerTimestampReal(ultimoItem) : 0;
+              const tiempoCercano = !item.timestamp || !tsUltimo || Math.abs(item.timestamp - tsUltimo) < MAX_TIME_GAP_MS;
 
-              if (coincideUbicacion && ultimoGrupo) {
-                ultimoGrupo.archivos.push(item.archivo);
+              if ((coincideUbicacion || trackMuyCercano) && tiempoCercano) {
+                ultimoGrupo!.archivos.push(item.archivo);
               } else {
-                gruposPIs.push({ lat: item.lat, lng: item.lng, archivos: [item.archivo] });
+                gruposPIs.push({
+                  lat: item.lat,
+                  lng: item.lng,
+                  trackIdx: (item as any).trackIdx,
+                  archivos: [item.archivo]
+                });
               }
             });
 
-            // Mapear PIs a puntos del track ordenadamente hacia adelante
-            let lastMatchedIdx = 0;
-            const piMatchedIndicesSet = new Set<number>([0]);
-
-            gruposPIs.forEach((pi) => {
-              let bestIdx = -1;
-              let minScore = Infinity;
-
-              for (let i = lastMatchedIdx; i < points.length; i++) {
-                const pt = points[i];
-                const dist = this.getDistanceMetros(pt.lat, pt.lng, pi.lat, pi.lng);
-                const penalty = (i - lastMatchedIdx) * 0.05;
-                const score = dist + penalty;
-                if (score < minScore) {
-                  minScore = score;
-                  bestIdx = i;
-                  if (dist < 30) break;
-                }
-              }
-
-              if (bestIdx === -1) {
-                for (let i = 0; i < points.length; i++) {
-                  const pt = points[i];
-                  const dist = this.getDistanceMetros(pt.lat, pt.lng, pi.lat, pi.lng);
-                  if (dist < minScore) {
-                    minScore = dist;
-                    bestIdx = i;
+            // 3. Asignar numeroSecuencial canónico coincidente con Ver GPX a cada grupo y a sus archivos
+            gruposPIs.forEach((grupo, index) => {
+              const num = index + 1;
+              grupo.numeroSecuencial = num;
+              grupo.archivos.forEach((arch: any) => {
+                arch.numeroSecuencial = num;
+                // Sincronizar también con los archivos de las páginas del libro
+                if (arch.id) {
+                  const pag = paginasInput.find(p => p.archivo?.id === arch.id);
+                  if (pag && pag.archivo) {
+                    pag.archivo.numeroSecuencial = num;
                   }
                 }
-              }
-
-              if (bestIdx !== -1) {
-                pi.trackIdx = bestIdx;
-                piMatchedIndicesSet.add(bestIdx);
-                lastMatchedIdx = bestIdx;
-              }
+              });
             });
 
+            // 4. Mapear índices del track para segmentación de rutas
+            const piMatchedIndicesSet = new Set<number>([0]);
+            gruposPIs.forEach(g => piMatchedIndicesSet.add(g.trackIdx));
             piMatchedIndicesSet.add(points.length - 1);
             const piIndices = Array.from(piMatchedIndicesSet).sort((a, b) => a - b);
 
@@ -3212,11 +3219,29 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           const tiposUnicos = Array.from(new Set(subTransportSegments.map(t => t.tipo || t.nombre).filter(Boolean)));
           const tipoTransporteTramo = tiposUnicos.length > 0 ? tiposUnicos.join(', ') : modoBaseNorm;
 
+          const originPI = gruposPIs.find((g: any) => g.trackIdx === startIdx);
+          const destPI = gruposPIs.find((g: any) => g.trackIdx === endIdx);
+
+          let tituloTramo = `Recorrido de ${distKm.toFixed(1)} km`;
+          let descTramo = `Tramo ${s + 1} de ${piIndices.length - 1} (${distKm.toFixed(1)} km)`;
+          if (originPI?.numeroSecuencial && destPI?.numeroSecuencial) {
+            tituloTramo = `Recorrido: Parada #${originPI.numeroSecuencial} ➔ Parada #${destPI.numeroSecuencial}`;
+            descTramo = `Tramo entre Parada #${originPI.numeroSecuencial} y Parada #${destPI.numeroSecuencial} (${distKm.toFixed(1)} km)`;
+          }
+
+          // Filtrar multimedia relevante a este tramo (origen y destino) para pines limpios y exactos
+          const multimediaTramo = archivosGeo.filter((a: any) => {
+            if (!a) return false;
+            if (originPI && a.numeroSecuencial === originPI.numeroSecuencial) return true;
+            if (destPI && a.numeroSecuencial === destPI.numeroSecuencial) return true;
+            return false;
+          });
+
           const paginaMapa: PaginaMedia = {
             archivo: {} as Archivo,
             url: '',
-            titulo: `Recorrido de ${distKm.toFixed(1)} km`,
-            descripcion: `Tramo ${s + 1} de ${piIndices.length - 1} (${distKm.toFixed(1)} km)`,
+            titulo: tituloTramo,
+            descripcion: descTramo,
             fecha: datePart,
             tipoMedia: 'mapa-animado',
             mimeType: '',
@@ -3232,7 +3257,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             horaFinTramo: horaFinTramo,
             tipoTransporteTramo: tipoTransporteTramo,
             timestampReal: timestampInicio,
-            multimedia: archivosGeo
+            multimedia: multimediaTramo.length > 0 ? multimediaTramo : archivosGeo
           };
 
           if (!mapasPorActividad.has(actId)) {
@@ -5333,6 +5358,27 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   esArchivoVisualizableEnNavegador(tipo: TipoMedia): boolean {
     return ['imagen', 'video', 'audio', 'pdf'].includes(tipo);
+  }
+
+  obtenerBadgeOrden(pagina: PaginaMedia, index: number): string {
+    if (!pagina) return '';
+    if (pagina.esIndice) return 'Índice';
+    if (pagina.esCartaManuscrita) return 'Diario';
+    if (pagina.esMapaAnimado) return 'Ruta';
+    if (pagina.archivo?.numeroSecuencial) {
+      return '#' + pagina.archivo.numeroSecuencial;
+    }
+    // Si no tiene número de parada, enumerar de forma secuencial los elementos multimedia
+    let contadorMedia = 0;
+    if (this.paginas && this.paginas.length > 0) {
+      for (let i = 0; i <= index && i < this.paginas.length; i++) {
+        const p = this.paginas[i];
+        if (p && !p.esIndice && !p.esCartaManuscrita && !p.esMapaAnimado) {
+          contadorMedia++;
+        }
+      }
+    }
+    return '#' + (contadorMedia || (index + 1));
   }
 
   obtenerTooltipRecorrido(pagina: PaginaMedia): string {
