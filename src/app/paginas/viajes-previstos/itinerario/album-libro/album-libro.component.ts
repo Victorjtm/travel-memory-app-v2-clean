@@ -3166,16 +3166,25 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           const ptInicio = subSegmentPoints[0];
           const ptFin = subSegmentPoints[subSegmentPoints.length - 1];
 
-          // Obtener el PI de origen del subtramo para posicionar la animación inmediatamente tras sus fotos
-          const piOrigen = gruposPIs.find((g: any) => g.trackIdx === startIdx);
+          // Obtener todos los PIs de origen del subtramo para posicionar la animación inmediatamente tras el último archivo multimedia de ese punto
+          const pisOrigen = gruposPIs.filter((g: any) => g.trackIdx === startIdx);
           let timestampInicio = 0;
           let horaInicioTramo = '';
           let horaFinTramo = '';
 
-          if (piOrigen && piOrigen.archivos && piOrigen.archivos.length > 0) {
-            const lastFile = piOrigen.archivos[piOrigen.archivos.length - 1];
-            timestampInicio = this.obtenerTimestampReal(lastFile) + 1;
-            horaInicioTramo = lastFile.horaCaptura || '';
+          let lastFileOrigen: any = null;
+          for (const pi of pisOrigen) {
+            if (pi.archivos && pi.archivos.length > 0) {
+              const f = pi.archivos[pi.archivos.length - 1];
+              if (!lastFileOrigen || this.obtenerTimestampReal(f) > this.obtenerTimestampReal(lastFileOrigen)) {
+                lastFileOrigen = f;
+              }
+            }
+          }
+
+          if (lastFileOrigen) {
+            timestampInicio = this.obtenerTimestampReal(lastFileOrigen) + 1;
+            horaInicioTramo = lastFileOrigen.horaCaptura || '';
           }
 
           if (!timestampInicio && ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime())) {
