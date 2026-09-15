@@ -425,7 +425,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       if (!isNaN(d.getTime())) {
         return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
       }
-    } catch (e) {}
+    } catch (e) { }
     return fechaStr;
   }
 
@@ -2463,21 +2463,29 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         }
       }
 
-      // Sanitización de fecha si el nombre contiene timestamp epoch (ej. recording-1789463199479... o JPEG_20260915_110546_1789463146411.jpg)
+      // Sanitización de fecha si falta o es inválida y el nombre contiene timestamp epoch (ej. recording-1789463199479...)
       let fechaSaneada = archivo.fechaCreacion || '';
-      const matchTsNombre = archivo.nombreArchivo?.match(/(\d{13})/);
-      if (matchTsNombre) {
-        const epochMs = Number(matchTsNombre[1]);
-        if (epochMs > 1577836800000 && epochMs < 2051222400000) {
-          fechaSaneada = new Date(epochMs).toISOString();
-          archivo.fechaCreacion = fechaSaneada;
+      if (!fechaSaneada || fechaSaneada.startsWith('1970') || fechaSaneada.startsWith('1792')) {
+        const matchTsNombre = archivo.nombreArchivo?.match(/(\d{13})/);
+        if (matchTsNombre) {
+          const epochMs = Number(matchTsNombre[1]);
+          if (epochMs > 1577836800000 && epochMs < 2051222400000) {
+            fechaSaneada = new Date(epochMs).toISOString();
+            archivo.fechaCreacion = fechaSaneada;
+          }
         }
+      }
+
+      let tituloItem = archivo.descripcion || archivo.nombreArchivo || 'Sin título';
+      if (tipoMedia === 'audio' && (!archivo.descripcion || archivo.descripcion.trim() === '')) {
+        const hora = archivo.horaCaptura && archivo.horaCaptura !== '00:00:00' && archivo.horaCaptura.toLowerCase() !== 'desconocido' ? ` (${archivo.horaCaptura.substring(0, 5)})` : '';
+        tituloItem = `Nota de voz${hora}`;
       }
 
       return {
         archivo,
         url,
-        titulo: archivo.descripcion || archivo.nombreArchivo || 'Sin título',
+        titulo: tituloItem,
         descripcion: archivo.descripcion || '',
         fecha: fechaSaneada,
         fechaOriginal: fechaSaneada,
@@ -2775,46 +2783,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               lng = Number(archivo.lng);
             }
             if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
-              let ts = 0;
-              // Prioridad 1: timestamp epoch en nombre de archivo (ej. recording-1789463199479... o JPEG_20260915_110546_1789463146411.jpg)
-              if (archivo.nombreArchivo) {
-                const matchNom = archivo.nombreArchivo.match(/(\d{13})/);
-                if (matchNom) {
-                  const epoch = Number(matchNom[1]);
-                  if (epoch > 1577836800000 && epoch < 2051222400000) ts = epoch;
-                }
-              }
-              // Prioridad 2: metadatos.timestamp (audios grabados con Modo Dynamics)
-              if (!ts && archivo.metadatos) {
-                try {
-                  const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
-                  if (meta?.timestamp) {
-                    const parsedTs = new Date(meta.timestamp).getTime() || 0;
-                    if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
-                  }
-                } catch (e) { }
-              }
-              // Prioridad 3: fechaTomada / fechaHora
-              if (!ts && (archivo.fechaTomada || archivo.fechaHora)) {
-                const parsedTs = new Date(archivo.fechaTomada || archivo.fechaHora).getTime() || 0;
-                if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
-              }
-              // Prioridad 4: created_at
-              if (!ts && archivo.created_at) {
-                const parsedTs = new Date(archivo.created_at).getTime() || 0;
-                if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
-              }
-              // Prioridad 5: fechaCreacion + horaCaptura (ignorar 'Desconocido')
-              if (!ts && archivo.fechaCreacion) {
-                const fecha = new Date(archivo.fechaCreacion);
-                const hc = archivo.horaCaptura;
-                if (hc && typeof hc === 'string' && hc.toLowerCase() !== 'desconocido' && hc.trim() !== '') {
-                  const [horas, minutos] = hc.split(':').map(Number);
-                  if (!isNaN(horas) && !isNaN(minutos)) fecha.setHours(horas, minutos, 0, 0);
-                }
-                const parsedTs = fecha.getTime();
-                if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
-              }
+              const ts = this.obtenerTimestampReal(archivo);
               return { lat, lng, archivo, timestamp: ts };
             }
             return null;
@@ -2995,7 +2964,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                 if (!ts && archivo.fechaCreacion) {
                   const fecha = new Date(archivo.fechaCreacion);
                   if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string' &&
-                      archivo.horaCaptura.toLowerCase() !== 'desconocido' && archivo.horaCaptura.trim() !== '') {
+                    archivo.horaCaptura.toLowerCase() !== 'desconocido' && archivo.horaCaptura.trim() !== '') {
                     const [horas, minutos] = archivo.horaCaptura.split(':').map(Number);
                     if (!isNaN(horas) && !isNaN(minutos)) fecha.setHours(horas, minutos, 0, 0);
                   }
@@ -3686,7 +3655,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       const pag = this.paginas[i];
       if (pag.tipoMedia === 'imagen' && pag.url) {
         this.paginasPrecargadas.add(i);
-        this.precargarImagen(pag.url, i).catch(() => {});
+        this.precargarImagen(pag.url, i).catch(() => { });
       }
     }
   }
@@ -3934,9 +3903,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.precargarSiguienteVideo();
         if (this.reproduciendoSlideshow) {
           const currentPag = this.paginas[this.paginaActual];
-          const tieneVideo = currentPag?.tipoMedia === 'video';
+          const tieneMediaInteractivo = currentPag?.tipoMedia === 'video' || currentPag?.tipoMedia === 'audio';
           const tieneMapa = currentPag?.esMapaAnimado && !this.modoRutaImagen;
-          if (!tieneVideo && !tieneMapa) {
+          if (!tieneMediaInteractivo && !tieneMapa) {
             this.reiniciarTimerSlideshow();
           } else {
             this.limpiarTimerSlideshow();
@@ -3988,9 +3957,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           this.precargarContenidoVentana(this.paginaActual);
 
           if (this.reproduciendoSlideshow) {
-            const tieneVideo = (this.paginaSpreadIzquierda?.tipoMedia === 'video' || this.paginaSpreadDerecha?.tipoMedia === 'video');
+            const tieneMediaInteractivo = (
+              this.paginaSpreadIzquierda?.tipoMedia === 'video' ||
+              this.paginaSpreadIzquierda?.tipoMedia === 'audio' ||
+              this.paginaSpreadDerecha?.tipoMedia === 'video' ||
+              this.paginaSpreadDerecha?.tipoMedia === 'audio'
+            );
             const tieneMapa = this.spreadActualData?.tipo === 'mapa' && !this.modoRutaImagen;
-            if (!tieneVideo && !tieneMapa) {
+            if (!tieneMediaInteractivo && !tieneMapa) {
               this.reiniciarTimerSlideshow();
             } else {
               this.limpiarTimerSlideshow();
@@ -4008,9 +3982,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.centrarMiniaturaActiva(this.paginaActual);
         this.precargarSiguienteVideo();
         if (this.reproduciendoSlideshow) {
-          const tieneVideo = (this.paginaSpreadIzquierda?.tipoMedia === 'video' || this.paginaSpreadDerecha?.tipoMedia === 'video');
+          const tieneMediaInteractivo = (
+            this.paginaSpreadIzquierda?.tipoMedia === 'video' ||
+            this.paginaSpreadIzquierda?.tipoMedia === 'audio' ||
+            this.paginaSpreadDerecha?.tipoMedia === 'video' ||
+            this.paginaSpreadDerecha?.tipoMedia === 'audio'
+          );
           const tieneMapa = this.spreadActualData?.tipo === 'mapa' && !this.modoRutaImagen;
-          if (!tieneVideo && !tieneMapa) {
+          if (!tieneMediaInteractivo && !tieneMapa) {
             this.reiniciarTimerSlideshow();
           } else {
             this.limpiarTimerSlideshow();
@@ -4059,7 +4038,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     event?.stopPropagation();
     this.videoMuted = !this.videoMuted;
     console.log('🔊 [Sonido Vídeos] Conmutado a:', this.videoMuted ? 'SILENCIADO' : 'ABIERTO / CON SONIDO');
-    
+
     const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
     const vSingle = document.getElementById('video-single-page') as HTMLVideoElement;
@@ -4067,9 +4046,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     if (vDer) vDer.muted = this.videoMuted;
     if (vSingle) vSingle.muted = this.videoMuted;
 
-    const algunVideoSonando = 
-      (vIzq && !vIzq.paused && !vIzq.ended) || 
-      (vDer && !vDer.paused && !vDer.ended) || 
+    const algunVideoSonando =
+      (vIzq && !vIzq.paused && !vIzq.ended) ||
+      (vDer && !vDer.paused && !vDer.ended) ||
       (vSingle && !vSingle.paused && !vSingle.ended);
 
     if (this.videoMuted) {
@@ -4091,7 +4070,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
     const vSingle = document.getElementById('video-single-page') as HTMLVideoElement;
 
-    const otroVideoReproduciendo = 
+    const otroVideoReproduciendo =
       (origen !== 'izq' && vIzq && !vIzq.paused && !vIzq.ended) ||
       (origen !== 'der' && vDer && !vDer.paused && !vDer.ended) ||
       (origen !== 'single' && vSingle && !vSingle.paused && !vSingle.ended);
@@ -4101,17 +4080,38 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
   }
 
-  private reproducirMediaSeguro(media: HTMLMediaElement): void {
+  private timerFallbackMedia: any = null;
+
+  private reproducirMediaSeguro(media: HTMLMediaElement, lado?: 'izq' | 'der'): void {
     if (!media) return;
     media.play().catch(err => {
       if (err && err.name === 'NotAllowedError' && media instanceof HTMLVideoElement && !this.videoMuted) {
         console.warn('⚠️ Autoplay con sonido bloqueado por política del navegador; reproduciendo vídeo silenciado como fallback');
         media.muted = true;
-        media.play().catch(e => console.warn('Error autoplay fallback:', e));
+        media.play().catch(e => {
+          console.warn('Error autoplay fallback:', e);
+          this.avanzarMediaFallback(lado);
+        });
       } else {
-        console.warn('Error al reproducir medio interactivo:', err);
+        console.warn('⚠️ No se pudo reproducir medio interactivo:', err);
+        this.avanzarMediaFallback(lado);
       }
     });
+  }
+
+  private avanzarMediaFallback(lado?: 'izq' | 'der'): void {
+    if (!this.reproduciendoSlideshow) return;
+    if (this.timerFallbackMedia) clearTimeout(this.timerFallbackMedia);
+    this.timerFallbackMedia = setTimeout(() => {
+      if (this.reproduciendoSlideshow) {
+        console.log('⏭️ [Fallback Media] Avanzando tras timeout por medio bloqueado o no reproducible');
+        if (lado === 'izq' || this.videoActualSecuencia === 'izq') {
+          this.onVideoIzquierdoTerminado();
+        } else if (lado === 'der' || this.videoActualSecuencia === 'der') {
+          this.onVideoDerechoTerminado();
+        }
+      }
+    }, 4000);
   }
 
   iniciarSecuenciaVideosSpread(): void {
@@ -4125,9 +4125,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
       // Detectar si la página izquierda o derecha tiene medio interactivo (vídeo o audio)
       const tieneMediaIzq = (this.paginaSpreadIzquierda?.tipoMedia === 'video' && !!vIzq) ||
-                            (this.paginaSpreadIzquierda?.tipoMedia === 'audio' && !!aIzq);
+        (this.paginaSpreadIzquierda?.tipoMedia === 'audio' && !!aIzq);
       const tieneMediaDer = (this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer) ||
-                            (this.paginaSpreadDerecha?.tipoMedia === 'audio' && !!aDer);
+        (this.paginaSpreadDerecha?.tipoMedia === 'audio' && !!aDer);
 
       const elMediaIzq: HTMLMediaElement | null = this.paginaSpreadIzquierda?.tipoMedia === 'video' ? vIzq : (this.paginaSpreadIzquierda?.tipoMedia === 'audio' ? aIzq : null);
       const elMediaDer: HTMLMediaElement | null = this.paginaSpreadDerecha?.tipoMedia === 'video' ? vDer : (this.paginaSpreadDerecha?.tipoMedia === 'audio' ? aDer : null);
@@ -4141,14 +4141,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
       // Preparar medios: pausar y reiniciar
       if (elMediaIzq) {
-        try { elMediaIzq.pause(); } catch (e) {}
+        try { elMediaIzq.pause(); } catch (e) { }
         elMediaIzq.currentTime = 0;
         if (elMediaIzq instanceof HTMLVideoElement) {
           elMediaIzq.muted = this.videoMuted;
         }
       }
       if (elMediaDer) {
-        try { elMediaDer.pause(); } catch (e) {}
+        try { elMediaDer.pause(); } catch (e) { }
         elMediaDer.currentTime = 0;
         if (elMediaDer instanceof HTMLVideoElement) {
           elMediaDer.muted = this.videoMuted;
@@ -4165,26 +4165,26 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       if (tieneMediaIzq && elMediaIzq) {
         this.videoActualSecuencia = 'izq';
         console.log('▶️ [Secuencia Medios 1/2] Reproduciendo PRIMERO medio izquierdo...');
-        this.reproducirMediaSeguro(elMediaIzq);
+        this.reproducirMediaSeguro(elMediaIzq, 'izq');
         this.bajarVolumenAudioViaje();
 
         if (!this.reproducirVideosCompletos) {
           this.timerVideoPreview = setTimeout(() => {
             console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio izquierdo');
-            try { elMediaIzq.pause(); } catch (e) {}
+            try { elMediaIzq.pause(); } catch (e) { }
             this.onVideoIzquierdoTerminado();
           }, this.INTERVALO_SLIDESHOW);
         }
       } else if (tieneMediaDer && elMediaDer) {
         this.videoActualSecuencia = 'der';
         console.log('▶️ [Secuencia Medios] Solo hay medio derecho, reproduciendo...');
-        this.reproducirMediaSeguro(elMediaDer);
+        this.reproducirMediaSeguro(elMediaDer, 'der');
         this.bajarVolumenAudioViaje();
 
         if (!this.reproducirVideosCompletos) {
           this.timerVideoPreview = setTimeout(() => {
             console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio derecho');
-            try { elMediaDer.pause(); } catch (e) {}
+            try { elMediaDer.pause(); } catch (e) { }
             this.onVideoDerechoTerminado();
           }, this.INTERVALO_SLIDESHOW);
         }
@@ -4198,16 +4198,20 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       clearTimeout(this.timerVideoPreview);
       this.timerVideoPreview = null;
     }
+    if (this.timerFallbackMedia) {
+      clearTimeout(this.timerFallbackMedia);
+      this.timerFallbackMedia = null;
+    }
 
     const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
     const aIzq = document.getElementById('audio-spread-izq') as HTMLAudioElement;
-    if (vIzq) try { vIzq.pause(); } catch (e) {}
-    if (aIzq) try { aIzq.pause(); } catch (e) {}
+    if (vIzq) try { vIzq.pause(); } catch (e) { }
+    if (aIzq) try { aIzq.pause(); } catch (e) { }
 
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
     const aDer = document.getElementById('audio-spread-der') as HTMLAudioElement;
     const tieneMediaDer = (this.paginaSpreadDerecha?.tipoMedia === 'video' && !!vDer) ||
-                          (this.paginaSpreadDerecha?.tipoMedia === 'audio' && !!aDer);
+      (this.paginaSpreadDerecha?.tipoMedia === 'audio' && !!aDer);
     const elMediaDer: HTMLMediaElement | null = this.paginaSpreadDerecha?.tipoMedia === 'video' ? vDer : (this.paginaSpreadDerecha?.tipoMedia === 'audio' ? aDer : null);
 
     if (tieneMediaDer && elMediaDer) {
@@ -4218,13 +4222,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       if (elMediaDer instanceof HTMLVideoElement) {
         elMediaDer.muted = this.videoMuted;
       }
-      this.reproducirMediaSeguro(elMediaDer);
+      this.reproducirMediaSeguro(elMediaDer, 'der');
       this.bajarVolumenAudioViaje();
 
       if (!this.reproducirVideosCompletos) {
         this.timerVideoPreview = setTimeout(() => {
           console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio derecho');
-          try { elMediaDer.pause(); } catch (e) {}
+          try { elMediaDer.pause(); } catch (e) { }
           this.onVideoDerechoTerminado();
         }, this.INTERVALO_SLIDESHOW);
       }
@@ -4248,11 +4252,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       clearTimeout(this.timerVideoPreview);
       this.timerVideoPreview = null;
     }
+    if (this.timerFallbackMedia) {
+      clearTimeout(this.timerFallbackMedia);
+      this.timerFallbackMedia = null;
+    }
 
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
     const aDer = document.getElementById('audio-spread-der') as HTMLAudioElement;
-    if (vDer) try { vDer.pause(); } catch (e) {}
-    if (aDer) try { aDer.pause(); } catch (e) {}
+    if (vDer) try { vDer.pause(); } catch (e) { }
+    if (aDer) try { aDer.pause(); } catch (e) { }
 
     this.videoActualSecuencia = null;
     this.restaurarVolumenAudioViaje();
@@ -4271,6 +4279,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       clearTimeout(this.timerVideoPreview);
       this.timerVideoPreview = null;
     }
+    if (this.timerFallbackMedia) {
+      clearTimeout(this.timerFallbackMedia);
+      this.timerFallbackMedia = null;
+    }
     this.videoActualSecuencia = null;
     const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
     const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
@@ -4278,12 +4290,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     const aIzq = document.getElementById('audio-spread-izq') as HTMLAudioElement;
     const aDer = document.getElementById('audio-spread-der') as HTMLAudioElement;
     const aSingle = document.getElementById('audio-single-page') as HTMLAudioElement;
-    if (vIzq) try { vIzq.pause(); } catch (e) {}
-    if (vDer) try { vDer.pause(); } catch (e) {}
-    if (vSingle) try { vSingle.pause(); } catch (e) {}
-    if (aIzq) try { aIzq.pause(); } catch (e) {}
-    if (aDer) try { aDer.pause(); } catch (e) {}
-    if (aSingle) try { aSingle.pause(); } catch (e) {}
+    if (vIzq) try { vIzq.pause(); } catch (e) { }
+    if (vDer) try { vDer.pause(); } catch (e) { }
+    if (vSingle) try { vSingle.pause(); } catch (e) { }
+    if (aIzq) try { aIzq.pause(); } catch (e) { }
+    if (aDer) try { aDer.pause(); } catch (e) { }
+    if (aSingle) try { aSingle.pause(); } catch (e) { }
     this.restaurarVolumenAudioViaje();
   }
 
@@ -4406,14 +4418,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.reproduciendoSlideshow = true;
 
     const currentPag = this.paginas[this.paginaActual];
-    const tieneVideo = currentPag?.tipoMedia === 'video' && this.reproducirVideosCompletos;
+    const tieneMediaInteractivo = (currentPag?.tipoMedia === 'video' || currentPag?.tipoMedia === 'audio') && this.reproducirVideosCompletos;
     const tieneMapa = (currentPag?.esMapaAnimado || this.spreadActualData?.tipo === 'mapa') && !this.modoRutaImagen;
 
     if (tieneMapa) {
       console.log('🗺️ Página inicial del slideshow es mapa animado: pausando timer de 5s hasta completar trayecto');
       this.limpiarTimerSlideshow();
-    } else if (tieneVideo) {
-      console.log('🎬 Página inicial del slideshow es vídeo con reproducción completa: pausando timer de 5s hasta que finalice');
+    } else if (tieneMediaInteractivo) {
+      console.log('🎬 Página inicial del slideshow es vídeo o audio con reproducción completa: pausando timer de 5s hasta que finalice');
       this.limpiarTimerSlideshow();
     } else {
       this.reiniciarTimerSlideshow();
@@ -4755,86 +4767,80 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     const arch = pagina.archivo || pagina;
 
-    // Extraer timestamp de 13 dígitos del nombre de archivo si existe (ej. recording-1789463199479... o JPEG_20260915_110546_1789463146411.jpg)
-    const nombreMatch = arch.nombreArchivo?.match(/(\d{13})/);
-    const tsNombre = nombreMatch ? Number(nombreMatch[1]) : 0;
-    const esTsNombreValido = tsNombre > 1577836800000 && tsNombre < 2051222400000;
-    if (esTsNombreValido) {
-      return tsNombre;
+    // 1. Si tiene horaCaptura válida y fechaCreacion/fechaTomada/pagina.fecha
+    let datePart = '';
+    if (pagina.fecha) datePart = pagina.fecha.split('T')[0];
+    else if (arch.fechaCreacion) datePart = arch.fechaCreacion.split('T')[0];
+    else if (arch.fechaTomada) datePart = arch.fechaTomada.split('T')[0];
+
+    let timePart = '';
+    const hc = arch.horaCaptura;
+    if (hc && typeof hc === 'string' && hc !== '00:00:00' && hc.toLowerCase() !== 'desconocido' && hc.trim() !== '') {
+      timePart = hc.trim();
+      if (timePart.length === 5) timePart += ':00';
     }
 
-    // Caso 2: audios grabados durante tracking → leer metadatos.timestamp
+    // Si no hay horaCaptura o es desconocida, extraer YYYYMMDD_HHMMSS del nombre (ej. IMG_20260628_120302.jpg)
+    if (!timePart && arch.nombreArchivo) {
+      const m = arch.nombreArchivo.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+      if (m) {
+        if (!datePart || datePart.startsWith('1970') || datePart.startsWith('1792')) {
+          datePart = `${m[1]}-${m[2]}-${m[3]}`;
+        }
+        timePart = `${m[4]}:${m[5]}:${m[6]}`;
+      }
+    }
+
+    if (datePart && !datePart.startsWith('1970') && !datePart.startsWith('1792') && timePart) {
+      const dt = new Date(`${datePart}T${timePart}Z`);
+      if (!isNaN(dt.getTime())) return dt.getTime();
+    }
+
+    // 2. Si es audio grabado durante tracking (recording-178946... o metadatos.timestamp)
+    if (arch.nombreArchivo && arch.nombreArchivo.startsWith('recording-')) {
+      const m = arch.nombreArchivo.match(/(\d{13})/);
+      if (m) {
+        const ts = Number(m[1]);
+        if (ts > 1577836800000 && ts < 2051222400000) return ts;
+      }
+    }
+
     if (arch.metadatos) {
       try {
         const meta = typeof arch.metadatos === 'string' ? JSON.parse(arch.metadatos) : arch.metadatos;
         if (meta?.timestamp) {
           const ts = new Date(meta.timestamp).getTime();
-          if (!isNaN(ts) && ts > 0) {
-            if (new Date(ts).getFullYear() < 2000 && esTsNombreValido) return tsNombre;
-            if (new Date(ts).getFullYear() >= 2000) return ts;
-          }
+          if (!isNaN(ts) && ts > 0) return ts;
         }
-      } catch (e) { /* ignorar */ }
+      } catch (e) { }
     }
 
-    // Caso 3: campo timestamp / timestampReal directo en el archivo
-    if (arch.timestamp && !isNaN(Number(arch.timestamp)) && Number(arch.timestamp) > 0) {
-      const ts = Number(arch.timestamp);
-      if (new Date(ts).getFullYear() < 2000 && esTsNombreValido) return tsNombre;
-      if (new Date(ts).getFullYear() >= 2000) return ts;
-    }
-
-    // Caso 4: fechaTomada / fechaHora
+    // 3. Si tiene fechaTomada / fechaHora
     if (arch.fechaTomada || arch.fechaHora) {
       const ts = new Date(arch.fechaTomada || arch.fechaHora).getTime();
-      if (!isNaN(ts) && ts > 0) {
-        if (new Date(ts).getFullYear() < 2000 && esTsNombreValido) return tsNombre;
-        if (new Date(ts).getFullYear() >= 2000) return ts;
-      }
-    }
-
-    // Caso 5: si el nombre tiene timestamp epoch válido, usarlo antes de fechas incompletas
-    if (esTsNombreValido) {
-      return tsNombre;
-    }
-
-    // Caso 6: created_at (audios del backend que no tienen fechaCreacion con hora)
-    if (arch.created_at) {
-      const ts = new Date(arch.created_at).getTime();
       if (!isNaN(ts) && ts > 0 && new Date(ts).getFullYear() >= 2000) return ts;
     }
 
-    // Caso 7: combinar fechaCreacion + horaCaptura (ignorar 'Desconocido')
-    let datePart = '';
-    if (pagina.fecha) {
-      datePart = pagina.fecha.split('T')[0];
-    } else if (arch.fechaCreacion) {
-      datePart = arch.fechaCreacion.split('T')[0];
-    }
-    if (!datePart || datePart.startsWith('1792') || datePart.startsWith('1970')) {
-      datePart = this.infoViaje?.fechaInicio?.split('T')[0] || '2026-09-15';
+    // 4. Nombre con timestamp epoch (si no había fecha/hora completa previa)
+    if (arch.nombreArchivo) {
+      const m = arch.nombreArchivo.match(/(\d{13})/);
+      if (m) {
+        const ts = Number(m[1]);
+        if (ts > 1577836800000 && ts < 2051222400000) return ts;
+      }
     }
 
-    let timePart = pagina.horaInicioTramo;
-    const horaCaptura = arch.horaCaptura;
-    if (!timePart && horaCaptura && typeof horaCaptura === 'string' &&
-        horaCaptura.toLowerCase() !== 'desconocido' && horaCaptura.trim() !== '') {
-      timePart = horaCaptura.trim();
+    // 5. fechaCreacion / created_at fallback
+    if (arch.fechaCreacion) {
+      const ts = new Date(arch.fechaCreacion).getTime();
+      if (!isNaN(ts) && ts > 0) return ts;
     }
-    if (!timePart && arch.fechaCreacion && arch.fechaCreacion.includes('T')) {
-      timePart = arch.fechaCreacion.split('T')[1].split('.')[0];
-    }
-    if (!timePart) {
-      timePart = '12:00:00';
+    if (arch.created_at) {
+      const ts = new Date(arch.created_at).getTime();
+      if (!isNaN(ts) && ts > 0) return ts;
     }
 
-    if (timePart.length === 5 && timePart.includes(':')) {
-      timePart = `${timePart}:00`;
-    }
-
-    const fullIso = `${datePart}T${timePart}Z`;
-    const dt = new Date(fullIso);
-    return !isNaN(dt.getTime()) ? dt.getTime() : (new Date(pagina.fecha || 0).getTime() || 0);
+    return 0;
   }
 
   // ==========================================
@@ -4943,7 +4949,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.spreadActual = spreadIdx;
       }
       if (this.reproduciendoSlideshow) {
-        this.reiniciarTimerSlideshow();
+        const pag = this.paginas[nuevoIdx];
+        const tieneMedia = pag?.tipoMedia === 'video' || pag?.tipoMedia === 'audio';
+        if (!tieneMedia) {
+          this.reiniciarTimerSlideshow();
+        } else {
+          this.limpiarTimerSlideshow();
+        }
       }
       this.cdr.detectChanges();
     }
