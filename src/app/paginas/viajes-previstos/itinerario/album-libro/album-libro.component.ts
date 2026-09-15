@@ -3099,6 +3099,21 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       const { points, gruposPIs, piIndices, modoBaseNorm, visualSessionData, archivosGeo } = datos;
       const pagRef = paginasInput.find(p => p.archivo?.actividadId === actId);
 
+      // Sincronizar numeroSecuencial canónico de cada parada con las páginas del libro
+      gruposPIs.forEach(grupo => {
+        grupo.archivos.forEach((arch: any) => {
+          const archId = arch.id || arch.archivo?.id;
+          if (archId) {
+            const pags = paginasInput.filter(p => p.archivo?.id === archId);
+            pags.forEach(pag => {
+              if (pag.archivo) {
+                pag.archivo.numeroSecuencial = grupo.numeroSecuencial;
+              }
+            });
+          }
+        });
+      });
+
       for (let s = 0; s < piIndices.length - 1; s++) {
         const startIdx = piIndices[s];
         const endIdx = piIndices[s + 1];
