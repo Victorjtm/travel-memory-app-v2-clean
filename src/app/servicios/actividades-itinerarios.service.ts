@@ -58,5 +58,21 @@ export class ActividadesItinerariosService extends BaseHttpService {
   obtenerVisualSession(id: number): Observable<any> {
     return this.get(`${this.apiUrl}/${id}/visual-session`);
   }
+
+  // 🎬 MÉTODOS VÍDEO RUTA (OPCIÓN A)
+  subirVideoRuta(id: number, videoBlob: Blob): Observable<any> {
+    const formData = new FormData();
+    formData.append('video', videoBlob, `animacion_ruta_${id}.mp4`);
+    return this.http.post(`${this.apiUrl}/${id}/video-ruta`, formData);
+  }
+
+  obtenerVideoRuta(id: number): Observable<any> {
+    return this.get(`${this.apiUrl}/${id}/video-ruta`);
+  }
+
+  eliminarVideoRuta(id: number): Observable<any> {
+    return this.delete(`${this.apiUrl}/${id}/video-ruta`);
+  }
 }
+
 

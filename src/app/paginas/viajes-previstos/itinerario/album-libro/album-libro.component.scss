@@ -5843,12 +5843,99 @@
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 
             app-gpx-animation,
-            .mapa-estatico-vintage-view {
+            .mapa-estatico-vintage-view,
+            .video-mapa-vintage-wrapper,
+            .mapa-animado-fallback-box {
               width: 100%;
               height: 100%;
               display: block;
               position: relative;
               overflow: hidden;
+            }
+
+            .video-mapa-vintage-wrapper {
+              position: relative;
+              width: 100%;
+              height: 100%;
+              background: #0f172a;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+
+              .video-mapa-vintage {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+              }
+
+              .video-mapa-controls-overlay {
+                position: absolute;
+                top: 14px;
+                right: 14px;
+                z-index: 20;
+
+                .btn-mapa-switch {
+                  background: rgba(43, 24, 16, 0.85);
+                  backdrop-filter: blur(8px);
+                  color: #f7efe0;
+                  border: 1px solid rgba(191, 161, 95, 0.6);
+                  border-radius: 20px;
+                  padding: 5px 12px;
+                  font-size: 11.5px;
+                  font-weight: 600;
+                  cursor: pointer;
+                  display: flex;
+                  align-items: center;
+                  gap: 6px;
+                  transition: all 0.2s ease;
+
+                  &:hover {
+                    background: #2b1810;
+                    border-color: #d4af37;
+                    transform: scale(1.04);
+                  }
+                }
+              }
+            }
+
+            .mapa-animado-fallback-box {
+              position: relative;
+              width: 100%;
+              height: 100%;
+
+              .btn-generar-video-ruta-badge {
+                position: absolute;
+                bottom: 14px;
+                left: 14px;
+                z-index: 25;
+                background: linear-gradient(135deg, rgba(15, 23, 42, 0.92) 0%, rgba(30, 41, 59, 0.95) 100%);
+                backdrop-filter: blur(8px);
+                color: #38bdf8;
+                border: 1px solid rgba(56, 189, 248, 0.5);
+                border-radius: 20px;
+                padding: 6px 14px;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 7px;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+                transition: all 0.2s ease;
+
+                &:hover:not(:disabled) {
+                  background: #0284c7;
+                  color: #ffffff;
+                  transform: translateY(-1px);
+                  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.45);
+                }
+
+                &:disabled {
+                  opacity: 0.75;
+                  cursor: wait;
+                }
+              }
             }
           }
 

@@ -20,6 +20,7 @@ import { GpxAnimationComponent } from '../../../../componentes/reproductor-anima
 import { MiniMapaGpxComponent } from '../../../../componentes/mini-mapa-gpx/mini-mapa-gpx.component';
 import { GpxAnimationService, GpxPoint } from '../../../../servicios/gpx-animation.service';
 import { TrackEditorService } from '../../../../servicios/track-editor.service';
+import { RouteVideoGeneratorService, ProgresoRenderizadoRuta } from '../../../../servicios/route-video-generator.service';
 
 // ==========================================
 // TIPOS E INTERFACES
@@ -32,6 +33,7 @@ interface PaginaMedia {
   archivo: Archivo;
   url: string;
   urlMapaRenderizado?: string;
+  urlVideoAnimacion?: string;
   titulo: string;
   descripcion: string;
   fecha: string;
@@ -247,6 +249,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   videoActualSecuencia: 'izq' | 'der' | 'single' | null = null;
   private timerVideoPreview: any = null;
   mapaRenderKey: string = 'map_active';
+  forzarMapaInteractivo: boolean = false;
+  generandoVideoRutaEnCurso: boolean = false;
+  progresoRenderVideoRuta: string = '';
 
   reiniciarInstanciaMapa(): void {
     if (!this.mapaRenderKey) {
@@ -1116,6 +1121,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     private actividadesItinerariosService: ActividadesItinerariosService,
     private geocodificacionService: GeocodificacionService,
     public videoGeneratorService: VideoGeneratorService,
+    public routeVideoGeneratorService: RouteVideoGeneratorService,
     private gpxAnimationService: GpxAnimationService,
     private trackEditorService: TrackEditorService,
     private cdr: ChangeDetectorRef,
@@ -2605,6 +2611,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     desglose: any[];
     transportePrincipal: string;
     visualSessionData: any;
+    rutaVideoAnimado?: string | null;
   }> {
     try {
       let desglose: any[] = [];
@@ -2657,10 +2664,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           'walking';
       }
 
-      return { desglose, transportePrincipal, visualSessionData };
+      const rutaVideoAnimado = act?.rutaVideoAnimado || null;
+
+      return { desglose, transportePrincipal, visualSessionData, rutaVideoAnimado };
     } catch (err) {
       console.warn(`⚠️ No se pudo obtener info de transporte para actividad #${actId}`, err);
-      return { desglose: [], transportePrincipal: 'walking', visualSessionData: null };
+      return { desglose: [], transportePrincipal: 'walking', visualSessionData: null, rutaVideoAnimado: null };
     }
   }
 
@@ -2716,6 +2725,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     modoBaseNorm: string;
     visualSessionData: any;
     archivosGeo: any[];
+    rutaVideoAnimado?: string | null;
   }>();
 
   private async precargarDatosGpxActividades(paginasInput: PaginaMedia[]): Promise<void> {
@@ -2735,7 +2745,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       try {
         const [gpxXml, infoTransporte, archivosActividad] = await Promise.all([
           firstValueFrom(this.trackEditorService.resolveCanonicalGpxXml(actId, { flattenSegments: true })).catch(() => null),
-          this.obtenerInformacionTransporteActividad(actId).catch(() => ({ desglose: [], transportePrincipal: '', visualSessionData: null })),
+          this.obtenerInformacionTransporteActividad(actId).catch(() => ({ desglose: [], transportePrincipal: '', visualSessionData: null, rutaVideoAnimado: null })),
           firstValueFrom(this.archivoService.getArchivosPorActividad(actId)).catch(() => [])
         ]);
 
@@ -2854,7 +2864,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             piIndices,
             modoBaseNorm,
             visualSessionData,
-            archivosGeo
+            archivosGeo,
+            rutaVideoAnimado: infoTransporte.rutaVideoAnimado || null
           });
         }
       } catch (error) {
@@ -2893,7 +2904,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         try {
           const [gpxXml, infoTransporte, archivosActividad] = await Promise.all([
             firstValueFrom(this.trackEditorService.resolveCanonicalGpxXml(actId, { flattenSegments: true })).catch(() => null),
-            this.obtenerInformacionTransporteActividad(actId).catch(() => ({ desglose: [], transportePrincipal: '', visualSessionData: null })),
+            this.obtenerInformacionTransporteActividad(actId).catch(() => ({ desglose: [], transportePrincipal: '', visualSessionData: null, rutaVideoAnimado: null })),
             firstValueFrom(this.archivoService.getArchivosPorActividad(actId)).catch(() => [])
           ]);
 
@@ -3051,7 +3062,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               piIndices,
               modoBaseNorm,
               visualSessionData,
-              archivosGeo
+              archivosGeo,
+              rutaVideoAnimado: infoTransporte.rutaVideoAnimado || null
             });
           }
         } catch (error) {
@@ -3221,14 +3233,17 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             return false;
           });
 
+          const urlVideoRuta = datos.rutaVideoAnimado ? `${environment.apiUrl}/${datos.rutaVideoAnimado.replace(/^\//, '')}` : undefined;
+
           const paginaMapa: PaginaMedia = {
             archivo: {} as Archivo,
-            url: '',
+            url: urlVideoRuta || '',
+            urlVideoAnimacion: urlVideoRuta,
             titulo: tituloTramo,
             descripcion: descTramo,
             fecha: datePart,
-            tipoMedia: 'mapa-animado',
-            mimeType: '',
+            tipoMedia: urlVideoRuta ? 'video' : 'mapa-animado',
+            mimeType: urlVideoRuta ? 'video/mp4' : '',
             cargado: true,
             esMapaAnimado: true,
             trackGpx: gpxParcial,
@@ -3356,6 +3371,49 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           }
         }, 1200);
       }
+    }
+  }
+
+  async generarVideoRutaActual(pagMapa?: PaginaMedia): Promise<void> {
+    const mapa = pagMapa || this.spreadActualData?.paginaMapa || this.paginas[this.paginaActual];
+    if (!mapa || !mapa.trackGpx || !mapa.actividadId) {
+      console.warn('⚠️ No se puede generar vídeo: faltan datos del track o actividadId');
+      return;
+    }
+
+    try {
+      this.generandoVideoRutaEnCurso = true;
+      this.progresoRenderVideoRuta = 'Iniciando generación 60fps...';
+      this.cdr.detectChanges();
+
+      const url = await this.routeVideoGeneratorService.generarYSubirVideo(
+        mapa.actividadId,
+        {
+          trackGpx: mapa.trackGpx,
+          transportMode: mapa.tipoTransporteTramo || 'driving',
+          distanciaKm: mapa.distanciaTramoKm || 0,
+          titulo: mapa.titulo || 'Recorrido'
+        },
+        (progreso) => {
+          this.progresoRenderVideoRuta = progreso.mensaje;
+          this.cdr.detectChanges();
+        }
+      );
+
+      const urlCompleta = `${environment.apiUrl}/${url.replace(/^\//, '')}`;
+      mapa.urlVideoAnimacion = urlCompleta;
+      mapa.url = urlCompleta;
+      mapa.tipoMedia = 'video';
+      this.forzarMapaInteractivo = false;
+      this.generandoVideoRutaEnCurso = false;
+      this.progresoRenderVideoRuta = '';
+      console.log('🎬 ¡Vídeo de ruta generado con éxito!', mapa.urlVideoAnimacion);
+      this.cdr.detectChanges();
+    } catch (err: any) {
+      console.error('❌ Error generando vídeo de ruta:', err);
+      this.generandoVideoRutaEnCurso = false;
+      this.progresoRenderVideoRuta = 'Error al generar vídeo';
+      this.cdr.detectChanges();
     }
   }
 

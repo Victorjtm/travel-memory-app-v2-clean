@@ -1604,12 +1604,26 @@
                 pagSingle.distanciaTramoKm | number:'1.1-2' }} km</span>
             </div>
             <div class="mapa-vintage-wrapper">
-              <div *ngIf="modoRutaImagen && pagSingle.trackGpx" class="mapa-estatico-vintage-view">
+              <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A - 60 FPS Instantáneo) -->
+              <div *ngIf="pagSingle.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper">
+                <video [src]="pagSingle.urlVideoAnimacion" class="video-mapa-vintage"
+                       autoplay [muted]="videoMuted" playsinline (ended)="onFinAnimacionMapa()"></video>
+                <div class="video-mapa-controls-overlay">
+                  <button type="button" class="btn-mapa-switch" (click)="forzarMapaInteractivo = true; $event.stopPropagation()" title="Ver interactivo">
+                    <i class="fas fa-layer-group"></i> Interactivo
+                  </button>
+                </div>
+              </div>
+
+              <!-- Modo 1: Ruta en Imagen Estática -->
+              <div *ngIf="(!pagSingle.urlVideoAnimacion || forzarMapaInteractivo) && modoRutaImagen && pagSingle.trackGpx" class="mapa-estatico-vintage-view">
                 <app-mini-mapa-gpx [trackGpx]="pagSingle.trackGpx" [fullPage]="true"
                   [distanciaKm]="pagSingle.distanciaTramoKm"
                   [transportMode]="pagSingle.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
               </div>
-              <app-gpx-animation *ngIf="mapaRenderKey && !modoRutaImagen && pagSingle.trackGpx"
+
+              <!-- Modo 2: Fallback Mapa Animado con Movimiento -->
+              <app-gpx-animation *ngIf="(!pagSingle.urlVideoAnimacion || forzarMapaInteractivo) && mapaRenderKey && !modoRutaImagen && pagSingle.trackGpx"
                 [gpxText]="pagSingle.trackGpx" [multimedia]="pagSingle.multimedia || []"
                 [transportSegments]="pagSingle.transportSegments || []"
                 [visualSessionData]="pagSingle.visualSessionData"
@@ -1655,8 +1669,20 @@
         </div>
 
         <div class="mapa-panoramico-wrapper">
+          <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A - 60 FPS Instantáneo) -->
+          <div *ngIf="pagMapa.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper">
+            <video [src]="pagMapa.urlVideoAnimacion" class="video-mapa-vintage"
+                   autoplay [muted]="videoMuted" playsinline (ended)="onFinAnimacionMapa()"></video>
+            <div class="video-mapa-controls-overlay">
+              <button type="button" class="btn-mapa-switch" (click)="forzarMapaInteractivo = true; $event.stopPropagation()"
+                title="Cambiar a mapa interactivo">
+                <i class="fas fa-layer-group"></i> Mapa interactivo
+              </button>
+            </div>
+          </div>
+
           <!-- Modo 1: Ruta en Imagen Estática -->
-          <div *ngIf="modoRutaImagen && pagMapa.trackGpx" class="mapa-estatico-vintage-view"
+          <div *ngIf="(!pagMapa.urlVideoAnimacion || forzarMapaInteractivo) && modoRutaImagen && pagMapa.trackGpx" class="mapa-estatico-vintage-view"
             (click)="!fullscreen && abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()"
             [title]="fullscreen ? '' : 'Hacer clic para ver animación a pantalla completa'">
             <app-mini-mapa-gpx [trackGpx]="pagMapa.trackGpx" [fullPage]="true" [distanciaKm]="pagMapa.distanciaTramoKm"
@@ -1664,13 +1690,23 @@
             <div class="mapa-hint-play-overlay" *ngIf="!fullscreen"><i class="fas fa-play"></i> Ver animación</div>
           </div>
 
-          <!-- Modo 2: Ruta Animada con Movimiento -->
-          <app-gpx-animation *ngIf="mapaRenderKey && !modoRutaImagen && pagMapa.trackGpx" [gpxText]="pagMapa.trackGpx"
-            [multimedia]="pagMapa.multimedia || []" [transportSegments]="pagMapa.transportSegments || []"
-            [visualSessionData]="pagMapa.visualSessionData" [isHighFidelityMode]="pagMapa.isHighFidelityMode || false"
-            [modoRecorridoGuiado]="modoGuiadoActivo" [interactiveMode]="false" [autoPlay]="true"
-            (onAnimacionCompletada)="onFinAnimacionMapa()" (onCerrar)="onFinAnimacionMapa()">
-          </app-gpx-animation>
+          <!-- Modo 2: Ruta Animada con Movimiento (Fallback) -->
+          <div *ngIf="(!pagMapa.urlVideoAnimacion || forzarMapaInteractivo) && !modoRutaImagen" class="mapa-animado-fallback-box">
+            <app-gpx-animation *ngIf="mapaRenderKey && pagMapa.trackGpx" [gpxText]="pagMapa.trackGpx"
+              [multimedia]="pagMapa.multimedia || []" [transportSegments]="pagMapa.transportSegments || []"
+              [visualSessionData]="pagMapa.visualSessionData" [isHighFidelityMode]="pagMapa.isHighFidelityMode || false"
+              [modoRecorridoGuiado]="modoGuiadoActivo" [interactiveMode]="false" [autoPlay]="true"
+              (onAnimacionCompletada)="onFinAnimacionMapa()" (onCerrar)="onFinAnimacionMapa()">
+            </app-gpx-animation>
+            <!-- Botón para pre-renderizar a vídeo MP4 si aún no lo tiene -->
+            <button type="button" class="btn-generar-video-ruta-badge" *ngIf="!pagMapa.urlVideoAnimacion"
+              (click)="generarVideoRutaActual(pagMapa); $event.stopPropagation()"
+              [disabled]="generandoVideoRutaEnCurso"
+              title="Pre-renderizar este tramo a vídeo MP4 60 FPS">
+              <i class="fas fa-video" [class.fa-spin]="generandoVideoRutaEnCurso"></i>
+              {{ generandoVideoRutaEnCurso ? (progresoRenderVideoRuta || 'Generando MP4...') : 'Pre-renderizar a Vídeo MP4 (60fps)' }}
+            </button>
+          </div>
         </div>
 
         <!-- Pliegue central sutil del lomo sobre el mapa -->
@@ -1877,8 +1913,19 @@
                   | number:'1.1-2' }} km</span>
               </div>
               <div class="mapa-vintage-wrapper">
+                <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A) -->
+                <div *ngIf="pagDer.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper">
+                  <video [src]="pagDer.urlVideoAnimacion" class="video-mapa-vintage"
+                         autoplay [muted]="videoMuted" playsinline (ended)="onFinAnimacionMapa()"></video>
+                  <div class="video-mapa-controls-overlay">
+                    <button type="button" class="btn-mapa-switch" (click)="forzarMapaInteractivo = true; $event.stopPropagation()" title="Ver interactivo">
+                      <i class="fas fa-layer-group"></i> Interactivo
+                    </button>
+                  </div>
+                </div>
+
                 <!-- Modo 1: Ruta en Imagen Estática (Leaflet Nativo 100% Preciso) -->
-                <div *ngIf="modoRutaImagen && pagDer.trackGpx" class="mapa-estatico-vintage-view"
+                <div *ngIf="(!pagDer.urlVideoAnimacion || forzarMapaInteractivo) && modoRutaImagen && pagDer.trackGpx" class="mapa-estatico-vintage-view"
                   (click)="!fullscreen && abrirFullscreen('', 'mapa-animado'); $event.stopPropagation()"
                   [title]="fullscreen ? '' : 'Hacer clic para ver animación a pantalla completa'">
                   <app-mini-mapa-gpx [trackGpx]="pagDer.trackGpx" [fullPage]="true"
@@ -1889,13 +1936,22 @@
                 </div>
 
                 <!-- Modo 2: Ruta Animada con Movimiento -->
-                <app-gpx-animation *ngIf="mapaRenderKey && !modoRutaImagen && pagDer.trackGpx"
-                  [gpxText]="pagDer.trackGpx" [multimedia]="pagDer.multimedia || []"
-                  [transportSegments]="pagDer.transportSegments || []" [visualSessionData]="pagDer.visualSessionData"
-                  [isHighFidelityMode]="pagDer.isHighFidelityMode || false" [modoRecorridoGuiado]="modoGuiadoActivo"
-                  [interactiveMode]="false" [autoPlay]="true" (onAnimacionCompletada)="onFinAnimacionMapa()"
-                  (onCerrar)="onFinAnimacionMapa()">
-                </app-gpx-animation>
+                <div *ngIf="(!pagDer.urlVideoAnimacion || forzarMapaInteractivo) && !modoRutaImagen" class="mapa-animado-fallback-box">
+                  <app-gpx-animation *ngIf="mapaRenderKey && pagDer.trackGpx"
+                    [gpxText]="pagDer.trackGpx" [multimedia]="pagDer.multimedia || []"
+                    [transportSegments]="pagDer.transportSegments || []" [visualSessionData]="pagDer.visualSessionData"
+                    [isHighFidelityMode]="pagDer.isHighFidelityMode || false" [modoRecorridoGuiado]="modoGuiadoActivo"
+                    [interactiveMode]="false" [autoPlay]="true" (onAnimacionCompletada)="onFinAnimacionMapa()"
+                    (onCerrar)="onFinAnimacionMapa()">
+                  </app-gpx-animation>
+                  <button type="button" class="btn-generar-video-ruta-badge" *ngIf="!pagDer.urlVideoAnimacion"
+                    (click)="generarVideoRutaActual(pagDer); $event.stopPropagation()"
+                    [disabled]="generandoVideoRutaEnCurso"
+                    title="Pre-renderizar este tramo a vídeo MP4 60 FPS">
+                    <i class="fas fa-video" [class.fa-spin]="generandoVideoRutaEnCurso"></i>
+                    {{ generandoVideoRutaEnCurso ? (progresoRenderVideoRuta || 'Generando MP4...') : 'Pre-renderizar a Vídeo MP4' }}
+                  </button>
+                </div>
               </div>
             </div>
 

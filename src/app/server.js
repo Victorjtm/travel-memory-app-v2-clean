@@ -588,6 +588,18 @@ db.run(
           });
         }
       });
+
+      // ✅ MIGRACIÓN 2026: Añadir rutaVideoAnimado a actividades si no existe
+      db.all("PRAGMA table_info(actividades)", (err, columns) => {
+        if (err) return;
+        if (!columns.some(c => c.name === 'rutaVideoAnimado')) {
+          console.log("🔄 [MIGRACIÓN] Añadiendo columna rutaVideoAnimado a la tabla actividades...");
+          db.run("ALTER TABLE actividades ADD COLUMN rutaVideoAnimado TEXT", (err) => {
+            if (err) console.error("❌ Error añadiendo rutaVideoAnimado:", err.message);
+            else console.log("✅ Columna rutaVideoAnimado añadida con éxito a actividades.");
+          });
+        }
+      });
     }
   }
 );
@@ -4602,6 +4614,110 @@ app.get('/actividades/:id/visual-session', (req, res) => {
 });
 
 console.log('✅ Endpoints de visualización de archivos registrados correctamente');
+
+// ============================================
+// 🎬 ENDPOINTS: VÍDEO RUTA PRE-RENDERIZADO (OPCIÓN A)
+// ============================================
+
+// 1. GET vídeo de ruta por actividad
+app.get(['/actividades/:id/video-ruta', '/api/actividades/:id/video-ruta'], (req, res) => {
+  const id = req.params.id;
+  db.get('SELECT rutaVideoAnimado, viajePrevistoId, itinerarioId FROM actividades WHERE id = ?', [id], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!row) return res.status(404).json({ error: 'Actividad no encontrada' });
+
+    if (row.rutaVideoAnimado) {
+      const fullPath = path.join(uploadsPath, row.rutaVideoAnimado);
+      if (fs.existsSync(fullPath)) {
+        return res.json({
+          existe: true,
+          rutaRelativa: row.rutaVideoAnimado,
+          url: `/uploads/${row.rutaVideoAnimado}`
+        });
+      }
+    }
+    res.json({ existe: false, url: null });
+  });
+});
+
+// 2. POST subir / registrar vídeo de ruta pre-renderizado
+app.post(['/actividades/:id/video-ruta', '/api/actividades/:id/video-ruta'], upload.single('video'), async (req, res) => {
+  const id = req.params.id;
+  if (!req.file) {
+    return res.status(400).json({ error: 'No se ha proporcionado archivo de vídeo' });
+  }
+
+  try {
+    const act = await dbQuery.get('SELECT id, viajePrevistoId, itinerarioId FROM actividades WHERE id = ?', [id]);
+    if (!act) {
+      try { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch (e) {}
+      return res.status(404).json({ error: 'Actividad no encontrada' });
+    }
+
+    const viajeId = act.viajePrevistoId || 'general';
+    const itinerarioId = act.itinerarioId || '0';
+    const targetDir = path.join(uploadsPath, String(viajeId), String(itinerarioId), 'videos');
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    const finalFileName = `animacion_ruta_${id}.mp4`;
+    const finalFilePath = path.join(targetDir, finalFileName);
+    const relPath = path.relative(uploadsPath, finalFilePath).replace(/\\/g, '/');
+
+    const tempInput = req.file.path;
+    const cmd = `"${FFMPEG_BIN}" -y -i "${tempInput}" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart "${finalFilePath}"`;
+
+    exec(cmd, async (ffmpegErr, stdout, stderr) => {
+      try { if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput); } catch (e) {}
+
+      if (ffmpegErr) {
+        console.warn('⚠️ [VideoRuta] ffmpeg avisó al optimizar, usando copia directa:', ffmpegErr.message);
+        try {
+          fs.copyFileSync(tempInput, finalFilePath);
+        } catch (copyErr) {
+          return res.status(500).json({ error: 'Error procesando archivo de vídeo', detalle: copyErr.message });
+        }
+      }
+
+      await dbQuery.run('UPDATE actividades SET rutaVideoAnimado = ?, fechaActualizacion = ? WHERE id = ?', [
+        relPath,
+        new Date().toISOString(),
+        id
+      ]);
+
+      console.log(`🎬 [VideoRuta] Vídeo de ruta registrado para actividad ${id}: ${relPath}`);
+      res.json({
+        success: true,
+        rutaRelativa: relPath,
+        url: `/uploads/${relPath}`
+      });
+    });
+
+  } catch (error) {
+    console.error('❌ [VideoRuta] Error:', error);
+    try { if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch (e) {}
+    res.status(500).json({ error: 'Error procesando vídeo de ruta', detalle: error.message });
+  }
+});
+
+// 3. DELETE eliminar vídeo de ruta (para regenerar)
+app.delete(['/actividades/:id/video-ruta', '/api/actividades/:id/video-ruta'], async (req, res) => {
+  const id = req.params.id;
+  try {
+    const act = await dbQuery.get('SELECT rutaVideoAnimado FROM actividades WHERE id = ?', [id]);
+    if (act && act.rutaVideoAnimado) {
+      const fullPath = path.join(uploadsPath, act.rutaVideoAnimado);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+      }
+      await dbQuery.run('UPDATE actividades SET rutaVideoAnimado = NULL WHERE id = ?', [id]);
+    }
+    res.json({ success: true, message: 'Vídeo de ruta eliminado' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 
 
