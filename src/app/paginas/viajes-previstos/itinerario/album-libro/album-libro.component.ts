@@ -1077,6 +1077,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       const numKm = Number(val);
       this.distanciaMinimaAnimacionKm = numKm;
       this.distanciaMinimaMetros = Math.round(numKm * 1000);
+      // Activar modo animado automáticamente al escoger distancia
+      this.modoRutaImagen = false;
+      localStorage.setItem('album_modo_ruta_imagen', 'false');
       this.actualizarConfiguracionAnimaciones();
     }
   }
@@ -1084,6 +1087,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   onCambioDistanciaMetrosInput(): void {
     if (this.distanciaMinimaMetros !== null && this.distanciaMinimaMetros !== undefined && this.distanciaMinimaMetros >= 0) {
       this.distanciaMinimaAnimacionKm = this.distanciaMinimaMetros / 1000;
+      // Activar modo animado automáticamente al configurar distancia personalizada
+      this.modoRutaImagen = false;
+      localStorage.setItem('album_modo_ruta_imagen', 'false');
       this.actualizarConfiguracionAnimaciones();
     }
   }
@@ -2731,7 +2737,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           }
 
           const archivosGeo = (archivosActividad || []).filter((a: any) =>
-            (a.tipo === 'foto' || a.tipo === 'video') && a.geolocalizacion
+            (a.tipo === 'foto' || a.tipo === 'video' || a.tipo === 'audio') &&
+            (a.geolocalizacion || (a.latitud && a.longitud) || (a.lat && a.lng))
           );
 
           // Extraer y agrupar fotos geolocalizadas en PIs (< 10m)
@@ -2755,15 +2762,30 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             }
             if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
               let ts = 0;
-              if (archivo.fechaCreacion) {
+              // Prioridad 1: metadatos.timestamp (audios grabados con Modo Dynamics)
+              if (!ts && archivo.metadatos) {
+                try {
+                  const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
+                  if (meta?.timestamp) ts = new Date(meta.timestamp).getTime() || 0;
+                } catch (e) { }
+              }
+              // Prioridad 2: fechaTomada / fechaHora
+              if (!ts && (archivo.fechaTomada || archivo.fechaHora)) {
+                ts = new Date(archivo.fechaTomada || archivo.fechaHora).getTime() || 0;
+              }
+              // Prioridad 3: created_at
+              if (!ts && archivo.created_at) {
+                ts = new Date(archivo.created_at).getTime() || 0;
+              }
+              // Prioridad 4: fechaCreacion + horaCaptura (ignorar 'Desconocido')
+              if (!ts && archivo.fechaCreacion) {
                 const fecha = new Date(archivo.fechaCreacion);
-                if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string') {
-                  const [horas, minutos] = archivo.horaCaptura.split(':').map(Number);
+                const hc = archivo.horaCaptura;
+                if (hc && typeof hc === 'string' && hc.toLowerCase() !== 'desconocido' && hc.trim() !== '') {
+                  const [horas, minutos] = hc.split(':').map(Number);
                   if (!isNaN(horas) && !isNaN(minutos)) fecha.setHours(horas, minutos, 0, 0);
                 }
                 ts = fecha.getTime();
-              } else if (archivo.fechaTomada || archivo.fecha) {
-                ts = new Date(archivo.fechaTomada || archivo.fecha).getTime() || 0;
               }
               return { lat, lng, archivo, timestamp: ts };
             }
@@ -2898,7 +2920,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             }
 
             const archivosGeo = (archivosActividad || []).filter((a: any) =>
-              (a.tipo === 'foto' || a.tipo === 'video') && a.geolocalizacion
+              (a.tipo === 'foto' || a.tipo === 'video' || a.tipo === 'audio') &&
+              (a.geolocalizacion || (a.latitud && a.longitud) || (a.lat && a.lng))
             );
 
             // Extraer y agrupar fotos geolocalizadas en PIs (< 10m)
@@ -4606,32 +4629,73 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Obtiene el timestamp numérico real (ms) combinando fecha y hora de captura de forma precisa
+   * Obtiene el timestamp numérico real (ms) combinando fecha y hora de captura de forma precisa.
+   * Soporta audios grabados con Modo Dynamics (sin EXIF estándar): lee metadatos.timestamp,
+   * fechaTomada, fechaHora, created_at. Ignora 'Desconocido' como horaCaptura.
    */
   obtenerTimestampReal(pagina: PaginaMedia | any): number {
     if (!pagina) return 0;
+
+    // Caso 1: mapa animado ya tiene timestampReal calculado
     if (pagina.timestampReal && !isNaN(pagina.timestampReal) && pagina.timestampReal > 0) {
       return pagina.timestampReal;
     }
-    const arch = pagina.archivo || pagina;
-    let datePart = '';
 
+    const arch = pagina.archivo || pagina;
+
+    // Caso 2: audios grabados durante tracking → leer metadatos.timestamp
+    if (arch.metadatos) {
+      try {
+        const meta = typeof arch.metadatos === 'string' ? JSON.parse(arch.metadatos) : arch.metadatos;
+        if (meta?.timestamp) {
+          const ts = new Date(meta.timestamp).getTime();
+          if (!isNaN(ts) && ts > 0) return ts;
+        }
+      } catch (e) { /* ignorar */ }
+    }
+
+    // Caso 3: campo timestamp / timestampReal directo en el archivo
+    if (arch.timestamp && !isNaN(Number(arch.timestamp)) && Number(arch.timestamp) > 0) {
+      return Number(arch.timestamp);
+    }
+
+    // Caso 4: fechaTomada / fechaHora
+    if (arch.fechaTomada || arch.fechaHora) {
+      const ts = new Date(arch.fechaTomada || arch.fechaHora).getTime();
+      if (!isNaN(ts) && ts > 0) return ts;
+    }
+
+    // Caso 5: created_at (audios del backend que no tienen fechaCreacion con hora)
+    if (arch.created_at) {
+      const ts = new Date(arch.created_at).getTime();
+      if (!isNaN(ts) && ts > 0) return ts;
+    }
+
+    // Caso 6: combinar fechaCreacion + horaCaptura (ignorar 'Desconocido')
+    let datePart = '';
     if (pagina.fecha) {
       datePart = pagina.fecha.split('T')[0];
     } else if (arch.fechaCreacion) {
       datePart = arch.fechaCreacion.split('T')[0];
     }
-
     if (!datePart) {
       datePart = '1970-01-01';
     }
 
-    let timePart = pagina.horaInicioTramo || arch.horaCaptura;
+    let timePart = pagina.horaInicioTramo;
+    // Ignorar horaCaptura si es 'Desconocido' o vacío
+    const horaCaptura = arch.horaCaptura;
+    if (!timePart && horaCaptura && typeof horaCaptura === 'string' &&
+        horaCaptura.toLowerCase() !== 'desconocido' && horaCaptura.trim() !== '') {
+      timePart = horaCaptura.trim();
+    }
     if (!timePart && arch.fechaCreacion && arch.fechaCreacion.includes('T')) {
       timePart = arch.fechaCreacion.split('T')[1].split('.')[0];
     }
     if (!timePart) {
-      timePart = '12:00:00';
+      // Sin hora conocida: si el archivo tiene coordenadas y la actividad tiene GPX,
+      // devolvemos 0 para que el sort por trackIdx tome precedencia.
+      return 0;
     }
 
     if (timePart.length === 5 && timePart.includes(':')) {

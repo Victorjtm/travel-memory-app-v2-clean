@@ -1581,7 +1581,9 @@
                 [isHighFidelityMode]="pagSingle.isHighFidelityMode || false"
                 [modoRecorridoGuiado]="modoGuiadoActivo"
                 [interactiveMode]="false"
-                [autoPlay]="true">
+                [autoPlay]="true"
+                (onAnimacionCompletada)="onFinAnimacionMapa()"
+                (onCerrar)="onFinAnimacionMapa()">
               </app-gpx-animation>
             </div>
           </div>
