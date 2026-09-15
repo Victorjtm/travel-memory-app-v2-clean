@@ -201,6 +201,8 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   @Input() interactiveMode: boolean = true;
   visualSessionGroup: any = null;
   private poiLayerGroup: any = null; // ✨ Grupo independiente para POIs (no colisiona con HF)
+  private lastTrackMarkerLatLng: [number, number] | null = null;
+  private markerAnimFrameId: number | null = null;
 
   // 📐 Observador reactivo de redimensionamiento físico del contenedor (Full Screen <-> Pantalla Reducida)
   private resizeObserver: ResizeObserver | null = null;
@@ -405,6 +407,8 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
           archivos: pi.archivos,
           piNumero: idx + 1,
           piTotal: pis.length,
+          lat: pi.lat,
+          lng: pi.lng,
           esPuntoInteres: true
         };
         lastMatchedIdx = bestIdx;
@@ -535,7 +539,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     if (this.multimedia && this.multimedia.length > 0) {
       this.multimedia.forEach((archivo: any) => {
         const tipo = (archivo.tipo || '').toLowerCase();
-        if (tipo !== 'foto' && tipo !== 'video' && tipo !== 'imagen') return;
+        if (tipo !== 'foto' && tipo !== 'video' && tipo !== 'imagen' && tipo !== 'audio') return;
 
         let lat: number | null = null;
         let lng: number | null = null;
@@ -674,15 +678,23 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       const numeroSecuencial = index + 1;
       const { lat, lng } = grupo;
 
+      const primerArchivo = (grupo.archivos && grupo.archivos.length > 0) ? (grupo.archivos[0].archivo || grupo.archivos[0]) : null;
+      const tipo = (primerArchivo?.tipo || '').toLowerCase();
+      const esAudio = tipo === 'audio';
+      const esFoto = tipo === 'foto' || tipo === 'imagen';
+      const colorPrincipal = esAudio ? '#F59E0B' : (esFoto ? '#E53935' : '#2196F3');
+      const badgeColor = esAudio ? '#D97706' : '#1E88E5';
+
       const icon = this.L.divIcon({
         className: '',
         html: `
         <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer;">
           <svg width="44" height="44" viewBox="0 0 44 44" style="filter:drop-shadow(0px 3px 3px rgba(0,0,0,0.4));z-index:5;">
-            <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="#E53935" />
+            <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="${colorPrincipal}" />
             <circle cx="22" cy="16" r="6" fill="white" />
+            ${esAudio ? '<text x="22" y="19" font-size="9" text-anchor="middle">🎤</text>' : ''}
           </svg>
-          <div style="margin-top:-8px;background:#1E88E5;color:white;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.4);z-index:10;position:relative;">
+          <div style="margin-top:-8px;background:${badgeColor};color:white;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.4);z-index:10;position:relative;">
             #${numeroSecuencial}
           </div>
         </div>
@@ -698,13 +710,15 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
           archivos: grupo.archivos,
           piNumero: numeroSecuencial,
           piTotal: grupos.length,
+          lat,
+          lng,
           esPuntoInteres: true
         };
         this.pauseForEvent(eventData, [lat, lng]);
       });
       boundsPoints.push([lat, lng]);
 
-      console.log(`📌 PI #${numeroSecuencial} → lat=${lat.toFixed(5)}, lng=${lng.toFixed(5)}, archivos=${grupo.archivos.length}`);
+      console.log(`📌 PI #${numeroSecuencial} (${esAudio ? 'Audio' : 'Foto/Video'}) → lat=${lat.toFixed(5)}, lng=${lng.toFixed(5)}, archivos=${grupo.archivos.length}`);
     });
 
     console.log(`📌 [displayAllPois] TOTAL PIs: ${grupos.length}, boundsPoints: ${boundsPoints.length}`);
@@ -928,7 +942,9 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       if (Math.floor(this.currentIndex) === 0 && this.points && this.points[0]?.event && !(this.points[0].event as any)._mostrado && this.interactiveMode !== false) {
         console.log('📍 [Parada Inicial] Deteniendo en Parada #1 (índice 0)');
         (this.points[0].event as any)._mostrado = true;
-        this.pauseForEvent(this.points[0].event);
+        const ev = this.points[0].event;
+        const targetCoords: [number, number] | undefined = (ev.lat !== undefined && ev.lng !== undefined) ? [ev.lat, ev.lng] : undefined;
+        this.pauseForEvent(ev, targetCoords);
         return;
       }
 
@@ -1452,7 +1468,8 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
           }
           this.currentIndex = i;
           this.renderCurrentFrame();
-          this.pauseForEvent(p.event);
+          const targetCoords: [number, number] | undefined = (p.event.lat !== undefined && p.event.lng !== undefined) ? [p.event.lat, p.event.lng] : undefined;
+          this.pauseForEvent(p.event, targetCoords);
           return;
         }
 
@@ -1673,10 +1690,24 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
     // Zoom máximo interactivo (nivel 18) - Acercarse a la ubicación
     const currentPoint = this.points[Math.floor(this.currentIndex)];
-    const targetLat = coords ? coords[0] : (currentPoint ? currentPoint.lat : null);
-    const targetLng = coords ? coords[1] : (currentPoint ? currentPoint.lng : null);
+    const targetLat = coords ? coords[0] : (event.lat !== undefined ? event.lat : (currentPoint ? currentPoint.lat : null));
+    const targetLng = coords ? coords[1] : (event.lng !== undefined ? event.lng : (currentPoint ? currentPoint.lng : null));
+
+    // Guardar posición exacta del track para regresar de forma fluida al reanudar
+    if (currentPoint) {
+      this.lastTrackMarkerLatLng = [currentPoint.lat, currentPoint.lng];
+    } else if (this.marker) {
+      const cur = this.marker.getLatLng();
+      this.lastTrackMarkerLatLng = [cur.lat, cur.lng];
+    }
+
+    // ✨ Desplazar el avatar exactamente hasta la posición del archivo multimedia / parada
+    if (targetLat !== null && targetLng !== null && this.marker) {
+      this.animateMarkerTo([targetLat, targetLng], 400);
+    }
+
     if (targetLat !== null && targetLng !== null && this.map) {
-      this.map.flyTo([targetLat, targetLng], 18, { animate: true, duration: 1.5 });
+      this.map.flyTo([targetLat, targetLng], 18, { animate: true, duration: 1.2 });
     }
 
     // Preparar metadatos base para la foto (Fecha y Hora) y Dirección pre-cargada si existe
@@ -1742,21 +1773,34 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
   resumeFromEvent() {
     this.activeEvent = null;
+    this.pendingEvent = null;
 
-    if (this.map) {
-      if (this.preEventSnapshot) {
-        const snap = this.preEventSnapshot;
-        this.preEventSnapshot = null; // Limpiar para que la guarda funcione
-        this.cameraMode = snap.cameraMode;
-        this.autoZoomPaused = snap.cameraMode === 'FREE';
-      }
+    const doResume = () => {
+      if (this.map) {
+        if (this.preEventSnapshot) {
+          const snap = this.preEventSnapshot;
+          this.preEventSnapshot = null; // Limpiar para que la guarda funcione
+          this.cameraMode = snap.cameraMode;
+          this.autoZoomPaused = snap.cameraMode === 'FREE';
+        }
 
-      // Reanudar directamente hacia el siguiente tramo sin el rebote brusco al zoom general lejano
-      if (!this.isPlaying) {
-        this.isPlaying = true;
-        this.narrativeService.startSegment(Math.floor(this.currentIndex), this.currentDistKm, this.currentMode || 'walking');
-        this.calculateSegmentBoundsAndSpeed();
+        // Reanudar directamente hacia el siguiente tramo sin el rebote brusco al zoom general lejano
+        if (!this.isPlaying) {
+          this.isPlaying = true;
+          this.narrativeService.startSegment(Math.floor(this.currentIndex), this.currentDistKm, this.currentMode || 'walking');
+          this.calculateSegmentBoundsAndSpeed();
+        }
       }
+    };
+
+    if (this.lastTrackMarkerLatLng && this.marker) {
+      const returnCoord = this.lastTrackMarkerLatLng;
+      this.lastTrackMarkerLatLng = null;
+      this.animateMarkerTo(returnCoord, 300).then(() => {
+        doResume();
+      });
+    } else {
+      doResume();
     }
   }
 
@@ -1974,6 +2018,57 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
+    if (this.markerAnimFrameId) {
+      cancelAnimationFrame(this.markerAnimFrameId);
+      this.markerAnimFrameId = null;
+    }
+  }
+
+  private animateMarkerTo(targetLatLng: [number, number], durationMs: number = 400): Promise<void> {
+    if (this.markerAnimFrameId) {
+      cancelAnimationFrame(this.markerAnimFrameId);
+      this.markerAnimFrameId = null;
+    }
+
+    return new Promise(resolve => {
+      if (!this.marker) { resolve(); return; }
+      const startLatLng = this.marker.getLatLng();
+      const startLat = startLatLng.lat;
+      const startLng = startLatLng.lng;
+      const endLat = targetLatLng[0];
+      const endLng = targetLatLng[1];
+
+      if (Math.abs(startLat - endLat) < 0.000005 && Math.abs(startLng - endLng) < 0.000005) {
+        this.marker.setLatLng(targetLatLng);
+        resolve();
+        return;
+      }
+
+      const startTime = performance.now();
+
+      const step = (now: number) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(1, elapsed / durationMs);
+        const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+        const curLat = startLat + (endLat - startLat) * ease;
+        const curLng = startLng + (endLng - startLng) * ease;
+        if (this.marker) {
+          this.marker.setLatLng([curLat, curLng]);
+        }
+        if (progress < 1) {
+          this.markerAnimFrameId = requestAnimationFrame(step);
+        } else {
+          this.markerAnimFrameId = null;
+          resolve();
+        }
+      };
+      this.markerAnimFrameId = requestAnimationFrame(step);
+    });
+  }
+
+  esSoloAudio(event: any): boolean {
+    if (!event || !event.archivos || event.archivos.length === 0) return false;
+    return event.archivos.every((a: any) => (a.tipo || '').toLowerCase() === 'audio');
   }
 
   cerrar() {

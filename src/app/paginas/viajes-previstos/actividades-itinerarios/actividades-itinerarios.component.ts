@@ -586,24 +586,48 @@ export class ActividadesItinerariosComponent implements OnInit {
   private continuarCargaAnimacion(actividadId: number): void {
     const backendUrl = environment.apiUrl;
     const urlFiles = `${backendUrl}/archivos?actividadId=${actividadId}`;
+    const urlAsociados = `${backendUrl}/archivos-asociados`;
 
     this.http.get<any[]>(urlFiles).subscribe({
       next: (archivos: any[]) => {
-        this.multimediaAnimacion = archivos.filter((f: any) =>
-          (f.tipo === 'foto' || f.tipo === 'video' || f.tipo === 'audio') && f.geolocalizacion
-        );
+        const fetchGpxAndLaunch = () => {
+          this.trackEditorService.resolveCanonicalGpxXml(actividadId, { flattenSegments: true }).subscribe({
+            next: (gpxText) => {
+              this.gpxTextAnimacion = gpxText;
+              this.desgloseTransporteAnimacion = this.estadisticasGPX?.desgloseTransporte || [];
+              this.actividadAnimacion = this.actividades.find(a => a.id === actividadId);
 
-        this.trackEditorService.resolveCanonicalGpxXml(actividadId, { flattenSegments: true }).subscribe({
-          next: (gpxText) => {
-            this.gpxTextAnimacion = gpxText;
-            this.desgloseTransporteAnimacion = this.estadisticasGPX?.desgloseTransporte || [];
-            this.actividadAnimacion = this.actividades.find(a => a.id === actividadId);
+              console.log('🎬 Lanzando reproductor animado (Guiado:', this.modoRecorridoGuiadoAnimacion, ') con', this.desgloseTransporteAnimacion.length, 'segmentos y', this.multimediaAnimacion.length, 'archivos multimedia/audio');
+              this.mostrarReproductorAnimado = true;
+              this.cdr.detectChanges();
+            },
+            error: err => console.error('❌ Error obteniendo GPX para animación:', err)
+          });
+        };
 
-            console.log('🎬 Lanzando reproductor animado (Guiado:', this.modoRecorridoGuiadoAnimacion, ') con', this.desgloseTransporteAnimacion.length, 'segmentos');
-            this.mostrarReproductorAnimado = true;
-            this.cdr.detectChanges();
+        this.http.get<any[]>(urlAsociados).subscribe({
+          next: (asociados: any[]) => {
+            archivos.forEach(archivo => {
+              const audioRelacionado = asociados?.find(a => a.archivoPrincipalId === archivo.id && a.tipo === 'audio');
+              if (audioRelacionado) {
+                archivo.audioAsociado = audioRelacionado.rutaArchivo;
+                archivo.audioUrl = `${backendUrl}/uploads/${audioRelacionado.rutaArchivo}`;
+              }
+            });
+
+            this.multimediaAnimacion = archivos.filter((f: any) =>
+              (f.tipo === 'foto' || f.tipo === 'video' || f.tipo === 'imagen' || f.tipo === 'audio') &&
+              (f.geolocalizacion || (f.latitud && f.longitud) || (f.lat && f.lng))
+            );
+            fetchGpxAndLaunch();
           },
-          error: err => console.error('❌ Error obteniendo GPX para animación:', err)
+          error: () => {
+            this.multimediaAnimacion = archivos.filter((f: any) =>
+              (f.tipo === 'foto' || f.tipo === 'video' || f.tipo === 'imagen' || f.tipo === 'audio') &&
+              (f.geolocalizacion || (f.latitud && f.longitud) || (f.lat && f.lng))
+            );
+            fetchGpxAndLaunch();
+          }
         });
       },
       error: err => console.error('❌ Error obteniendo multimedia para animación:', err)
