@@ -2335,6 +2335,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.isLoading = true;
     this.error = null;
     this.noArchivosEncontrados = false;
+    this.cachePaginasPorFiltro.clear();
+    this.cacheDatosActividadGpx.clear();
 
     try {
       if (!this.archivoService) {
@@ -2574,6 +2576,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       incluir: this.incluirAnimacionesMapa,
       distanciaMinimaKm: this.distanciaMinimaAnimacionKm
     });
+    this.cachePaginasPorFiltro.clear();
     this.isLoading = true;
     try {
       this.paginas = await this.generarPaginasConAnimaciones(this.paginasBase);
@@ -3171,12 +3174,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
           if (piOrigen && piOrigen.archivos && piOrigen.archivos.length > 0) {
             const lastFile = piOrigen.archivos[piOrigen.archivos.length - 1];
-            const dP = lastFile.fecha ? lastFile.fecha.split('T')[0] : (lastFile.fechaCreacion ? lastFile.fechaCreacion.split('T')[0] : '1970-01-01');
-            let tP = lastFile.horaCaptura || '00:00:00';
-            if (tP.length === 5 && tP.includes(':')) tP = `${tP}:00`;
-            const dObj = new Date(`${dP}T${tP}Z`);
-            timestampInicio = !isNaN(dObj.getTime()) ? dObj.getTime() + 1 : 0;
+            timestampInicio = this.obtenerTimestampReal(lastFile) + 1;
             horaInicioTramo = lastFile.horaCaptura || '';
+          }
+
+          if (!timestampInicio && ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime())) {
+            timestampInicio = ptInicio.time.getTime();
           }
 
           if (ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime())) {
