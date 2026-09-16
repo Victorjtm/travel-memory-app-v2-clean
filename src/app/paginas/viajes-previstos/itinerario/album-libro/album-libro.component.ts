@@ -3233,7 +3233,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             return false;
           });
 
-          const urlVideoRuta = datos.rutaVideoAnimado ? `${environment.apiUrl}/${datos.rutaVideoAnimado.replace(/^\//, '')}` : undefined;
+          let urlVideoRuta: string | undefined = undefined;
+          if (datos.rutaVideoAnimado) {
+            const rel = datos.rutaVideoAnimado.replace(/^\//, '');
+            const conUploads = rel.startsWith('uploads/') ? rel : `uploads/${rel}`;
+            urlVideoRuta = `${environment.apiUrl}/${conUploads}`;
+          }
 
           const paginaMapa: PaginaMedia = {
             archivo: {} as Archivo,

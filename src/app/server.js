@@ -4666,7 +4666,7 @@ app.post(['/actividades/:id/video-ruta', '/api/actividades/:id/video-ruta'], upl
     const relPath = path.relative(uploadsPath, finalFilePath).replace(/\\/g, '/');
 
     const tempInput = req.file.path;
-    const cmd = `"${FFMPEG_BIN}" -y -i "${tempInput}" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart "${finalFilePath}"`;
+    const cmd = `${FFMPEG_BIN} -y -i "${tempInput}" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart "${finalFilePath}"`;
 
     exec(cmd, async (ffmpegErr, stdout, stderr) => {
       try { if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput); } catch (e) {}

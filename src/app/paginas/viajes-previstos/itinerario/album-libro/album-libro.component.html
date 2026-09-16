@@ -1607,7 +1607,7 @@
               <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A - 60 FPS Instantáneo) -->
               <div *ngIf="pagSingle.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper">
                 <video [src]="pagSingle.urlVideoAnimacion" class="video-mapa-vintage"
-                       autoplay [muted]="videoMuted" playsinline (ended)="onFinAnimacionMapa()"></video>
+                       autoplay [muted]="true" muted loop playsinline (ended)="onFinAnimacionMapa()"></video>
                 <div class="video-mapa-controls-overlay">
                   <button type="button" class="btn-mapa-switch" (click)="forzarMapaInteractivo = true; $event.stopPropagation()" title="Ver interactivo">
                     <i class="fas fa-layer-group"></i> Interactivo
@@ -1672,7 +1672,7 @@
           <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A - 60 FPS Instantáneo) -->
           <div *ngIf="pagMapa.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper">
             <video [src]="pagMapa.urlVideoAnimacion" class="video-mapa-vintage"
-                   autoplay [muted]="videoMuted" playsinline (ended)="onFinAnimacionMapa()"></video>
+                   autoplay [muted]="true" muted loop playsinline (ended)="onFinAnimacionMapa()"></video>
             <div class="video-mapa-controls-overlay">
               <button type="button" class="btn-mapa-switch" (click)="forzarMapaInteractivo = true; $event.stopPropagation()"
                 title="Cambiar a mapa interactivo">
@@ -1916,7 +1916,7 @@
                 <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A) -->
                 <div *ngIf="pagDer.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper">
                   <video [src]="pagDer.urlVideoAnimacion" class="video-mapa-vintage"
-                         autoplay [muted]="videoMuted" playsinline (ended)="onFinAnimacionMapa()"></video>
+                         autoplay [muted]="true" muted loop playsinline (ended)="onFinAnimacionMapa()"></video>
                   <div class="video-mapa-controls-overlay">
                     <button type="button" class="btn-mapa-switch" (click)="forzarMapaInteractivo = true; $event.stopPropagation()" title="Ver interactivo">
                       <i class="fas fa-layer-group"></i> Interactivo
