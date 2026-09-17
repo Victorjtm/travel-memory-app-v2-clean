@@ -1259,6 +1259,8 @@ export class ActividadesItinerariosComponent implements OnInit {
       // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ NUEVO: Guardar referencia del marcador en cada archivo para sincronizaciÃƒÆ’Ã‚Â³n
       archivos.forEach(a => {
         a.archivo.marcadorRef = marker;
+        a.archivo.lat = lat;
+        a.archivo.lng = lng;
       });
 
       // Crear el contenido del Popup
@@ -1952,32 +1954,213 @@ export class ActividadesItinerariosComponent implements OnInit {
     return ['mp4', 'mov', 'avi', 'webm'].includes(extension);
   }
 
-  centrarEnFoto(foto: any): void {
-    if (foto.marcadorRef && this.mapaGPX) {
-      if (this.coordenadasGPX && this.coordenadasGPX.length > 0) {
-        import('leaflet').then(L => {
-          // Aseguramos que la ruta completa estÃƒÂ© visible y centrada
-          const bounds = L.latLngBounds(this.coordenadasGPX);
-          this.mapaGPX.fitBounds(bounds, { padding: [50, 50] });
+  /**
+   * 🎤 NUEVO: Centrar el mapa de Leaflet en la posición exacta del audio y abrir su tarjetita flotante
+   */
+  centrarEnAudio(audio: any): void {
+    console.log('🎤 [centrarEnAudio] Solicitado foco para audio:', audio?.nombreArchivo || audio?.id);
+    this.centrarEnElementoMultimedia(audio, 'audio');
+  }
 
-          // Desactivamos el auto-pan del popup para que no mueva el mapa al abrirse
-          const popup = foto.marcadorRef.getPopup();
-          if (popup) {
-            popup.options.autoPan = false;
-          }
-          foto.marcadorRef.openPopup();
-        });
-      } else {
-        const popup = foto.marcadorRef.getPopup();
-        if (popup) popup.options.autoPan = false;
-        foto.marcadorRef.openPopup();
+  /**
+   * 📷 Centrar el mapa de Leaflet en la posición de una foto o vídeo
+   */
+  centrarEnFoto(foto: any): void {
+    console.log('📷 [centrarEnFoto] Solicitado foco para elemento:', foto?.nombreArchivo || foto?.id);
+    this.centrarEnElementoMultimedia(foto, foto?.tipo || 'foto');
+  }
+
+  /**
+   * 🎯 Método unificado y robusto para capturar coordenadas, mover el mapa (panTo/flyTo)
+   * y desplegar la tarjeta flotante con todos los metadatos de fotos o audios.
+   */
+  centrarEnElementoMultimedia(elemento: any, tipo: string = 'foto'): void {
+    if (!elemento) return;
+    if (!this.mapaGPX) {
+      console.warn('⚠️ [centrarEnElementoMultimedia] El mapa no está inicializado');
+      return;
+    }
+
+    import('leaflet').then(L => {
+      // 1. Extraer coordenadas con múltiples fallbacks garantizados
+      const coords = this.extraerCoordenadasArchivo(elemento);
+      if (!coords) {
+        console.warn('⚠️ [centrarEnElementoMultimedia] No se encontraron coordenadas para:', elemento.nombreArchivo || elemento.id);
+        return;
       }
 
-      // Ajustar panel si es necesario
+      const [lat, lng] = coords;
+      console.log(`📍 [centrarEnElementoMultimedia] Posicionando mapa en: [${lat}, ${lng}] para tipo=${tipo}`);
+
+      // 2. Mover el mapa de Leaflet de forma suave (panTo / flyTo)
+      const currentZoom = this.mapaGPX.getZoom();
+      const targetZoom = Math.max(currentZoom, 16);
+
+      if (currentZoom < 16) {
+        this.mapaGPX.flyTo([lat, lng], targetZoom, {
+          animate: true,
+          duration: 0.8
+        });
+      } else {
+        this.mapaGPX.panTo([lat, lng], {
+          animate: true,
+          duration: 0.6
+        });
+      }
+
+      // 3. Obtener o vincular el marcador y desplegar su Popup
+      const marker = this.obtenerMarcadorParaArchivo(elemento);
+      if (marker) {
+        const popup = marker.getPopup();
+        if (popup) {
+          popup.options.autoPan = true;
+        }
+        setTimeout(() => {
+          marker.openPopup();
+        }, 150);
+      } else {
+        // Fallback: Si no tiene marcador vinculado, creamos y abrimos la tarjetita flotante directamente en el punto
+        const numSec = elemento.numeroSecuencial || 1;
+        const popupHTML = this.crearPopupContent([{ archivo: elemento }], numSec, 1, false);
+        const popupDiv = document.createElement('div');
+        popupDiv.innerHTML = popupHTML;
+
+        const popup = L.popup({
+          className: 'photo-popup-leaflet',
+          minWidth: 250,
+          maxWidth: 600,
+          autoPan: true
+        })
+        .setLatLng([lat, lng])
+        .setContent(popupDiv);
+
+        setTimeout(() => {
+          popup.openOn(this.mapaGPX);
+        }, 150);
+      }
+
+      // 4. Obtener dirección inversa de Nominatim bajo demanda si no está cacheada
+      if (elemento.geolocalizacion && !this.direccionesCache[elemento.geolocalizacion]) {
+        this.obtenerDireccion(elemento.geolocalizacion).then(direccion => {
+          const el = document.getElementById(`lugar-popup-${elemento.id}`);
+          if (el) {
+            const textSpan = el.querySelector('.lugar-texto');
+            if (textSpan) {
+              textSpan.textContent = direccion;
+            } else {
+              el.innerHTML = `<i class="fa fa-map-marker"></i> ${direccion}`;
+            }
+          }
+        }).catch(err => console.warn('⚠️ Error obteniendo dirección para popup:', err));
+      }
+
+      // 5. Ajustar panel si es necesario
       if (this.panelExpanded) {
         this.togglePanelExpanded();
       }
+    });
+  }
+
+  /**
+   * 🔍 Helper para extraer latitud y longitud de cualquier archivo (audio, foto, vídeo)
+   */
+  private extraerCoordenadasArchivo(archivo: any): [number, number] | null {
+    if (!archivo) return null;
+
+    // A. Si ya tiene marcador asignado, usar sus coordenadas
+    if (archivo.marcadorRef && typeof archivo.marcadorRef.getLatLng === 'function') {
+      const ll = archivo.marcadorRef.getLatLng();
+      if (ll && !isNaN(ll.lat) && !isNaN(ll.lng)) {
+        return [ll.lat, ll.lng];
+      }
     }
+
+    // B. Coordenadas explícitas asignadas durante el agrupamiento
+    if (archivo.lat !== undefined && archivo.lng !== undefined && !isNaN(Number(archivo.lat)) && !isNaN(Number(archivo.lng))) {
+      return [Number(archivo.lat), Number(archivo.lng)];
+    }
+
+    // C. Extraer de campo geolocalizacion (objeto o string JSON)
+    if (archivo.geolocalizacion) {
+      try {
+        const geo = typeof archivo.geolocalizacion === 'string'
+          ? JSON.parse(archivo.geolocalizacion)
+          : archivo.geolocalizacion;
+        const lat = geo.latitud ?? geo.latitude ?? geo.lat;
+        const lng = geo.longitud ?? geo.longitude ?? geo.lng ?? geo.lon;
+        if (lat !== undefined && lng !== undefined && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
+          return [Number(lat), Number(lng)];
+        }
+      } catch (e) { }
+    }
+
+    // D. Extraer de metadatos (objeto o string JSON)
+    if (archivo.metadatos) {
+      try {
+        const meta = typeof archivo.metadatos === 'string'
+          ? JSON.parse(archivo.metadatos)
+          : archivo.metadatos;
+        const lat = meta.latitude ?? meta.latitud ?? meta.lat;
+        const lng = meta.longitude ?? meta.longitud ?? meta.lng ?? meta.lon;
+        if (lat !== undefined && lng !== undefined && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
+          return [Number(lat), Number(lng)];
+        }
+      } catch (e) { }
+    }
+
+    // E. Buscar en las capas del mapa de Leaflet
+    if (this.mapaGPX) {
+      let foundCoord: [number, number] | null = null;
+      this.mapaGPX.eachLayer((layer: any) => {
+        if (!foundCoord && layer.archivosGrupo && Array.isArray(layer.archivosGrupo)) {
+          const match = layer.archivosGrupo.some((item: any) =>
+            item.archivo?.id === archivo.id ||
+            item.archivo?.nombreArchivo === archivo.nombreArchivo ||
+            (archivo.rutaArchivo && item.archivo?.rutaArchivo === archivo.rutaArchivo)
+          );
+          if (match && typeof layer.getLatLng === 'function') {
+            const ll = layer.getLatLng();
+            if (ll && !isNaN(ll.lat) && !isNaN(ll.lng)) {
+              foundCoord = [ll.lat, ll.lng];
+            }
+          }
+        }
+      });
+      if (foundCoord) return foundCoord;
+    }
+
+    return null;
+  }
+
+  /**
+   * 📌 Helper para obtener el marcador de Leaflet vinculado a un archivo
+   */
+  private obtenerMarcadorParaArchivo(archivo: any): any | null {
+    if (archivo.marcadorRef && typeof archivo.marcadorRef.openPopup === 'function') {
+      return archivo.marcadorRef;
+    }
+
+    // Buscar en las capas de Leaflet
+    if (this.mapaGPX) {
+      let foundMarker: any = null;
+      this.mapaGPX.eachLayer((layer: any) => {
+        if (!foundMarker && layer.archivosGrupo && Array.isArray(layer.archivosGrupo)) {
+          const match = layer.archivosGrupo.some((item: any) =>
+            item.archivo?.id === archivo.id ||
+            item.archivo?.nombreArchivo === archivo.nombreArchivo ||
+            (archivo.rutaArchivo && item.archivo?.rutaArchivo === archivo.rutaArchivo)
+          );
+          if (match) {
+            foundMarker = layer;
+          }
+        }
+      });
+      if (foundMarker) {
+        archivo.marcadorRef = foundMarker;
+        return foundMarker;
+      }
+    }
+    return null;
   }
 
   getNombreActividad(id: number | null): string {
