@@ -47,6 +47,8 @@ interface PaginaMedia {
   esIndice?: boolean;
   esCartaManuscrita?: boolean;
   esMapaAnimado?: boolean;
+  idParadaOrigen?: number;
+  idParadaDestino?: number;
   trackGpx?: string;
   distanciaTramoKm?: number;
   distanciaInicioTramo?: number;
@@ -250,6 +252,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   private timerVideoPreview: any = null;
   mapaRenderKey: string = 'map_active';
   forzarMapaInteractivo: boolean = false;
+  cargandoMapaInteractivo: boolean = false;
+  private colaPrecachingSubtramos: PaginaMedia[] = [];
+  private procesandoPrecaching: boolean = false;
   generandoVideoRutaEnCurso: boolean = false;
   progresoRenderVideoRuta: string = '';
 
@@ -2725,7 +2730,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     modoBaseNorm: string;
     visualSessionData: any;
     archivosGeo: any[];
-    rutaVideoAnimado?: string | null;
+    videosSubtramos?: Array<{ id_parada_origen: number; id_parada_destino: number; url: string }>;
   }>();
 
   private async precargarDatosGpxActividades(paginasInput: PaginaMedia[]): Promise<void> {
@@ -2743,10 +2748,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     console.log(`⚡ [Telemetría GPX] Precargando datos GPX para ${actIdsParaCargar.length} actividades...`);
     await Promise.all(actIdsParaCargar.map(async (actId) => {
       try {
-        const [gpxXml, infoTransporte, archivosActividad] = await Promise.all([
+        const [gpxXml, infoTransporte, archivosActividad, subtramosResp] = await Promise.all([
           firstValueFrom(this.trackEditorService.resolveCanonicalGpxXml(actId, { flattenSegments: true })).catch(() => null),
           this.obtenerInformacionTransporteActividad(actId).catch(() => ({ desglose: [], transportePrincipal: '', visualSessionData: null, rutaVideoAnimado: null })),
-          firstValueFrom(this.archivoService.getArchivosPorActividad(actId)).catch(() => [])
+          firstValueFrom(this.archivoService.getArchivosPorActividad(actId)).catch(() => []),
+          firstValueFrom(this.actividadesItinerariosService.obtenerVideosSubtramos(actId)).catch(() => ({ success: false, videos: [] }))
         ]);
 
         if (gpxXml && gpxXml.trim().length > 0) {
@@ -2865,7 +2871,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             modoBaseNorm,
             visualSessionData,
             archivosGeo,
-            rutaVideoAnimado: infoTransporte.rutaVideoAnimado || null
+            videosSubtramos: (subtramosResp as any)?.videos || []
           });
         }
       } catch (error) {
@@ -2902,10 +2908,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       console.log(`⚡ [Optimización Álbum] Procesando ${actIdsParaCargar.length} actividades en paralelo...`);
       await Promise.all(actIdsParaCargar.map(async (actId) => {
         try {
-          const [gpxXml, infoTransporte, archivosActividad] = await Promise.all([
+          const [gpxXml, infoTransporte, archivosActividad, subtramosResp] = await Promise.all([
             firstValueFrom(this.trackEditorService.resolveCanonicalGpxXml(actId, { flattenSegments: true })).catch(() => null),
             this.obtenerInformacionTransporteActividad(actId).catch(() => ({ desglose: [], transportePrincipal: '', visualSessionData: null, rutaVideoAnimado: null })),
-            firstValueFrom(this.archivoService.getArchivosPorActividad(actId)).catch(() => [])
+            firstValueFrom(this.archivoService.getArchivosPorActividad(actId)).catch(() => []),
+            firstValueFrom(this.actividadesItinerariosService.obtenerVideosSubtramos(actId)).catch(() => ({ success: false, videos: [] }))
           ]);
 
           if (gpxXml && gpxXml.trim().length > 0) {
@@ -3063,7 +3070,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               modoBaseNorm,
               visualSessionData,
               archivosGeo,
-              rutaVideoAnimado: infoTransporte.rutaVideoAnimado || null
+              videosSubtramos: (subtramosResp as any)?.videos || []
             });
           }
         } catch (error) {
@@ -3218,12 +3225,20 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           const originPI = gruposPIs.find((g: any) => g.trackIdx === startIdx);
           const destPI = gruposPIs.find((g: any) => g.trackIdx === endIdx);
 
-          let tituloTramo = `Recorrido de ${distKm.toFixed(1)} km`;
-          let descTramo = `Tramo ${s + 1} de ${piIndices.length - 1} (${distKm.toFixed(1)} km)`;
-          if (originPI?.numeroSecuencial && destPI?.numeroSecuencial) {
-            tituloTramo = `Recorrido: Parada #${originPI.numeroSecuencial} ➔ Parada #${destPI.numeroSecuencial}`;
-            descTramo = `Tramo entre Parada #${originPI.numeroSecuencial} y Parada #${destPI.numeroSecuencial} (${distKm.toFixed(1)} km)`;
+          let idParadaOrigen = originPI?.numeroSecuencial;
+          if (idParadaOrigen === undefined) {
+            idParadaOrigen = s === 0 ? 0 : s;
           }
+
+          let idParadaDestino = destPI?.numeroSecuencial;
+          if (idParadaDestino === undefined) {
+            idParadaDestino = s === piIndices.length - 2
+              ? (gruposPIs.length > 0 && typeof gruposPIs[gruposPIs.length - 1].numeroSecuencial === "number" ? gruposPIs[gruposPIs.length - 1].numeroSecuencial! + 1 : s + 1)
+              : s + 1;
+          }
+
+          let tituloTramo = `Recorrido: Parada #${idParadaOrigen} ➔ Parada #${idParadaDestino}`;
+          let descTramo = `Tramo entre Parada #${idParadaOrigen} y Parada #${idParadaDestino} (${distKm.toFixed(1)} km)`;
 
           // Filtrar multimedia relevante a este tramo (origen y destino) para pines limpios y exactos
           const multimediaTramo = archivosGeo.filter((a: any) => {
@@ -3233,13 +3248,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             return false;
           });
 
-          let urlVideoRuta: string | undefined = undefined;
-          if (datos.rutaVideoAnimado) {
-            const rel = datos.rutaVideoAnimado.replace(/^\//, '');
-            const conUploads = rel.startsWith('uploads/') ? rel : `uploads/${rel}`;
-            urlVideoRuta = `${environment.apiUrl}/${conUploads}`;
-          }
+          // Buscar si ya existe vídeo en la base de datos para este subtramo exacto (1:N)
+          const matchVideo = (datos.videosSubtramos || []).find(
+            (v: any) => v.id_parada_origen === idParadaOrigen && v.id_parada_destino === idParadaDestino
+          );
 
+          let urlVideoRuta: string | undefined = undefined;
+          if (matchVideo && matchVideo.url) {
+            const rel = matchVideo.url.replace(/^\//, "");
+            urlVideoRuta = `${environment.apiUrl}/${rel}`;
+          }
           const paginaMapa: PaginaMedia = {
             archivo: {} as Archivo,
             url: urlVideoRuta || '',
@@ -3251,6 +3269,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             mimeType: urlVideoRuta ? 'video/mp4' : '',
             cargado: true,
             esMapaAnimado: true,
+            idParadaOrigen: idParadaOrigen,
+            idParadaDestino: idParadaDestino,
             trackGpx: gpxParcial,
             distanciaTramoKm: distKm,
             actividadId: actId,
@@ -3263,6 +3283,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             timestampReal: timestampInicio,
             multimedia: multimediaTramo.length > 0 ? multimediaTramo : archivosGeo
           };
+
+          // Auto pre-caching silencioso si aún no tiene vídeo
+          if (!urlVideoRuta) {
+            this.encolarPrecacheSubtramo(paginaMapa);
+          }
 
           if (!mapasPorActividad.has(actId)) {
             mapasPorActividad.set(actId, []);
@@ -3377,6 +3402,95 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         }, 1200);
       }
     }
+  }
+
+
+  /**
+   * Alterna entre la reproducción de vídeo y el mapa interactivo clásico de Leaflet.
+   */
+  toggleMapaInteractivo(pagina?: PaginaMedia, event?: Event): void {
+    if (event) event.stopPropagation();
+    this.forzarMapaInteractivo = !this.forzarMapaInteractivo;
+    if (this.forzarMapaInteractivo) {
+      this.cargandoMapaInteractivo = true;
+      setTimeout(() => {
+        this.cargandoMapaInteractivo = false;
+        this.cdr.detectChanges();
+      }, 300);
+    }
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Encola un subtramo para auto pre-caching silencioso en segundo plano sin interrumpir la interfaz.
+   */
+  encolarPrecacheSubtramo(pag: PaginaMedia): void {
+    if (pag.urlVideoAnimacion) return;
+    if (!pag.trackGpx || !pag.actividadId) return;
+    if (pag.idParadaOrigen === undefined || pag.idParadaDestino === undefined) return;
+
+    const key = `${pag.actividadId}_${pag.idParadaOrigen}_${pag.idParadaDestino}`;
+    const yaEnCola = this.colaPrecachingSubtramos.some(
+      p => `${p.actividadId}_${p.idParadaOrigen}_${p.idParadaDestino}` === key
+    );
+    if (!yaEnCola) {
+      this.colaPrecachingSubtramos.push(pag);
+      this.procesarColaPrecaching();
+    }
+  }
+
+  /**
+   * Procesa la cola de pre-caching de subtramos uno a uno mediante Offscreen Canvas + WebCodecs.
+   */
+  private async procesarColaPrecaching(): Promise<void> {
+    if (this.procesandoPrecaching || this.colaPrecachingSubtramos.length === 0) return;
+    this.procesandoPrecaching = true;
+
+    while (this.colaPrecachingSubtramos.length > 0) {
+      const pag = this.colaPrecachingSubtramos.shift()!;
+      if (pag.urlVideoAnimacion) continue;
+
+      try {
+        console.log(`🔄 [Auto Pre-cache] Generando vídeo silencioso Parada #${pag.idParadaOrigen} ➔ #${pag.idParadaDestino}...`);
+        const url = await this.routeVideoGeneratorService.generarYSubirVideoSubtramo(
+          pag.actividadId!,
+          pag.idParadaOrigen!,
+          pag.idParadaDestino!,
+          {
+            trackGpx: pag.trackGpx!,
+            transportMode: pag.tipoTransporteTramo || 'driving',
+            distanciaKm: pag.distanciaTramoKm || 0,
+            titulo: pag.titulo || `Recorrido Parada #${pag.idParadaOrigen} ➔ #${pag.idParadaDestino}`,
+            idParadaOrigen: pag.idParadaOrigen,
+            idParadaDestino: pag.idParadaDestino
+          }
+        );
+
+        const urlCompleta = `${environment.apiUrl}/${url.replace(/^\//, '')}`;
+        pag.urlVideoAnimacion = urlCompleta;
+        pag.url = urlCompleta;
+        pag.tipoMedia = 'video';
+        pag.mimeType = 'video/mp4';
+
+        // Actualizar en la caché de datos de la actividad
+        const datos = this.cacheDatosActividadGpx.get(pag.actividadId!);
+        if (datos) {
+          if (!datos.videosSubtramos) datos.videosSubtramos = [];
+          datos.videosSubtramos.push({
+            id_parada_origen: pag.idParadaOrigen!,
+            id_parada_destino: pag.idParadaDestino!,
+            url: url
+          });
+        }
+
+        console.log(`🎬 [Auto Pre-cache] Vídeo subtramo #${pag.idParadaOrigen}➔#${pag.idParadaDestino} listo:`, urlCompleta);
+        this.cdr.detectChanges();
+      } catch (e) {
+        console.warn(`⚠️ [Auto Pre-cache] Error pre-renderizando subtramo #${pag.idParadaOrigen}➔#${pag.idParadaDestino}:`, e);
+      }
+    }
+
+    this.procesandoPrecaching = false;
   }
 
   async generarVideoRutaActual(pagMapa?: PaginaMedia): Promise<void> {
@@ -3948,6 +4062,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   cambiarPagina(direccion: number): void {
+    this.forzarMapaInteractivo = false;
+    this.cargandoMapaInteractivo = false;
     console.log(`🔄 Cambiando pliego (spread), dirección: ${direccion}`);
 
     // Si estamos en modo clásico (página simple por página)

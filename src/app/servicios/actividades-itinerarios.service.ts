@@ -59,19 +59,25 @@ export class ActividadesItinerariosService extends BaseHttpService {
     return this.get(`${this.apiUrl}/${id}/visual-session`);
   }
 
-  // 🎬 MÉTODOS VÍDEO RUTA (OPCIÓN A)
-  subirVideoRuta(id: number, videoBlob: Blob): Observable<any> {
+  // 🎬 MÉTODOS VÍDEO POR SUBTRAMOS (TRAVEL MEMORY)
+  obtenerVideoSubtramo(id: number, origen: number, destino: number): Observable<{ existe: boolean; url: string | null; rutaRelativa?: string }> {
+    return this.get(`${this.apiUrl}/${id}/subtramos/video?origen=${origen}&destino=${destino}`);
+  }
+
+  obtenerVideosSubtramos(id: number): Observable<{ success: boolean; videos: Array<{ id_parada_origen: number; id_parada_destino: number; url: string }> }> {
+    return this.get(`${this.apiUrl}/${id}/subtramos/videos`);
+  }
+
+  subirVideoSubtramo(id: number, origen: number, destino: number, videoBlob: Blob): Observable<{ success: boolean; url: string; rutaRelativa?: string }> {
     const formData = new FormData();
-    formData.append('video', videoBlob, `animacion_ruta_${id}.mp4`);
-    return this.http.post(`${this.apiUrl}/${id}/video-ruta`, formData);
+    formData.append('video', videoBlob, `ruta_${id}_origen_${origen}_destino_${destino}.mp4`);
+    formData.append('idParadaOrigen', origen.toString());
+    formData.append('idParadaDestino', destino.toString());
+    return this.http.post<{ success: boolean; url: string; rutaRelativa?: string }>(`${this.apiUrl}/${id}/subtramos/video`, formData);
   }
 
-  obtenerVideoRuta(id: number): Observable<any> {
-    return this.get(`${this.apiUrl}/${id}/video-ruta`);
-  }
-
-  eliminarVideoRuta(id: number): Observable<any> {
-    return this.delete(`${this.apiUrl}/${id}/video-ruta`);
+  eliminarVideoSubtramo(id: number, origen: number, destino: number): Observable<any> {
+    return this.delete(`${this.apiUrl}/${id}/subtramos/video?origen=${origen}&destino=${destino}`);
   }
 }
 

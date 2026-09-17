@@ -13,6 +13,8 @@ export interface RouteVideoOptions {
   fps?: number;
   width?: number;
   height?: number;
+  idParadaOrigen?: number;
+  idParadaDestino?: number;
 }
 
 export interface ProgresoRenderizadoRuta {
@@ -31,6 +33,54 @@ export class RouteVideoGeneratorService {
     private gpxService: GpxAnimationService,
     private actividadesService: ActividadesItinerariosService
   ) {}
+
+  /**
+   * Calcula la duración dinámica adaptativa según la distancia del subtramo:
+   * Regla logística/logarítmica:
+   * - Mínimo 4.5s para tramos cortos (< 500m) para apreciar el HUD y el movimiento del icono.
+   * - Progresión suave para tramos medios (2 km -> ~7-8s).
+   * - Tope de 12-14s para tramos largos para no aburrir al lector.
+   */
+  calcularDuracionDinamica(distanciaKm: number): number {
+    const dist = Math.max(0.05, distanciaKm || 0.1);
+    const dur = 4.5 + Math.min(9.0, Math.log2(Math.max(1, dist * 2.5)) * 1.8);
+    return Math.round(dur * 10) / 10;
+  }
+
+  /**
+   * Genera el vídeo MP4 de un subtramo GPX y lo sube al backend asociado a (origen, destino).
+   * Devuelve la URL pública del vídeo generado.
+   */
+  async generarYSubirVideoSubtramo(
+    actividadId: number,
+    origen: number,
+    destino: number,
+    options: RouteVideoOptions,
+    onProgress?: (p: ProgresoRenderizadoRuta) => void
+  ): Promise<string> {
+    try {
+      onProgress?.({ fase: 'preparando', porcentaje: 5, mensaje: `Analizando subtramo #${origen} ➔ #${destino}...` });
+
+      const points = this.gpxService.parseGpx(options.trackGpx);
+      if (!points || points.length < 2) {
+        throw new Error('El track GPX no contiene suficientes puntos');
+      }
+
+      onProgress?.({ fase: 'descargando_tiles', porcentaje: 15, mensaje: 'Cargando cartografía base...' });
+      const videoBlob = await this.renderizarVideoRuta(points, options, onProgress);
+
+      onProgress?.({ fase: 'subiendo', porcentaje: 85, mensaje: 'Guardando vídeo de subtramo en servidor...' });
+      const resp = await firstValueFrom(this.actividadesService.subirVideoSubtramo(actividadId, origen, destino, videoBlob));
+
+      onProgress?.({ fase: 'completado', porcentaje: 100, mensaje: '¡Vídeo de subtramo listo!' });
+      return resp.url;
+    } catch (err: any) {
+      console.error(`❌ [RouteVideoGenerator] Error generando vídeo subtramo #${origen}->#${destino}:`, err);
+      onProgress?.({ fase: 'error', porcentaje: 0, mensaje: err.message || 'Error generando vídeo' });
+      throw err;
+    }
+  }
+
 
   /**
    * Genera el vídeo MP4 de un tramo GPX y lo sube al backend de forma transparente.
@@ -53,10 +103,17 @@ export class RouteVideoGeneratorService {
       const videoBlob = await this.renderizarVideoRuta(points, options, onProgress);
 
       onProgress?.({ fase: 'subiendo', porcentaje: 85, mensaje: 'Guardando vídeo en servidor...' });
-      const resp = await firstValueFrom(this.actividadesService.subirVideoRuta(actividadId, videoBlob));
+      const resp = await firstValueFrom(
+        this.actividadesService.subirVideoSubtramo(
+          actividadId,
+          options.idParadaOrigen || 0,
+          options.idParadaDestino || 1,
+          videoBlob
+        )
+      );
 
       onProgress?.({ fase: 'completado', porcentaje: 100, mensaje: '¡Vídeo listo!' });
-      return resp.url;
+      return (resp as any).url;
     } catch (err: any) {
       console.error('❌ [RouteVideoGenerator] Error generando vídeo:', err);
       onProgress?.({ fase: 'error', porcentaje: 0, mensaje: err.message || 'Error generando vídeo' });
@@ -75,8 +132,8 @@ export class RouteVideoGeneratorService {
     const width = options.width || 1280;
     const height = options.height || 720;
     const fps = options.fps || 30;
-    const duracionSeg = options.duracionSegundos || 7;
-    const totalFrames = fps * duracionSeg;
+    const duracionSeg = options.duracionSegundos || this.calcularDuracionDinamica(options.distanciaKm || 0);
+    const totalFrames = Math.max(fps * 3, Math.round(fps * duracionSeg));
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -459,9 +516,11 @@ export class RouteVideoGeneratorService {
     ctx.textAlign = 'left';
     ctx.fillText(options.titulo || 'Recorrido del viaje', 40, 50);
 
+    const kmStr = totalKm < 5 ? kmActual.toFixed(2) : kmActual.toFixed(1);
+    const totStr = totalKm < 5 ? totalKm.toFixed(2) : totalKm.toFixed(1);
     ctx.fillStyle = '#78350f';
     ctx.font = '13px sans-serif';
-    ctx.fillText(`${transportIcon}  ${kmActual.toFixed(1)} km / ${totalKm.toFixed(1)} km (${Math.round(progress * 100)}%)`, 40, 75);
+    ctx.fillText(`${transportIcon}  ${kmStr} km / ${totStr} km (${Math.round(progress * 100)}%)`, 40, 75);
     ctx.restore();
   }
 

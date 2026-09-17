@@ -589,15 +589,24 @@ db.run(
         }
       });
 
-      // ✅ MIGRACIÓN 2026: Añadir rutaVideoAnimado a actividades si no existe
-      db.all("PRAGMA table_info(actividades)", (err, columns) => {
-        if (err) return;
-        if (!columns.some(c => c.name === 'rutaVideoAnimado')) {
-          console.log("🔄 [MIGRACIÓN] Añadiendo columna rutaVideoAnimado a la tabla actividades...");
-          db.run("ALTER TABLE actividades ADD COLUMN rutaVideoAnimado TEXT", (err) => {
-            if (err) console.error("❌ Error añadiendo rutaVideoAnimado:", err.message);
-            else console.log("✅ Columna rutaVideoAnimado añadida con éxito a actividades.");
-          });
+      // ✅ TABLA 1:N VÍDEOS DE SUBTRAMOS (Travel Memory)
+      db.run(`
+        CREATE TABLE IF NOT EXISTS actividades_videos_subtramos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_actividad INTEGER NOT NULL,
+          id_parada_origen INTEGER NOT NULL,
+          id_parada_destino INTEGER NOT NULL,
+          url_video TEXT NOT NULL,
+          fechaCreacion TEXT,
+          FOREIGN KEY (id_actividad) REFERENCES actividades(id) ON DELETE CASCADE
+        )
+      `, (err) => {
+        if (err) console.error("❌ Error creando tabla actividades_videos_subtramos:", err.message);
+        else {
+          db.run(`
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_subtramo_origen_destino 
+            ON actividades_videos_subtramos (id_actividad, id_parada_origen, id_parada_destino)
+          `);
         }
       });
     }
@@ -4619,32 +4628,76 @@ console.log('✅ Endpoints de visualización de archivos registrados correctamen
 // 🎬 ENDPOINTS: VÍDEO RUTA PRE-RENDERIZADO (OPCIÓN A)
 // ============================================
 
-// 1. GET vídeo de ruta por actividad
-app.get(['/actividades/:id/video-ruta', '/api/actividades/:id/video-ruta'], (req, res) => {
-  const id = req.params.id;
-  db.get('SELECT rutaVideoAnimado, viajePrevistoId, itinerarioId FROM actividades WHERE id = ?', [id], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!row) return res.status(404).json({ error: 'Actividad no encontrada' });
+// ============================================
+// 🎬 ENDPOINTS VÍDEO POR SUBTRAMOS (TRAVEL MEMORY)
+// ============================================
 
-    if (row.rutaVideoAnimado) {
-      const fullPath = path.join(uploadsPath, row.rutaVideoAnimado);
+// 1. GET comprobar vídeo de un subtramo específico (origen -> destino)
+app.get(['/actividades/:id/subtramos/video', '/api/actividades/:id/subtramos/video'], (req, res) => {
+  const actId = req.params.id;
+  const origen = parseInt(req.query.origen, 10);
+  const destino = parseInt(req.query.destino, 10);
+
+  if (isNaN(origen) || isNaN(destino)) {
+    return res.status(400).json({ error: 'Parámetros origen y destino son requeridos y deben ser numéricos' });
+  }
+
+  db.get(
+    'SELECT url_video FROM actividades_videos_subtramos WHERE id_actividad = ? AND id_parada_origen = ? AND id_parada_destino = ?',
+    [actId, origen, destino],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!row || !row.url_video) {
+        return res.json({ existe: false, url: null });
+      }
+
+      const fullPath = path.join(uploadsPath, row.url_video);
       if (fs.existsSync(fullPath)) {
         return res.json({
           existe: true,
-          rutaRelativa: row.rutaVideoAnimado,
-          url: `/uploads/${row.rutaVideoAnimado}`
+          rutaRelativa: row.url_video,
+          url: `/uploads/${row.url_video.replace(/\\/g, '/')}`
         });
       }
+      res.json({ existe: false, url: null });
     }
-    res.json({ existe: false, url: null });
-  });
+  );
 });
 
-// 2. POST subir / registrar vídeo de ruta pre-renderizado
-app.post(['/actividades/:id/video-ruta', '/api/actividades/:id/video-ruta'], upload.single('video'), async (req, res) => {
+// 2. GET obtener todos los vídeos de subtramos de una actividad (pre-caching ultra rápido)
+app.get(['/actividades/:id/subtramos/videos', '/api/actividades/:id/subtramos/videos'], (req, res) => {
+  const actId = req.params.id;
+  db.all(
+    'SELECT id_parada_origen, id_parada_destino, url_video FROM actividades_videos_subtramos WHERE id_actividad = ?',
+    [actId],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      const videosValidos = (rows || []).filter(r => {
+        const fullPath = path.join(uploadsPath, r.url_video);
+        return fs.existsSync(fullPath);
+      }).map(r => ({
+        id_parada_origen: r.id_parada_origen,
+        id_parada_destino: r.id_parada_destino,
+        url: `/uploads/${r.url_video.replace(/\\/g, '/')}`
+      }));
+      res.json({ success: true, videos: videosValidos });
+    }
+  );
+});
+
+// 3. POST subir y registrar vídeo de subtramo pre-renderizado
+app.post(['/actividades/:id/subtramos/video', '/api/actividades/:id/subtramos/video'], upload.single('video'), async (req, res) => {
   const id = req.params.id;
   if (!req.file) {
     return res.status(400).json({ error: 'No se ha proporcionado archivo de vídeo' });
+  }
+
+  const idParadaOrigen = parseInt(req.body.idParadaOrigen, 10);
+  const idParadaDestino = parseInt(req.body.idParadaDestino, 10);
+
+  if (isNaN(idParadaOrigen) || isNaN(idParadaDestino)) {
+    try { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch (e) {}
+    return res.status(400).json({ error: 'idParadaOrigen e idParadaDestino son requeridos y deben ser numéricos' });
   }
 
   try {
@@ -4661,18 +4714,20 @@ app.post(['/actividades/:id/video-ruta', '/api/actividades/:id/video-ruta'], upl
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    const finalFileName = `animacion_ruta_${id}.mp4`;
+    // Nomenclatura inmutable: uploads/{viajeId}/{itinerarioId}/videos/ruta_{idActividad}_origen_{idParadaOrigen}_destino_{idParadaDestino}.mp4
+    const finalFileName = `ruta_${id}_origen_${idParadaOrigen}_destino_${idParadaDestino}.mp4`;
     const finalFilePath = path.join(targetDir, finalFileName);
     const relPath = path.relative(uploadsPath, finalFilePath).replace(/\\/g, '/');
 
     const tempInput = req.file.path;
+    // FFmpeg obligatorio con -movflags +faststart para streaming instantáneo
     const cmd = `${FFMPEG_BIN} -y -i "${tempInput}" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart "${finalFilePath}"`;
 
     exec(cmd, async (ffmpegErr, stdout, stderr) => {
       try { if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput); } catch (e) {}
 
       if (ffmpegErr) {
-        console.warn('⚠️ [VideoRuta] ffmpeg avisó al optimizar, usando copia directa:', ffmpegErr.message);
+        console.warn('⚠️ [VideoSubtramo] ffmpeg avisó al optimizar, usando copia directa:', ffmpegErr.message);
         try {
           fs.copyFileSync(tempInput, finalFilePath);
         } catch (copyErr) {
@@ -4680,13 +4735,13 @@ app.post(['/actividades/:id/video-ruta', '/api/actividades/:id/video-ruta'], upl
         }
       }
 
-      await dbQuery.run('UPDATE actividades SET rutaVideoAnimado = ?, fechaActualizacion = ? WHERE id = ?', [
-        relPath,
-        new Date().toISOString(),
-        id
-      ]);
+      await dbQuery.run(
+        `INSERT OR REPLACE INTO actividades_videos_subtramos (id_actividad, id_parada_origen, id_parada_destino, url_video, fechaCreacion)
+         VALUES (?, ?, ?, ?, ?)`,
+        [id, idParadaOrigen, idParadaDestino, relPath, new Date().toISOString()]
+      );
 
-      console.log(`🎬 [VideoRuta] Vídeo de ruta registrado para actividad ${id}: ${relPath}`);
+      console.log(`🎬 [VideoSubtramo] Vídeo registrado para actividad ${id} (Parada #${idParadaOrigen} -> Parada #${idParadaDestino}): ${relPath}`);
       res.json({
         success: true,
         rutaRelativa: relPath,
@@ -4695,31 +4750,38 @@ app.post(['/actividades/:id/video-ruta', '/api/actividades/:id/video-ruta'], upl
     });
 
   } catch (error) {
-    console.error('❌ [VideoRuta] Error:', error);
+    console.error('❌ [VideoSubtramo] Error:', error);
     try { if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch (e) {}
-    res.status(500).json({ error: 'Error procesando vídeo de ruta', detalle: error.message });
+    res.status(500).json({ error: 'Error procesando vídeo de subtramo', detalle: error.message });
   }
 });
 
-// 3. DELETE eliminar vídeo de ruta (para regenerar)
-app.delete(['/actividades/:id/video-ruta', '/api/actividades/:id/video-ruta'], async (req, res) => {
+// 4. DELETE eliminar vídeo de subtramo específico
+app.delete(['/actividades/:id/subtramos/video', '/api/actividades/:id/subtramos/video'], async (req, res) => {
   const id = req.params.id;
+  const origen = parseInt(req.query.origen, 10);
+  const destino = parseInt(req.query.destino, 10);
+
   try {
-    const act = await dbQuery.get('SELECT rutaVideoAnimado FROM actividades WHERE id = ?', [id]);
-    if (act && act.rutaVideoAnimado) {
-      const fullPath = path.join(uploadsPath, act.rutaVideoAnimado);
+    const row = await dbQuery.get(
+      'SELECT url_video FROM actividades_videos_subtramos WHERE id_actividad = ? AND id_parada_origen = ? AND id_parada_destino = ?',
+      [id, origen, destino]
+    );
+    if (row && row.url_video) {
+      const fullPath = path.join(uploadsPath, row.url_video);
       if (fs.existsSync(fullPath)) {
         fs.unlinkSync(fullPath);
       }
-      await dbQuery.run('UPDATE actividades SET rutaVideoAnimado = NULL WHERE id = ?', [id]);
+      await dbQuery.run(
+        'DELETE FROM actividades_videos_subtramos WHERE id_actividad = ? AND id_parada_origen = ? AND id_parada_destino = ?',
+        [id, origen, destino]
+      );
     }
-    res.json({ success: true, message: 'Vídeo de ruta eliminado' });
+    res.json({ success: true, message: 'Vídeo de subtramo eliminado' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
-
-
 
 // ----------------------------------------
 // RUTAS PARA Archivos (archivos por actividad)

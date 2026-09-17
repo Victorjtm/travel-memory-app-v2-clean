@@ -8049,3 +8049,59 @@
       }
     }
   }
+
+/* Indicador de carga de mapa y botón de retorno interactivo (Travel Memory 2026) */
+.mapa-cargando-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(247, 239, 224, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 35;
+  animation: fadeInQuick 0.2s ease-out;
+
+  .mapa-cargando-badge {
+    background: #2b1810;
+    color: #f7efe0;
+    padding: 9px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'Cinzel', 'Georgia', serif;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(191, 161, 95, 0.7);
+  }
+}
+
+.interactive-return-overlay {
+  position: absolute !important;
+  top: 14px !important;
+  right: 14px !important;
+  z-index: 40 !important;
+
+  .btn-volver-animacion {
+    background: rgba(26, 77, 46, 0.9) !important;
+    border-color: #4ade80 !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+
+    &:hover {
+      background: #15803d !important;
+      border-color: #86efac !important;
+      transform: scale(1.05) !important;
+    }
+  }
+}
+
+@keyframes fadeInQuick {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
