@@ -257,6 +257,11 @@ if (!fs.existsSync(uploadsPath)) {
 console.log('📁 Sirviendo archivos estáticos desde:', uploadsPath);
 app.use('/uploads', cors(), express.static(uploadsPath));
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MÓDULO: SALUD Y RENDIMIENTO FÍSICO (100% AISLADO)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.use('/api/health', cors(), require('./backend-services/health/health.router'));
+
 // Configurar la base de datos SQLite
 const db = new sqlite3.Database('./viajes.db', (err) => {
   if (err) {

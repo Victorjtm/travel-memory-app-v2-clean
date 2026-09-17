@@ -45,6 +45,13 @@ export const routes: Routes = [
   // Recuerdos (viajes realizados)
   { path: 'recuerdos', component: RecuerdosComponent },
 
+  // 🩺 MÓDULO DE SALUD Y RENDIMIENTO FÍSICO (XIAOMI & BÁSCULA)
+  {
+    path: 'mi-salud',
+    loadComponent: () =>
+      import('./paginas/mi-salud/mi-salud.component').then(m => m.MiSaludComponent)
+  },
+
   // ⚠️ MANTENER POR COMPATIBILIDAD: Viajes previstos (ruta antigua)
   { path: 'viajes-previstos', component: ViajesPrevistosComponent },
   { path: 'viajes-previstos/mapa', component: ViajesMapaComponent },

@@ -1,0 +1,386 @@
+<div class="salud-dashboard">
+  <!-- Cabecera de la Página -->
+  <header class="dashboard-header">
+    <div class="header-main">
+      <div class="header-icon-container">
+        <i class="fa-solid fa-heart-pulse"></i>
+      </div>
+      <div>
+        <h1>Mi Salud & Rendimiento Físico</h1>
+        <p class="subtitle">Monitoreo clínico y deportivo cruzado con tus viajes (Xiaomi Mi Fitness & Báscula Inteligente)</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn-subir-salud" (click)="abrirModal()">
+        <i class="fa-solid fa-cloud-arrow-up"></i>
+        <span>Importar Capturas con IA</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Pestañas Principales -->
+  <nav class="salud-tabs">
+    <button 
+      class="tab-link" 
+      [class.active]="tabActiva === 'bascula'" 
+      (click)="tabActiva = 'bascula'">
+      <i class="fa-solid fa-weight-scale"></i>
+      <span>Composición Corporal & Báscula</span>
+      <span class="badge" *ngIf="metricasCorporales.length">{{ metricasCorporales.length }}</span>
+    </button>
+    <button 
+      class="tab-link" 
+      [class.active]="tabActiva === 'reloj'" 
+      (click)="tabActiva = 'reloj'">
+      <i class="fa-solid fa-person-walking"></i>
+      <span>Caminatas & Rendimiento (Xiaomi)</span>
+      <span class="badge" *ngIf="actividades.length">{{ actividades.length }}</span>
+    </button>
+  </nav>
+
+  <!-- Loading State -->
+  <div class="loading-state" *ngIf="cargando">
+    <div class="spinner"></div>
+    <p>Cargando métricas de salud...</p>
+  </div>
+
+  <!-- PESTAÑA 1: BÁSCULA & COMPOSICIÓN CORPORAL -->
+  <section class="tab-content" *ngIf="!cargando && tabActiva === 'bascula'">
+    <!-- Resumen Clínico del Último Pesaje -->
+    <div class="cards-grid" *ngIf="ultimoPesaje">
+      <!-- Tarjeta 1: Peso y Tendencia -->
+      <div class="metric-card weight-card">
+        <div class="card-top">
+          <span class="metric-label">Peso Corporal</span>
+          <i class="fa-solid fa-weight-scale card-icon"></i>
+        </div>
+        <div class="card-value-wrap">
+          <span class="metric-value">{{ ultimoPesaje.weight_kg }}</span>
+          <span class="metric-unit">kg</span>
+        </div>
+        <div class="card-trend" *ngIf="diferenciaPeso !== null">
+          <span [class.trend-down]="diferenciaPeso < 0" [class.trend-up]="diferenciaPeso > 0">
+            <i class="fa-solid" [class.fa-arrow-down]="diferenciaPeso < 0" [class.fa-arrow-up]="diferenciaPeso > 0" [class.fa-minus]="diferenciaPeso === 0"></i>
+            {{ diferenciaPeso > 0 ? '+' : '' }}{{ diferenciaPeso }} kg vs. anterior
+          </span>
+        </div>
+        <div class="card-date">
+          <i class="fa-regular fa-calendar"></i> {{ ultimoPesaje.measurement_date | date:'dd/MM/yyyy HH:mm' }}
+        </div>
+      </div>
+
+      <!-- Tarjeta 2: IMC y Categoría -->
+      <div class="metric-card bmi-card">
+        <div class="card-top">
+          <span class="metric-label">Índice Masa Corporal (IMC)</span>
+          <i class="fa-solid fa-stethoscope card-icon"></i>
+        </div>
+        <div class="card-value-wrap">
+          <span class="metric-value">{{ ultimoPesaje.bmi }}</span>
+          <span class="status-badge" [style.background-color]="getEstadoIMC(ultimoPesaje.bmi).color">
+            {{ getEstadoIMC(ultimoPesaje.bmi).label }}
+          </span>
+        </div>
+        <div class="metric-subdetail">
+          <span>Altura: {{ ultimoPesaje.height_cm || 175 }} cm</span> |
+          <span>Edad: {{ ultimoPesaje.real_age || '--' }} años</span>
+        </div>
+      </div>
+
+      <!-- Tarjeta 3: Grasa Corporal -->
+      <div class="metric-card fat-card">
+        <div class="card-top">
+          <span class="metric-label">Grasa Corporal</span>
+          <i class="fa-solid fa-fire card-icon"></i>
+        </div>
+        <div class="card-value-wrap">
+          <span class="metric-value">{{ ultimoPesaje.body_fat_pct }}</span>
+          <span class="metric-unit">%</span>
+        </div>
+        <div class="metric-subdetail">
+          <span>Masa grasa: <strong>{{ ultimoPesaje.fat_mass_kg || '--' }} kg</strong></span> |
+          <span>Visceral: <strong>{{ ultimoPesaje.visceral_fat || '--' }}</strong></span>
+        </div>
+      </div>
+
+      <!-- Tarjeta 4: Masa Muscular -->
+      <div class="metric-card muscle-card">
+        <div class="card-top">
+          <span class="metric-label">Músculo Esquelético</span>
+          <i class="fa-solid fa-dumbbell card-icon"></i>
+        </div>
+        <div class="card-value-wrap">
+          <span class="metric-value">{{ ultimoPesaje.skeletal_muscle_pct || ultimoPesaje.muscle_pct || '--' }}</span>
+          <span class="metric-unit">%</span>
+        </div>
+        <div class="metric-subdetail">
+          <span>Masa muscular: <strong>{{ ultimoPesaje.muscle_mass_kg || '--' }} kg</strong></span> |
+          <span>Agua: <strong>{{ ultimoPesaje.water_pct || '--' }}%</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Parámetros Clínicos Secundarios -->
+    <div class="clinical-details-panel" *ngIf="ultimoPesaje">
+      <h3><i class="fa-solid fa-notes-medical"></i> Constantes Metabólicas & Parámetros Biomédicos</h3>
+      <div class="details-grid">
+        <div class="detail-item">
+          <span class="label">Tasa Metabólica Basal (BMR)</span>
+          <span class="val">{{ ultimoPesaje.bmr_kcal || '--' }} <small>kcal/día</small></span>
+        </div>
+        <div class="detail-item">
+          <span class="label">Edad Metabólica</span>
+          <span class="val">{{ ultimoPesaje.metabolic_age || '--' }} <small>años</small></span>
+        </div>
+        <div class="detail-item">
+          <span class="label">Masa Libre de Grasa</span>
+          <span class="val">{{ ultimoPesaje.fat_free_weight_kg || '--' }} <small>kg</small></span>
+        </div>
+        <div class="detail-item">
+          <span class="label">Masa Ósea</span>
+          <span class="val">{{ ultimoPesaje.bone_mass_kg || '--' }} <small>kg</small></span>
+        </div>
+        <div class="detail-item">
+          <span class="label">Agua Corporal Total</span>
+          <span class="val">{{ ultimoPesaje.water_mass_kg || '--' }} <small>kg</small> ({{ ultimoPesaje.water_pct }}%)</span>
+        </div>
+        <div class="detail-item">
+          <span class="label">Proteína Corporal</span>
+          <span class="val">{{ ultimoPesaje.protein_pct || '--' }}%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Historial de Pesajes -->
+    <div class="history-table-container">
+      <div class="table-header">
+        <h3><i class="fa-solid fa-clock-rotate-left"></i> Historial de Registros de la Báscula</h3>
+      </div>
+
+      <div class="empty-state" *ngIf="metricasCorporales.length === 0">
+        <i class="fa-solid fa-scale-unbalanced-flip"></i>
+        <h4>No hay registros de báscula aún</h4>
+        <p>Haz clic en "Importar Capturas con IA" para registrar tu primera captura de pantalla de la báscula.</p>
+      </div>
+
+      <div class="table-responsive" *ngIf="metricasCorporales.length > 0">
+        <table class="salud-table">
+          <thead>
+            <tr>
+              <th>Fecha y Hora</th>
+              <th>Peso</th>
+              <th>IMC</th>
+              <th>Grasa %</th>
+              <th>Masa Grasa</th>
+              <th>Músculo %</th>
+              <th>Agua %</th>
+              <th>Grasa Visceral</th>
+              <th>BMR</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let m of metricasCorporales">
+              <td><strong>{{ m.measurement_date | date:'dd/MM/yyyy HH:mm' }}</strong></td>
+              <td class="highlight-val">{{ m.weight_kg }} kg</td>
+              <td>
+                <span class="status-pill" [style.color]="getEstadoIMC(m.bmi).color">
+                  {{ m.bmi }} ({{ getEstadoIMC(m.bmi).label }})
+                </span>
+              </td>
+              <td>{{ m.body_fat_pct }}%</td>
+              <td>{{ m.fat_mass_kg ? m.fat_mass_kg + ' kg' : '--' }}</td>
+              <td>{{ m.skeletal_muscle_pct || m.muscle_pct }}%</td>
+              <td>{{ m.water_pct }}%</td>
+              <td>{{ m.visceral_fat }}</td>
+              <td>{{ m.bmr_kcal }} kcal</td>
+              <td>
+                <button class="btn-delete" (click)="eliminarMetrica(m.id, $event)" title="Eliminar registro">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- PESTAÑA 2: CAMINATAS & RELOJ XIAOMI -->
+  <section class="tab-content" *ngIf="!cargando && tabActiva === 'reloj'">
+    <!-- Resumen Acumulado de Caminatas -->
+    <div class="cards-grid" *ngIf="actividades.length > 0">
+      <div class="metric-card walk-card">
+        <div class="card-top">
+          <span class="metric-label">Distancia Total en Viajes</span>
+          <i class="fa-solid fa-route card-icon"></i>
+        </div>
+        <div class="card-value-wrap">
+          <span class="metric-value">{{ totalKmCaminados }}</span>
+          <span class="metric-unit">km</span>
+        </div>
+        <div class="metric-subdetail">
+          <span>Total sesiones: {{ actividades.length }}</span>
+        </div>
+      </div>
+
+      <div class="metric-card steps-card">
+        <div class="card-top">
+          <span class="metric-label">Pasos Acumulados</span>
+          <i class="fa-solid fa-shoe-prints card-icon"></i>
+        </div>
+        <div class="card-value-wrap">
+          <span class="metric-value">{{ totalPasos | number }}</span>
+          <span class="metric-unit">pasos</span>
+        </div>
+        <div class="metric-subdetail">
+          <span>Promedio: {{ (totalPasos / (actividades.length || 1)) | number:'1.0-0' }} pasos/sesión</span>
+        </div>
+      </div>
+
+      <div class="metric-card cal-card">
+        <div class="card-top">
+          <span class="metric-label">Calorías Activas</span>
+          <i class="fa-solid fa-fire-flame-curved card-icon"></i>
+        </div>
+        <div class="card-value-wrap">
+          <span class="metric-value">{{ totalCaloriasActivas | number }}</span>
+          <span class="metric-unit">kcal</span>
+        </div>
+        <div class="metric-subdetail">
+          <span>Gasto energético de marcha</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lista de Sesiones de Caminata -->
+    <div class="walks-container">
+      <div class="table-header">
+        <h3><i class="fa-solid fa-person-hiking"></i> Sesiones Importadas de Xiaomi Mi Fitness</h3>
+      </div>
+
+      <div class="empty-state" *ngIf="actividades.length === 0">
+        <i class="fa-solid fa-person-walking-arrow-right"></i>
+        <h4>No hay actividades de reloj registradas</h4>
+        <p>Importa tus capturas de Xiaomi Mi Fitness desde cualquier itinerario o con el botón superior.</p>
+      </div>
+
+      <div class="activities-cards-list" *ngIf="actividades.length > 0">
+        <div 
+          class="activity-card" 
+          *ngFor="let act of actividades" 
+          [class.expanded]="actividadSeleccionada?.id === act.id"
+          (click)="seleccionarActividad(act)">
+          
+          <div class="act-header">
+            <div class="act-meta">
+              <span class="trip-tag" *ngIf="act.viaje_nombre">
+                <i class="fa-solid fa-map-pin"></i> {{ act.viaje_nombre }}
+              </span>
+              <span class="act-date">
+                <i class="fa-regular fa-clock"></i> {{ act.date_walk | date:'dd/MM/yyyy HH:mm' }}
+              </span>
+              <span class="user-tag" *ngIf="act.user_name">
+                <i class="fa-regular fa-user"></i> {{ act.user_name }}
+              </span>
+            </div>
+
+            <div class="act-header-right">
+              <span class="vitality-badge" *ngIf="act.vitality_score">
+                <i class="fa-solid fa-bolt"></i> Vitalidad: {{ act.vitality_score }}
+              </span>
+              <button class="btn-delete-act" (click)="eliminarActividad(act.id, $event)" title="Eliminar caminata">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="act-metrics-grid">
+            <div class="metric-col">
+              <span class="label">Distancia</span>
+              <span class="val-highlight">{{ act.distance_km }} <small>km</small></span>
+            </div>
+            <div class="metric-col">
+              <span class="label">Duración</span>
+              <span class="val">{{ act.duration_total }}</span>
+            </div>
+            <div class="metric-col">
+              <span class="label">Pasos</span>
+              <span class="val">{{ act.steps | number }}</span>
+            </div>
+            <div class="metric-col">
+              <span class="label">Ritmo Promedio</span>
+              <span class="val">{{ act.pace_avg }} <small>/km</small></span>
+            </div>
+            <div class="metric-col">
+              <span class="label">Calorías</span>
+              <span class="val">{{ act.calories_active }} <small>kcal</small></span>
+            </div>
+            <div class="metric-col" *ngIf="act.hr_avg">
+              <span class="label">FC Media</span>
+              <span class="val">{{ act.hr_avg }} <small>ppm</small></span>
+            </div>
+          </div>
+
+          <!-- Zonas Cardíacas & Cadencia (Vista Detallada) -->
+          <div class="extra-metrics-row">
+            <div class="chip" *ngIf="act.cadence_avg">
+              <i class="fa-solid fa-arrows-split-up-and-left"></i> Cadencia: {{ act.cadence_avg }} pasos/min (Máx: {{ act.cadence_max || '--' }})
+            </div>
+            <div class="chip" *ngIf="act.stride_avg_cm">
+              <i class="fa-solid fa-ruler-horizontal"></i> Zancada: {{ act.stride_avg_cm }} cm (Máx: {{ act.stride_max_cm || '--' }} cm)
+            </div>
+            <div class="chip" *ngIf="act.hr_max">
+              <i class="fa-solid fa-heart"></i> FC Máx: {{ act.hr_max }} ppm
+            </div>
+          </div>
+
+          <!-- Zonas de Pulso Visuales -->
+          <div class="hr-zones-bar" *ngIf="act.zone_light || act.zone_aerobic || act.zone_intensive || act.zone_vo2max">
+            <span class="zone-title"><i class="fa-solid fa-chart-simple"></i> Zonas de Frecuencia Cardíaca:</span>
+            <div class="zones-pills">
+              <span class="zone-pill z-light" *ngIf="act.zone_light">Ligera: {{ act.zone_light }}</span>
+              <span class="zone-pill z-intensive" *ngIf="act.zone_intensive">Intensiva: {{ act.zone_intensive }}</span>
+              <span class="zone-pill z-aerobic" *ngIf="act.zone_aerobic">Aeróbica: {{ act.zone_aerobic }}</span>
+              <span class="zone-pill z-anaerobic" *ngIf="act.zone_anaerobic">Anaeróbica: {{ act.zone_anaerobic }}</span>
+              <span class="zone-pill z-vo2max" *ngIf="act.zone_vo2max">VO2 Máx: {{ act.zone_vo2max }}</span>
+            </div>
+          </div>
+
+          <!-- DESGLOSE DE SPLITS POR KILÓMETRO -->
+          <div class="splits-breakdown" *ngIf="actividadSeleccionada?.id === act.id">
+            <h4><i class="fa-solid fa-flag-checkered"></i> Desglose de Ritmos por Kilómetro (Splits)</h4>
+            
+            <div class="splits-list" *ngIf="actividadSeleccionada?.splits && actividadSeleccionada!.splits!.length > 0">
+              <div class="split-row" *ngFor="let s of actividadSeleccionada!.splits">
+                <span class="split-km">Km {{ s.km_number }}</span>
+                <div class="split-bar-track">
+                  <div class="split-bar-fill"></div>
+                </div>
+                <span class="split-pace">{{ s.pace }} /km</span>
+              </div>
+            </div>
+
+            <div class="no-splits" *ngIf="!actividadSeleccionada?.splits || actividadSeleccionada!.splits!.length === 0">
+              <span>No se registraron splits detallados en esta actividad.</span>
+            </div>
+          </div>
+
+          <div class="click-hint">
+            <span>{{ actividadSeleccionada?.id === act.id ? 'Haz clic para colapsar' : 'Haz clic para ver splits y detalles' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MODAL DE CARGA -->
+  <app-salud-upload-modal
+    [mostrar]="mostrarModalSalud"
+    [itineraryId]="modalItineraryId"
+    [activityId]="modalActivityId"
+    (cerrar)="cerrarModal()"
+    (completado)="onUploadCompletado()">
+  </app-salud-upload-modal>
+</div>

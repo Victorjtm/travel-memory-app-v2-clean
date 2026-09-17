@@ -1,0 +1,348 @@
+<div class="salud-modal-overlay" *ngIf="mostrar" (click)="cerrarModal()">
+  <div class="salud-modal-card" [class.wide-modal]="modoVista === 'detalle'" (click)="$event.stopPropagation()">
+    
+    <!-- Encabezado del Modal -->
+    <div class="modal-header">
+      <div class="header-title">
+        <div class="icon-badge" [class.badge-detalle]="modoVista === 'detalle'">
+          <i class="fa-solid fa-heart-pulse"></i>
+        </div>
+        <div>
+          <h3 *ngIf="modoVista === 'detalle'">Salud & Rendimiento Físico (Xiaomi Mi Fitness)</h3>
+          <h3 *ngIf="modoVista === 'subida'">Módulo de Salud y Rendimiento</h3>
+
+          <p class="subtitle" *ngIf="datosActividad">
+            Actividad: <strong>{{ datosActividad.actividad_nombre || ('#' + activityId) }}</strong> 
+            <span *ngIf="datosActividad.date_walk"> &bull; {{ datosActividad.date_walk | date:'dd/MM/yyyy HH:mm' }}</span>
+          </p>
+          <p class="subtitle" *ngIf="!datosActividad && itineraryId">
+            Vinculado al Itinerario #{{ itineraryId }} <span *ngIf="activityId">(Actividad #{{ activityId }})</span>
+          </p>
+          <p class="subtitle" *ngIf="!datosActividad && !itineraryId">Registro Biométrico General</p>
+        </div>
+      </div>
+      <button class="btn-close" (click)="cerrarModal()" [disabled]="cargando" aria-label="Cerrar modal">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- SPINNER DE CARGA INICIAL -->
+    <div class="loading-state-mini" *ngIf="cargandoVerificacion">
+      <div class="spinner"></div>
+      <p>Consultando métricas de salud de la actividad...</p>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- VISTA 1: DETALLE DE MÉTRICAS DE LA ACTIVIDAD                             -->
+    <!-- ========================================================================= -->
+    <div class="modal-body modal-body-detalle" *ngIf="!cargandoVerificacion && modoVista === 'detalle' && datosActividad">
+      
+      <!-- TARJETA DE DIVERGENCIA CLAVE (Reloj vs GPS) -->
+      <div class="divergence-hero-card" *ngIf="datosActividad.actividad_distancia_gps">
+        <div class="divergence-header">
+          <span class="divergence-title"><i class="fa-solid fa-scale-balanced"></i> Comparativa de Distancia (Reloj vs GPS)</span>
+          <span class="divergence-badge" [class.divergence-alert]="diferenciaDivergencia !== 0">
+            Diferencia: {{ diferenciaDivergencia > 0 ? '+' : '' }}{{ diferenciaDivergencia }} km
+          </span>
+        </div>
+        <div class="divergence-metrics-row">
+          <div class="divergence-item item-watch">
+            <span class="d-label"><i class="fa-solid fa-stopwatch"></i> Reloj Xiaomi</span>
+            <span class="d-val">{{ datosActividad.distance_km }} <small>km</small></span>
+            <span class="d-note">{{ datosActividad.steps | number }} pasos podómetro</span>
+          </div>
+          <div class="divergence-vs">VS</div>
+          <div class="divergence-item item-gps">
+            <span class="d-label"><i class="fa-solid fa-location-crosshairs"></i> GPS Itinerario</span>
+            <span class="d-val">{{ datosActividad.actividad_distancia_gps }} <small>km</small></span>
+            <span class="d-note">Satélite continuo</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- GRID DE MÉTRICAS CLAVE -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon icon-time"><i class="fa-solid fa-clock"></i></div>
+          <div class="stat-info">
+            <span class="stat-label">Tiempo Total</span>
+            <span class="stat-value">{{ datosActividad.duration_total }}</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon icon-pace"><i class="fa-solid fa-gauge-high"></i></div>
+          <div class="stat-info">
+            <span class="stat-label">Ritmo Promedio</span>
+            <span class="stat-value">{{ datosActividad.pace_avg }} <small>/km</small></span>
+            <span class="stat-sub">Mejor km: {{ mejorRitmo }}</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon icon-hr"><i class="fa-solid fa-heart-pulse"></i></div>
+          <div class="stat-info">
+            <span class="stat-label">Frec. Cardíaca</span>
+            <span class="stat-value">{{ datosActividad.hr_avg }} <small>bpm</small></span>
+            <span class="stat-sub">Máx: {{ datosActividad.hr_max }} bpm</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon icon-cal"><i class="fa-solid fa-fire"></i></div>
+          <div class="stat-info">
+            <span class="stat-label">Calorías Activas</span>
+            <span class="stat-value">{{ datosActividad.calories_active }} <small>kcal</small></span>
+            <span class="stat-sub">Total: {{ datosActividad.calories_total }} kcal</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon icon-cadence"><i class="fa-solid fa-shoe-prints"></i></div>
+          <div class="stat-info">
+            <span class="stat-label">Cadencia</span>
+            <span class="stat-value">{{ datosActividad.cadence_avg }} <small>spm</small></span>
+            <span class="stat-sub">Máx: {{ datosActividad.cadence_max }} spm</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon icon-stride"><i class="fa-solid fa-ruler-horizontal"></i></div>
+          <div class="stat-info">
+            <span class="stat-label">Zancada Media</span>
+            <span class="stat-value">{{ datosActividad.stride_avg_cm }} <small>cm</small></span>
+            <span class="stat-sub">Máx: {{ datosActividad.stride_max_cm }} cm</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ZONAS DE RITMO CARDÍACO -->
+      <div class="heart-zones-section" *ngIf="datosActividad.zone_light || datosActividad.zone_intensive || datosActividad.zone_aerobic">
+        <h4 class="section-title"><i class="fa-solid fa-wave-square"></i> Zonas de Frecuencia Cardíaca</h4>
+        <div class="zones-chips">
+          <div class="zone-chip chip-light">
+            <span class="zone-tag">Ligera</span>
+            <span class="zone-time">{{ datosActividad.zone_light || '00:00:00' }}</span>
+          </div>
+          <div class="zone-chip chip-intensive">
+            <span class="zone-tag">Intensiva</span>
+            <span class="zone-time">{{ datosActividad.zone_intensive || '00:00:00' }}</span>
+          </div>
+          <div class="zone-chip chip-aerobic">
+            <span class="zone-tag">Aeróbica</span>
+            <span class="zone-time">{{ datosActividad.zone_aerobic || '00:00:00' }}</span>
+          </div>
+          <div class="zone-chip chip-anaerobic">
+            <span class="zone-tag">Anaeróbica</span>
+            <span class="zone-time">{{ datosActividad.zone_anaerobic || '00:00:00' }}</span>
+          </div>
+          <div class="zone-chip chip-vo2max" *ngIf="datosActividad.zone_vo2max && datosActividad.zone_vo2max !== '00:00:00'">
+            <span class="zone-tag">VO2 Máx</span>
+            <span class="zone-time">{{ datosActividad.zone_vo2max }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TABLA DE SPLITS POR KILÓMETRO -->
+      <div class="splits-section" *ngIf="datosActividad.splits && datosActividad.splits.length > 0">
+        <h4 class="section-title">
+          <i class="fa-solid fa-flag-checkered"></i> Desglose de Ritmo por Kilómetro (Splits)
+          <span class="badge-count">{{ datosActividad.splits.length }} km</span>
+        </h4>
+        
+        <div class="splits-table-container">
+          <table class="splits-table">
+            <thead>
+              <tr>
+                <th>Kilómetro</th>
+                <th>Ritmo por Km</th>
+                <th>Rendimiento Visual</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let split of datosActividad.splits">
+                <td class="km-col">
+                  <span class="km-badge">Km {{ split.km_number }}</span>
+                </td>
+                <td class="pace-col">
+                  <strong>{{ split.pace }}</strong> /km
+                </td>
+                <td class="bar-col">
+                  <div class="pace-bar-track">
+                    <div class="pace-bar-fill" [style.width.%]="85"></div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- FOOTER PARA VISTA DETALLE -->
+    <div class="modal-footer" *ngIf="!cargandoVerificacion && modoVista === 'detalle' && datosActividad">
+      <button class="btn-delete" (click)="eliminarMetricas()" [disabled]="cargando" title="Eliminar estas métricas">
+        <i class="fa-solid fa-trash-can"></i> Eliminar
+      </button>
+
+      <div class="footer-right-actions">
+        <button class="btn-resubir" (click)="irASubida()">
+          <i class="fa-solid fa-arrow-rotate-right"></i> Actualizar Capturas con IA
+        </button>
+        <button class="btn-cancelar" (click)="cerrarModal()">
+          Cerrar
+        </button>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- VISTA 2: FORMULARIO DE SUBIDA (Gemini 3.6 Flash)                          -->
+    <!-- ========================================================================= -->
+    <div class="modal-body" *ngIf="!cargandoVerificacion && modoVista === 'subida'">
+      
+      <!-- Botón de retorno a detalle si ya había datos -->
+      <div class="banner-volver" *ngIf="datosActividad">
+        <span>Esta actividad ya tiene métricas guardadas. Si subes nuevas capturas, se actualizarán.</span>
+        <button class="btn-volver-link" (click)="volverADetalle()">
+          <i class="fa-solid fa-arrow-left"></i> Volver a Ver Métricas
+        </button>
+      </div>
+
+      <!-- Pestañas de Selección (solo si no es reloj forzado) -->
+      <div class="tabs-selector" *ngIf="!activityId">
+        <button 
+          type="button" 
+          class="tab-btn" 
+          [class.active]="tipoCarga === 'watch'" 
+          (click)="cambiarTipo('watch')"
+          [disabled]="cargando">
+          <i class="fa-solid fa-stopwatch"></i> Reloj Xiaomi Mi Fitness
+        </button>
+        <button 
+          type="button" 
+          class="tab-btn" 
+          [class.active]="tipoCarga === 'scale'" 
+          (click)="cambiarTipo('scale')"
+          [disabled]="cargando">
+          <i class="fa-solid fa-weight-scale"></i> Báscula Inteligente
+        </button>
+      </div>
+
+      <!-- Explicación dinámica -->
+      <div class="info-banner" *ngIf="tipoCarga === 'watch'">
+        <i class="fa-solid fa-circle-info"></i>
+        <span>Sube hasta <strong>4 capturas</strong> de Xiaomi Mi Fitness (resumen, ritmos, pulsaciones, gráficos). Gemini 3.6 Flash extraerá todas las métricas clínicas y el desglose de splits por kilómetro.</span>
+      </div>
+
+      <div class="info-banner" *ngIf="tipoCarga === 'scale'">
+        <i class="fa-solid fa-circle-info"></i>
+        <span>Sube la captura de la app de tu báscula inteligente. Se extraerán automáticamente peso, IMC, masa grasa, muscular, agua y metabolismo.</span>
+      </div>
+
+      <!-- Zona de Drag & Drop -->
+      <div 
+        class="dropzone" 
+        (dragover)="onDragOver($event)" 
+        (drop)="onDrop($event)"
+        (click)="fileInput.click()"
+        *ngIf="!resultadoExito">
+        <input 
+          #fileInput 
+          type="file" 
+          accept="image/*" 
+          [multiple]="tipoCarga === 'watch'" 
+          (change)="onFilesSelected($event)" 
+          style="display: none;" />
+        
+        <div class="dropzone-content" *ngIf="selectedFiles.length === 0">
+          <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
+          <h4>Arrastra tus capturas aquí o haz clic para seleccionar</h4>
+          <p class="drop-hint" *ngIf="tipoCarga === 'watch'">Formatos JPG, PNG, WebP (Máx. 4 capturas consecutivas)</p>
+          <p class="drop-hint" *ngIf="tipoCarga === 'scale'">Formatos JPG, PNG, WebP (1 o 2 capturas)</p>
+        </div>
+
+        <!-- Miniaturas de archivos seleccionados -->
+        <div class="previews-grid" *ngIf="selectedFiles.length > 0" (click)="$event.stopPropagation()">
+          <div class="preview-item" *ngFor="let url of previewUrls; let i = index">
+            <img [src]="url" [alt]="'Captura ' + (i + 1)" />
+            <button class="btn-remove-thumb" (click)="eliminarArchivo(i)" [disabled]="cargando" title="Eliminar captura">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+            <span class="preview-badge">#{{ i + 1 }}</span>
+          </div>
+          
+          <div class="add-more-card" (click)="fileInput.click()" *ngIf="(tipoCarga === 'watch' && selectedFiles.length < 4) || (tipoCarga === 'scale' && selectedFiles.length < 2)">
+            <i class="fa-solid fa-plus"></i>
+            <span>Añadir</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Estado de Carga / Spinner de IA -->
+      <div class="loading-container" *ngIf="cargando">
+        <div class="ia-pulse-ring">
+          <i class="fa-solid fa-brain"></i>
+        </div>
+        <h4>Extracción con Gemini 3.6 Flash en curso</h4>
+        <p class="loading-msg">{{ mensajeProgreso }}</p>
+      </div>
+
+      <!-- Feedback de Error -->
+      <div class="alert-box error-alert" *ngIf="errorMensaje">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span>{{ errorMensaje }}</span>
+      </div>
+
+      <!-- Feedback de Éxito -->
+      <div class="alert-box success-alert" *ngIf="resultadoExito">
+        <i class="fa-solid fa-circle-check"></i>
+        <div class="success-details">
+          <h4>¡Extracción y guardado completados con éxito!</h4>
+          <p>{{ resultadoExito.message }}</p>
+          <div class="quick-summary" *ngIf="tipoCarga === 'watch' && resultadoExito.data">
+            <span><strong>Distancia:</strong> {{ resultadoExito.data.distance_km }} km</span> |
+            <span><strong>Pasos:</strong> {{ resultadoExito.data.steps }}</span> |
+            <span><strong>Duración:</strong> {{ resultadoExito.data.duration_total }}</span> |
+            <span><strong>Splits:</strong> {{ resultadoExito.total_splits || 0 }} km</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Acordeón para API Key personalizada opcional -->
+      <details class="api-key-accordion" *ngIf="!resultadoExito && !cargando">
+        <summary><i class="fa-solid fa-key"></i> Configurar API Key de Google AI Studio personalizada (Opcional)</summary>
+        <div class="api-key-input-wrap">
+          <input 
+            type="password" 
+            [(ngModel)]="customApiKey" 
+            placeholder="AIzaSy... (Se recordará automáticamente)" />
+        </div>
+      </details>
+    </div>
+
+    <!-- FOOTER PARA VISTA SUBIDA -->
+    <div class="modal-footer" *ngIf="!cargandoVerificacion && modoVista === 'subida'">
+      <button class="btn-cancelar" (click)="cerrarModal()" [disabled]="cargando">
+        {{ resultadoExito ? 'Cerrar' : 'Cancelar' }}
+      </button>
+
+      <button 
+        class="btn-procesar" 
+        *ngIf="!resultadoExito" 
+        (click)="enviarCapturas()" 
+        [disabled]="cargando || selectedFiles.length === 0">
+        <i class="fa-solid fa-wand-magic-sparkles"></i> 
+        <span>{{ cargando ? 'Extrayendo...' : 'Procesar con IA y Guardar' }}</span>
+      </button>
+
+      <button 
+        class="btn-procesar btn-otro" 
+        *ngIf="resultadoExito && datosActividad" 
+        (click)="volverADetalle()">
+        <i class="fa-solid fa-chart-line"></i> Ver Métricas de la Actividad
+      </button>
+    </div>
+
+  </div>
+</div>

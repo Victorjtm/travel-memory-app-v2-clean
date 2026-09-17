@@ -34,6 +34,9 @@
       <button class="btn-animacion" (click)="animarGPX(actividad.id)">
         <i class="fa fa-play-circle"></i> Animación
       </button>
+      <button class="btn-salud" (click)="abrirModalSalud(actividad.id)" title="Registrar Salud y Rendimiento (Xiaomi / Báscula)">
+        <i class="fa-solid fa-heart-pulse"></i> Salud
+      </button>
       <button class="btn-animacion btn-recorrido-guiado" (click)="iniciarRecorridoGuiado(actividad.id)" title="Recorrido guiado continuo con paradas exclusivas en Puntos de Interés">
         <i class="fa fa-route"></i> Recorrido Guiado
       </button>
@@ -582,4 +585,13 @@
     (rutaOriginalGuardada)="onRutaOriginalGuardada()"
     (close)="cerrarEditorTrack()">
   </app-track-editor-map>
+
+  <!-- 🩺 MODAL DE SALUD Y RENDIMIENTO (100% AISLADO) -->
+  <app-salud-upload-modal
+    [mostrar]="mostrarModalSalud"
+    [itineraryId]="itinerarioId"
+    [activityId]="actividadSaludSeleccionadaId"
+    (cerrar)="cerrarModalSalud()"
+    (completado)="cerrarModalSalud(); cargarActividadesConSalud()">
+  </app-salud-upload-modal>
 </div>

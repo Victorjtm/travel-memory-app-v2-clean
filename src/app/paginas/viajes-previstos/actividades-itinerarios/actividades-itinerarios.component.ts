@@ -7,6 +7,8 @@ import { FormsModule } from '@angular/forms';
 import { take } from 'rxjs/operators';
 import { GpxAnimationComponent } from '../../../componentes/reproductor-animado-gpx/gpx-animation.component';
 import { TrackEditorMapComponent } from '../../../componentes/track-editor-map/track-editor-map.component';
+import { SaludUploadModalComponent } from '../../../componentes/salud-upload-modal/salud-upload-modal.component';
+import { SaludService } from '../../../servicios/salud.service';
 import { TrackEditorService } from '../../../servicios/track-editor.service';
 import { TrackEdit } from '../../../modelos/track-edit.model';
 
@@ -27,7 +29,8 @@ import { firstValueFrom } from 'rxjs';
     FormsModule,
     RouterModule,
     GpxAnimationComponent,
-    TrackEditorMapComponent
+    TrackEditorMapComponent,
+    SaludUploadModalComponent
   ],
   templateUrl: './actividades-itinerarios.component.html',
   styleUrls: ['./actividades-itinerarios.component.scss']
@@ -43,6 +46,32 @@ export class ActividadesItinerariosComponent implements OnInit {
   mostrarModalMapa = false;
   mostrarModalEstadisticas = false;
   mostrarModalGPXMapa = false;
+
+  // 🩺 MODAL DE SALUD
+  mostrarModalSalud = false;
+  actividadSaludSeleccionadaId: number | null = null;
+  actividadesConSalud: Set<number> = new Set<number>();
+
+  cargarActividadesConSalud(): void {
+    if (!this.itinerarioId) return;
+    this.saludService.getActivities(this.itinerarioId).subscribe({
+      next: (acts) => {
+        this.actividadesConSalud = new Set(acts.map(a => a.activity_id).filter((id): id is number => typeof id === 'number'));
+        this.cdr.detectChanges();
+      },
+      error: (err) => console.warn('Error cargando actividades con salud:', err)
+    });
+  }
+
+  abrirModalSalud(actividadId: number) {
+    this.actividadSaludSeleccionadaId = actividadId;
+    this.mostrarModalSalud = true;
+  }
+
+  cerrarModalSalud() {
+    this.mostrarModalSalud = false;
+    this.actividadSaludSeleccionadaId = null;
+  }
   mostrarReproductorAnimado = false; // ✨ NUEVA PROPIEDAD
   modoRecorridoGuiadoAnimacion = false; // 🎬 Modo Recorrido Guiado por PIs
 
@@ -173,7 +202,8 @@ export class ActividadesItinerariosComponent implements OnInit {
     private gpxAnimationService: GpxAnimationService,
     private videoGeneratorService: VideoGeneratorService,
     private archivoService: ArchivoService,
-    private trackEditorService: TrackEditorService
+    private trackEditorService: TrackEditorService,
+    private saludService: SaludService
   ) { }
 
   ngOnInit(): void {
@@ -204,6 +234,7 @@ export class ActividadesItinerariosComponent implements OnInit {
           this.actividades = actividades;
           this.cdr.detectChanges();
           this.scrollToTargetElement();
+            this.cargarActividadesConSalud();
 
           // 🗺️ Si se solicita abrir el editor de ruta automáticamente (Flujo de Rescate/Manual)
           const params = this.route.snapshot.queryParams;
