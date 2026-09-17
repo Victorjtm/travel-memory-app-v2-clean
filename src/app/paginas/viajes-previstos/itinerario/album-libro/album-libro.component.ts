@@ -201,6 +201,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // ==========================================
   reproduciendoSlideshow: boolean = false;
   private timerSlideshow: any = null;
+  private timerFallbackMapa: any = null;
   transicionActual: string = 'fade'; // fade, slide-left, slide-right, zoom-in, zoom-out
   private readonly INTERVALO_SLIDESHOW = 5000; // 5 segundos
   private readonly TRANSICIONES = ['fade', 'slide-left', 'slide-right', 'zoom-in', 'zoom-out'];
@@ -3171,7 +3172,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             });
           }
 
-          const gpxParcial = this.trackEditorService.pointsToGpxXml(subPointsRelativos);
+          let gpxParcial = '';
+          try {
+            gpxParcial = this.trackEditorService ? this.trackEditorService.pointsToGpxXml(subPointsRelativos || []) : '';
+          } catch (e) {
+            console.warn('⚠️ Error generando gpxParcial:', e);
+          }
 
           const ptInicio = subSegmentPoints[0];
           const ptFin = subSegmentPoints[subSegmentPoints.length - 1];
@@ -3371,35 +3377,41 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   onFinAnimacionMapa(): void {
     console.log('🏁 Animación del mapa completada');
 
+    if (this.timerFallbackMapa) {
+      clearTimeout(this.timerFallbackMapa);
+      this.timerFallbackMapa = null;
+    }
+
     if (this.mostrarFullscreen) {
-      if (this.reproduciendoSlideshow) {
+      if (this.reproduciendoSlideshow || this.modoGuiadoActivo) {
         setTimeout(() => {
-          if (this.reproduciendoSlideshow && this.mostrarFullscreen) {
+          if ((this.reproduciendoSlideshow || this.modoGuiadoActivo) && this.mostrarFullscreen) {
             this.avanzarSlideshow();
           }
-        }, 1000);
+        }, 800);
       } else {
         setTimeout(() => {
-          if (this.mostrarFullscreen && this.paginaActual < this.paginas.length - 1) {
+          if (this.mostrarFullscreen && this.hayPaginaSiguiente) {
             console.log('➡️ Avanzando automáticamente del mapa animado a la foto en pantalla completa');
             this.navegarEnFullscreen(1);
           }
-        }, 1200);
+        }, 1000);
       }
     } else {
-      if (this.reproduciendoSlideshow) {
+      if (this.reproduciendoSlideshow || this.modoGuiadoActivo) {
         setTimeout(() => {
-          if (this.reproduciendoSlideshow) {
+          if (this.reproduciendoSlideshow || this.modoGuiadoActivo) {
+            console.log('➡️ [Modo Guiado / Slideshow] Avanzando automáticamente del mapa al siguiente pliego');
             this.avanzarSlideshow();
           }
-        }, 1000);
+        }, 800);
       } else {
         setTimeout(() => {
-          if (this.paginaActual < this.paginas.length - 1 && this.paginas[this.paginaActual]?.esMapaAnimado) {
-            console.log('➡️ Avanzando automáticamente del mapa animado a las fotos del PI');
+          if (this.hayPaginaSiguiente) {
+            console.log('➡️ Avanzando automáticamente del mapa animado al siguiente pliego');
             this.cambiarPagina(1);
           }
-        }, 1200);
+        }, 1000);
       }
     }
   }
@@ -4088,6 +4100,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             this.reiniciarTimerSlideshow();
           } else {
             this.limpiarTimerSlideshow();
+    if (this.timerFallbackMapa) { clearTimeout(this.timerFallbackMapa); this.timerFallbackMapa = null; }
           }
         }
         this.cdr.detectChanges();
@@ -4296,6 +4309,19 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   iniciarSecuenciaVideosSpread(): void {
     this.detenerVideosActuales();
 
+    // 🛡️ Watchdog para pliegos de tipo mapa: si la animación/vídeo no emite 'ended', auto-avanzar
+    if (this.spreadActualData?.tipo === 'mapa') {
+      const pagMapa = this.spreadActualData.paginaMapa;
+      const dist = pagMapa?.distanciaTramoKm || 0.5;
+      const durSeg = this.routeVideoGeneratorService.calcularDuracionDinamica(dist);
+      if (this.timerFallbackMapa) clearTimeout(this.timerFallbackMapa);
+      this.timerFallbackMapa = setTimeout(() => {
+        console.log('⏱️ [Watchdog Mapa] Tiempo de animación cumplido; avanzando de forma segura');
+        this.onFinAnimacionMapa();
+      }, Math.max(5000, (durSeg + 1.8) * 1000));
+      return;
+    }
+
     setTimeout(() => {
       const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
       const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
@@ -4380,6 +4406,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     if (this.timerFallbackMedia) {
       clearTimeout(this.timerFallbackMedia);
       this.timerFallbackMedia = null;
+    }
+    if (this.timerFallbackMapa) {
+      clearTimeout(this.timerFallbackMapa);
+      this.timerFallbackMapa = null;
     }
 
     const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;

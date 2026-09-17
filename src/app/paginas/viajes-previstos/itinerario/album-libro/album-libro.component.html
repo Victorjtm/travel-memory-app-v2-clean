@@ -818,6 +818,16 @@
     <section class="album-vintage-3d-escenario" *ngIf="modoAlbumVintage && !mostrarFullscreen"
       aria-label="Álbum Vintage 3D">
       <div class="mesa-madera-fondo" aria-hidden="true"></div>
+
+      <!-- Botones flotantes laterales para pasar página directamente en el libro -->
+      <button type="button" class="btn-nav-libro-flotante btn-nav-libro-izq" *ngIf="hayPaginaAnterior"
+        (click)="cambiarPagina(-1); $event.stopPropagation()" aria-label="Pliego anterior" title="Página anterior">
+        <i class="fas fa-chevron-left" aria-hidden="true"></i>
+      </button>
+      <button type="button" class="btn-nav-libro-flotante btn-nav-libro-der" *ngIf="hayPaginaSiguiente"
+        (click)="cambiarPagina(1); $event.stopPropagation()" aria-label="Pliego siguiente" title="Página siguiente">
+        <i class="fas fa-chevron-right" aria-hidden="true"></i>
+      </button>
       <ng-container *ngTemplateOutlet="libroVintageTemplate; context: { fullscreen: false }"></ng-container>
     </section>
 
@@ -1606,8 +1616,7 @@
             <div class="mapa-vintage-wrapper">
               <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A - 60 FPS Instantáneo) -->
               <div *ngIf="pagSingle.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper">
-                <video [src]="pagSingle.urlVideoAnimacion" class="video-mapa-vintage"
-                       autoplay [muted]="true" muted loop playsinline (ended)="onFinAnimacionMapa()"></video>
+                <video [src]="pagSingle.urlVideoAnimacion" class="video-mapa-vintage" autoplay [muted]="true" muted playsinline (ended)="onFinAnimacionMapa()"></video>
                 <div class="video-mapa-controls-overlay">
                   <button type="button" class="btn-mapa-switch" (click)="toggleMapaInteractivo(pagSingle, $event)" title="Ver mapa interactivo">
                     <i class="fas fa-map-marked-alt"></i> Ver Mapa Interactivo
@@ -1684,9 +1693,8 @@
 
         <div class="mapa-panoramico-wrapper">
           <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A - 60 FPS Instantáneo) -->
-          <div *ngIf="pagMapa.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper">
-            <video [src]="pagMapa.urlVideoAnimacion" class="video-mapa-vintage"
-                   autoplay [muted]="true" muted loop playsinline (ended)="onFinAnimacionMapa()"></video>
+          <div *ngIf="pagMapa.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper" (click)="hayPaginaSiguiente && cambiarPagina(1)" style="cursor: pointer;" title="Hacer clic para avanzar al siguiente pliego">
+            <video [src]="pagMapa.urlVideoAnimacion" class="video-mapa-vintage" autoplay [muted]="true" muted playsinline (ended)="onFinAnimacionMapa()"></video>
             <div class="video-mapa-controls-overlay">
               <button type="button" class="btn-mapa-switch" (click)="toggleMapaInteractivo(pagMapa, $event)"
                 title="Ver mapa interactivo">
@@ -1935,8 +1943,7 @@
               <div class="mapa-vintage-wrapper">
                 <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A) -->
                 <div *ngIf="pagDer.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper">
-                  <video [src]="pagDer.urlVideoAnimacion" class="video-mapa-vintage"
-                         autoplay [muted]="true" muted loop playsinline (ended)="onFinAnimacionMapa()"></video>
+                  <video [src]="pagDer.urlVideoAnimacion" class="video-mapa-vintage" autoplay [muted]="true" muted playsinline (ended)="onFinAnimacionMapa()"></video>
                   <div class="video-mapa-controls-overlay">
                     <button type="button" class="btn-mapa-switch" (click)="toggleMapaInteractivo(pagDer, $event)" title="Ver mapa interactivo">
                       <i class="fas fa-map-marked-alt"></i> Ver Mapa Interactivo

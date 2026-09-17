@@ -5723,6 +5723,42 @@
       z-index: 1;
     }
 
+    .btn-nav-libro-flotante {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 120;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(43, 24, 16, 0.88);
+      border: 1.5px solid rgba(191, 161, 95, 0.7);
+      color: #f7efe0;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+      transition: all 0.25s ease;
+      backdrop-filter: blur(8px);
+
+      &:hover {
+        background: #2b1810;
+        border-color: #d4af37;
+        transform: translateY(-50%) scale(1.12);
+        box-shadow: 0 6px 22px rgba(212, 175, 55, 0.45);
+      }
+
+      &.btn-nav-libro-izq {
+        left: 14px;
+      }
+
+      &.btn-nav-libro-der {
+        right: 14px;
+      }
+    }
+
     .libro-vintage-abierto-3d {
       position: relative;
       width: 100%;
