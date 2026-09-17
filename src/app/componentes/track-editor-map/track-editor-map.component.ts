@@ -34,7 +34,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
   @Input() actividadId?: number;
   @Input() gpxPoints: GpxPoint[] = [];
   @Input() trackEdits: TrackEdit[] = [];
-  @Input() mediaGroups: { lat: number, lng: number; nombre?: string; titulo?: string }[] = [];
+  @Input() mediaGroups: { lat: number, lng: number; nombre?: string; titulo?: string; numeroSecuencial?: number; numeroVisual?: number; tipo?: string; archivos?: any[] }[] = [];
   @Output() editRequest = new EventEmitter<{
     action: EditAction, 
     startAnchor: TrackAnchor, 
@@ -527,19 +527,27 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     });
     L.marker([finalLat, finalLng], { icon: finIcon, interactive: false }).addTo(this.polylinesGroup!);
 
-    // Marcadores de Fotos (solo visuales, idénticos a ver-gpx)
+    // Marcadores Multimedia (Fotos y Audios sincronizados con numeración universal de Ver GPX)
     if (this.mediaGroups && this.mediaGroups.length > 0) {
-      this.mediaGroups.forEach((grupo, index) => {
-        const numeroSecuencial = index + 1;
+      this.mediaGroups.forEach((grupo: any, index) => {
+        const primerArchivo = (grupo.archivos && grupo.archivos.length > 0) ? (grupo.archivos[0].archivo || grupo.archivos[0]) : null;
+        const numeroSecuencial = grupo.numeroSecuencial || grupo.numeroVisual || primerArchivo?.numeroSecuencial || (index + 1);
+        const tipo = (primerArchivo?.tipo || grupo.tipo || '').toLowerCase();
+        const esAudio = tipo === 'audio';
+        const esFoto = tipo === 'foto' || tipo === 'imagen';
+        const colorPrincipal = esAudio ? '#F59E0B' : (esFoto ? '#E53935' : '#2196F3');
+        const badgeColor = esAudio ? '#D97706' : '#1E88E5';
+
         const grupoIcon = L.divIcon({
           className: 'photo-marker-custom',
           html: `
           <div style="display: flex; flex-direction: column; align-items: center;">
             <svg width="44" height="44" viewBox="0 0 44 44" style="filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4)); z-index: 5;">
-              <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="#E53935" />
+              <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="${colorPrincipal}" />
               <circle cx="22" cy="16" r="6" fill="white" />
+              ${esAudio ? '<text x="22" y="19" font-size="9" text-anchor="middle">🎤</text>' : ''}
             </svg>
-            <div style="margin-top: -8px; background: #1E88E5; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.4); z-index: 10; position: relative;">
+            <div style="margin-top: -8px; background: ${badgeColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.4); z-index: 10; position: relative;">
               #${numeroSecuencial}
             </div>
           </div>
@@ -754,7 +762,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       return;
     }
 
-    // 1. Recopilar puntos clave (Índice 0, Fotos / MediaGroups, Cambios de Modo, Índice N-1)
+    // 1. Recopilar puntos clave (Índice 0, Fotos / Audios Hitos, Cambios de Modo, Índice N-1)
     interface PuntoClave {
       gpxIdx: number;
       nombre: string;
@@ -762,13 +770,14 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
 
     const puntosClave: PuntoClave[] = [
-      { gpxIdx: 0, nombre: 'Inicio (#0)', tipo: 'inicio' }
+      { gpxIdx: 0, nombre: '[🟢 Inicio]', tipo: 'inicio' }
     ];
 
-    // Mapear cada mediaGroup a su gpxIdx más cercano
+    // Mapear cada mediaGroup a su gpxIdx más cercano manteniendo la numeración cronológica universal
     if (this.mediaGroups && this.mediaGroups.length > 0) {
-      this.mediaGroups.forEach((grupo, index) => {
-        const num = index + 1;
+      this.mediaGroups.forEach((grupo: any, index) => {
+        const primerArchivo = (grupo.archivos && grupo.archivos.length > 0) ? (grupo.archivos[0].archivo || grupo.archivos[0]) : null;
+        const num = grupo.numeroSecuencial || grupo.numeroVisual || primerArchivo?.numeroSecuencial || (index + 1);
         let closestIdx = 0;
         let minDist = Infinity;
         for (let i = 0; i < this.gpxPoints.length; i++) {
@@ -778,23 +787,28 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
             closestIdx = i;
           }
         }
-        const label = grupo.nombre || grupo.titulo || `Foto #${num}`;
+        const tipo = (primerArchivo?.tipo || grupo.tipo || '').toLowerCase();
+        const tipoStr = tipo === 'audio' ? 'Audio' : (tipo === 'video' ? 'Vídeo' : 'Foto');
+        const rawLabel = grupo.nombre || grupo.titulo || primerArchivo?.nombreArchivo || '';
+        const label = rawLabel && !rawLabel.startsWith('Foto #') && !rawLabel.startsWith('Hito #') ? `: ${rawLabel}` : '';
         puntosClave.push({
           gpxIdx: closestIdx,
-          nombre: `#${num} ${label}`,
+          nombre: `Hito #${num} (${tipoStr}${label})`,
           tipo: 'foto'
         });
       });
     }
 
-    // Detectar cambios de modo de transporte
+    // Detectar cambios de modo de transporte (aislados visualmente con iconos/etiquetas sin números '#')
     for (let i = 1; i < this.gpxPoints.length; i++) {
       const prevMode = this.gpxPoints[i - 1].mode || this.gpxPoints[i - 1].hfMode || 'walking';
       const currMode = this.gpxPoints[i].mode || this.gpxPoints[i].hfMode || 'walking';
       if (currMode !== prevMode) {
+        const icon = this.getModeIcon(currMode);
+        const name = this.getModeName(currMode);
         puntosClave.push({
           gpxIdx: i,
-          nombre: `Cambio a ${this.getModeName(currMode)}`,
+          nombre: `[${icon} Cambio a ${name}]`,
           tipo: 'modo'
         });
       }
@@ -802,12 +816,12 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     // Puntos de inicio de prolongaciones (appends) pendientes
     const pendingAppends = this.pendingEdits.filter(e => e.type === 'append_segment');
-    pendingAppends.forEach((appEdit, idx) => {
+    pendingAppends.forEach((appEdit) => {
       const sIdx = appEdit.data?.startAnchor?.index;
       if (sIdx !== undefined && sIdx >= 0 && sIdx < this.gpxPoints.length) {
         puntosClave.push({
           gpxIdx: sIdx,
-          nombre: `Prolongación #${idx + 1} (Inicio)`,
+          nombre: `[➕ Prolongación (Inicio)]`,
           tipo: 'modo'
         });
       }
@@ -815,12 +829,12 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
     // Puntos de empalme de prolongaciones de inicio (prepends) pendientes
     const pendingPrepends = this.pendingEdits.filter(e => e.type === 'prepend_segment');
-    pendingPrepends.forEach((prepEdit, idx) => {
+    pendingPrepends.forEach((prepEdit) => {
       const eIdx = prepEdit.data?.endAnchor?.index;
       if (eIdx !== undefined && eIdx >= 0 && eIdx < this.gpxPoints.length) {
         puntosClave.push({
           gpxIdx: eIdx,
-          nombre: `Empalme Inicio #${idx + 1}`,
+          nombre: `[➕ Empalme Inicio]`,
           tipo: 'modo'
         });
       }
@@ -829,7 +843,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // Punto final
     puntosClave.push({
       gpxIdx: this.gpxPoints.length - 1,
-      nombre: 'Fin del recorrido',
+      nombre: '[🏁 Fin del recorrido]',
       tipo: 'fin'
     });
 
@@ -890,9 +904,13 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       const modo = (startPt && (startPt.mode || startPt.hfMode)) || 'walking';
       const iconoModo = this.getModeIcon(modo);
 
+      const prefA = pA.nombre.startsWith('[') ? '' : 'el ';
+      const prefB = pB.nombre.startsWith('[') ? '' : 'el ';
+      const nombreTramo = `Tramo comprendido entre ${prefA}${pA.nombre} y ${prefB}${pB.nombre}`;
+
       tramos.push({
         id: `tramo-${i}`,
-        nombre: `Tramo ${i + 1}: ${pA.nombre} ➔ ${pB.nombre}`,
+        nombre: nombreTramo,
         origenNombre: pA.nombre,
         destinoNombre: pB.nombre,
         startIdx: pA.gpxIdx,

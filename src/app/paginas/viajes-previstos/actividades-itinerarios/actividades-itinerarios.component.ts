@@ -1090,20 +1090,84 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   // Helper para procesar archivos, extraer metadatos anidados y crear marcadores
+  private esActividadDynamics(archivos?: any[]): boolean {
+    const act: any = this.actividades?.find((a: any) => a.id === this.actividadSeleccionada) || this.actividadSeleccionada;
+    if (act && typeof act === 'object') {
+      const nom = (act.nombre || '').toLowerCase();
+      const ori = (act.origen || act.fuente || '').toLowerCase();
+      if (nom.includes('dynamics') || ori.includes('dynamics') || act.esDynamics) return true;
+    }
+    const items = archivos || this.archivosActividadActual;
+    if (items && items.length > 0) {
+      return items.some((m: any) => {
+        const n = m.nombreArchivo || m.nombre || '';
+        return /^(?:recording|JPEG|VID)-\d{13}|^(?:recording|JPEG|VID)_\d{13}/.test(n) ||
+               (m.fuente && m.fuente.toLowerCase().includes('dynamics')) ||
+               (m.origen && m.origen.toLowerCase().includes('dynamics'));
+      });
+    }
+    return false;
+  }
+
+  /**
+   * 🕒 Extrae el timestamp cronológico exacto de archivos (Fecha + Hora + Segundo exactos)
+   */
+  private obtenerTimestampCronologico(archivo: any): number {
+    if (!archivo) return 0;
+    const name = archivo.nombreArchivo || archivo.nombre || '';
+    if (name) {
+      const m = name.match(/(\d{13})/);
+      if (m) {
+        const val = Number(m[1]);
+        if (val > 1577836800000 && val < 2051222400000) return val;
+      }
+    }
+    if (archivo.metadatos) {
+      try {
+        const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
+        if (meta?.timestamp) {
+          const t = new Date(meta.timestamp).getTime();
+          if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+        }
+      } catch (e) { }
+    }
+    if (archivo.fechaTomada || archivo.fechaHora || archivo.fecha) {
+      const t = new Date(archivo.fechaTomada || archivo.fechaHora || archivo.fecha).getTime();
+      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+    }
+    if (archivo.fechaCreacion) {
+      const fecha = new Date(archivo.fechaCreacion);
+      if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string') {
+        const [horas, minutos, segs] = archivo.horaCaptura.split(':').map(Number);
+        if (!isNaN(horas) && !isNaN(minutos)) {
+          fecha.setHours(horas, minutos, segs || 0, 0);
+        }
+      }
+      const t = fecha.getTime();
+      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+    }
+    if (archivo.created_at) {
+      const t = new Date(archivo.created_at).getTime();
+      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+    }
+    return 0;
+  }
+
+  // Helper para procesar archivos, extraer metadatos anidados y crear marcadores lineales 1 a N
   private procesarArchivosYMarcadores(archivos: any[], asociados: any[]): void {
     const multimedia = archivos.filter((f: any) =>
-      (f.tipo === 'foto' || f.tipo === 'video' || f.tipo === 'audio') && f.geolocalizacion
+      (f.tipo === 'foto' || f.tipo === 'video' || f.tipo === 'audio' || f.tipo === 'imagen') && f.geolocalizacion
     );
 
-    // Mapear audio asociado y raspar lugar del JSON de geolocalizacion (Bloque C)
+    const isDynamics = this.esActividadDynamics(archivos);
+
+    // 1. Mapear audio asociado y raspar lugar del JSON de geolocalización
     multimedia.forEach(archivo => {
-      // 1. Vincular Audio (Asegurarnos de que sea el de este archivo y de tipo audio)
       const audioRelacionado = asociados.find(a => a.archivoPrincipalId === archivo.id && a.tipo === 'audio');
       if (audioRelacionado) {
         archivo.audioAsociado = audioRelacionado.rutaArchivo;
       }
 
-      // 2. Extraer Lugar (Parseo conservador de la ubicación texto)
       try {
         const geoData = typeof archivo.geolocalizacion === 'string'
           ? JSON.parse(archivo.geolocalizacion)
@@ -1115,40 +1179,35 @@ export class ActividadesItinerariosComponent implements OnInit {
       } catch (e) { }
     });
 
-    const archivosConCoordenadas = multimedia.map((archivo: any) => {
+    // 2. En Modo Tradicional (Archivos Asociados):
+    // Si un audio está asociado a una foto/vídeo padre, se oculta del mapa y de la lista independiente
+    const audiosAsociadosRutas = new Set(asociados.filter(a => a.tipo === 'audio').map(a => a.rutaArchivo));
+    const audiosAsociadosNombres = new Set(asociados.filter(a => a.tipo === 'audio').map(a => a.nombreArchivo));
+
+    const archivosFiltrados = multimedia.filter((archivo: any) => {
+      if (!isDynamics && archivo.tipo === 'audio') {
+        const esAsociado = archivo.archivoPrincipalId ||
+          archivo.esAsociado ||
+          audiosAsociadosRutas.has(archivo.rutaArchivo) ||
+          audiosAsociadosNombres.has(archivo.nombreArchivo);
+        if (esAsociado) return false;
+      }
+      return true;
+    });
+
+    // 3. Extraer coordenadas y timestamp cronológico real
+    const archivosConCoordenadas = archivosFiltrados.map((archivo: any) => {
       try {
         const geoData = typeof archivo.geolocalizacion === 'string'
           ? JSON.parse(archivo.geolocalizacion)
           : archivo.geolocalizacion;
 
-        const lat = geoData.latitud ?? geoData.latitude;
-        const lng = geoData.longitud ?? geoData.longitude;
-        // Reconstruimos el timestamp exacto a partir de los campos editables de la BD o metadatos
-        let timestamp = 0;
-        if (archivo.metadatos) {
-          try {
-            const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
-            if (meta?.timestamp) {
-              timestamp = new Date(meta.timestamp).getTime();
-            }
-          } catch (e) { }
-        }
-        if (!timestamp && (archivo.fechaTomada || archivo.fechaHora || archivo.fecha)) {
-          timestamp = new Date(archivo.fechaTomada || archivo.fechaHora || archivo.fecha).getTime() || 0;
-        }
-        if (!timestamp && archivo.fechaCreacion) {
-          const fecha = new Date(archivo.fechaCreacion);
-          if (archivo.horaCaptura) {
-            const [horas, minutos, segs] = archivo.horaCaptura.split(':').map(Number);
-            if (!isNaN(horas) && !isNaN(minutos)) {
-              fecha.setHours(horas, minutos, segs || 0, 0);
-            }
-          }
-          timestamp = fecha.getTime();
-        }
+        const lat = Number(geoData.latitud ?? geoData.latitude ?? geoData.lat ?? archivo.latitud ?? archivo.lat);
+        const lng = Number(geoData.longitud ?? geoData.longitude ?? geoData.lng ?? archivo.longitud ?? archivo.lng);
+        const timestamp = this.obtenerTimestampCronologico(archivo);
 
-        if (lat && lng) {
-          archivo.timestampReal = timestamp; // Guardamos para mostrarlo luego
+        if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
+          archivo.timestampReal = timestamp;
 
           let trackIdx = 0;
           if (this.coordenadasGPX && this.coordenadasGPX.length > 0) {
@@ -1172,86 +1231,50 @@ export class ActividadesItinerariosComponent implements OnInit {
       return null;
     }).filter(Boolean);
 
-    if (this.coordenadasGPX && this.coordenadasGPX.length > 0) {
-      archivosConCoordenadas.sort((a, b) => {
-        if (a!.trackIdx !== b!.trackIdx) return a!.trackIdx - b!.trackIdx;
-        return (a!.timestamp || 0) - (b!.timestamp || 0);
-      });
-    } else {
-      archivosConCoordenadas.sort((a, b) => {
-        const timeA = new Date(a!.timestamp).getTime() || 0;
-        const timeB = new Date(b!.timestamp).getTime() || 0;
-        return timeA - timeB;
-      });
-    }
+    // 4. Ordenamiento Lineal Absoluto: estrictamente por Fecha + Hora + Segundo (ascendente)
+    archivosConCoordenadas.sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0));
 
-    const grupos = this.agruparArchivosPorUbicacion(archivosConCoordenadas);
-    this.gruposEditor = grupos; // Almacenar para pasar al editor
+    // 5. Numeración 1 a N Dinámica individual (sin agrupaciones espaciales ni cinemáticas)
+    const grupos: any[] = [];
+    archivosConCoordenadas.forEach((item: any, index: number) => {
+      const numeroSecuencial = index + 1;
+      item.archivo.numeroSecuencial = numeroSecuencial;
+      item.numeroSecuencial = numeroSecuencial;
+      grupos.push({
+        lat: item.lat,
+        lng: item.lng,
+        trackIdx: item.trackIdx,
+        timestamp: item.timestamp,
+        numeroSecuencial: numeroSecuencial,
+        tipo: item.archivo.tipo,
+        nombre: item.archivo.nombreArchivo,
+        archivos: [item]
+      });
+    });
 
-    // ✨ FASE 2: Sincronizar array lineal con los grupos del mapa
+    this.gruposEditor = grupos; // Almacenar para pasar directamente al editor de recorrido
+
+    // 6. Sincronizar array lineal con marcadores del mapa y galería lateral
     this.fotosActividad = [];
     this.audiosActividad = [];
 
-    grupos.forEach((grupo, index) => {
-      const numeroSecuencial = index + 1;
-
+    grupos.forEach((grupo) => {
       this.anadirMarcadorGrupo(
         grupo.lat,
         grupo.lng,
         grupo.archivos,
-        numeroSecuencial
+        grupo.numeroSecuencial
       );
 
-      // Alimentar la galería lateral con el orden y número exacto del mapa
-      grupo.archivos.forEach((item: any) => {
-        item.archivo.numeroSecuencial = numeroSecuencial;
-        if (item.archivo.tipo === 'audio') {
-          this.audiosActividad.push(item.archivo);
-        } else {
-          this.fotosActividad.push(item.archivo);
-        }
-      });
-    });
-  }
-
-  private agruparArchivosPorUbicacion(archivosConCoordenadas: any[]): any[] {
-    const TOLERANCIA_GPS = 0.00015; // ~15 metros
-    const MAX_TIME_GAP_MS = 60 * 60 * 1000; // 1 hora de margen máximo
-    const grupos: any[] = [];
-
-    archivosConCoordenadas.forEach(item => {
-      const ultimoGrupo = grupos.length > 0 ? grupos[grupos.length - 1] : null;
-
-      const coincideUbicacion = ultimoGrupo &&
-        Math.abs(ultimoGrupo.lat - item.lat) < TOLERANCIA_GPS &&
-        Math.abs(ultimoGrupo.lng - item.lng) < TOLERANCIA_GPS;
-
-      const trackMuyCercano = ultimoGrupo && item.trackIdx !== undefined && ultimoGrupo.trackIdx !== undefined &&
-        Math.abs(ultimoGrupo.trackIdx - item.trackIdx) < 8;
-
-      const ultimoItem = ultimoGrupo ? ultimoGrupo.archivos[ultimoGrupo.archivos.length - 1] : null;
-      const tsItem = item.timestamp ? new Date(item.timestamp).getTime() : 0;
-      const tsUltimo = ultimoItem?.timestamp ? new Date(ultimoItem.timestamp).getTime() : 0;
-
-      const tiempoCercano = !tsItem || !tsUltimo ||
-        Math.abs(tsItem - tsUltimo) < MAX_TIME_GAP_MS;
-
-      if ((coincideUbicacion || trackMuyCercano) && tiempoCercano) {
-        ultimoGrupo!.archivos.push(item);
+      const itemArchivo = grupo.archivos[0].archivo;
+      if (itemArchivo.tipo === 'audio') {
+        this.audiosActividad.push(itemArchivo);
       } else {
-        grupos.push({
-          lat: item.lat,
-          lng: item.lng,
-          trackIdx: item.trackIdx,
-          archivos: [item]
-        });
+        this.fotosActividad.push(itemArchivo);
       }
     });
-
-    return grupos;
   }
 
-  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ NUEVO: AÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â±adir marcador de grupo con contador y nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºmero secuencial
   private anadirMarcadorGrupo(lat: number, lng: number, archivos: any[], numeroSecuencial: number): void {
     if (!this.mapaGPX) return;
 

@@ -408,7 +408,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       if (bestIdx !== -1 && bestIdx < this.points.length) {
         this.points[bestIdx].event = {
           archivos: pi.archivos,
-          piNumero: idx + 1,
+          piNumero: (pi as any).numeroSecuencial || (idx + 1),
           piTotal: pis.length,
           lat: pi.lat,
           lng: pi.lng,
@@ -600,13 +600,12 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   }
 
   /**
-   * 🚀 LÓGICA QUIRÚRGICA EXCLUSIVA PARA MODO DYNAMICS:
-   * 1. Ordena estrictamente por timestamp cronológico real (ms).
-   * 2. Empareja de forma monótona ascendente a los puntos GPX (por tiempo o hacia adelante).
-   * 3. Agrupa por micro-paradas (distancia <= 25m y diferencia de tiempo <= 3 min)
-   * garantizando que audios y fotos intercalados mantengan su secuencia física y temporal exacta.
+   * 🚀 LÓGICA LINEAL CRONOLÓGICA EXCLUSIVA PARA MODO DYNAMICS:
+   * 1. Ordenamiento Lineal Absoluto: Junta todas las fotos, vídeos y audios ordenados por Fecha + Hora + Segundo exactos.
+   * 2. Eliminación de Algoritmos de Bloques: Cada archivo físico independiente recibe su propio pin correlativo del 1 al N.
+   * 3. Sin clustering espacial ni temporal.
    */
-  private obtenerGruposPIsDynamics(): { lat: number; lng: number; trackIdx?: number; archivos: any[] }[] {
+  private obtenerGruposPIsDynamics(): { lat: number; lng: number; trackIdx?: number; timestamp?: number; numeroSecuencial?: number; archivos: any[] }[] {
     const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; trackIdx: number }[] = [];
 
     if (this.multimedia && this.multimedia.length > 0) {
@@ -643,7 +642,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       });
     }
 
-    // Ordenar estrictamente por timestamp cronológico real
+    // Ordenar estrictamente por timestamp cronológico real (Fecha + Hora + Segundo)
     archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
 
     // Emparejar al track GPX de forma monótona ascendente
@@ -684,57 +683,65 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       item.trackIdx = bestIdx;
     });
 
-    // Agrupación de micro-paradas: radio máx 25m y ventana temporal máx 3 minutos
-    const DIST_THRESHOLD_M = 25;
-    const TIME_GAP_MS = 3 * 60 * 1000;
-    const grupos: { lat: number; lng: number; trackIdx: number; timestamp: number; archivos: any[] }[] = [];
+    // Numeración 1 a N Dinámica individual: cada archivo es un pin individual
+    const grupos: { lat: number; lng: number; trackIdx: number; timestamp: number; numeroSecuencial: number; archivos: any[] }[] = [];
 
-    archivosConCoordenadas.forEach(item => {
-      const ultimoGrupo = grupos.length > 0 ? grupos[grupos.length - 1] : null;
-
-      let coincide = false;
-      if (ultimoGrupo) {
-        const d = this.getDistance(ultimoGrupo.lat, ultimoGrupo.lng, item.lat, item.lng);
-        const timeDiff = Math.abs(item.timestamp - (ultimoGrupo.timestamp || 0));
-        if (d <= DIST_THRESHOLD_M && timeDiff <= TIME_GAP_MS) {
-          coincide = true;
-        }
-      }
-
-      if (coincide && ultimoGrupo) {
-        ultimoGrupo.archivos.push(item.archivo);
-      } else {
-        grupos.push({
-          lat: item.lat,
-          lng: item.lng,
-          trackIdx: item.trackIdx,
-          timestamp: item.timestamp,
-          archivos: [item.archivo]
-        });
-      }
+    archivosConCoordenadas.forEach((item, index) => {
+      const numeroSecuencial = index + 1;
+      item.archivo.numeroSecuencial = numeroSecuencial;
+      grupos.push({
+        lat: item.lat,
+        lng: item.lng,
+        trackIdx: item.trackIdx,
+        timestamp: item.timestamp,
+        numeroSecuencial,
+        archivos: [item.archivo]
+      });
     });
 
     return grupos;
   }
 
-  // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
   /**
-   * Extrae y agrupa los archivos multimedia en Puntos de Interés (PIs)
-   * basados en proximidad geográfica (< 10m) y coherencia temporal.
+   * Extrae y genera los Puntos de Interés (PIs) ordenados cronológicamente del 1 al N.
+   * En Modo Tradicional: Si un audio está asociado a una foto/vídeo, no consume número ni marcador independiente.
    */
-  private obtenerGruposPIs(): { lat: number; lng: number; trackIdx?: number; archivos: any[] }[] {
-    // 🛡️ REGLA DE ORO: Si es una actividad Modo Dynamics, ejecutar lógica especializada de precisión cronológica
+  private obtenerGruposPIs(): { lat: number; lng: number; trackIdx?: number; timestamp?: number; numeroSecuencial?: number; archivos: any[] }[] {
+    // 🛡️ REGLA DE ORO: Si es una actividad Modo Dynamics, ejecutar lógica lineal pura
     if (this.esActividadDynamics()) {
       return this.obtenerGruposPIsDynamics();
     }
 
-    // --- MODO TRADICIONAL (100% INTACTO) ---
+    // --- MODO TRADICIONAL (ORDEN LINEAL ABSOLUTO CON ARCHIVOS ASOCIADOS) ---
     const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; trackIdx: number }[] = [];
 
     if (this.multimedia && this.multimedia.length > 0) {
+      // 1. Identificar audios asociados a fotos padre para no duplicar marcadores
+      const audiosAsociadosIds = new Set<number>();
+      this.multimedia.forEach((archivo: any) => {
+        if (archivo.archivosAsociados && Array.isArray(archivo.archivosAsociados)) {
+          archivo.archivosAsociados.forEach((asoc: any) => {
+            if (asoc.tipo === 'audio') {
+              audiosAsociadosIds.add(asoc.id);
+              if (!archivo.audioUrl && asoc.rutaArchivo) {
+                archivo.audioUrl = `${environment.apiUrl}/uploads/${asoc.rutaArchivo}`;
+              }
+            }
+          });
+        }
+      });
+
       this.multimedia.forEach((archivo: any) => {
         const tipo = (archivo.tipo || '').toLowerCase();
         if (tipo !== 'foto' && tipo !== 'video' && tipo !== 'imagen' && tipo !== 'audio') return;
+
+        // Ocultar audio asociado de la secuencia principal independiente
+        const esAudioAsociado = tipo === 'audio' && (
+          archivo.archivoPrincipalId ||
+          archivo.esAsociado ||
+          audiosAsociadosIds.has(archivo.id)
+        );
+        if (esAudioAsociado) return;
 
         let lat: number | null = null;
         let lng: number | null = null;
@@ -756,30 +763,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         }
 
         if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
-          let ts = 0;
-          if (archivo.metadatos) {
-            try {
-              const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
-              if (meta?.timestamp) {
-                ts = new Date(meta.timestamp).getTime();
-              }
-            } catch (e) { }
-          }
-          if (!ts && (archivo.fechaTomada || archivo.fechaHora || archivo.fecha)) {
-            ts = new Date(archivo.fechaTomada || archivo.fechaHora || archivo.fecha).getTime() || 0;
-          }
-          if (!ts && archivo.fechaCreacion) {
-            const fecha = new Date(archivo.fechaCreacion);
-            if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string') {
-              const [horas, minutos, segs] = archivo.horaCaptura.split(':').map(Number);
-              if (!isNaN(horas) && !isNaN(minutos)) {
-                fecha.setHours(horas, minutos, segs || 0, 0);
-              }
-            }
-            ts = fecha.getTime();
-          } else if (!ts && archivo.created_at) {
-            ts = new Date(archivo.created_at).getTime() || 0;
-          }
+          const ts = this.getDynamicsTimestamp(archivo);
 
           let bestTrackIdx = 0;
           if (this.points && this.points.length > 0) {
@@ -799,51 +783,29 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       });
     }
 
-    if (this.points && this.points.length > 0) {
-      archivosConCoordenadas.sort((a, b) => {
-        if (a.trackIdx !== b.trackIdx) {
-          return a.trackIdx - b.trackIdx;
-        }
-        return a.timestamp - b.timestamp;
+    // Ordenamiento Lineal Absoluto: por timestamp cronológico ascendente (Día + Hora + Segundo)
+    archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Numeración 1 a N Dinámica individual
+    const grupos: { lat: number; lng: number; trackIdx: number; timestamp: number; numeroSecuencial: number; archivos: any[] }[] = [];
+    archivosConCoordenadas.forEach((item, index) => {
+      const numeroSecuencial = index + 1;
+      item.archivo.numeroSecuencial = numeroSecuencial;
+      grupos.push({
+        lat: item.lat,
+        lng: item.lng,
+        trackIdx: item.trackIdx,
+        timestamp: item.timestamp,
+        numeroSecuencial,
+        archivos: [item.archivo]
       });
-    } else {
-      archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
-    }
-
-    const TOLERANCIA_GPS = 0.00015; // ~15 metros
-    const MAX_TIME_GAP_MS = 60 * 60 * 1000; // 1 hora
-    const grupos: { lat: number; lng: number; trackIdx: number; archivos: any[] }[] = [];
-
-    archivosConCoordenadas.forEach(item => {
-      const ultimoGrupo = grupos.length > 0 ? grupos[grupos.length - 1] : null;
-
-      const coincideUbicacion = ultimoGrupo &&
-        Math.abs(ultimoGrupo.lat - item.lat) < TOLERANCIA_GPS &&
-        Math.abs(ultimoGrupo.lng - item.lng) < TOLERANCIA_GPS;
-
-      const trackMuyCercano = ultimoGrupo && Math.abs(ultimoGrupo.trackIdx - item.trackIdx) < 8;
-
-      const ultimoItem = ultimoGrupo ? ultimoGrupo.archivos[ultimoGrupo.archivos.length - 1] : null;
-      const tiempoCercano = !item.timestamp || !ultimoItem?.timestamp ||
-        Math.abs(item.timestamp - (ultimoItem.timestamp || 0)) < MAX_TIME_GAP_MS;
-
-      if ((coincideUbicacion || trackMuyCercano) && tiempoCercano) {
-        ultimoGrupo!.archivos.push(item.archivo);
-      } else {
-        grupos.push({
-          lat: item.lat,
-          lng: item.lng,
-          trackIdx: item.trackIdx,
-          archivos: [item.archivo]
-        });
-      }
     });
 
     return grupos;
   }
 
   // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
-  // ✨ Replica la MISMA lógica de agrupación y estilo visual que "ver GPX" (actividades-itinerarios)
+  // ✨ Replica la MISMA lógica lineal y estilo visual que "ver GPX" (actividades-itinerarios)
   private displayAllPois() {
     if (!this.map) { console.warn('⚠️ [displayAllPois] No hay mapa'); return; }
 
@@ -873,7 +835,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       const { lat, lng } = grupo;
 
       const primerArchivo = (grupo.archivos && grupo.archivos.length > 0) ? (grupo.archivos[0].archivo || grupo.archivos[0]) : null;
-      const numeroSecuencial = primerArchivo?.numeroSecuencial || (index + 1);
+      const numeroSecuencial = (grupo as any).numeroSecuencial || primerArchivo?.numeroSecuencial || (index + 1);
       const tipo = (primerArchivo?.tipo || '').toLowerCase();
       const esAudio = tipo === 'audio';
       const esFoto = tipo === 'foto' || tipo === 'imagen';
