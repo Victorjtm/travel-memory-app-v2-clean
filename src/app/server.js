@@ -6985,8 +6985,8 @@ app.post('/actividades/:id/corregir-fechas-nombre', (req, res) => {
       let match;
       let extractMode = null;
 
-      // a) Timestamp (13 dígitos al inicio)
-      if (match = archivo.nombreArchivo.match(/^(\d{13})/)) {
+      // a) Timestamp (13 dígitos al inicio o con prefijos de Dynamics: recording-, JPEG_, VID_)
+      if (match = archivo.nombreArchivo.match(/(?:^|recording-|JPEG_|VID_)(\d{13})/)) {
         fechaCaptura = new Date(parseInt(match[1]));
         extractMode = "Timestamp";
       }

@@ -46,6 +46,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   private polylines: any[] = []; // Soporte para múltiples colores
   private currentPolyline: any;
   private currentBackgroundPolyline: any;
+  private currentPolylinePoints: any[] = [];
   private marker: any;
   private L: any;
   private baseRoutePolyline: any = null;
@@ -256,6 +257,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     this.currentSteps = 0;
     this.currentTimeSeg = 0;
     this.smoothedKmh = 0;
+    this.currentPolylinePoints = [];
     this.autoZoomPaused = false;
     if (this.points && this.points.length > 0) {
       this.points.forEach(p => {
@@ -308,6 +310,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     }
     this.currentPolyline = null;
     this.currentBackgroundPolyline = null;
+    this.currentPolylinePoints = [];
 
     if (this.baseRoutePolyline) {
       try { this.map.removeLayer(this.baseRoutePolyline); } catch (e) {}
@@ -528,12 +531,204 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     }
   }
 
+  /**
+   * 🛡️ Determina con máxima precisión si la actividad actual proviene de una sesión Dynamics (AudioPhotoApp_Dynamics).
+   */
+  private esActividadDynamics(): boolean {
+    if (this.actividadActual) {
+      const nombre = (this.actividadActual.nombre || '').toLowerCase();
+      const origen = (this.actividadActual.origen || this.actividadActual.fuente || '').toLowerCase();
+      if (nombre.includes('dynamics') || origen.includes('dynamics') || (this.actividadActual as any).esDynamics) {
+        return true;
+      }
+    }
+    if (this.visualSessionData?.metadata?.origen?.toLowerCase?.().includes('dynamics') ||
+        this.visualSessionData?.origen?.toLowerCase?.().includes('dynamics')) {
+      return true;
+    }
+    if (this.gpxText && (this.gpxText.includes('Recorrido_Dynamics') || this.gpxText.toLowerCase().includes('dynamics'))) {
+      return true;
+    }
+    if (this.multimedia && this.multimedia.length > 0) {
+      return this.multimedia.some((m: any) => {
+        const n = m.nombreArchivo || m.nombre || '';
+        return /^(?:recording|JPEG|VID)-\d{13}|^(?:recording|JPEG|VID)_\d{13}/.test(n) ||
+               (m.fuente && m.fuente.toLowerCase().includes('dynamics')) ||
+               (m.origen && m.origen.toLowerCase().includes('dynamics'));
+      });
+    }
+    return false;
+  }
+
+  /**
+   * 🕒 Extrae el timestamp cronológico exacto de archivos generados por Dynamics.
+   * Maneja el epoch de 13 dígitos en el nombre del archivo (evitando overflow de 32 dígitos),
+   * o fallbacks a metadatos/fechas válidas (> año 2000).
+   */
+  private getDynamicsTimestamp(item: any): number {
+    if (!item) return 0;
+    const name = item.nombreArchivo || item.nombre || '';
+    if (name) {
+      const m = name.match(/(\d{13})/);
+      if (m) {
+        const val = Number(m[1]);
+        if (val > 1577836800000 && val < 2051222400000) return val;
+      }
+    }
+    if (item.metadatos) {
+      try {
+        const meta = typeof item.metadatos === 'string' ? JSON.parse(item.metadatos) : item.metadatos;
+        if (meta?.timestamp) {
+          const t = new Date(meta.timestamp).getTime();
+          if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+        }
+      } catch (e) { }
+    }
+    if (item.fechaTomada || item.fechaHora || item.fecha) {
+      const t = new Date(item.fechaTomada || item.fechaHora || item.fecha).getTime();
+      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+    }
+    if (item.fechaCreacion) {
+      const t = new Date(item.fechaCreacion).getTime();
+      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+    }
+    if (item.created_at) {
+      const t = new Date(item.created_at).getTime();
+      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+    }
+    return 0;
+  }
+
+  /**
+   * 🚀 LÓGICA QUIRÚRGICA EXCLUSIVA PARA MODO DYNAMICS:
+   * 1. Ordena estrictamente por timestamp cronológico real (ms).
+   * 2. Empareja de forma monótona ascendente a los puntos GPX (por tiempo o hacia adelante).
+   * 3. Agrupa por micro-paradas (distancia <= 25m y diferencia de tiempo <= 3 min)
+   * garantizando que audios y fotos intercalados mantengan su secuencia física y temporal exacta.
+   */
+  private obtenerGruposPIsDynamics(): { lat: number; lng: number; trackIdx?: number; archivos: any[] }[] {
+    const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; trackIdx: number }[] = [];
+
+    if (this.multimedia && this.multimedia.length > 0) {
+      this.multimedia.forEach((archivo: any) => {
+        const tipo = (archivo.tipo || '').toLowerCase();
+        if (tipo !== 'foto' && tipo !== 'video' && tipo !== 'imagen' && tipo !== 'audio') return;
+
+        let lat: number | null = null;
+        let lng: number | null = null;
+
+        if (archivo.geolocalizacion) {
+          try {
+            const loc = typeof archivo.geolocalizacion === 'string' ? JSON.parse(archivo.geolocalizacion) : archivo.geolocalizacion;
+            lat = Number(loc.latitud || loc.latitude || loc.lat || 0);
+            lng = Number(loc.longitud || loc.longitude || loc.lng || 0);
+          } catch (e) { }
+        }
+        if ((!lat || !lng) && archivo.latitud && archivo.longitud) {
+          lat = Number(archivo.latitud);
+          lng = Number(archivo.longitud);
+        }
+        if ((!lat || !lng) && archivo.lat && archivo.lng) {
+          lat = Number(archivo.lat);
+          lng = Number(archivo.lng);
+        }
+
+        if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
+          const ts = this.getDynamicsTimestamp(archivo);
+          if (ts > 0) {
+            archivo.fechaCalculada = new Date(ts);
+          }
+          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts, trackIdx: 0 });
+        }
+      });
+    }
+
+    // Ordenar estrictamente por timestamp cronológico real
+    archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Emparejar al track GPX de forma monótona ascendente
+    let lastTrackIdx = 0;
+    archivosConCoordenadas.forEach(item => {
+      let bestIdx = 0;
+      if (this.points && this.points.length > 0) {
+        if (item.timestamp > 0) {
+          let minDiff = Infinity;
+          for (let i = 0; i < this.points.length; i++) {
+            const pt = this.points[i];
+            const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
+            if (ptTime > 0) {
+              const diff = Math.abs(ptTime - item.timestamp);
+              if (diff < minDiff) {
+                minDiff = diff;
+                bestIdx = i;
+              }
+            }
+          }
+        }
+        if (bestIdx === 0 && item.lat && item.lng) {
+          let minDist = Infinity;
+          for (let i = lastTrackIdx; i < this.points.length; i++) {
+            const pt = this.points[i];
+            if (pt) {
+              const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
+              if (d < minDist) {
+                minDist = d;
+                bestIdx = i;
+              }
+            }
+          }
+        }
+      }
+      bestIdx = Math.max(lastTrackIdx, bestIdx);
+      lastTrackIdx = bestIdx;
+      item.trackIdx = bestIdx;
+    });
+
+    // Agrupación de micro-paradas: radio máx 25m y ventana temporal máx 3 minutos
+    const DIST_THRESHOLD_M = 25;
+    const TIME_GAP_MS = 3 * 60 * 1000;
+    const grupos: { lat: number; lng: number; trackIdx: number; timestamp: number; archivos: any[] }[] = [];
+
+    archivosConCoordenadas.forEach(item => {
+      const ultimoGrupo = grupos.length > 0 ? grupos[grupos.length - 1] : null;
+
+      let coincide = false;
+      if (ultimoGrupo) {
+        const d = this.getDistance(ultimoGrupo.lat, ultimoGrupo.lng, item.lat, item.lng);
+        const timeDiff = Math.abs(item.timestamp - (ultimoGrupo.timestamp || 0));
+        if (d <= DIST_THRESHOLD_M && timeDiff <= TIME_GAP_MS) {
+          coincide = true;
+        }
+      }
+
+      if (coincide && ultimoGrupo) {
+        ultimoGrupo.archivos.push(item.archivo);
+      } else {
+        grupos.push({
+          lat: item.lat,
+          lng: item.lng,
+          trackIdx: item.trackIdx,
+          timestamp: item.timestamp,
+          archivos: [item.archivo]
+        });
+      }
+    });
+
+    return grupos;
+  }
+
   // NUEVO: Función para mostrar todos los pines numerados en el mapa al iniciar y ajustar encuadre
   /**
    * Extrae y agrupa los archivos multimedia en Puntos de Interés (PIs)
    * basados en proximidad geográfica (< 10m) y coherencia temporal.
    */
   private obtenerGruposPIs(): { lat: number; lng: number; trackIdx?: number; archivos: any[] }[] {
+    // 🛡️ REGLA DE ORO: Si es una actividad Modo Dynamics, ejecutar lógica especializada de precisión cronológica
+    if (this.esActividadDynamics()) {
+      return this.obtenerGruposPIsDynamics();
+    }
+
+    // --- MODO TRADICIONAL (100% INTACTO) ---
     const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; trackIdx: number }[] = [];
 
     if (this.multimedia && this.multimedia.length > 0) {
@@ -1524,25 +1719,13 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       this.marker.setLatLng(latlng);
 
       // ✨ Sincronización sub-píxel continua: la punta de la polilínea sigue exactamente al vehículo
-      if (this.currentPolyline) {
-        const polyLatLngs = this.currentPolyline.getLatLngs() as any[];
-        if (polyLatLngs.length === 1) {
-          polyLatLngs.push(this.L.latLng(lat, lng));
-          this.currentPolyline.redraw();
-        } else if (polyLatLngs.length > 1) {
-          polyLatLngs[polyLatLngs.length - 1] = this.L.latLng(lat, lng);
-          this.currentPolyline.redraw();
-        }
+      if (this.currentPolyline && this.currentPolylinePoints && this.currentPolylinePoints.length > 0) {
+        const tipPt = this.L.latLng(lat, lng);
+        this.currentPolyline.setLatLngs([...this.currentPolylinePoints, tipPt]);
       }
-      if (this.currentBackgroundPolyline) {
-        const bgLatLngs = this.currentBackgroundPolyline.getLatLngs() as any[];
-        if (bgLatLngs.length === 1) {
-          bgLatLngs.push(this.L.latLng(lat, lng));
-          this.currentBackgroundPolyline.redraw();
-        } else if (bgLatLngs.length > 1) {
-          bgLatLngs[bgLatLngs.length - 1] = this.L.latLng(lat, lng);
-          this.currentBackgroundPolyline.redraw();
-        }
+      if (this.currentBackgroundPolyline && this.currentPolylinePoints && this.currentPolylinePoints.length > 0) {
+        const tipPt = this.L.latLng(lat, lng);
+        this.currentBackgroundPolyline.setLatLngs([...this.currentPolylinePoints, tipPt]);
       }
 
       // Fase 2: Seguimiento de cámara throttled con Safe Zone (desactivado en Álbum-Libro)
@@ -1992,7 +2175,10 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       dashArray = isReturn ? '10, 8' : null;
     }
 
-    this.currentBackgroundPolyline = this.L.polyline([startLatLng], {
+    const startPt = this.L.latLng(startLatLng[0], startLatLng[1]);
+    this.currentPolylinePoints = [startPt];
+
+    this.currentBackgroundPolyline = this.L.polyline([startPt], {
       color: '#FFFFFF',
       weight: 9,
       opacity: isReturn ? 0.3 : 0.8,
@@ -2001,7 +2187,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     }).addTo(this.map);
     this.polylines.push(this.currentBackgroundPolyline);
 
-    this.currentPolyline = this.L.polyline([startLatLng], {
+    this.currentPolyline = this.L.polyline([startPt], {
       color: color,
       weight: 6,
       opacity: opacity,
@@ -2348,22 +2534,13 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   private addLatLngsToCurrentPolylines(coords: [number, number][]) {
     if (!this.map || coords.length === 0) return;
 
-    if (this.currentPolyline) {
-      const latlngs = this.currentPolyline.getLatLngs() as any[];
-      if (latlngs.length > 1) {
-        latlngs.pop();
-      }
-      coords.forEach(c => latlngs.push(this.L.latLng(c[0], c[1])));
-      this.currentPolyline.redraw();
-    }
+    coords.forEach(c => this.currentPolylinePoints.push(this.L.latLng(c[0], c[1])));
 
+    if (this.currentPolyline) {
+      this.currentPolyline.setLatLngs(this.currentPolylinePoints);
+    }
     if (this.currentBackgroundPolyline) {
-      const bgLatLngs = this.currentBackgroundPolyline.getLatLngs() as any[];
-      if (bgLatLngs.length > 1) {
-        bgLatLngs.pop();
-      }
-      coords.forEach(c => bgLatLngs.push(this.L.latLng(c[0], c[1])));
-      this.currentBackgroundPolyline.redraw();
+      this.currentBackgroundPolyline.setLatLngs(this.currentPolylinePoints);
     }
   }
 

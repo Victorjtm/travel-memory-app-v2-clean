@@ -122,6 +122,16 @@ export class GpxAnimationService {
 
     // Helper robusto para calcular el timestamp real (ms) de un archivo
     const getMediaTimestamp = (item: any): number => {
+      // 🚀 MODO DYNAMICS: Si el nombre contiene el epoch de 13 dígitos (ms)
+      const name = item.nombreArchivo || item.nombre || '';
+      if (name) {
+        const m = name.match(/(\d{13})/);
+        if (m) {
+          const val = Number(m[1]);
+          if (val > 1577836800000 && val < 2051222400000) return val;
+        }
+      }
+
       let datePart = '';
       if (item.fechaCreacion) {
         datePart = item.fechaCreacion.split('T')[0];
