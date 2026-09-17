@@ -152,9 +152,9 @@ export class RouteVideoGeneratorService {
     const centerLat = (minLat + maxLat) / 2;
     const centerLng = (minLng + maxLng) / 2;
 
-    // Márgenes seguros en pantalla (en píxeles) para que la ruta respire y no tape el HUD
-    const padX = 140;
-    const padY = 120;
+    // Márgenes seguros en pantalla (en píxeles) para que la ruta respire y muestre el contexto urbano
+    const padX = 220; // Espacio a los lados y para el HUD vintage
+    const padY = 160; // Espacio arriba y abajo para ver el entorno geográfico
     const availW = width - 2 * padX;
     const availH = height - 2 * padY;
 
@@ -168,9 +168,9 @@ export class RouteVideoGeneratorService {
       return { x, y };
     };
 
-    // Determinar nivel de zoom óptimo (de 18 a 4) donde toda la ruta encaja dentro del área disponible
-    let bestZoom = 18;
-    for (let z = 18; z >= 4; z--) {
+    // Determinar nivel de zoom óptimo (tope máximo de zoom 16 para evitar calles gigantes o zoom excesivo)
+    let bestZoom = 16;
+    for (let z = 16; z >= 4; z--) {
       const pMin = latLngToWorld(minLat, minLng, z);
       const pMax = latLngToWorld(maxLat, maxLng, z);
       const spanW = Math.abs(pMax.x - pMin.x);
@@ -198,7 +198,7 @@ export class RouteVideoGeneratorService {
       ele: p.ele
     }));
 
-    // 2. Pre-cargar tiles cartográficos de fondo centrados en la ruta
+    // 2. Pre-cargar tiles cartográficos OpenStreetMap nativos centrados en la ruta
     await this.cargarTilesFondo(ctx, centerWorld, bestZoom, width, height);
 
     // Guardar imagen de fondo estática para redibujado instantáneo de cada frame
@@ -402,7 +402,7 @@ export class RouteVideoGeneratorService {
   }
 
   /**
-   * Dibuja un fotograma completo: fondo cartográfico, trazado sutil completo,
+   * Dibuja un fotograma completo: fondo cartográfico nativo, trazado sutil,
    * ruta animada con halo, marcadores de parada con números, vehículo emoji móvil y HUD vintage.
    */
   private dibujarFotograma(
@@ -479,47 +479,63 @@ export class RouteVideoGeneratorService {
       ctx.stroke();
     }
 
-    // 4. Marcador de inicio (Parada de Origen: Verde Esmeralda con sombra)
+    // 4. Marcador de Inicio (Parada de Origen: Verde Esmeralda con número y halo)
     const pInicio = points[0];
+    const numOrigen = options.idParadaOrigen != null && options.idParadaOrigen > 0 ? options.idParadaOrigen : '1';
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
     ctx.shadowBlur = 6;
     ctx.shadowOffsetY = 2;
+    // Disco blanco exterior
+    ctx.beginPath();
+    ctx.arc(pInicio.x, pInicio.y, 13, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.stroke();
+    // Círculo interior verde
     ctx.beginPath();
     ctx.arc(pInicio.x, pInicio.y, 10, 0, Math.PI * 2);
     ctx.fillStyle = '#15803d';
     ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#ffffff';
-    ctx.stroke();
-    // Punto central blanco
-    ctx.beginPath();
-    ctx.arc(pInicio.x, pInicio.y, 3.5, 0, Math.PI * 2);
+    // Número o símbolo
     ctx.fillStyle = '#ffffff';
-    ctx.fill();
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${numOrigen}`, pInicio.x, pInicio.y + 0.5);
     ctx.restore();
 
-    // 5. Marcador de destino (Parada de Fin: Rojo Carmesí con sombra)
+    // 5. Marcador de Fin (Parada de Destino: Rojo Carmesí con número y halo)
     const pFin = points[points.length - 1];
+    const numDestino = options.idParadaDestino != null && options.idParadaDestino > 0 ? options.idParadaDestino : '2';
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
     ctx.shadowBlur = 6;
     ctx.shadowOffsetY = 2;
+    // Disco blanco exterior
+    ctx.beginPath();
+    ctx.arc(pFin.x, pFin.y, 13, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.stroke();
+    // Círculo interior rojo
     ctx.beginPath();
     ctx.arc(pFin.x, pFin.y, 10, 0, Math.PI * 2);
     ctx.fillStyle = '#dc2626';
     ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#ffffff';
-    ctx.stroke();
-    // Punto central blanco
-    ctx.beginPath();
-    ctx.arc(pFin.x, pFin.y, 3.5, 0, Math.PI * 2);
+    // Número o símbolo
     ctx.fillStyle = '#ffffff';
-    ctx.fill();
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${numDestino}`, pFin.x, pFin.y + 0.5);
     ctx.restore();
 
-    // 6. Vehículo móvil con pulso sutil y sombra
+    // 6. Vehículo móvil con pulso y sombra 3D
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
     ctx.shadowBlur = 8;
@@ -541,16 +557,16 @@ export class RouteVideoGeneratorService {
     ctx.fillText(transportIcon, currentPos.x, currentPos.y + 1);
     ctx.restore();
 
-    // 7. HUD Vintage superpuesto (caja de instrumentos en esquina superior izquierda)
+    // 7. HUD Vintage (Caja de instrumentos en esquina superior izquierda)
     const totalKm = options.distanciaKm || 0;
     const kmActual = totalKm * progress;
 
     ctx.save();
-    // Tarjeta pergamino del HUD
-    ctx.fillStyle = 'rgba(253, 250, 243, 0.95)';
+    // Tarjeta pergamino del HUD con sombra
+    ctx.fillStyle = 'rgba(253, 250, 243, 0.96)';
     ctx.strokeStyle = '#8b6b46';
     ctx.lineWidth = 1.5;
-    ctx.shadowColor = 'rgba(43, 24, 16, 0.22)';
+    ctx.shadowColor = 'rgba(43, 24, 16, 0.25)';
     ctx.shadowBlur = 8;
     ctx.shadowOffsetY = 3;
     ctx.beginPath();
@@ -561,17 +577,17 @@ export class RouteVideoGeneratorService {
 
     // Marco interior sutil
     ctx.save();
-    ctx.strokeStyle = 'rgba(139, 107, 70, 0.25)';
+    ctx.strokeStyle = 'rgba(191, 161, 95, 0.45)';
     ctx.lineWidth = 1;
     ctx.strokeRect(33, 29, 310, 74);
 
     // Título del tramo
     ctx.fillStyle = '#2b1810';
-    ctx.font = 'bold 15px "Cinzel", "Georgia", serif';
+    ctx.font = 'bold 14px "Cinzel", "Georgia", serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    const titleText = options.titulo || 'Recorrido del viaje';
-    ctx.fillText(titleText, 44, 39);
+    const titleText = options.titulo || `RECORRIDO: PARADA #${numOrigen} ➔ PARADA #${numDestino}`;
+    ctx.fillText(titleText, 44, 40);
 
     // Kilometraje y progreso en tiempo real
     const kmStr = totalKm < 5 ? kmActual.toFixed(2) : kmActual.toFixed(1);
@@ -580,16 +596,16 @@ export class RouteVideoGeneratorService {
     ctx.font = '600 13px sans-serif';
     ctx.fillText(`${transportIcon}  ${kmStr} km / ${totStr} km (${Math.round(progress * 100)}%)`, 44, 63);
 
-    // Mini barra de progreso estilizada dentro del HUD
+    // Barra de progreso estilizada dentro del HUD
     ctx.fillStyle = 'rgba(120, 53, 15, 0.15)';
-    ctx.fillRect(44, 85, 288, 5);
+    ctx.fillRect(44, 85, 288, 6);
     ctx.fillStyle = colorRuta;
-    ctx.fillRect(44, 85, Math.max(5, 288 * progress), 5);
+    ctx.fillRect(44, 85, Math.max(6, 288 * progress), 6);
     ctx.restore();
   }
 
   /**
-   * Descarga y compone los tiles cartográficos para el fondo del canvas usando proyección Mercator 1:1.
+   * Descarga y compone los tiles cartográficos para el fondo del canvas usando OpenStreetMap nativo 1:1.
    */
   private async cargarTilesFondo(
     ctx: CanvasRenderingContext2D,
@@ -610,7 +626,7 @@ export class RouteVideoGeneratorService {
       const maxTileY = Math.floor((centerWorld.y + height / 2) / 256);
 
       const tilePromises: Promise<void>[] = [];
-      const subdomains = ['a', 'b', 'c', 'd'];
+      const subdomains = ['a', 'b', 'c'];
 
       for (let tx = minTileX; tx <= maxTileX; tx++) {
         for (let ty = minTileY; ty <= maxTileY; ty++) {
@@ -618,9 +634,9 @@ export class RouteVideoGeneratorService {
           const wrappedX = ((tx % numTiles) + numTiles) % numTiles;
           const sub = subdomains[Math.abs(wrappedX + ty) % subdomains.length];
 
-          // CartoDB Voyager: cartografía vintage suave y cabeceras CORS libres (Access-Control-Allow-Origin: *)
-          const primaryUrl = `https://${sub}.basemaps.cartocdn.com/rastertiles/voyager/${zoom}/${wrappedX}/${ty}.png`;
-          const fallbackUrl = `https://${sub}.basemaps.cartocdn.com/light_all/${zoom}/${wrappedX}/${ty}.png`;
+          // OpenStreetMap oficial (CORS abierto, nítido a 256x256, sin marcas de agua de CartoDB)
+          const primaryUrl = `https://${sub}.tile.openstreetmap.org/${zoom}/${wrappedX}/${ty}.png`;
+          const fallbackUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${zoom}/${ty}/${wrappedX}`;
 
           const tileScreenX = Math.round(width / 2 + (tx * 256 - centerWorld.x));
           const tileScreenY = Math.round(height / 2 + (ty * 256 - centerWorld.y));
@@ -637,18 +653,18 @@ export class RouteVideoGeneratorService {
 
       await Promise.all(tilePromises);
 
-      // Tinte pergamino sutil sobre los tiles para unificar la estética vintage del fotolibro
+      // Tinte pergamino sutil sobre los tiles para integrar con el estilo vintage del fotolibro
       ctx.save();
-      ctx.fillStyle = 'rgba(247, 239, 224, 0.26)';
+      ctx.fillStyle = 'rgba(247, 239, 224, 0.16)';
       ctx.fillRect(0, 0, width, height);
 
-      // Sutil viñeta en los bordes para dar aspecto de lámina cartográfica antigua
+      // Sutil viñeta en los bordes para dar aspecto de mapa antiguo
       const grad = ctx.createRadialGradient(
         width / 2, height / 2, Math.min(width, height) * 0.45,
         width / 2, height / 2, Math.max(width, height) * 0.75
       );
       grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      grad.addColorStop(1, 'rgba(80, 50, 20, 0.16)');
+      grad.addColorStop(1, 'rgba(80, 50, 20, 0.12)');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, width, height);
       ctx.restore();
