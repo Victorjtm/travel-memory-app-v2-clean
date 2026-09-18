@@ -721,39 +721,80 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     // Ordenar estrictamente por timestamp cronológico real (Fecha + Hora + Segundo)
     archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
 
-    // Emparejar al track GPX de forma monótona ascendente
+    // Emparejar al track GPX de forma monótona ascendente con validación espacio-temporal
     let lastTrackIdx = 0;
     archivosConCoordenadas.forEach(item => {
-      let bestIdx = 0;
+      let bestIdx = -1;
+
       if (this.points && this.points.length > 0) {
+        // 1. Si tenemos timestamp válido, buscar candidato cronológico a partir de lastTrackIdx
+        let candidateTimeIdx = -1;
+        let minTimeDiff = Infinity;
+
         if (item.timestamp > 0) {
-          let minDiff = Infinity;
-          for (let i = 0; i < this.points.length; i++) {
+          for (let i = lastTrackIdx; i < this.points.length; i++) {
             const pt = this.points[i];
             const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
             if (ptTime > 0) {
               const diff = Math.abs(ptTime - item.timestamp);
-              if (diff < minDiff) {
-                minDiff = diff;
-                bestIdx = i;
+              if (diff < minTimeDiff) {
+                minTimeDiff = diff;
+                candidateTimeIdx = i;
               }
             }
           }
         }
-        if (bestIdx === 0 && item.lat && item.lng) {
-          let minDist = Infinity;
+
+        // 2. Comprobar si el candidato temporal tiene coherencia física en el espacio (< 150m)
+        let timeCandidateIsPhysicallyClose = false;
+        if (candidateTimeIdx !== -1 && item.lat && item.lng) {
+          const ptCandidate = this.points[candidateTimeIdx];
+          const distToCandidate = this.getDistance(item.lat, item.lng, ptCandidate.lat, ptCandidate.lng);
+          // Si el punto temporal está a menos de 150 metros, es verosímil y se acepta
+          if (distToCandidate <= 150) {
+            timeCandidateIsPhysicallyClose = true;
+            bestIdx = candidateTimeIdx;
+          }
+        }
+
+        // 3. Si no hay candidato temporal coherente (ej. corte de señal GPS o tramo prolongado/editado),
+        // encontrar el punto físicamente más cercano en la traza a partir de lastTrackIdx
+        if (!timeCandidateIsPhysicallyClose && item.lat && item.lng) {
+          let minSpatialDist = Infinity;
           for (let i = lastTrackIdx; i < this.points.length; i++) {
             const pt = this.points[i];
             if (pt) {
               const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
-              if (d < minDist) {
-                minDist = d;
+              if (d < minSpatialDist) {
+                minSpatialDist = d;
                 bestIdx = i;
+                if (d < 10) break; // Coincidencia óptima sobre la calzada
+              }
+            }
+          }
+
+          // Fallback de seguridad: si buscando hacia adelante no hay nada a menos de 300m,
+          // evaluar toda la traza para no perder la posición
+          if (bestIdx === -1 || minSpatialDist > 300) {
+            for (let i = 0; i < this.points.length; i++) {
+              const pt = this.points[i];
+              if (pt) {
+                const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
+                if (d < minSpatialDist) {
+                  minSpatialDist = d;
+                  bestIdx = i;
+                }
               }
             }
           }
         }
+
+        // Fallback final si no se encontró por distancia ni tiempo
+        if (bestIdx === -1) {
+          bestIdx = candidateTimeIdx !== -1 ? candidateTimeIdx : lastTrackIdx;
+        }
       }
+
       bestIdx = Math.max(lastTrackIdx, bestIdx);
       lastTrackIdx = bestIdx;
       item.trackIdx = bestIdx;
