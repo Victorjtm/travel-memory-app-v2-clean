@@ -400,9 +400,45 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         }
       }
 
-      // Garantizar progresión monótona estricta: cada parada tiene su propio índice sin sobreescribir
+      // Garantizar progresión monótona estricta sin sobreescribir paradas
       if (idx > 0 && bestIdx <= lastMatchedIdx) {
-        bestIdx = Math.min(this.points.length - 1, lastMatchedIdx + 1);
+        if (lastMatchedIdx + 1 < this.points.length) {
+          bestIdx = lastMatchedIdx + 1;
+        } else {
+          // 🛡️ DIVERSIFICACIÓN VIRTUAL EN PROLONGACIONES/FINAL:
+          // Si llegamos al final de la traza física y aún quedan paradas por asignar (ej. tramos editados a mano),
+          // inyectamos un nuevo vértice virtual en memoria para alojar esta parada sin sobreescribir la anterior.
+          const lastPt = this.points[this.points.length - 1];
+          const nuevoPunto: GpxPoint = {
+            lat: pi.lat,
+            lng: pi.lng,
+            ele: lastPt.ele,
+            time: new Date((lastPt.time ? new Date(lastPt.time).getTime() : Date.now()) + 2000),
+            distAcum: (lastPt.distAcum || 0) + Math.max(1, this.getDistance(lastPt.lat, lastPt.lng, pi.lat, pi.lng)),
+            timeAcum: (lastPt.timeAcum || 0) + 2,
+            mode: lastPt.mode || 'walking',
+            hfMode: lastPt.hfMode || 'walking'
+          };
+          this.points.push(nuevoPunto);
+          bestIdx = this.points.length - 1;
+        }
+      }
+
+      // Si por alguna razón el punto seleccionado ya tiene un evento asignado, insertar un punto intermedio
+      if (this.points[bestIdx] && this.points[bestIdx].event) {
+        const pRef = this.points[bestIdx];
+        const nuevoPunto: GpxPoint = {
+          lat: pi.lat,
+          lng: pi.lng,
+          ele: pRef.ele,
+          time: new Date((pRef.time ? new Date(pRef.time).getTime() : Date.now()) + 1000),
+          distAcum: (pRef.distAcum || 0) + Math.max(1, this.getDistance(pRef.lat, pRef.lng, pi.lat, pi.lng)),
+          timeAcum: (pRef.timeAcum || 0) + 1,
+          mode: pRef.mode || 'walking',
+          hfMode: pRef.hfMode || 'walking'
+        };
+        this.points.splice(bestIdx + 1, 0, nuevoPunto);
+        bestIdx = bestIdx + 1;
       }
 
       if (bestIdx !== -1 && bestIdx < this.points.length) {
@@ -600,6 +636,46 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   }
 
   /**
+   * 🧲 Proyección ortogonal punto-segmento sobre la traza GPX.
+   * Si el punto dista menos de maxDistanceMeters de la línea, devuelve la coordenada proyectada
+   * exactamente sobre el asfalto/calzada de la polilínea.
+   */
+  private proyectarPuntoSobreTraza(lat: number, lng: number, maxDistanceMeters: number = 25): { lat: number; lng: number } {
+    if (!this.points || this.points.length < 2) return { lat, lng };
+
+    let bestPoint = { lat, lng };
+    let minDistance = Infinity;
+
+    for (let i = 0; i < this.points.length - 1; i++) {
+      const p1 = this.points[i];
+      const p2 = this.points[i + 1];
+
+      const dx = p2.lng - p1.lng;
+      const dy = p2.lat - p1.lat;
+      const lenSq = dx * dx + dy * dy;
+
+      if (lenSq === 0) continue;
+
+      let t = ((lng - p1.lng) * dx + (lat - p1.lat) * dy) / lenSq;
+      t = Math.max(0, Math.min(1, t)); // Acotar al segmento
+
+      const projLat = p1.lat + t * dy;
+      const projLng = p1.lng + t * dx;
+
+      const d = this.getDistance(lat, lng, projLat, projLng);
+      if (d < minDistance) {
+        minDistance = d;
+        bestPoint = { lat: projLat, lng: projLng };
+      }
+    }
+
+    if (minDistance <= maxDistanceMeters) {
+      return bestPoint;
+    }
+    return { lat, lng };
+  }
+
+  /**
    * 🚀 LÓGICA LINEAL CRONOLÓGICA EXCLUSIVA PARA MODO DYNAMICS:
    * 1. Ordenamiento Lineal Absoluto: Junta todas las fotos, vídeos y audios ordenados por Fecha + Hora + Segundo exactos.
    * 2. Eliminación de Algoritmos de Bloques: Cada archivo físico independiente recibe su propio pin correlativo del 1 al N.
@@ -689,9 +765,13 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     archivosConCoordenadas.forEach((item, index) => {
       const numeroSecuencial = index + 1;
       item.archivo.numeroSecuencial = numeroSecuencial;
+
+      // 🧲 Snapping magnético: Proyectar sobre la traza GPX si está cerca (<= 25m) para alinear al asfalto
+      const snapped = this.proyectarPuntoSobreTraza(item.lat, item.lng, 25);
+
       grupos.push({
-        lat: item.lat,
-        lng: item.lng,
+        lat: snapped.lat,
+        lng: snapped.lng,
         trackIdx: item.trackIdx,
         timestamp: item.timestamp,
         numeroSecuencial,
@@ -791,9 +871,13 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     archivosConCoordenadas.forEach((item, index) => {
       const numeroSecuencial = index + 1;
       item.archivo.numeroSecuencial = numeroSecuencial;
+
+      // 🧲 Snapping magnético en Modo Guiado
+      const snapped = this.modoRecorridoGuiado ? this.proyectarPuntoSobreTraza(item.lat, item.lng, 25) : { lat: item.lat, lng: item.lng };
+
       grupos.push({
-        lat: item.lat,
-        lng: item.lng,
+        lat: snapped.lat,
+        lng: snapped.lng,
         trackIdx: item.trackIdx,
         timestamp: item.timestamp,
         numeroSecuencial,
@@ -1539,7 +1623,20 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       ? metersThisFrame / Math.abs(interPointDistM)
       : 0.5 * currentSpeed * speedFactor * frames; // fallback al método clásico si distancia es ~0
 
-    this.currentIndex += indexProgress;
+    // 🛡️ EVENT-CLAMPING: En Modo Guiado / Interactivo, impedir rebasar el próximo evento pendiente en este frame
+    let targetAdvanceIndex = this.currentIndex + indexProgress;
+    if (this.interactiveMode) {
+      for (let k = prevIdx + 1; k < this.points.length; k++) {
+        if (this.points[k]?.event) {
+          if (targetAdvanceIndex >= k) {
+            targetAdvanceIndex = k;
+          }
+          break;
+        }
+      }
+    }
+
+    this.currentIndex = targetAdvanceIndex;
     const newIdx = Math.floor(Math.min(this.currentIndex, this.points.length - 1));
 
     // Si cruzamos puntos reales, gestionar modos y estadísticas

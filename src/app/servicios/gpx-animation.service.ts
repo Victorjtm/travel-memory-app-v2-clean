@@ -344,8 +344,13 @@ export class GpxAnimationService {
         } else if (p.distAcum > t0 && p.distAcum <= t1) {
           assignedMode = segmentThresholds[1].mode;
         } else {
-          // Vuelta: se regresa en el transporte inicial (ej. Coche)
-          assignedMode = segmentThresholds[0].mode;
+          // Si el punto excede t1 (tramo prolongado o final), si ya tiene un modo explícito válido, respetarlo
+          if (p.mode && p.mode !== 'transport' && p.mode !== 'original') {
+            assignedMode = p.mode;
+          } else {
+            // Continuidad con el tramo previo (ej. caminata) en lugar de asumir retorno en vehículo inicial
+            assignedMode = segmentThresholds[1].mode;
+          }
         }
       } else {
         let segIdx = 0;
