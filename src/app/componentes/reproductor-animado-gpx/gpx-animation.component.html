@@ -100,8 +100,13 @@
   <div class="pre-multimedia-prompt" *ngIf="pendingEvent" @fadeInOut>
     <div class="prompt-card" cdkDrag>
       <div class="prompt-header" cdkDragHandle>
-        <span class="prompt-icon">{{ esSoloAudio(pendingEvent) ? '🎤' : '📍' }}</span>
-        <h4>{{ pendingEvent.esPuntoInteres ? ('Parada #' + pendingEvent.piNumero + ' de ' + pendingEvent.piTotal) : 'Punto de Interés' }}</h4>
+        <span class="prompt-icon">{{ esSoloAudio(pendingEvent) ? '🎤' : (pendingEvent.archivos?.length > 1 ? '📸' : '📍') }}</span>
+        <h4>
+          {{ pendingEvent.esPuntoInteres ? ('Parada #' + pendingEvent.piNumero + ' de ' + pendingEvent.piTotal) : 'Punto de Interés' }}
+          <span *ngIf="pendingEvent.archivos?.length > 1" class="cluster-badge-tag">
+            📷 x{{ pendingEvent.archivos.length }}
+          </span>
+        </h4>
       </div>
       <div class="prompt-body">
         <p class="prompt-address" *ngIf="pendingEvent.archivos && pendingEvent.archivos[0]?.direccionDeducida">
@@ -111,7 +116,12 @@
           <i>Ubicación obtenida por GPS</i>
         </p>
         <p class="prompt-question">
-          {{ esSoloAudio(pendingEvent) ? '¿Quieres escuchar la nota de voz grabada?' : '¿Quieres mostrar el archivo multimedia asociado?' }}
+          <ng-container *ngIf="pendingEvent.archivos?.length > 1">
+            Se capturaron <strong>{{ pendingEvent.archivos.length }} recuerdos</strong> en este punto. ¿Deseas ver la colección completa?
+          </ng-container>
+          <ng-container *ngIf="!pendingEvent.archivos || pendingEvent.archivos.length <= 1">
+            {{ esSoloAudio(pendingEvent) ? '¿Quieres escuchar la nota de voz grabada?' : '¿Quieres mostrar el archivo multimedia asociado?' }}
+          </ng-container>
         </p>
       </div>
       <div class="prompt-actions">
@@ -125,59 +135,90 @@
   <div class="multimedia-overlay" *ngIf="activeEvent" @fadeInOut>
     <div class="event-card" cdkDrag>
       <div class="event-header" cdkDragHandle>
-        <h3>{{ esSoloAudio(activeEvent) ? '🎤' : '📍' }} {{ activeEvent.esPuntoInteres ? ('Parada #' + activeEvent.piNumero + ' de ' + activeEvent.piTotal) : 'Evento Multimedia' }}</h3>
+        <h3>
+          {{ esSoloAudio(activeEvent) ? '🎤' : (activeEvent.archivos?.length > 1 ? '📸' : '📍') }}
+          {{ activeEvent.esPuntoInteres ? ('Parada #' + activeEvent.piNumero + ' de ' + activeEvent.piTotal) : 'Evento Multimedia' }}
+          <span *ngIf="activeEvent.archivos?.length > 1" class="cluster-badge-tag">
+            Colección ({{ activeEvent.archivos.length }})
+          </span>
+        </h3>
         <button class="btn-mini-cerrar" (click)="resumeFromEvent()">✕</button>
       </div>
-      <div class="event-body">
-        <div *ngFor="let archivo of activeEvent.archivos" class="media-item">
-          <!-- Foto -->
-          <div class="photo-container" *ngIf="archivo.tipo === 'foto' || archivo.tipo === 'imagen'" (click)="abrirVisorFoto(archivo)" title="Clic para ver en grande">
-            <img [src]="getMediaUrl(archivo.rutaArchivo)" alt="Foto del evento">
-            <div class="audio-badge" *ngIf="archivo.audioUrl">🔊 Audio</div>
-            <div class="zoom-hint">🔍 Ampliar</div>
-          </div>
-          
-          <!-- Video -->
-          <video *ngIf="archivo.tipo === 'video'" [src]="getMediaUrl(archivo.rutaArchivo)" controls></video>
-          
-          <!-- Audio (si es un archivo independiente, no asociado) -->
-          <div class="audio-player-card" *ngIf="archivo.tipo === 'audio'" style="background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border: 1px solid #F59E0B; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="width: 44px; height: 44px; border-radius: 50%; background: #F59E0B; color: white; display: flex; align-items: center; justify-content: center; font-size: 22px; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.4);">
-                🎤
-              </div>
-              <div style="display: flex; flex-direction: column; overflow: hidden;">
-                <span style="font-weight: bold; font-size: 14px; color: #78350F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ archivo.nombreArchivo || 'Nota de Voz' }}</span>
-                <span style="font-size: 11px; color: #92400E;">Grabación de audio en ruta</span>
-              </div>
-            </div>
-            <audio [src]="getMediaUrl(archivo.rutaArchivo)" controls autoplay style="width: 100%; height: 36px; border-radius: 8px;"></audio>
-          </div>
-          
-          <!-- Audio asociado mostrado en el card si no quieres abrir el visor aún -->
-          <div class="associated-audio" *ngIf="archivo.audioUrl && (archivo.tipo === 'foto' || archivo.tipo === 'imagen')">
-             <audio [src]="archivo.audioUrl" controls></audio>
-          </div>
-          
-          <!-- Metadata Enriquecida del Evento Multimedia -->
-          <div class="media-metadata">
-            <h4 class="media-title">{{ archivo.nombreArchivo }}</h4>
-            <div class="meta-row" *ngIf="archivo.direccion || archivo.direccionDeducida">
-              <span class="meta-icon">📍</span>
-              <span class="meta-text">{{ archivo.direccion || archivo.direccionDeducida }}</span>
-            </div>
-            <div class="meta-row meta-date-time" *ngIf="archivo.fechaCalculada">
-              <div class="meta-sub">
-                <span class="meta-icon">📅</span>
-                <span class="meta-text">{{ archivo.fechaCalculada | date:'dd/MM/yyyy' }}</span>
-              </div>
-              <div class="meta-sub">
-                <span class="meta-icon">🕒</span>
-                <span class="meta-text">{{ archivo.fechaCalculada | date:'HH:mm:ss' }}</span>
-              </div>
-            </div>
+
+      <!-- Barra de Carrusel / Miniaturas si hay múltiples archivos en la parada -->
+      <div class="cluster-carousel-bar" *ngIf="activeEvent.archivos && activeEvent.archivos.length > 1">
+        <button class="btn-carousel-nav" (click)="prevClusterMedia()" [disabled]="clusterSelectedMediaIndex === 0" title="Anterior">‹</button>
+        <div class="cluster-thumbs-track">
+          <div *ngFor="let arch of activeEvent.archivos; let i = index" 
+               class="cluster-thumb-item" 
+               [class.active]="i === clusterSelectedMediaIndex"
+               (click)="selectClusterMedia(i)">
+            <img *ngIf="arch.tipo === 'foto' || arch.tipo === 'imagen'" [src]="getMediaUrl(arch.rutaArchivo)" alt="Miniatura">
+            <div *ngIf="arch.tipo === 'audio'" class="thumb-audio-icon">🎤</div>
+            <div *ngIf="arch.tipo === 'video'" class="thumb-video-icon">🎬</div>
+            <span class="thumb-num">{{ i + 1 }}</span>
           </div>
         </div>
+        <button class="btn-carousel-nav" (click)="nextClusterMedia()" [disabled]="clusterSelectedMediaIndex === activeEvent.archivos.length - 1" title="Siguiente">›</button>
+      </div>
+
+      <div class="cluster-counter-info" *ngIf="activeEvent.archivos && activeEvent.archivos.length > 1">
+        Elemento {{ clusterSelectedMediaIndex + 1 }} de {{ activeEvent.archivos.length }}
+      </div>
+
+      <div class="event-body">
+        <ng-container *ngFor="let archivo of activeEvent.archivos; let i = index">
+          <!-- Mostrar el elemento seleccionado si hay varios, o el único si hay 1 -->
+          <div *ngIf="activeEvent.archivos.length === 1 || i === clusterSelectedMediaIndex" class="media-item">
+            <!-- Foto -->
+            <div class="photo-container" *ngIf="archivo.tipo === 'foto' || archivo.tipo === 'imagen'" (click)="abrirVisorFoto(archivo)" title="Clic para ver en grande">
+              <img [src]="getMediaUrl(archivo.rutaArchivo)" alt="Foto del evento">
+              <div class="audio-badge" *ngIf="archivo.audioUrl">🔊 Audio</div>
+              <div class="zoom-hint">🔍 Ampliar</div>
+            </div>
+            
+            <!-- Video -->
+            <video *ngIf="archivo.tipo === 'video'" [src]="getMediaUrl(archivo.rutaArchivo)" controls></video>
+            
+            <!-- Audio (si es un archivo independiente, no asociado) -->
+            <div class="audio-player-card" *ngIf="archivo.tipo === 'audio'" style="background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border: 1px solid #F59E0B; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 44px; height: 44px; border-radius: 50%; background: #F59E0B; color: white; display: flex; align-items: center; justify-content: center; font-size: 22px; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.4);">
+                  🎤
+                </div>
+                <div style="display: flex; flex-direction: column; overflow: hidden;">
+                  <span style="font-weight: bold; font-size: 14px; color: #78350F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ archivo.nombreArchivo || 'Nota de Voz' }}</span>
+                  <span style="font-size: 11px; color: #92400E;">Grabación de audio en ruta</span>
+                </div>
+              </div>
+              <audio [src]="getMediaUrl(archivo.rutaArchivo)" controls autoplay style="width: 100%; height: 36px; border-radius: 8px;"></audio>
+            </div>
+            
+            <!-- Audio asociado mostrado en el card si no quieres abrir el visor aún -->
+            <div class="associated-audio" *ngIf="archivo.audioUrl && (archivo.tipo === 'foto' || archivo.tipo === 'imagen')">
+               <audio [src]="archivo.audioUrl" controls></audio>
+            </div>
+            
+            <!-- Metadata Enriquecida del Evento Multimedia -->
+            <div class="media-metadata">
+              <h4 class="media-title">{{ archivo.nombreArchivo }}</h4>
+              <div class="meta-row" *ngIf="archivo.direccion || archivo.direccionDeducida">
+                <span class="meta-icon">📍</span>
+                <span class="meta-text">{{ archivo.direccion || archivo.direccionDeducida }}</span>
+              </div>
+              <div class="meta-row meta-date-time" *ngIf="archivo.fechaCalculada">
+                <div class="meta-sub">
+                  <span class="meta-icon">📅</span>
+                  <span class="meta-text">{{ archivo.fechaCalculada | date:'dd/MM/yyyy' }}</span>
+                </div>
+                <div class="meta-sub">
+                  <span class="meta-icon">🕒</span>
+                  <span class="meta-text">{{ archivo.fechaCalculada | date:'HH:mm:ss' }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ng-container>
       </div>
       <div class="event-footer">
         <button class="btn-continuar" (click)="resumeFromEvent()">Continuar Recorrido</button>

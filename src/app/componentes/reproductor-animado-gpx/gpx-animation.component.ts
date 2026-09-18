@@ -244,8 +244,40 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
   public hasCanonicalStats: boolean = false;
 
+  // ✨ Modo Dynamics: Halo circular dinámico y carrusel/galería para micro-paradas agrupadas
+  private clusterHaloCircle: any = null;
+  public clusterSelectedMediaIndex: number = 0;
+
+  private removerHaloCluster(): void {
+    if (this.clusterHaloCircle && this.map) {
+      try {
+        this.map.removeLayer(this.clusterHaloCircle);
+      } catch (e) { }
+      this.clusterHaloCircle = null;
+    }
+  }
+
+  selectClusterMedia(index: number): void {
+    if (this.activeEvent && this.activeEvent.archivos && index >= 0 && index < this.activeEvent.archivos.length) {
+      this.clusterSelectedMediaIndex = index;
+    }
+  }
+
+  nextClusterMedia(): void {
+    if (this.activeEvent && this.activeEvent.archivos && this.clusterSelectedMediaIndex < this.activeEvent.archivos.length - 1) {
+      this.clusterSelectedMediaIndex++;
+    }
+  }
+
+  prevClusterMedia(): void {
+    if (this.activeEvent && this.activeEvent.archivos && this.clusterSelectedMediaIndex > 0) {
+      this.clusterSelectedMediaIndex--;
+    }
+  }
+
   resetAnimationState(): void {
     console.log('🔄 [GPX Reset] Restableciendo estado completo de animación (progress=0, animationStarted=false, isFinished=false)');
+    this.removerHaloCluster();
     this.stopAnimation();
     this.progress = 0;
     this.currentIndex = 0;
@@ -448,6 +480,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
           piTotal: pis.length,
           lat: pi.lat,
           lng: pi.lng,
+          clusterRadio: (pi as any).clusterRadio,
           esPuntoInteres: true
         };
         lastMatchedIdx = bestIdx;
@@ -800,23 +833,104 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       item.trackIdx = bestIdx;
     });
 
-    // Numeración 1 a N Dinámica individual: cada archivo es un pin individual
-    const grupos: { lat: number; lng: number; trackIdx: number; timestamp: number; numeroSecuencial: number; archivos: any[] }[] = [];
+    // ═══════════════════════════════════════════════════════════════════════
+    // Agrupación Espacio-Temporal para Rutas Dynamics (10m / 5min)
+    // Agrupa micro-paradas contiguas en un solo pin evitando el efecto "yo-yo"
+    // ═══════════════════════════════════════════════════════════════════════
+    const CLUSTER_DIST_MAX_M = 10;
+    const CLUSTER_TIME_MAX_MS = 5 * 60 * 1000; // 5 minutos
 
-    archivosConCoordenadas.forEach((item, index) => {
+    interface ClusterGroupData {
+      items: typeof archivosConCoordenadas;
+      lat: number;
+      lng: number;
+      trackIdx: number;
+      timestamp: number;
+      clusterRadio: number;
+    }
+
+    const clusterGroups: ClusterGroupData[] = [];
+    let currentCluster: ClusterGroupData | null = null;
+
+    for (const item of archivosConCoordenadas) {
+      if (!currentCluster) {
+        currentCluster = {
+          items: [item],
+          lat: item.lat,
+          lng: item.lng,
+          trackIdx: item.trackIdx,
+          timestamp: item.timestamp,
+          clusterRadio: 10
+        };
+        continue;
+      }
+
+      // Distancia física al centroide actual del cluster
+      const distMeters = this.getDistance(currentCluster.lat, currentCluster.lng, item.lat, item.lng);
+
+      // Diferencia temporal respecto al último ítem del cluster
+      const lastItem = currentCluster.items[currentCluster.items.length - 1];
+      const timeDiffMs = (item.timestamp > 0 && lastItem.timestamp > 0)
+        ? Math.abs(item.timestamp - lastItem.timestamp)
+        : 0;
+
+      // Criterio de pertenencia: <= 10 metros Y <= 5 minutos
+      const withinDistance = distMeters <= CLUSTER_DIST_MAX_M;
+      const withinTime = timeDiffMs <= CLUSTER_TIME_MAX_MS;
+
+      if (withinDistance && withinTime) {
+        currentCluster.items.push(item);
+        // Recalcular centroide físico del cluster
+        const n = currentCluster.items.length;
+        currentCluster.lat = currentCluster.items.reduce((acc, it) => acc + it.lat, 0) / n;
+        currentCluster.lng = currentCluster.items.reduce((acc, it) => acc + it.lng, 0) / n;
+        // Calcular radio envolvente del halo circular (mínimo 10m para visualización nítida)
+        let maxDist = 0;
+        for (const it of currentCluster.items) {
+          const d = this.getDistance(currentCluster.lat, currentCluster.lng, it.lat, it.lng);
+          if (d > maxDist) maxDist = d;
+        }
+        currentCluster.clusterRadio = Math.max(Math.ceil(maxDist + 3), 10);
+      } else {
+        clusterGroups.push(currentCluster);
+        currentCluster = {
+          items: [item],
+          lat: item.lat,
+          lng: item.lng,
+          trackIdx: item.trackIdx,
+          timestamp: item.timestamp,
+          clusterRadio: 10
+        };
+      }
+    }
+
+    if (currentCluster) {
+      clusterGroups.push(currentCluster);
+    }
+
+    // Generar grupos consolidados con numeración correlativa única (1 a N)
+    const grupos: { lat: number; lng: number; trackIdx: number; timestamp: number; numeroSecuencial: number; clusterRadio?: number; archivos: any[] }[] = [];
+
+    clusterGroups.forEach((cg, index) => {
       const numeroSecuencial = index + 1;
-      item.archivo.numeroSecuencial = numeroSecuencial;
+      const archivosDelGrupo: any[] = [];
 
-      // 🧲 Snapping magnético: Proyectar sobre la traza GPX si está cerca (<= 25m) para alinear al asfalto
-      const snapped = this.proyectarPuntoSobreTraza(item.lat, item.lng, 25);
+      cg.items.forEach(it => {
+        it.archivo.numeroSecuencial = numeroSecuencial;
+        archivosDelGrupo.push(it.archivo);
+      });
+
+      // 🧲 Snapping magnético: Proyectar centroide sobre la traza GPX si está cerca (<= 25m) para alinear al asfalto
+      const snapped = this.proyectarPuntoSobreTraza(cg.lat, cg.lng, 25);
 
       grupos.push({
         lat: snapped.lat,
         lng: snapped.lng,
-        trackIdx: item.trackIdx,
-        timestamp: item.timestamp,
+        trackIdx: cg.trackIdx,
+        timestamp: cg.timestamp,
         numeroSecuencial,
-        archivos: [item.archivo]
+        clusterRadio: cg.items.length > 1 ? cg.clusterRadio : undefined,
+        archivos: archivosDelGrupo
       });
     });
 
@@ -961,16 +1075,26 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
       const primerArchivo = (grupo.archivos && grupo.archivos.length > 0) ? (grupo.archivos[0].archivo || grupo.archivos[0]) : null;
       const numeroSecuencial = (grupo as any).numeroSecuencial || primerArchivo?.numeroSecuencial || (index + 1);
+      const totalArchivos = grupo.archivos ? grupo.archivos.length : 1;
+      const tieneMultiples = totalArchivos > 1;
       const tipo = (primerArchivo?.tipo || '').toLowerCase();
       const esAudio = tipo === 'audio';
       const esFoto = tipo === 'foto' || tipo === 'imagen';
       const colorPrincipal = esAudio ? '#F59E0B' : (esFoto ? '#E53935' : '#2196F3');
       const badgeColor = esAudio ? '#D97706' : '#1E88E5';
 
+      // Badge flotante para clusters (ej: 📷 x4)
+      const clusterBadgeHtml = tieneMultiples ? `
+        <div style="position:absolute;top:-6px;right:-12px;background:#6366F1;color:white;padding:2px 6px;border-radius:12px;font-size:11px;font-weight:800;border:2px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.4);z-index:20;white-space:nowrap;display:flex;align-items:center;gap:2px;">
+          <span>📷</span><span>x${totalArchivos}</span>
+        </div>
+      ` : '';
+
       const icon = this.L.divIcon({
         className: '',
         html: `
-        <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer;">
+        <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer;position:relative;">
+          ${clusterBadgeHtml}
           <svg width="44" height="44" viewBox="0 0 44 44" style="filter:drop-shadow(0px 3px 3px rgba(0,0,0,0.4));z-index:5;">
             <path d="M22 2 C14 2 8 8 8 16 C8 26 22 42 22 42 C22 42 36 26 36 16 C36 8 30 2 22 2 Z" fill="${colorPrincipal}" />
             <circle cx="22" cy="16" r="6" fill="white" />
@@ -987,13 +1111,14 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
       const poiMarker = this.L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(this.poiLayerGroup);
       poiMarker.on('click', () => {
-        console.log(`📍 [POI Click] Clic en Parada #${numeroSecuencial}`);
+        console.log(`📍 [POI Click] Clic en Parada #${numeroSecuencial} (${totalArchivos} elementos)`);
         const eventData = {
           archivos: grupo.archivos,
           piNumero: numeroSecuencial,
           piTotal: grupos.length,
           lat,
           lng,
+          clusterRadio: (grupo as any).clusterRadio,
           esPuntoInteres: true
         };
         this.pauseForEvent(eventData, [lat, lng]);
@@ -1024,6 +1149,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   }
 
   ngOnDestroy() {
+    this.removerHaloCluster();
     this.stopAnimation();
     if (this.zoomStrategyInterval) clearInterval(this.zoomStrategyInterval);
     if (this.resizeObserver) {
@@ -1993,6 +2119,24 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       this.map.flyTo([targetLat, targetLng], 18, { animate: true, duration: 1.2 });
     }
 
+    // ✨ Modo Dynamics: Resetear carrusel al primer elemento
+    this.clusterSelectedMediaIndex = 0;
+
+    // ✨ Modo Dynamics: Dibujar halo circular dinámico si es un grupo con múltiples archivos
+    this.removerHaloCluster();
+    if (this.map && event.archivos && event.archivos.length > 1 && targetLat !== null && targetLng !== null) {
+      const radius = event.clusterRadio || 12;
+      this.clusterHaloCircle = this.L.circle([targetLat, targetLng], {
+        radius,
+        color: '#6366F1',
+        weight: 2.5,
+        dashArray: '6, 6',
+        fillColor: '#818CF8',
+        fillOpacity: 0.18,
+        className: 'cluster-halo-dynamic'
+      }).addTo(this.map);
+    }
+
     // Preparar metadatos base para la foto (Fecha y Hora) y Dirección pre-cargada si existe
     if (event.archivos && event.archivos.length > 0) {
       for (const archivo of event.archivos) {
@@ -2055,6 +2199,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   }
 
   resumeFromEvent() {
+    this.removerHaloCluster();
     this.activeEvent = null;
     this.pendingEvent = null;
 
@@ -2358,6 +2503,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   }
 
   cerrar() {
+    this.removerHaloCluster();
     this.stopAnimation();
     this.onCerrar.emit();
   }
