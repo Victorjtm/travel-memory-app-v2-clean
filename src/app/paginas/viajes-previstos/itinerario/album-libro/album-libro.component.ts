@@ -3103,7 +3103,169 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         });
       });
 
-      for (let s = 0; s < piIndices.length - 1; s++) {
+      // -- Accumulation Buffer Algorithm --
+      // Sub-segments accumulate until distanciaMinimaAnimacionKm is reached;
+      // then a single fused animation is fired. The last sub-segment always
+      // fires regardless of distance (orphan final segment guard).
+
+      interface SubTramoBuffer {
+        sInicio: number; sFin: number;
+        startIdx: number; endIdx: number;
+        allPoints: any[];
+        distAcumKm: number; distAcumMetros: number;
+      }
+
+      let bufferActual: SubTramoBuffer | null = null;
+
+      const dispararAnimacionBuffer = (buf: SubTramoBuffer) => {
+        if (buf.allPoints.length < 2 || buf.distAcumKm <= 0) return;
+
+        const bufStartIdx = buf.startIdx;
+        const bufEndIdx   = buf.endIdx;
+        const bufSInicio  = buf.sInicio;
+        const subSegmentPoints = buf.allPoints;
+        const distKm = buf.distAcumKm;
+        const distMetros = buf.distAcumMetros;
+
+        const baseDistAcum = subSegmentPoints[0].distAcum || 0;
+        const baseTimeAcum = subSegmentPoints[0].timeAcum || 0;
+        const subPointsRelativos = subSegmentPoints.map((p: any) => ({
+          ...p,
+          distAcum: (p.distAcum || 0) - baseDistAcum,
+          timeAcum: (p.timeAcum || 0) - baseTimeAcum,
+          mode: p.mode || modoBaseNorm,
+          hfMode: p.hfMode || p.mode || modoBaseNorm,
+          event: undefined
+        }));
+
+        const subTransportSegments: any[] = [];
+        let currentMode: string | null = null;
+        let currentModeDist = 0;
+        for (let pIdx = 0; pIdx < subSegmentPoints.length; pIdx++) {
+          const pt = subSegmentPoints[pIdx];
+          const pMode = pt.mode || pt.hfMode || modoBaseNorm;
+          const prevPt = pIdx > 0 ? subSegmentPoints[pIdx - 1] : null;
+          const stepDist = prevPt ? Math.max(0, (pt.distAcum - prevPt.distAcum)) : 0;
+          if (currentMode === null) {
+            currentMode = pMode; currentModeDist = stepDist;
+          } else if (pMode === currentMode) {
+            currentModeDist += stepDist;
+          } else {
+            subTransportSegments.push({ tipo: currentMode, nombre: currentMode, distanciaMetros: currentModeDist, distanciaKm: (currentModeDist / 1000).toFixed(2) });
+            currentMode = pMode; currentModeDist = stepDist;
+          }
+        }
+        if (currentMode && (currentModeDist > 0 || subTransportSegments.length === 0)) {
+          subTransportSegments.push({ tipo: currentMode, nombre: currentMode, distanciaMetros: currentModeDist, distanciaKm: (currentModeDist / 1000).toFixed(2) });
+        }
+        if (subTransportSegments.length === 0) {
+          subTransportSegments.push({ tipo: modoBaseNorm, nombre: modoBaseNorm, distanciaMetros: distMetros, distanciaKm: distKm.toFixed(2) });
+        }
+
+        let gpxParcial = '';
+        try {
+          gpxParcial = this.trackEditorService ? this.trackEditorService.pointsToGpxXml(subPointsRelativos || []) : '';
+        } catch (e) { console.warn('[Dynamics Acum] Error generando gpxParcial:', e); }
+
+        const ptInicio = subSegmentPoints[0];
+        const ptFin = subSegmentPoints[subSegmentPoints.length - 1];
+        const pisOrigenBuf = gruposPIs.filter((g: any) => g.trackIdx === bufStartIdx);
+        let timestampInicio = 0;
+        let horaInicioTramo = '';
+        let horaFinTramo = '';
+        let lastFileOrigen: any = null;
+        for (const pi of pisOrigenBuf) {
+          if (pi.archivos && pi.archivos.length > 0) {
+            const f = pi.archivos[pi.archivos.length - 1];
+            if (!lastFileOrigen || this.obtenerTimestampReal(f) > this.obtenerTimestampReal(lastFileOrigen)) {
+              lastFileOrigen = f;
+            }
+          }
+        }
+        if (lastFileOrigen) { timestampInicio = this.obtenerTimestampReal(lastFileOrigen) + 1; horaInicioTramo = lastFileOrigen.horaCaptura || ''; }
+        if (!timestampInicio && ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime())) { timestampInicio = ptInicio.time.getTime(); }
+        if (ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime()) && !horaInicioTramo) {
+          horaInicioTramo = ptInicio.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        }
+        if (ptFin?.time instanceof Date && !isNaN(ptFin.time.getTime())) {
+          horaFinTramo = ptFin.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        }
+        if (!timestampInicio) {
+          const dp2 = pagRef?.fecha ? pagRef.fecha.split('T')[0] : (pagRef?.archivo?.fechaCreacion ? pagRef.archivo.fechaCreacion.split('T')[0] : '1970-01-01');
+          let tp = horaInicioTramo || '00:00:00';
+          if (tp.length === 5 && tp.includes(':')) tp = `${tp}:00`;
+          const dt = new Date(`${dp2}T${tp}Z`);
+          timestampInicio = !isNaN(dt.getTime()) ? dt.getTime() : 0;
+        }
+
+        const datePart = pagRef?.fecha ? pagRef.fecha.split('T')[0] : (pagRef?.archivo?.fechaCreacion ? pagRef.archivo.fechaCreacion.split('T')[0] : '1970-01-01');
+        const tiposUnicos = Array.from(new Set(subTransportSegments.map((t: any) => t.tipo || t.nombre).filter(Boolean)));
+        const tipoTransporteTramo = tiposUnicos.length > 0 ? tiposUnicos.join(', ') : modoBaseNorm;
+
+        const originPI = gruposPIs.find((g: any) => g.trackIdx === bufStartIdx);
+        const destPI   = gruposPIs.find((g: any) => g.trackIdx === bufEndIdx);
+
+        let idParadaOrigen = originPI?.numeroSecuencial;
+        if (idParadaOrigen === undefined) { idParadaOrigen = bufSInicio === 0 ? 0 : bufSInicio; }
+
+        let idParadaDestino = destPI?.numeroSecuencial;
+        if (idParadaDestino === undefined) {
+          idParadaDestino = buf.sFin === piIndices.length - 2
+            ? (gruposPIs.length > 0 && typeof gruposPIs[gruposPIs.length - 1].numeroSecuencial === 'number' ? gruposPIs[gruposPIs.length - 1].numeroSecuencial! + 1 : buf.sFin + 1)
+            : buf.sFin + 1;
+        }
+
+        const tituloTramo = `Recorrido: Parada #${idParadaOrigen} a Parada #${idParadaDestino}`;
+        const descTramo   = `Tramo entre Parada #${idParadaOrigen} y Parada #${idParadaDestino} (${distKm.toFixed(1)} km)`;
+
+        const multimediaTramo = archivosGeo.filter((a: any) => {
+          if (!a) return false;
+          if (originPI && a.numeroSecuencial === originPI.numeroSecuencial) return true;
+          if (destPI   && a.numeroSecuencial === destPI.numeroSecuencial)   return true;
+          return false;
+        });
+
+        const matchVideo = (datos.videosSubtramos || []).find(
+          (v: any) => v.id_parada_origen === idParadaOrigen && v.id_parada_destino === idParadaDestino
+        );
+        let urlVideoRuta: string | undefined = undefined;
+        if (matchVideo && matchVideo.url) {
+          urlVideoRuta = `${environment.apiUrl}/${matchVideo.url.replace(/^\//, '')}`;
+        }
+
+        const paginaMapa: PaginaMedia = {
+          archivo: {} as Archivo,
+          url: urlVideoRuta || '',
+          urlVideoAnimacion: urlVideoRuta,
+          titulo: tituloTramo,
+          descripcion: descTramo,
+          fecha: datePart,
+          tipoMedia: urlVideoRuta ? 'video' : 'mapa-animado',
+          mimeType: urlVideoRuta ? 'video/mp4' : '',
+          cargado: true,
+          esMapaAnimado: true,
+          idParadaOrigen: idParadaOrigen,
+          idParadaDestino: idParadaDestino,
+          trackGpx: gpxParcial,
+          distanciaTramoKm: distKm,
+          actividadId: actId,
+          transportSegments: subTransportSegments,
+          visualSessionData: visualSessionData,
+          isHighFidelityMode: !!visualSessionData,
+          horaInicioTramo: horaInicioTramo,
+          horaFinTramo: horaFinTramo,
+          tipoTransporteTramo: tipoTransporteTramo,
+          timestampReal: timestampInicio,
+          multimedia: multimediaTramo.length > 0 ? multimediaTramo : archivosGeo
+        };
+
+        if (!urlVideoRuta) { this.encolarPrecacheSubtramo(paginaMapa); }
+        if (!mapasPorActividad.has(actId)) { mapasPorActividad.set(actId, []); }
+        mapasPorActividad.get(actId)!.push(paginaMapa);
+        console.log('[Dynamics Acum] Parada #' + idParadaOrigen + ' a #' + idParadaDestino + ' | ' + distKm.toFixed(2) + 'km (' + (buf.sFin - buf.sInicio + 1) + ' sub-tramos)');
+      };
+
+            for (let s = 0; s < piIndices.length - 1; s++) {
         const startIdx = piIndices[s];
         const endIdx = piIndices[s + 1];
         const subSegmentPoints = points.slice(startIdx, endIdx + 1);
@@ -3114,192 +3276,31 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           - (subSegmentPoints[0].distAcum || 0);
         const distKm = distMetros / 1000;
 
-        if (distKm >= this.distanciaMinimaAnimacionKm) {
-          const baseDistAcum = subSegmentPoints[0].distAcum || 0;
-          const baseTimeAcum = subSegmentPoints[0].timeAcum || 0;
-          const subPointsRelativos = subSegmentPoints.map(p => ({
-            ...p,
-            distAcum: (p.distAcum || 0) - baseDistAcum,
-            timeAcum: (p.timeAcum || 0) - baseTimeAcum,
-            mode: p.mode || modoBaseNorm,
-            hfMode: p.hfMode || p.mode || modoBaseNorm,
-            event: undefined
-          }));
+        const esUltimoTramo = (s === piIndices.length - 2);
 
-          // Extraer desglose de transporte del sub-tramo
-          const subTransportSegments: any[] = [];
-          let currentMode: string | null = null;
-          let currentModeDist = 0;
-
-          for (let pIdx = 0; pIdx < subSegmentPoints.length; pIdx++) {
-            const pt = subSegmentPoints[pIdx];
-            const pMode = pt.mode || pt.hfMode || modoBaseNorm;
-            const prevPt = pIdx > 0 ? subSegmentPoints[pIdx - 1] : null;
-            const stepDist = prevPt ? Math.max(0, (pt.distAcum - prevPt.distAcum)) : 0;
-
-            if (currentMode === null) {
-              currentMode = pMode;
-              currentModeDist = stepDist;
-            } else if (pMode === currentMode) {
-              currentModeDist += stepDist;
-            } else {
-              subTransportSegments.push({
-                tipo: currentMode,
-                nombre: currentMode,
-                distanciaMetros: currentModeDist,
-                distanciaKm: (currentModeDist / 1000).toFixed(2)
-              });
-              currentMode = pMode;
-              currentModeDist = stepDist;
-            }
-          }
-
-          if (currentMode && (currentModeDist > 0 || subTransportSegments.length === 0)) {
-            subTransportSegments.push({
-              tipo: currentMode,
-              nombre: currentMode,
-              distanciaMetros: currentModeDist,
-              distanciaKm: (currentModeDist / 1000).toFixed(2)
-            });
-          }
-
-          if (subTransportSegments.length === 0) {
-            subTransportSegments.push({
-              tipo: modoBaseNorm,
-              nombre: modoBaseNorm,
-              distanciaMetros: distMetros,
-              distanciaKm: distKm.toFixed(2)
-            });
-          }
-
-          let gpxParcial = '';
-          try {
-            gpxParcial = this.trackEditorService ? this.trackEditorService.pointsToGpxXml(subPointsRelativos || []) : '';
-          } catch (e) {
-            console.warn('⚠️ Error generando gpxParcial:', e);
-          }
-
-          const ptInicio = subSegmentPoints[0];
-          const ptFin = subSegmentPoints[subSegmentPoints.length - 1];
-
-          // Obtener todos los PIs de origen del subtramo para posicionar la animación inmediatamente tras el último archivo multimedia de ese punto
-          const pisOrigen = gruposPIs.filter((g: any) => g.trackIdx === startIdx);
-          let timestampInicio = 0;
-          let horaInicioTramo = '';
-          let horaFinTramo = '';
-
-          let lastFileOrigen: any = null;
-          for (const pi of pisOrigen) {
-            if (pi.archivos && pi.archivos.length > 0) {
-              const f = pi.archivos[pi.archivos.length - 1];
-              if (!lastFileOrigen || this.obtenerTimestampReal(f) > this.obtenerTimestampReal(lastFileOrigen)) {
-                lastFileOrigen = f;
-              }
-            }
-          }
-
-          if (lastFileOrigen) {
-            timestampInicio = this.obtenerTimestampReal(lastFileOrigen) + 1;
-            horaInicioTramo = lastFileOrigen.horaCaptura || '';
-          }
-
-          if (!timestampInicio && ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime())) {
-            timestampInicio = ptInicio.time.getTime();
-          }
-
-          if (ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime())) {
-            if (!horaInicioTramo) {
-              horaInicioTramo = ptInicio.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-            }
-          }
-          if (ptFin?.time instanceof Date && !isNaN(ptFin.time.getTime())) {
-            horaFinTramo = ptFin.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-          }
-
-          if (!timestampInicio) {
-            const datePart = pagRef?.fecha ? pagRef.fecha.split('T')[0] : (pagRef?.archivo?.fechaCreacion ? pagRef.archivo.fechaCreacion.split('T')[0] : '1970-01-01');
-            let timePart = horaInicioTramo || '00:00:00';
-            if (timePart.length === 5 && timePart.includes(':')) timePart = `${timePart}:00`;
-            const dt = new Date(`${datePart}T${timePart}Z`);
-            timestampInicio = !isNaN(dt.getTime()) ? dt.getTime() : 0;
-          }
-
-          const datePart = pagRef?.fecha ? pagRef.fecha.split('T')[0] : (pagRef?.archivo?.fechaCreacion ? pagRef.archivo.fechaCreacion.split('T')[0] : '1970-01-01');
-          const tiposUnicos = Array.from(new Set(subTransportSegments.map(t => t.tipo || t.nombre).filter(Boolean)));
-          const tipoTransporteTramo = tiposUnicos.length > 0 ? tiposUnicos.join(', ') : modoBaseNorm;
-
-          const originPI = gruposPIs.find((g: any) => g.trackIdx === startIdx);
-          const destPI = gruposPIs.find((g: any) => g.trackIdx === endIdx);
-
-          let idParadaOrigen = originPI?.numeroSecuencial;
-          if (idParadaOrigen === undefined) {
-            idParadaOrigen = s === 0 ? 0 : s;
-          }
-
-          let idParadaDestino = destPI?.numeroSecuencial;
-          if (idParadaDestino === undefined) {
-            idParadaDestino = s === piIndices.length - 2
-              ? (gruposPIs.length > 0 && typeof gruposPIs[gruposPIs.length - 1].numeroSecuencial === "number" ? gruposPIs[gruposPIs.length - 1].numeroSecuencial! + 1 : s + 1)
-              : s + 1;
-          }
-
-          let tituloTramo = `Recorrido: Parada #${idParadaOrigen} ➔ Parada #${idParadaDestino}`;
-          let descTramo = `Tramo entre Parada #${idParadaOrigen} y Parada #${idParadaDestino} (${distKm.toFixed(1)} km)`;
-
-          // Filtrar multimedia relevante a este tramo (origen y destino) para pines limpios y exactos
-          const multimediaTramo = archivosGeo.filter((a: any) => {
-            if (!a) return false;
-            if (originPI && a.numeroSecuencial === originPI.numeroSecuencial) return true;
-            if (destPI && a.numeroSecuencial === destPI.numeroSecuencial) return true;
-            return false;
-          });
-
-          // Buscar si ya existe vídeo en la base de datos para este subtramo exacto (1:N)
-          const matchVideo = (datos.videosSubtramos || []).find(
-            (v: any) => v.id_parada_origen === idParadaOrigen && v.id_parada_destino === idParadaDestino
-          );
-
-          let urlVideoRuta: string | undefined = undefined;
-          if (matchVideo && matchVideo.url) {
-            const rel = matchVideo.url.replace(/^\//, "");
-            urlVideoRuta = `${environment.apiUrl}/${rel}`;
-          }
-          const paginaMapa: PaginaMedia = {
-            archivo: {} as Archivo,
-            url: urlVideoRuta || '',
-            urlVideoAnimacion: urlVideoRuta,
-            titulo: tituloTramo,
-            descripcion: descTramo,
-            fecha: datePart,
-            tipoMedia: urlVideoRuta ? 'video' : 'mapa-animado',
-            mimeType: urlVideoRuta ? 'video/mp4' : '',
-            cargado: true,
-            esMapaAnimado: true,
-            idParadaOrigen: idParadaOrigen,
-            idParadaDestino: idParadaDestino,
-            trackGpx: gpxParcial,
-            distanciaTramoKm: distKm,
-            actividadId: actId,
-            transportSegments: subTransportSegments,
-            visualSessionData: visualSessionData,
-            isHighFidelityMode: !!visualSessionData,
-            horaInicioTramo: horaInicioTramo,
-            horaFinTramo: horaFinTramo,
-            tipoTransporteTramo: tipoTransporteTramo,
-            timestampReal: timestampInicio,
-            multimedia: multimediaTramo.length > 0 ? multimediaTramo : archivosGeo
+        if (bufferActual === null) {
+          bufferActual = {
+            sInicio: s, sFin: s,
+            startIdx: startIdx, endIdx: endIdx,
+            allPoints: [...subSegmentPoints],
+            distAcumKm: distKm, distAcumMetros: distMetros
           };
-
-          // Auto pre-caching silencioso si aún no tiene vídeo
-          if (!urlVideoRuta) {
-            this.encolarPrecacheSubtramo(paginaMapa);
-          }
-
-          if (!mapasPorActividad.has(actId)) {
-            mapasPorActividad.set(actId, []);
-          }
-          mapasPorActividad.get(actId)!.push(paginaMapa);
+        } else {
+          bufferActual.sFin = s;
+          bufferActual.endIdx = endIdx;
+          bufferActual.distAcumKm += distKm;
+          bufferActual.distAcumMetros += distMetros;
+          bufferActual.allPoints.push(...subSegmentPoints.slice(1));
         }
+
+        if (bufferActual.distAcumKm >= this.distanciaMinimaAnimacionKm || esUltimoTramo) {
+          dispararAnimacionBuffer(bufferActual);
+          bufferActual = null;
+        }
+      }
+
+      if (bufferActual && bufferActual.distAcumKm > 0) {
+        dispararAnimacionBuffer(bufferActual);
       }
     }
 
