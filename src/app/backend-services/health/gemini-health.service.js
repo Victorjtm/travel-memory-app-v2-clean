@@ -32,7 +32,7 @@ class GeminiHealthService {
       const optimized = await sharp(buffer)
         .rotate() // orientacion EXIF
         .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 90 })
+        .toFormat('jpeg', { quality: 85 })
         .toBuffer();
 
       return {
@@ -64,7 +64,7 @@ class GeminiHealthService {
   }
 
   /**
-   * Envía las partes a la API de Gemini
+   * Envía las partes a la API de Gemini (Google Generative Language API)
    */
   async llamarGeminiVision(parts, customKey = null) {
     const key = this.obtenerApiKey(customKey);
@@ -75,22 +75,31 @@ class GeminiHealthService {
     const payload = {
       contents: [
         {
-          role: 'user',
           parts: parts
         }
       ],
       generationConfig: {
-        response_mime_type: 'application/json',
+        responseMimeType: 'application/json',
         temperature: 0.1
       }
     };
 
-    const modelsToTry = Array.from(new Set([this.model, 'gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'])).filter(Boolean);
+    const modelsToTry = Array.from(new Set([
+      this.model,
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-pro',
+      'gemini-3.6-flash'
+    ])).filter(Boolean);
+
     let lastError = null;
 
     for (const model of modelsToTry) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+        const modelClean = model.replace(/^models\//, '');
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelClean}:generateContent?key=${key}`;
         const response = await axios.post(url, payload, {
           headers: { 'Content-Type': 'application/json' },
           timeout: 45000
@@ -106,6 +115,36 @@ class GeminiHealthService {
         lastError = err;
         console.warn(`⚠️ [GeminiHealth] Falló modelo ${model}: ${err.response?.data?.error?.message || err.message}. Intentando fallback...`);
       }
+    }
+
+    // Si los modelos por defecto fallaron, consultar dinámicamente a ModelService.ListModels
+    try {
+      console.log('🔍 [GeminiHealth] Consultando modelos disponibles en Google AI Studio...');
+      const listResp = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+      const availableModels = listResp.data?.models || [];
+      const flashOrVisionModel = availableModels.find(m => 
+        m.supportedGenerationMethods?.includes('generateContent') && 
+        (m.name.includes('flash') || m.name.includes('pro'))
+      ) || availableModels.find(m => m.supportedGenerationMethods?.includes('generateContent'));
+
+      if (flashOrVisionModel) {
+        const dynamicModel = flashOrVisionModel.name.replace(/^models\//, '');
+        console.log(`🤖 [GeminiHealth] Reintentando con modelo detectado: ${dynamicModel}`);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${dynamicModel}:generateContent?key=${key}`;
+        const response = await axios.post(url, payload, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 45000
+        });
+
+        const candidates = response.data?.candidates;
+        if (candidates && candidates.length > 0) {
+          const rawText = candidates[0].content?.parts?.[0]?.text;
+          const parsed = this.sanitizarJSON(rawText);
+          if (parsed) return parsed;
+        }
+      }
+    } catch (listErr) {
+      console.warn('⚠️ [GeminiHealth] Error listando modelos disponibles:', listErr.message);
     }
 
     throw new Error(`Error en inferencia de Gemini Vision: ${lastError?.response?.data?.error?.message || lastError?.message}`);
@@ -157,8 +196,8 @@ class GeminiHealthService {
     for (const input of imageInputs) {
       const opt = await this.optimizarImagen(input);
       parts.push({
-        inline_data: {
-          mime_type: opt.mimeType,
+        inlineData: {
+          mimeType: opt.mimeType,
           data: opt.base64
         }
       });
@@ -202,8 +241,8 @@ class GeminiHealthService {
     for (const input of inputs) {
       const opt = await this.optimizarImagen(input);
       parts.push({
-        inline_data: {
-          mime_type: opt.mimeType,
+        inlineData: {
+          mimeType: opt.mimeType,
           data: opt.base64
         }
       });

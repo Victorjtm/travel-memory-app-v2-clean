@@ -11,8 +11,15 @@ const GeminiHealthService = require('./gemini-health.service');
 const dbPath = path.resolve(__dirname, '../../../../viajes.db');
 const geminiService = new GeminiHealthService();
 
+let _sharedDb = null;
 function getDbConnection() {
-  return new sqlite3.Database(dbPath);
+  if (!_sharedDb) {
+    _sharedDb = new sqlite3.Database(dbPath, (err) => {
+      if (err) console.error('❌ Error conectando a viajes.db en HealthController:', err.message);
+      else console.log('✅ HealthController conectado a viajes.db');
+    });
+  }
+  return _sharedDb;
 }
 
 class HealthController {
@@ -91,7 +98,6 @@ class HealthController {
         db.run(queryActivity, paramsActivity, function (err) {
           if (err) {
             console.error('❌ Error guardando travel_health_activity:', err.message);
-            db.close();
             return res.status(500).json({ error: 'Error al persistir la actividad en base de datos: ' + err.message });
           }
 
@@ -100,7 +106,6 @@ class HealthController {
 
           const splits = data.splits || [];
           if (splits.length === 0) {
-            db.close();
             return res.status(201).json({
               message: 'Actividad de reloj registrada correctamente (sin splits).',
               health_activity_id: healthActivityId,
@@ -118,7 +123,6 @@ class HealthController {
               if (splitErr) hasSplitError = true;
 
               if (completed === splits.length) {
-                db.close();
                 if (hasSplitError) {
                   console.warn('⚠️ Hubo advertencias al insertar algunos splits');
                 }
@@ -202,7 +206,6 @@ class HealthController {
       ];
 
       db.run(queryScale, paramsScale, function (err) {
-        db.close();
         if (err) {
           console.error('❌ Error guardando user_body_metrics:', err.message);
           return res.status(500).json({ error: 'Error al persistir métricas corporales: ' + err.message });
@@ -244,7 +247,6 @@ class HealthController {
     query += ` ORDER BY h.date_walk DESC`;
 
     db.all(query, params, (err, rows) => {
-      db.close();
       if (err) {
         return res.status(500).json({ error: err.message });
       }
@@ -274,17 +276,14 @@ class HealthController {
 
     db.get(queryAct, [activityId], (err, activity) => {
       if (err) {
-        db.close();
         return res.status(500).json({ error: err.message });
       }
       if (!activity) {
-        db.close();
         return res.json({ hasData: false, data: null });
       }
 
       const querySplits = `SELECT * FROM travel_health_splits WHERE health_activity_id = ? ORDER BY km_number ASC`;
       db.all(querySplits, [activity.id], (splitErr, splits) => {
-        db.close();
         if (splitErr) {
           return res.status(500).json({ error: splitErr.message });
         }
@@ -308,13 +307,11 @@ class HealthController {
 
     db.get(queryAct, [id], (err, activity) => {
       if (err || !activity) {
-        db.close();
         return res.status(404).json({ error: 'Actividad de salud no encontrada.' });
       }
 
       const querySplits = `SELECT * FROM travel_health_splits WHERE health_activity_id = ? ORDER BY km_number ASC`;
       db.all(querySplits, [id], (splitErr, splits) => {
-        db.close();
         if (splitErr) {
           return res.status(500).json({ error: splitErr.message });
         }
@@ -342,7 +339,6 @@ class HealthController {
     query += ` ORDER BY measurement_date ASC`;
 
     db.all(query, params, (err, rows) => {
-      db.close();
       if (err) {
         return res.status(500).json({ error: err.message });
       }
@@ -357,7 +353,6 @@ class HealthController {
     const { id } = req.params;
     const db = getDbConnection();
     db.run(`DELETE FROM travel_health_activity WHERE id = ?`, [id], function (err) {
-      db.close();
       if (err) return res.status(500).json({ error: err.message });
       res.json({ message: 'Actividad eliminada con éxito', deletedId: id });
     });
@@ -370,7 +365,6 @@ class HealthController {
     const { id } = req.params;
     const db = getDbConnection();
     db.run(`DELETE FROM user_body_metrics WHERE id = ?`, [id], function (err) {
-      db.close();
       if (err) return res.status(500).json({ error: err.message });
       res.json({ message: 'Métrica corporal eliminada con éxito', deletedId: id });
     });

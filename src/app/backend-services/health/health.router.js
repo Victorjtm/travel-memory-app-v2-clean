@@ -10,20 +10,31 @@ const HealthController = require('./health.controller');
 
 const router = express.Router();
 
-// Configuración de multer en memoria (máximo 4 archivos de hasta 15MB cada uno)
+// Configuración de multer en memoria (máximo 4 archivos de hasta 30MB cada uno)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 15 * 1024 * 1024,
+    fileSize: 30 * 1024 * 1024,
     files: 4
   }
 });
 
+// Middleware seguro para capturar errores de multer y evitar caídas de socket/ERR_CONNECTION_RESET
+function safeUpload(req, res, next) {
+  upload.array('images', 4)(req, res, (err) => {
+    if (err) {
+      console.error('❌ [HealthRouter] Error en multer upload:', err.message);
+      return res.status(400).json({ error: `Error en la subida de capturas: ${err.message}` });
+    }
+    next();
+  });
+}
+
 // 🏃‍♂️ Subida de capturas de reloj Xiaomi
-router.post('/upload-watch', upload.array('images', 4), HealthController.uploadWatch);
+router.post('/upload-watch', safeUpload, HealthController.uploadWatch);
 
 // ⚖️ Subida de capturas de báscula inteligente
-router.post('/upload-scale', upload.array('images', 4), HealthController.uploadScale);
+router.post('/upload-scale', safeUpload, HealthController.uploadScale);
 
 // 📋 Consultas
 router.get('/activities', HealthController.getActivities);
