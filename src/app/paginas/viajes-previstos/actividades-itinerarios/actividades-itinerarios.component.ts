@@ -66,11 +66,13 @@ export class ActividadesItinerariosComponent implements OnInit {
   abrirModalSalud(actividadId: number) {
     this.actividadSaludSeleccionadaId = actividadId;
     this.mostrarModalSalud = true;
+    this.cdr.detectChanges();
   }
 
   cerrarModalSalud() {
     this.mostrarModalSalud = false;
     this.actividadSaludSeleccionadaId = null;
+    this.cdr.detectChanges();
   }
   mostrarReproductorAnimado = false; // ✨ NUEVA PROPIEDAD
   modoRecorridoGuiadoAnimacion = false; // 🎬 Modo Recorrido Guiado por PIs
