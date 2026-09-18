@@ -310,7 +310,7 @@
       </div>
 
       <!-- Acordeón para API Key personalizada opcional -->
-      <details class="api-key-accordion" *ngIf="!resultadoExito && !cargando">
+      <details class="api-key-accordion" *ngIf="!resultadoExito && !cargando" [open]="errorMensaje ? true : null">
         <summary><i class="fa-solid fa-key"></i> Configurar API Key de Google AI Studio personalizada (Opcional)</summary>
         <div class="api-key-input-wrap">
           <input 

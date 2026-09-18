@@ -184,6 +184,7 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
 
     if (this.customApiKey && this.customApiKey.trim()) {
       localStorage.setItem('gemini_api_key', this.customApiKey.trim());
+      localStorage.setItem('ia_api_key', this.customApiKey.trim());
     }
 
     this.cargando = true;
