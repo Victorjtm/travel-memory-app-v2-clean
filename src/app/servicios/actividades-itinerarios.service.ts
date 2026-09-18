@@ -79,6 +79,15 @@ export class ActividadesItinerariosService extends BaseHttpService {
   eliminarVideoSubtramo(id: number, origen: number, destino: number): Observable<any> {
     return this.delete(`${this.apiUrl}/${id}/subtramos/video?origen=${origen}&destino=${destino}`);
   }
+
+  eliminarVideosSubtramosItinerario(itinerarioId: number): Observable<{ success: boolean; eliminados: number; message: string }> {
+    return this.delete(`${environment.apiUrl}/itinerarios/${itinerarioId}/subtramos/videos`);
+  }
+
+  eliminarVideosSubtramosViaje(viajeId: number): Observable<{ success: boolean; eliminados: number; message: string }> {
+    return this.delete(`${environment.apiUrl}/viajes/${viajeId}/subtramos/videos`);
+  }
 }
+
 
 

@@ -4788,6 +4788,102 @@ app.delete(['/actividades/:id/subtramos/video', '/api/actividades/:id/subtramos/
   }
 });
 
+// 5. DELETE eliminar todos los vídeos de subtramos de un itinerario (para regeneración limpia)
+app.delete(['/itinerarios/:id/subtramos/videos', '/api/itinerarios/:id/subtramos/videos'], async (req, res) => {
+  const itinerarioId = req.params.id;
+  try {
+    const rows = await dbQuery.all(
+      `SELECT avs.id, avs.url_video 
+       FROM actividades_videos_subtramos avs 
+       JOIN actividades a ON avs.id_actividad = a.id 
+       WHERE a.itinerarioId = ?`,
+      [itinerarioId]
+    );
+
+    let eliminadosEnDisco = 0;
+    if (rows && rows.length > 0) {
+      for (const row of rows) {
+        if (row.url_video) {
+          const fullPath = path.join(uploadsPath, row.url_video);
+          try {
+            if (fs.existsSync(fullPath)) {
+              fs.unlinkSync(fullPath);
+              eliminadosEnDisco++;
+            }
+          } catch (unlinkErr) {
+            console.warn(`⚠️ Error eliminando archivo físico ${fullPath}:`, unlinkErr.message);
+          }
+        }
+      }
+
+      await dbQuery.run(
+        `DELETE FROM actividades_videos_subtramos 
+         WHERE id_actividad IN (SELECT id FROM actividades WHERE itinerarioId = ?)`,
+        [itinerarioId]
+      );
+    }
+
+    console.log(`🧹 [Limpieza Vídeos] Itinerario ${itinerarioId}: ${rows?.length || 0} registros eliminados de BD, ${eliminadosEnDisco} archivos físicos borrados.`);
+    res.json({
+      success: true,
+      eliminados: rows?.length || 0,
+      archivosBorrados: eliminadosEnDisco,
+      message: `Se han eliminado ${rows?.length || 0} vídeos de animaciones del itinerario ${itinerarioId}.`
+    });
+  } catch (error) {
+    console.error('❌ [Limpieza Vídeos Itinerario] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. DELETE eliminar todos los vídeos de subtramos de un viaje
+app.delete(['/viajes/:id/subtramos/videos', '/api/viajes/:id/subtramos/videos'], async (req, res) => {
+  const viajeId = req.params.id;
+  try {
+    const rows = await dbQuery.all(
+      `SELECT avs.id, avs.url_video 
+       FROM actividades_videos_subtramos avs 
+       JOIN actividades a ON avs.id_actividad = a.id 
+       WHERE a.viajePrevistoId = ?`,
+      [viajeId]
+    );
+
+    let eliminadosEnDisco = 0;
+    if (rows && rows.length > 0) {
+      for (const row of rows) {
+        if (row.url_video) {
+          const fullPath = path.join(uploadsPath, row.url_video);
+          try {
+            if (fs.existsSync(fullPath)) {
+              fs.unlinkSync(fullPath);
+              eliminadosEnDisco++;
+            }
+          } catch (unlinkErr) {
+            console.warn(`⚠️ Error eliminando archivo físico ${fullPath}:`, unlinkErr.message);
+          }
+        }
+      }
+
+      await dbQuery.run(
+        `DELETE FROM actividades_videos_subtramos 
+         WHERE id_actividad IN (SELECT id FROM actividades WHERE viajePrevistoId = ?)`,
+        [viajeId]
+      );
+    }
+
+    console.log(`🧹 [Limpieza Vídeos] Viaje ${viajeId}: ${rows?.length || 0} registros eliminados de BD, ${eliminadosEnDisco} archivos físicos borrados.`);
+    res.json({
+      success: true,
+      eliminados: rows?.length || 0,
+      archivosBorrados: eliminadosEnDisco,
+      message: `Se han eliminado ${rows?.length || 0} vídeos de animaciones del viaje ${viajeId}.`
+    });
+  } catch (error) {
+    console.error('❌ [Limpieza Vídeos Viaje] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ----------------------------------------
 // RUTAS PARA Archivos (archivos por actividad)
 // ----------------------------------------

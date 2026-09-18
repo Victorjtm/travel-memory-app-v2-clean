@@ -1070,6 +1070,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   distanciaMinimaMetros: number = 2000;
   modoDistanciaPersonalizada: boolean = false;
   reproducirVideosCompletos: boolean = false;
+  limpiandoVideosAnimacion: boolean = false;
   paginasBase: PaginaMedia[] = [];
 
   toggleVideosCompletos(event?: Event): void {
@@ -2610,6 +2611,76 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       console.error('❌ Error recalculando animaciones del mapa:', e);
     } finally {
       this.isLoading = false;
+    }
+  }
+
+  /**
+   * Limpia los vídeos MP4 generados para las animaciones de ruta del itinerario actual
+   * tanto del servidor como de la memoria local, forzando su regeneración desde cero con el nuevo algoritmo.
+   */
+  async confirmarLimpiarVideosAnimacion(): Promise<void> {
+    const itinerarioId = this.contextoViaje?.itinerarioId || (this.paginas?.[0]?.itinerarioId);
+    const viajeId = this.contextoViaje?.viajeId;
+
+    if (!itinerarioId && !viajeId) {
+      alert('No se pudo identificar el itinerario o viaje para limpiar los vídeos.');
+      return;
+    }
+
+    const confirmar = window.confirm(
+      '¿Deseas eliminar las animaciones en vídeo MP4 de este itinerario?\n\n' +
+      '• Se borrarán del servidor los archivos ya grabados para este itinerario.\n' +
+      '• Se reiniciará la caché en memoria.\n' +
+      '• El sistema volverá a generar los vídeos limpios desde cero según la configuración y el nuevo algoritmo.'
+    );
+
+    if (!confirmar) return;
+
+    this.limpiandoVideosAnimacion = true;
+    this.cdr.detectChanges();
+
+    try {
+      if (itinerarioId) {
+        const resp = await firstValueFrom(this.actividadesItinerariosService.eliminarVideosSubtramosItinerario(itinerarioId));
+        console.log('🧹 [Limpieza Vídeos] Respuesta backend:', resp);
+      } else if (viajeId) {
+        const resp = await firstValueFrom(this.actividadesItinerariosService.eliminarVideosSubtramosViaje(viajeId));
+        console.log('🧹 [Limpieza Vídeos] Respuesta backend viaje:', resp);
+      }
+
+      // 1. Limpiar caches en memoria
+      this.cachePaginasPorFiltro.clear();
+      this.cacheDatosActividadGpx.clear();
+      this.colaPrecachingSubtramos = [];
+
+      // 2. Limpiar referencias a vídeos en paginasBase y paginas
+      const limpiarUrlsVideo = (lista: PaginaMedia[]) => {
+        if (!lista) return;
+        for (const p of lista) {
+          if (p.urlVideoAnimacion) {
+            delete p.urlVideoAnimacion;
+            if (p.tipoMedia === 'video' && p.trackGpx) {
+              p.url = '';
+              p.tipoMedia = 'mapa-animado';
+            }
+          }
+        }
+      };
+
+      limpiarUrlsVideo(this.paginasBase);
+      limpiarUrlsVideo(this.paginas);
+
+      // 3. Forzar mapa activo y reconstruir páginas
+      this.forzarMapaInteractivo = true;
+      await this.actualizarConfiguracionAnimaciones();
+
+      console.log('✅ ¡Vídeos de animación de ruta eliminados y páginas reiniciadas!');
+    } catch (err: any) {
+      console.error('❌ Error al eliminar vídeos de animaciones:', err);
+      alert('Ocurrió un error al limpiar los vídeos: ' + (err?.message || 'Error desconocido'));
+    } finally {
+      this.limpiandoVideosAnimacion = false;
+      this.cdr.detectChanges();
     }
   }
 
