@@ -2879,19 +2879,70 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
           validMedia.sort((a, b) => a.timestamp - b.timestamp);
 
-          // 1. Mapear cada elemento de validMedia al punto más cercano del track (bestTrackIdx)
+          // 1. Mapear cada elemento de validMedia al punto más cercano del track
+          // Restringiendo de forma estricta la ventana temporal con desempate espacial
+          const hasGpxTimes1 = points.some(p => p.time && !isNaN(new Date(p.time).getTime()));
+          let lastTrackIdx1 = 0;
+
           validMedia.forEach(item => {
-            let bestTrackIdx = 0;
-            let minDist = Infinity;
-            for (let i = 0; i < points.length; i++) {
-              const d = this.getDistanceMetros(item.lat, item.lng, points[i].lat, points[i].lng);
-              if (d < minDist) {
-                minDist = d;
-                bestTrackIdx = i;
-                if (d < 5) break;
+            let bestIdx = -1;
+
+            if (hasGpxTimes1 && item.timestamp > 0) {
+              // Ventanas temporales progresivas (5 min, 15 min, 30 min hacia adelante)
+              const WINDOWS_MS = [5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 1000];
+              for (const winMs of WINDOWS_MS) {
+                let minDist = Infinity;
+                let chosenIdx = -1;
+                for (let i = lastTrackIdx1; i < points.length; i++) {
+                  const pt = points[i];
+                  const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
+                  if (ptTime > 0 && Math.abs(ptTime - item.timestamp) <= winMs) {
+                    const d = this.getDistanceMetros(item.lat, item.lng, pt.lat, pt.lng);
+                    if (d < minDist) {
+                      minDist = d;
+                      chosenIdx = i;
+                    }
+                  }
+                }
+                if (chosenIdx !== -1) {
+                  bestIdx = chosenIdx;
+                  break;
+                }
+              }
+
+              // Si buscando hacia adelante no se encontró, evaluar toda la traza dentro de la ventana
+              if (bestIdx === -1) {
+                let minDist = Infinity;
+                for (let i = 0; i < points.length; i++) {
+                  const pt = points[i];
+                  const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
+                  if (ptTime > 0 && Math.abs(ptTime - item.timestamp) <= 15 * 60 * 1000) {
+                    const d = this.getDistanceMetros(item.lat, item.lng, pt.lat, pt.lng);
+                    if (d < minDist) {
+                      minDist = d;
+                      bestIdx = i;
+                    }
+                  }
+                }
               }
             }
-            (item as any).trackIdx = bestTrackIdx;
+
+            // Fallback espacial si no hay tiempos GPX o fuera de ventana temporal
+            if (bestIdx === -1) {
+              let minDist = Infinity;
+              for (let i = lastTrackIdx1; i < points.length; i++) {
+                const d = this.getDistanceMetros(item.lat, item.lng, points[i].lat, points[i].lng);
+                if (d < minDist) {
+                  minDist = d;
+                  bestIdx = i;
+                  if (d < 10) break;
+                }
+              }
+            }
+
+            bestIdx = Math.max(lastTrackIdx1, bestIdx !== -1 ? bestIdx : lastTrackIdx1);
+            lastTrackIdx1 = bestIdx;
+            (item as any).trackIdx = bestIdx;
           });
 
           // 2. Agrupación canónica idéntica a actividades-itinerarios (Ver GPX)
@@ -3071,19 +3122,70 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
             validMedia.sort((a, b) => a.timestamp - b.timestamp);
 
-            // 1. Mapear cada elemento de validMedia al punto más cercano del track (bestTrackIdx)
+            // 1. Mapear cada elemento de validMedia al punto más cercano del track
+            // Restringiendo de forma estricta la ventana temporal con desempate espacial
+            const hasGpxTimes2 = points.some(p => p.time && !isNaN(new Date(p.time).getTime()));
+            let lastTrackIdx2 = 0;
+
             validMedia.forEach(item => {
-              let bestTrackIdx = 0;
-              let minDist = Infinity;
-              for (let i = 0; i < points.length; i++) {
-                const d = this.getDistanceMetros(item.lat, item.lng, points[i].lat, points[i].lng);
-                if (d < minDist) {
-                  minDist = d;
-                  bestTrackIdx = i;
-                  if (d < 5) break;
+              let bestIdx = -1;
+
+              if (hasGpxTimes2 && item.timestamp > 0) {
+                // Ventanas temporales progresivas (5 min, 15 min, 30 min hacia adelante)
+                const WINDOWS_MS = [5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 1000];
+                for (const winMs of WINDOWS_MS) {
+                  let minDist = Infinity;
+                  let chosenIdx = -1;
+                  for (let i = lastTrackIdx2; i < points.length; i++) {
+                    const pt = points[i];
+                    const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
+                    if (ptTime > 0 && Math.abs(ptTime - item.timestamp) <= winMs) {
+                      const d = this.getDistanceMetros(item.lat, item.lng, pt.lat, pt.lng);
+                      if (d < minDist) {
+                        minDist = d;
+                        chosenIdx = i;
+                      }
+                    }
+                  }
+                  if (chosenIdx !== -1) {
+                    bestIdx = chosenIdx;
+                    break;
+                  }
+                }
+
+                // Si buscando hacia adelante no se encontró, evaluar toda la traza dentro de la ventana
+                if (bestIdx === -1) {
+                  let minDist = Infinity;
+                  for (let i = 0; i < points.length; i++) {
+                    const pt = points[i];
+                    const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
+                    if (ptTime > 0 && Math.abs(ptTime - item.timestamp) <= 15 * 60 * 1000) {
+                      const d = this.getDistanceMetros(item.lat, item.lng, pt.lat, pt.lng);
+                      if (d < minDist) {
+                        minDist = d;
+                        bestIdx = i;
+                      }
+                    }
+                  }
                 }
               }
-              (item as any).trackIdx = bestTrackIdx;
+
+              // Fallback espacial si no hay tiempos GPX o fuera de ventana temporal
+              if (bestIdx === -1) {
+                let minDist = Infinity;
+                for (let i = lastTrackIdx2; i < points.length; i++) {
+                  const d = this.getDistanceMetros(item.lat, item.lng, points[i].lat, points[i].lng);
+                  if (d < minDist) {
+                    minDist = d;
+                    bestIdx = i;
+                    if (d < 10) break;
+                  }
+                }
+              }
+
+              bestIdx = Math.max(lastTrackIdx2, bestIdx !== -1 ? bestIdx : lastTrackIdx2);
+              lastTrackIdx2 = bestIdx;
+              (item as any).trackIdx = bestIdx;
             });
 
             // 2. Agrupación canónica idéntica a actividades-itinerarios (Ver GPX)
@@ -3240,21 +3342,51 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
         const ptInicio = subSegmentPoints[0];
         const ptFin = subSegmentPoints[subSegmentPoints.length - 1];
-        const pisOrigenBuf = gruposPIs.filter((g: any) => g.trackIdx === bufStartIdx);
-        let timestampInicio = 0;
-        let horaInicioTramo = '';
-        let horaFinTramo = '';
-        let lastFileOrigen: any = null;
-        for (const pi of pisOrigenBuf) {
+
+        // 🌟 NUEVA REGLA DE INTERCALADO DYNAMICS:
+        // El mapa unificado (paginaMapa) generado por el buffer debe recibir un timestamp
+        // equivalente al del ÚLTIMO elemento multimedia procesado DENTRO de ese mismo buffer (antes del destino) + 1 ms.
+        // Esto garantiza que el usuario contemple primero secuencialmente todo el multimedia de las paradas
+        // previas e intermedias y justo después se dispare la animación hacia el siguiente destino.
+        const pisEnBufferAntesDeDestino = gruposPIs.filter((g: any) => g.trackIdx >= bufStartIdx && g.trackIdx < bufEndIdx);
+        let lastFileEnBuffer: any = null;
+        for (const pi of pisEnBufferAntesDeDestino) {
           if (pi.archivos && pi.archivos.length > 0) {
-            const f = pi.archivos[pi.archivos.length - 1];
-            if (!lastFileOrigen || this.obtenerTimestampReal(f) > this.obtenerTimestampReal(lastFileOrigen)) {
-              lastFileOrigen = f;
+            for (const f of pi.archivos) {
+              const ts = this.obtenerTimestampReal(f);
+              if (!lastFileEnBuffer || ts > this.obtenerTimestampReal(lastFileEnBuffer)) {
+                lastFileEnBuffer = f;
+              }
             }
           }
         }
-        if (lastFileOrigen) { timestampInicio = this.obtenerTimestampReal(lastFileOrigen) + 1; horaInicioTramo = lastFileOrigen.horaCaptura || ''; }
-        if (!timestampInicio && ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime())) { timestampInicio = ptInicio.time.getTime(); }
+
+        // Fallback si no había fotos en paradas intermedias: comprobar la parada origen
+        if (!lastFileEnBuffer) {
+          const pisOrigenBuf = gruposPIs.filter((g: any) => g.trackIdx === bufStartIdx);
+          for (const pi of pisOrigenBuf) {
+            if (pi.archivos && pi.archivos.length > 0) {
+              for (const f of pi.archivos) {
+                const ts = this.obtenerTimestampReal(f);
+                if (!lastFileEnBuffer || ts > this.obtenerTimestampReal(lastFileEnBuffer)) {
+                  lastFileEnBuffer = f;
+                }
+              }
+            }
+          }
+        }
+
+        let timestampInicio = 0;
+        let horaInicioTramo = '';
+        let horaFinTramo = '';
+
+        if (lastFileEnBuffer) {
+          timestampInicio = this.obtenerTimestampReal(lastFileEnBuffer) + 1;
+          horaInicioTramo = lastFileEnBuffer.horaCaptura || '';
+        }
+        if (!timestampInicio && ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime())) {
+          timestampInicio = ptInicio.time.getTime();
+        }
         if (ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime()) && !horaInicioTramo) {
           horaInicioTramo = ptInicio.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
         }
@@ -5047,6 +5179,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
 
     const arch = pagina.archivo || pagina;
+
+    // 🌟 Prioridad 1: Timestamp epoch de 13 dígitos en el nombre de archivo (ej. _1789551427312.jpg o recording-1789...)
+    // Este valor es tiempo UTC absoluto e inmutable, evitando falsos saltos por discrepancias de zona horaria (UTC vs UTC+2)
+    if (arch.nombreArchivo) {
+      const m = arch.nombreArchivo.match(/(\d{13})/);
+      if (m) {
+        const ts = Number(m[1]);
+        if (ts > 1577836800000 && ts < 2051222400000) return ts;
+      }
+    }
 
     // 1. Si tiene horaCaptura válida y fechaCreacion/fechaTomada/pagina.fecha
     let datePart = '';
