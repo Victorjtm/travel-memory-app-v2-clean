@@ -643,6 +643,32 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         const val = Number(m[1]);
         if (val > 1577836800000 && val < 2051222400000) return val;
       }
+      // Regex YYYYMMDD_HHMMSS en nombre de archivo (ej. IMG_20260630_065921.jpg o audio_20260115_202743.wav)
+      const mDate = name.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+      if (mDate) {
+        const dt = new Date(`${mDate[1]}-${mDate[2]}-${mDate[3]}T${mDate[4]}:${mDate[5]}:${mDate[6]}Z`);
+        if (!isNaN(dt.getTime())) return dt.getTime();
+      }
+    }
+    // Si tiene horaCaptura válida combinada con fecha
+    const hc = item.horaCaptura;
+    let timePart = '';
+    if (hc && typeof hc === 'string' && hc !== '00:00:00' && hc.toLowerCase() !== 'desconocido' && hc.trim() !== '') {
+      timePart = hc.trim();
+      if (timePart.length === 5) timePart += ':00';
+    }
+    let datePart = '';
+    if (item.fechaCreacion) datePart = item.fechaCreacion.split('T')[0];
+    else if (item.fechaTomada) datePart = item.fechaTomada.split('T')[0];
+    else if (item.fecha) datePart = item.fecha.split('T')[0];
+
+    if (!timePart && item.fechaCreacion && typeof item.fechaCreacion === 'string') {
+      const matchIso = item.fechaCreacion.match(/T(\d{2}:\d{2}:\d{2})/);
+      if (matchIso && matchIso[1] !== '00:00:00') timePart = matchIso[1];
+    }
+    if (datePart && !datePart.startsWith('1970') && !datePart.startsWith('1792') && timePart) {
+      const dt = new Date(`${datePart}T${timePart}Z`);
+      if (!isNaN(dt.getTime())) return dt.getTime();
     }
     if (item.metadatos) {
       try {
@@ -951,9 +977,17 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; trackIdx: number }[] = [];
 
     if (this.multimedia && this.multimedia.length > 0) {
-      // 1. Identificar audios asociados a fotos padre para no duplicar marcadores
+      // 1. Identificar nombres base de fotos y audios asociados a fotos padre para no duplicar marcadores
       const audiosAsociadosIds = new Set<number>();
+      const fotosNombresBase = new Set<string>();
+
       this.multimedia.forEach((archivo: any) => {
+        const tipo = (archivo.tipo || '').toLowerCase();
+        if ((tipo === 'foto' || tipo === 'imagen') && archivo.nombreArchivo) {
+          const dotIdx = archivo.nombreArchivo.lastIndexOf('.');
+          const base = dotIdx !== -1 ? archivo.nombreArchivo.substring(0, dotIdx) : archivo.nombreArchivo;
+          fotosNombresBase.add(base.toLowerCase());
+        }
         if (archivo.archivosAsociados && Array.isArray(archivo.archivosAsociados)) {
           archivo.archivosAsociados.forEach((asoc: any) => {
             if (asoc.tipo === 'audio') {
@@ -970,12 +1004,27 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         const tipo = (archivo.tipo || '').toLowerCase();
         if (tipo !== 'foto' && tipo !== 'video' && tipo !== 'imagen' && tipo !== 'audio') return;
 
+        // Excluir archivos auxiliares y mapas de ubicación estáticos
+        if (tipo === 'mapa_ubicacion' || tipo === 'mapa' || tipo === 'gpx' || tipo === 'manifest' || tipo === 'estadisticas') return;
+        if (archivo.nombreArchivo && (
+          archivo.nombreArchivo.toLowerCase().includes('_mapa.') ||
+          archivo.nombreArchivo.toLowerCase().includes('_location_map.') ||
+          archivo.nombreArchivo.toLowerCase().endsWith('_mapa.png')
+        )) return;
+
         // Ocultar audio asociado de la secuencia principal independiente
-        const esAudioAsociado = tipo === 'audio' && (
+        let esAudioAsociado = tipo === 'audio' && (
           archivo.archivoPrincipalId ||
           archivo.esAsociado ||
           audiosAsociadosIds.has(archivo.id)
         );
+        if (!esAudioAsociado && tipo === 'audio' && archivo.nombreArchivo) {
+          const dotIdx = archivo.nombreArchivo.lastIndexOf('.');
+          const base = dotIdx !== -1 ? archivo.nombreArchivo.substring(0, dotIdx) : archivo.nombreArchivo;
+          if (fotosNombresBase.has(base.toLowerCase())) {
+            esAudioAsociado = true;
+          }
+        }
         if (esAudioAsociado) return;
 
         let lat: number | null = null;
@@ -999,21 +1048,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
         if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
           const ts = this.getDynamicsTimestamp(archivo);
-
-          let bestTrackIdx = 0;
-          if (this.points && this.points.length > 0) {
-            let minDist = Infinity;
-            for (let i = 0; i < this.points.length; i++) {
-              const d = this.getDistance(lat, lng, this.points[i].lat, this.points[i].lng);
-              if (d < minDist) {
-                minDist = d;
-                bestTrackIdx = i;
-                if (d < 5) break;
-              }
-            }
-          }
-
-          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts, trackIdx: bestTrackIdx });
+          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts, trackIdx: 0 });
         }
       });
     }
@@ -1021,23 +1056,104 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     // Ordenamiento Lineal Absoluto: por timestamp cronológico ascendente (Día + Hora + Segundo)
     archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
 
-    // Numeración 1 a N Dinámica individual
-    const grupos: { lat: number; lng: number; trackIdx: number; timestamp: number; numeroSecuencial: number; archivos: any[] }[] = [];
-    archivosConCoordenadas.forEach((item, index) => {
-      const numeroSecuencial = index + 1;
-      item.archivo.numeroSecuencial = numeroSecuencial;
+    // Mapear cada elemento al track GPX de forma monótona con restricción estricta de ventana temporal
+    const hasGpxTimes = this.points && this.points.some(p => p.time && !isNaN(new Date(p.time).getTime()));
+    let lastTrackIdx = 0;
 
-      // 🧲 Snapping magnético en Modo Guiado
-      const snapped = this.modoRecorridoGuiado ? this.proyectarPuntoSobreTraza(item.lat, item.lng, 25) : { lat: item.lat, lng: item.lng };
+    archivosConCoordenadas.forEach(item => {
+      let bestIdx = -1;
 
-      grupos.push({
-        lat: snapped.lat,
-        lng: snapped.lng,
-        trackIdx: item.trackIdx,
-        timestamp: item.timestamp,
-        numeroSecuencial,
-        archivos: [item.archivo]
-      });
+      if (hasGpxTimes && item.timestamp > 0 && this.points && this.points.length > 0) {
+        const WINDOWS_MS = [5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 1000];
+        for (const winMs of WINDOWS_MS) {
+          let minDist = Infinity;
+          let chosenIdx = -1;
+          for (let i = lastTrackIdx; i < this.points.length; i++) {
+            const pt = this.points[i];
+            const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
+            if (ptTime > 0 && Math.abs(ptTime - item.timestamp) <= winMs) {
+              const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
+              if (d < minDist) {
+                minDist = d;
+                chosenIdx = i;
+              }
+            }
+          }
+          if (chosenIdx !== -1) {
+            bestIdx = chosenIdx;
+            break;
+          }
+        }
+
+        if (bestIdx === -1) {
+          let minDist = Infinity;
+          for (let i = 0; i < this.points.length; i++) {
+            const pt = this.points[i];
+            const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
+            if (ptTime > 0 && Math.abs(ptTime - item.timestamp) <= 15 * 60 * 1000) {
+              const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
+              if (d < minDist) {
+                minDist = d;
+                bestIdx = i;
+              }
+            }
+          }
+        }
+      }
+
+      // Fallback espacial si no hay tiempos GPX o fuera de ventana
+      if (bestIdx === -1 && this.points && this.points.length > 0) {
+        let minDist = Infinity;
+        for (let i = lastTrackIdx; i < this.points.length; i++) {
+          const pt = this.points[i];
+          const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
+          if (d < minDist) {
+            minDist = d;
+            bestIdx = i;
+            if (d < 10) break;
+          }
+        }
+      }
+
+      bestIdx = Math.max(lastTrackIdx, bestIdx !== -1 ? bestIdx : lastTrackIdx);
+      lastTrackIdx = bestIdx;
+      item.trackIdx = bestIdx;
+    });
+
+    // Agrupación canónica idéntica a Álbum Libro y Ver GPX (<15m / 8 puntos track / 1 hora)
+    const TOLERANCIA_GPS = 0.00015; // ~15 metros
+    const MAX_TIME_GAP_MS = 60 * 60 * 1000; // 1 hora
+    const grupos: { lat: number; lng: number; trackIdx: number; timestamp: number; numeroSecuencial?: number; archivos: any[] }[] = [];
+
+    archivosConCoordenadas.forEach(item => {
+      const ultimoGrupo = grupos.length > 0 ? grupos[grupos.length - 1] : null;
+      const coincideUbicacion = ultimoGrupo &&
+        Math.abs(ultimoGrupo.lat - item.lat) < TOLERANCIA_GPS &&
+        Math.abs(ultimoGrupo.lng - item.lng) < TOLERANCIA_GPS;
+      const trackMuyCercano = ultimoGrupo && Math.abs(ultimoGrupo.trackIdx - item.trackIdx) < 8;
+      const ultimoItem = ultimoGrupo ? ultimoGrupo.archivos[ultimoGrupo.archivos.length - 1] : null;
+      const tsUltimo = ultimoItem ? this.getDynamicsTimestamp(ultimoItem) : 0;
+      const tiempoCercano = !item.timestamp || !tsUltimo || Math.abs(item.timestamp - tsUltimo) < MAX_TIME_GAP_MS;
+
+      if ((coincideUbicacion || trackMuyCercano) && tiempoCercano) {
+        ultimoGrupo!.archivos.push(item.archivo);
+      } else {
+        const snapped = this.modoRecorridoGuiado ? this.proyectarPuntoSobreTraza(item.lat, item.lng, 25) : { lat: item.lat, lng: item.lng };
+        grupos.push({
+          lat: snapped.lat,
+          lng: snapped.lng,
+          trackIdx: item.trackIdx,
+          timestamp: item.timestamp,
+          archivos: [item.archivo]
+        });
+      }
+    });
+
+    // Asignar numeroSecuencial canónico
+    grupos.forEach((g, idx) => {
+      const num = idx + 1;
+      g.numeroSecuencial = num;
+      g.archivos.forEach(a => { a.numeroSecuencial = num; });
     });
 
     return grupos;
@@ -1778,31 +1894,43 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
     const speedFactor = this.getSpeedFactor(this.currentMode);
 
-    // ✨ AVANCE POR DISTANCIA GEOGRÁFICA (no por índice)
-    // Calculamos cuántos metros por segundo queremos avanzar, 
-    // y luego buscamos cuántos índices corresponden a esa distancia.
+    // ✨ AVANCE POR DISTANCIA MÉTRICA ACUMULADA CONTINUA (velocidad física y visual constante)
+    // En lugar de dividir metersThisFrame por la distancia de un único par de puntos
+    // (lo cual causaba aceleraciones desmedidas en zonas densas y frenazos bruscos en rectas),
+    // calculamos la distancia geográfica exacta recorrida en metros y encontramos el segmento
+    // real correspondiente, logrando una fluidez perfecta de 60fps idéntica en cualquier tipo de ruta.
     const prevIdx = Math.floor(this.currentIndex);
     const p_cur = this.points[prevIdx];
     const p_next = this.points[Math.min(prevIdx + 1, this.points.length - 1)];
-
-    // Distancia geográfica entre el punto actual y el siguiente (en metros)
-    const interPointDistM = (p_next.distAcum - p_cur.distAcum) || 1; // evitar /0
+    const alphaCurr = this.currentIndex - prevIdx;
+    const currentDistM = (p_cur.distAcum || 0) + alphaCurr * ((p_next.distAcum || 0) - (p_cur.distAcum || 0));
 
     // Velocidad deseada en metros/segundo: base ~7.5 m/s * speed * speedFactor
-    // (7.5 m/s ≈ 27 km/h como base, escalado por speed y speedFactor)
     const metersPerSecond = 7.5 * currentSpeed * speedFactor;
-
-    // Cuántos metros avanzamos en este frame
     const metersThisFrame = metersPerSecond * safeDt;
 
-    // Traducir metros a índices: si entre punto[i] y punto[i+1] hay X metros,
-    // avanzar Y metros equivale a avanzar Y/X índices
-    const indexProgress = Math.abs(interPointDistM) > 0.01
-      ? metersThisFrame / Math.abs(interPointDistM)
-      : 0.5 * currentSpeed * speedFactor * frames; // fallback al método clásico si distancia es ~0
+    // Distancia métrica objetivo a alcanzar en este frame
+    const targetDistM = currentDistM + metersThisFrame;
+
+    let targetAdvanceIndex: number;
+    const totalTrackDistM = this.points[this.points.length - 1].distAcum || 0;
+
+    if (targetDistM >= totalTrackDistM) {
+      targetAdvanceIndex = this.points.length - 1;
+    } else {
+      // Búsqueda del segmento que contiene targetDistM empezando desde prevIdx
+      let scanIdx = prevIdx;
+      while (scanIdx < this.points.length - 1 && (this.points[scanIdx + 1].distAcum || 0) < targetDistM) {
+        scanIdx++;
+      }
+      const pA = this.points[scanIdx];
+      const pB = this.points[Math.min(scanIdx + 1, this.points.length - 1)];
+      const segLen = (pB.distAcum || 0) - (pA.distAcum || 0);
+      const frac = segLen > 0.001 ? (targetDistM - (pA.distAcum || 0)) / segLen : 0;
+      targetAdvanceIndex = scanIdx + Math.max(0, Math.min(frac, 1));
+    }
 
     // 🛡️ EVENT-CLAMPING: En Modo Guiado / Interactivo, impedir rebasar el próximo evento pendiente en este frame
-    let targetAdvanceIndex = this.currentIndex + indexProgress;
     if (this.interactiveMode) {
       for (let k = prevIdx + 1; k < this.points.length; k++) {
         if (this.points[k]?.event) {

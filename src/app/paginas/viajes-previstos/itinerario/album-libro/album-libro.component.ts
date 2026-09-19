@@ -2428,8 +2428,48 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Procesar archivos normales
-    const paginasNormales: PaginaMedia[] = archivos.map(archivo => {
+    // Filtrar archivos que NO deben generar páginas independientes:
+    // 1. Archivos auxiliares del sistema: mapas de ubicación estáticos, gpx, metadata
+    // 2. Audios asociados a fotos padre (que ya se reproducen desde el botón de la foto)
+    const fotosNombresBase = new Set<string>();
+    archivos.forEach(a => {
+      const tipo = (a.tipo || '').toLowerCase();
+      if ((tipo === 'foto' || tipo === 'imagen') && a.nombreArchivo) {
+        const dotIdx = a.nombreArchivo.lastIndexOf('.');
+        const base = dotIdx !== -1 ? a.nombreArchivo.substring(0, dotIdx) : a.nombreArchivo;
+        fotosNombresBase.add(base.toLowerCase());
+      }
+    });
+
+    const archivosFiltrados = archivos.filter(archivo => {
+      const tipo = (archivo.tipo || '').toLowerCase();
+      if (tipo === 'mapa_ubicacion' || tipo === 'mapa' || tipo === 'gpx' || tipo === 'manifest' || tipo === 'estadisticas') {
+        return false;
+      }
+      if ((archivo as any).archivoPrincipalId) {
+        return false;
+      }
+      if (archivo.nombreArchivo && (
+        archivo.nombreArchivo.toLowerCase().includes('_mapa.') ||
+        archivo.nombreArchivo.toLowerCase().includes('_location_map.') ||
+        archivo.nombreArchivo.toLowerCase().endsWith('_mapa.png')
+      )) {
+        return false;
+      }
+      // Si es audio, verificar si está asociado a una foto con el mismo nombre base en la actividad
+      if (tipo === 'audio' && archivo.nombreArchivo) {
+        const dotIdx = archivo.nombreArchivo.lastIndexOf('.');
+        const base = dotIdx !== -1 ? archivo.nombreArchivo.substring(0, dotIdx) : archivo.nombreArchivo;
+        if (fotosNombresBase.has(base.toLowerCase())) {
+          console.log(`ℹ️ [Álbum Libro] Omitiendo audio asociado ${archivo.nombreArchivo} como página independiente (vinculado a foto)`);
+          return false;
+        }
+      }
+      return true;
+    });
+
+    // Procesar archivos normales (fotos, vídeos y audios sueltos independientes)
+    const paginasNormales: PaginaMedia[] = archivosFiltrados.map(archivo => {
       const tipoMedia = this.determinarTipoMedia(archivo);
       const url = this.getFileUrl(archivo);
 
@@ -2846,10 +2886,33 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             });
           }
 
-          const archivosGeo = (archivosActividad || []).filter((a: any) =>
-            (a.tipo === 'foto' || a.tipo === 'video' || a.tipo === 'audio') &&
-            (a.geolocalizacion || (a.latitud && a.longitud) || (a.lat && a.lng))
-          );
+          const fotosNombresBase1 = new Set<string>();
+          (archivosActividad || []).forEach((a: any) => {
+            const tipo = (a.tipo || '').toLowerCase();
+            if ((tipo === 'foto' || tipo === 'imagen') && a.nombreArchivo) {
+              const dotIdx = a.nombreArchivo.lastIndexOf('.');
+              const base = dotIdx !== -1 ? a.nombreArchivo.substring(0, dotIdx) : a.nombreArchivo;
+              fotosNombresBase1.add(base.toLowerCase());
+            }
+          });
+
+          const archivosGeo = (archivosActividad || []).filter((a: any) => {
+            const tipo = (a.tipo || '').toLowerCase();
+            if (tipo === 'mapa_ubicacion' || tipo === 'mapa' || tipo === 'gpx' || tipo === 'manifest' || tipo === 'estadisticas') return false;
+            if (a.archivoPrincipalId) return false;
+            if (a.nombreArchivo && (
+              a.nombreArchivo.toLowerCase().includes('_mapa.') ||
+              a.nombreArchivo.toLowerCase().includes('_location_map.') ||
+              a.nombreArchivo.toLowerCase().endsWith('_mapa.png')
+            )) return false;
+            if (tipo === 'audio' && a.nombreArchivo) {
+              const dotIdx = a.nombreArchivo.lastIndexOf('.');
+              const base = dotIdx !== -1 ? a.nombreArchivo.substring(0, dotIdx) : a.nombreArchivo;
+              if (fotosNombresBase1.has(base.toLowerCase())) return false;
+            }
+            return (tipo === 'foto' || tipo === 'video' || tipo === 'audio' || tipo === 'imagen') &&
+              (a.geolocalizacion || (a.latitud && a.longitud) || (a.lat && a.lng));
+          });
 
           // Extraer y agrupar fotos geolocalizadas en PIs (< 10m)
           const validMedia = (archivosGeo || []).map((archivo: any) => {
@@ -3057,10 +3120,33 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               });
             }
 
-            const archivosGeo = (archivosActividad || []).filter((a: any) =>
-              (a.tipo === 'foto' || a.tipo === 'video' || a.tipo === 'audio') &&
-              (a.geolocalizacion || (a.latitud && a.longitud) || (a.lat && a.lng))
-            );
+            const fotosNombresBase2 = new Set<string>();
+            (archivosActividad || []).forEach((a: any) => {
+              const tipo = (a.tipo || '').toLowerCase();
+              if ((tipo === 'foto' || tipo === 'imagen') && a.nombreArchivo) {
+                const dotIdx = a.nombreArchivo.lastIndexOf('.');
+                const base = dotIdx !== -1 ? a.nombreArchivo.substring(0, dotIdx) : a.nombreArchivo;
+                fotosNombresBase2.add(base.toLowerCase());
+              }
+            });
+
+            const archivosGeo = (archivosActividad || []).filter((a: any) => {
+              const tipo = (a.tipo || '').toLowerCase();
+              if (tipo === 'mapa_ubicacion' || tipo === 'mapa' || tipo === 'gpx' || tipo === 'manifest' || tipo === 'estadisticas') return false;
+              if (a.archivoPrincipalId) return false;
+              if (a.nombreArchivo && (
+                a.nombreArchivo.toLowerCase().includes('_mapa.') ||
+                a.nombreArchivo.toLowerCase().includes('_location_map.') ||
+                a.nombreArchivo.toLowerCase().endsWith('_mapa.png')
+              )) return false;
+              if (tipo === 'audio' && a.nombreArchivo) {
+                const dotIdx = a.nombreArchivo.lastIndexOf('.');
+                const base = dotIdx !== -1 ? a.nombreArchivo.substring(0, dotIdx) : a.nombreArchivo;
+                if (fotosNombresBase2.has(base.toLowerCase())) return false;
+              }
+              return (tipo === 'foto' || tipo === 'video' || tipo === 'audio' || tipo === 'imagen') &&
+                (a.geolocalizacion || (a.latitud && a.longitud) || (a.lat && a.lng));
+            });
 
             // Extraer y agrupar fotos geolocalizadas en PIs (< 10m)
             const validMedia = (archivosGeo || []).map((archivo: any) => {
@@ -3082,39 +3168,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                 lng = Number(archivo.lng);
               }
               if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
-                let ts = 0;
-                // Prioridad 1: timestamp epoch en nombre de archivo (ej. recording-1789463199479... o JPEG_20260915_110546_1789463146411.jpg)
-                if (archivo.nombreArchivo) {
-                  const matchNom = archivo.nombreArchivo.match(/(\d{13})/);
-                  if (matchNom) {
-                    const epoch = Number(matchNom[1]);
-                    if (epoch > 1577836800000 && epoch < 2051222400000) ts = epoch;
-                  }
-                }
-                // Prioridad 2: metadatos.timestamp
-                if (!ts && archivo.metadatos) {
-                  try {
-                    const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
-                    if (meta?.timestamp) {
-                      const parsedTs = new Date(meta.timestamp).getTime() || 0;
-                      if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
-                    }
-                  } catch (e) { }
-                }
-                // Prioridad 3: fechaCreacion + horaCaptura
-                if (!ts && archivo.fechaCreacion) {
-                  const fecha = new Date(archivo.fechaCreacion);
-                  if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string' &&
-                    archivo.horaCaptura.toLowerCase() !== 'desconocido' && archivo.horaCaptura.trim() !== '') {
-                    const [horas, minutos] = archivo.horaCaptura.split(':').map(Number);
-                    if (!isNaN(horas) && !isNaN(minutos)) fecha.setHours(horas, minutos, 0, 0);
-                  }
-                  const parsedTs = fecha.getTime();
-                  if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
-                } else if (!ts && (archivo.fechaTomada || archivo.fecha)) {
-                  const parsedTs = new Date(archivo.fechaTomada || archivo.fecha).getTime() || 0;
-                  if (new Date(parsedTs).getFullYear() >= 2000) ts = parsedTs;
-                }
+                const ts = this.obtenerTimestampReal(archivo);
                 return { lat, lng, archivo, timestamp: ts };
               }
               return null;
@@ -3660,6 +3714,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
    */
   private async procesarColaPrecaching(): Promise<void> {
     if (this.procesandoPrecaching || this.colaPrecachingSubtramos.length === 0) return;
+
+    // ⚡ Solo auto pre-cachear si el navegador soporta WebCodecs acelerado por hardware (evita saturar el hilo principal con MediaRecorder en orígenes HTTP)
+    const tieneWebCodecs = typeof (window as any).VideoEncoder === 'function';
+    if (!tieneWebCodecs) {
+      console.log('ℹ️ [Auto Pre-cache] WebCodecs no disponible (origen HTTP no seguro). Usando animación nativa GPX fluida para no saturar la CPU.');
+      this.colaPrecachingSubtramos = [];
+      return;
+    }
+
     this.procesandoPrecaching = true;
 
     while (this.colaPrecachingSubtramos.length > 0) {
@@ -5213,7 +5276,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       if (timePart.length === 5) timePart += ':00';
     }
 
-    // Si no hay horaCaptura o es desconocida, extraer YYYYMMDD_HHMMSS del nombre (ej. IMG_20260628_120302.jpg)
+    // Si no hay horaCaptura o es desconocida, extraer de fechaCreacion ISO o YYYYMMDD_HHMMSS del nombre
+    if (!timePart && arch.fechaCreacion && typeof arch.fechaCreacion === 'string') {
+      const matchIsoTime = arch.fechaCreacion.match(/T(\d{2}:\d{2}:\d{2})/);
+      if (matchIsoTime && matchIsoTime[1] !== '00:00:00') {
+        timePart = matchIsoTime[1];
+      }
+    }
+
     if (!timePart && arch.nombreArchivo) {
       const m = arch.nombreArchivo.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
       if (m) {
