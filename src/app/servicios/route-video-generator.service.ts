@@ -459,10 +459,46 @@ export class RouteVideoGeneratorService {
     ctx.setLineDash([]);
 
     // 3. Trazado animado hasta el progreso actual
-    const targetIdxFloat = progress * (points.length - 1);
-    const targetIdx = Math.floor(targetIdxFloat);
-    const remainder = targetIdxFloat - targetIdx;
+    //
+    // ✅ INTERPOLACIÓN POR DISTANCIA ACUMULADA (velocidad constante)
+    // Si los puntos tienen distAcum, usamos la distancia total recorrida como
+    // eje temporal → el avatar avanza a velocidad constante independientemente
+    // de la densidad de puntos GPS.
+    // Fallback: si no hay distAcum (puntos sin metadatos), se usa índice (comportamiento anterior).
 
+    const hasDistAcum = points.length > 1 &&
+      points[points.length - 1].distAcum != null &&
+      (points[points.length - 1].distAcum as number) > 0;
+
+    let targetIdx: number;
+    let remainder: number;
+
+    if (hasDistAcum) {
+      // Distancia objetivo en las mismas unidades que distAcum (km)
+      const totalDist = points[points.length - 1].distAcum as number;
+      const targetDist = progress * totalDist;
+
+      // Búsqueda binaria del segmento donde cae targetDist
+      let lo = 0, hi = points.length - 2;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if ((points[mid].distAcum as number) <= targetDist) lo = mid;
+        else hi = mid - 1;
+      }
+      targetIdx = lo;
+
+      const d0 = points[lo].distAcum as number;
+      const d1 = (points[lo + 1]?.distAcum as number) ?? d0;
+      const segLen = d1 - d0;
+      remainder = segLen > 0 ? (targetDist - d0) / segLen : 0;
+    } else {
+      // Fallback: avance por índice (rutas sin distAcum)
+      const targetIdxFloat = progress * (points.length - 1);
+      targetIdx = Math.floor(targetIdxFloat);
+      remainder = targetIdxFloat - targetIdx;
+    }
+
+    // Posición interpolada del vehículo y puntos ya recorridos para el trazo animado
     const currentPoints = points.slice(0, targetIdx + 1);
     let currentPos = points[0];
 
