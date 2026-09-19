@@ -1497,12 +1497,18 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
             effectiveTargetSec = targetDurationSeconds / distanceSpeedBoost;
           }
 
-          // Cota temporal óptima en Recorrido Guiado: entre minDurationSec y 4.5s como máximo
-          effectiveTargetSec = Math.max(minDurationSec, Math.min(4.5, effectiveTargetSec));
+          // ⚡ Speed Multiplier inteligente para rutas ultra-largas (> 50 km, ej. Cruceros marítimos de 100 km o vuelos)
+          if (segmentDistM > 50000) {
+            const longDistMultiplier = Math.min(8.0, 4.0 + (segmentDistM - 50000) / 25000);
+            effectiveTargetSec = Math.max(3.5, Math.min(5.5, effectiveTargetSec / longDistMultiplier));
+          } else {
+            // Cota temporal óptima en Recorrido Guiado estándar: entre minDurationSec y 4.5s como máximo
+            effectiveTargetSec = Math.max(minDurationSec, Math.min(4.5, effectiveTargetSec));
+          }
 
           calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
-          // Permitir aceleración hasta 3000 igual que en animación estándar (sin el tope artificial de 250)
-          calculatedSpeed = Math.max(1, Math.min(3000, Math.round(calculatedSpeed)));
+          // Permitir aceleración hasta 5000 para rutas muy largas
+          calculatedSpeed = Math.max(1, Math.min(5000, Math.round(calculatedSpeed)));
         } else {
           // 🚀 Animación Estándar (Otros Recorridos): Comportamiento ágil original
           const targetDurationSeconds = Math.max(0.5, safeVisualDistPx / targetPxPerSec);
@@ -1512,8 +1518,13 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
             const distanceSpeedBoost = Math.min(isBoat ? 3.5 : 2.2, 1 + 0.35 * Math.log10(distKm));
             effectiveTargetSec = targetDurationSeconds / distanceSpeedBoost;
           }
+          // ⚡ Speed Multiplier inteligente para rutas ultra-largas (> 50 km)
+          if (segmentDistM > 50000) {
+            const longDistMultiplier = Math.min(8.0, 4.0 + (segmentDistM - 50000) / 25000);
+            effectiveTargetSec = Math.max(3.5, Math.min(5.5, effectiveTargetSec / longDistMultiplier));
+          }
           calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
-          calculatedSpeed = Math.max(1, Math.min(3000, Math.round(calculatedSpeed)));
+          calculatedSpeed = Math.max(1, Math.min(5000, Math.round(calculatedSpeed)));
         }
 
         console.log(`🎯 [Tramo] pixels=${safeVisualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${effectiveTargetSec.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
@@ -2780,7 +2791,23 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   private addLatLngsToCurrentPolylines(coords: [number, number][]) {
     if (!this.map || coords.length === 0) return;
 
-    coords.forEach(c => this.currentPolylinePoints.push(this.L.latLng(c[0], c[1])));
+    // En rutas largas o con alta densidad de puntos, descartar puntos visualmente redundantes
+    // para no sobrecargar el árbol DOM de SVG de Leaflet en cada frame (previniendo congelación del navegador)
+    const isDenseRoute = this.points.length > 500 || (this.points[this.points.length - 1]?.distAcum || 0) > 40000;
+    let lastPt = this.currentPolylinePoints.length > 0 ? this.currentPolylinePoints[this.currentPolylinePoints.length - 1] : null;
+
+    for (const c of coords) {
+      if (isDenseRoute && lastPt) {
+        const dLat = Math.abs(c[0] - lastPt.lat);
+        const dLng = Math.abs(c[1] - lastPt.lng);
+        if (dLat < 0.00015 && dLng < 0.00015) {
+          continue; // Omitir sub-puntos menores a ~12 metros para no colapsar la polilínea
+        }
+      }
+      const newPt = this.L.latLng(c[0], c[1]);
+      this.currentPolylinePoints.push(newPt);
+      lastPt = newPt;
+    }
 
     if (this.currentPolyline) {
       this.currentPolyline.setLatLngs(this.currentPolylinePoints);

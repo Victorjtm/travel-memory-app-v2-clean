@@ -1625,7 +1625,7 @@
             <div class="mapa-vintage-wrapper">
               <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A - 60 FPS Instantáneo) -->
               <div *ngIf="pagSingle.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper">
-                <video [src]="pagSingle.urlVideoAnimacion" class="video-mapa-vintage" autoplay [muted]="true" muted playsinline (ended)="onFinAnimacionMapa()"></video>
+                <video [src]="pagSingle.urlVideoAnimacion" class="video-mapa-vintage" autoplay [muted]="true" muted playsinline preload="metadata" decoding="async" (ended)="onFinAnimacionMapa()"></video>
                 <div class="video-mapa-controls-overlay">
                   <button type="button" class="btn-mapa-switch" (click)="toggleMapaInteractivo(pagSingle, $event)" title="Ver mapa interactivo">
                     <i class="fas fa-map-marked-alt"></i> Ver Mapa Interactivo
@@ -1703,7 +1703,7 @@
         <div class="mapa-panoramico-wrapper">
           <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A - 60 FPS Instantáneo) -->
           <div *ngIf="pagMapa.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper" (click)="hayPaginaSiguiente && cambiarPagina(1)" style="cursor: pointer;" title="Hacer clic para avanzar al siguiente pliego">
-            <video [src]="pagMapa.urlVideoAnimacion" class="video-mapa-vintage" autoplay [muted]="true" muted playsinline (ended)="onFinAnimacionMapa()"></video>
+            <video [src]="pagMapa.urlVideoAnimacion" class="video-mapa-vintage" autoplay [muted]="true" muted playsinline preload="metadata" decoding="async" (ended)="onFinAnimacionMapa()"></video>
             <div class="video-mapa-controls-overlay">
               <button type="button" class="btn-mapa-switch" (click)="toggleMapaInteractivo(pagMapa, $event)"
                 title="Ver mapa interactivo">
@@ -1952,7 +1952,7 @@
               <div class="mapa-vintage-wrapper">
                 <!-- Modo 0: Vídeo Pre-renderizado MP4 (Opción A) -->
                 <div *ngIf="pagDer.urlVideoAnimacion && !forzarMapaInteractivo" class="video-mapa-vintage-wrapper">
-                  <video [src]="pagDer.urlVideoAnimacion" class="video-mapa-vintage" autoplay [muted]="true" muted playsinline (ended)="onFinAnimacionMapa()"></video>
+                  <video [src]="pagDer.urlVideoAnimacion" class="video-mapa-vintage" autoplay [muted]="true" muted playsinline preload="metadata" decoding="async" (ended)="onFinAnimacionMapa()"></video>
                   <div class="video-mapa-controls-overlay">
                     <button type="button" class="btn-mapa-switch" (click)="toggleMapaInteractivo(pagDer, $event)" title="Ver mapa interactivo">
                       <i class="fas fa-map-marked-alt"></i> Ver Mapa Interactivo

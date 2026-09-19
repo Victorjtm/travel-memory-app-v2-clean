@@ -3663,6 +3663,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.procesandoPrecaching = true;
 
     while (this.colaPrecachingSubtramos.length > 0) {
+      // 🛑 Pausar si el usuario está reproduciendo el libro, slideshow o viendo un mapa en directo
+      if (this.reproduciendoSlideshow) {
+        console.log('⏸️ [Auto Pre-cache] Pausado temporalmente durante reproducción activa.');
+        break;
+      }
+
       const pag = this.colaPrecachingSubtramos.shift()!;
       if (pag.urlVideoAnimacion) continue;
 
@@ -3675,6 +3681,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           {
             trackGpx: pag.trackGpx!,
             transportMode: pag.tipoTransporteTramo || 'driving',
+            transportSegments: pag.transportSegments || [],
             distanciaKm: pag.distanciaTramoKm || 0,
             titulo: pag.titulo || `Recorrido Parada #${pag.idParadaOrigen} ➔ #${pag.idParadaDestino}`,
             idParadaOrigen: pag.idParadaOrigen,
@@ -3726,8 +3733,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         {
           trackGpx: mapa.trackGpx,
           transportMode: mapa.tipoTransporteTramo || 'driving',
+          transportSegments: mapa.transportSegments || [],
           distanciaKm: mapa.distanciaTramoKm || 0,
-          titulo: mapa.titulo || 'Recorrido'
+          titulo: mapa.titulo || 'Recorrido',
+          idParadaOrigen: mapa.idParadaOrigen,
+          idParadaDestino: mapa.idParadaDestino
         },
         (progreso) => {
           this.progresoRenderVideoRuta = progreso.mensaje;

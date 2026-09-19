@@ -7,6 +7,7 @@ import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 export interface RouteVideoOptions {
   trackGpx: string;
   transportMode?: string;
+  transportSegments?: any[];
   distanciaKm?: number;
   titulo?: string;
   duracionSegundos?: number;
@@ -41,9 +42,20 @@ export class RouteVideoGeneratorService {
    * - Progresión suave para tramos medios (2 km -> ~7-8s).
    * - Tope de 12-14s para tramos largos para no aburrir al lector.
    */
+  /**
+   * Calcula la duración dinámica adaptativa según la distancia del subtramo:
+   * - Tramos cortos (< 500m): ~4.5s - 5.0s para apreciar el HUD y el movimiento del icono.
+   * - Tramos medios (2 km -> ~7-8s).
+   * - Tramos largos (> 50 km, ej. cruceros marítimos de 103 km o vuelos): Speed Multiplier automático (x4 - x8),
+   *   acotando la duración del clip a un intervalo ágil de 7.0s a 9.0s para evitar esperas excesivas.
+   */
   calcularDuracionDinamica(distanciaKm: number): number {
     const dist = Math.max(0.05, distanciaKm || 0.1);
-    const dur = 4.5 + Math.min(9.0, Math.log2(Math.max(1, dist * 2.5)) * 1.8);
+    if (dist > 50) {
+      const dur = 7.0 + Math.min(2.0, Math.log10(dist / 50) * 2.0);
+      return Math.round(dur * 10) / 10;
+    }
+    const dur = 4.5 + Math.min(6.5, Math.log2(Math.max(1, dist * 2.5)) * 1.5);
     return Math.round(dur * 10) / 10;
   }
 
@@ -61,9 +73,12 @@ export class RouteVideoGeneratorService {
     try {
       onProgress?.({ fase: 'preparando', porcentaje: 5, mensaje: `Analizando subtramo #${origen} ➔ #${destino}...` });
 
-      const points = this.gpxService.parseGpx(options.trackGpx);
+      let points = this.gpxService.parseGpx(options.trackGpx);
       if (!points || points.length < 2) {
         throw new Error('El track GPX no contiene suficientes puntos');
+      }
+      if (options.transportSegments && options.transportSegments.length > 0) {
+        points = this.gpxService.applyTransportSegments(points, options.transportSegments);
       }
 
       onProgress?.({ fase: 'descargando_tiles', porcentaje: 15, mensaje: 'Cargando cartografía base...' });
@@ -93,9 +108,12 @@ export class RouteVideoGeneratorService {
     try {
       onProgress?.({ fase: 'preparando', porcentaje: 5, mensaje: 'Analizando recorrido GPX...' });
 
-      const points = this.gpxService.parseGpx(options.trackGpx);
+      let points = this.gpxService.parseGpx(options.trackGpx);
       if (!points || points.length < 2) {
         throw new Error('El track GPX no contiene suficientes puntos');
+      }
+      if (options.transportSegments && options.transportSegments.length > 0) {
+        points = this.gpxService.applyTransportSegments(points, options.transportSegments);
       }
 
       onProgress?.({ fase: 'descargando_tiles', porcentaje: 15, mensaje: 'Cargando cartografía base...' });
@@ -124,10 +142,14 @@ export class RouteVideoGeneratorService {
    * Renderiza los fotogramas del recorrido sobre Canvas y los codifica en MP4/WebM.
    */
   async renderizarVideoRuta(
-    points: GpxPoint[],
+    rawPoints: GpxPoint[],
     options: RouteVideoOptions,
     onProgress?: (p: ProgresoRenderizadoRuta) => void
   ): Promise<Blob> {
+    let points = rawPoints;
+    if (options.transportSegments && options.transportSegments.length > 0) {
+      points = this.gpxService.applyTransportSegments(points, options.transportSegments);
+    }
     const width = options.width || 1280;
     const height = options.height || 720;
     const fps = options.fps || 30;
@@ -195,7 +217,9 @@ export class RouteVideoGeneratorService {
     const canvasPoints = points.map(p => ({
       ...proyectar(p.lat, p.lng),
       time: p.time,
-      ele: p.ele
+      ele: p.ele,
+      mode: p.mode || p.hfMode || options.transportMode || 'driving',
+      distAcum: p.distAcum
     }));
 
     // 2. Pre-cargar tiles cartográficos OpenStreetMap nativos centrados en la ruta
@@ -253,7 +277,7 @@ export class RouteVideoGeneratorService {
     canvas: HTMLCanvasElement,
     ctx: CanvasRenderingContext2D,
     fondoCanvas: HTMLCanvasElement,
-    points: Array<{ x: number; y: number }>,
+    points: Array<{ x: number; y: number; mode?: string; distAcum?: number }>,
     totalFrames: number,
     fps: number,
     width: number,
@@ -282,7 +306,8 @@ export class RouteVideoGeneratorService {
       codec: 'avc1.42001f', // H.264 Baseline Profile level 3.1
       width: width,
       height: height,
-      bitrate: 3_000_000,
+      bitrate: 900_000, // ⚡ Ultra-compresión optimizada (900 kbps) para mapa vectorial estático
+      bitrateMode: 'variable',
       framerate: fps
     });
 
@@ -337,7 +362,7 @@ export class RouteVideoGeneratorService {
     canvas: HTMLCanvasElement,
     ctx: CanvasRenderingContext2D,
     fondoCanvas: HTMLCanvasElement,
-    points: Array<{ x: number; y: number }>,
+    points: Array<{ x: number; y: number; mode?: string; distAcum?: number }>,
     totalFrames: number,
     fps: number,
     width: number,
@@ -349,7 +374,7 @@ export class RouteVideoGeneratorService {
   ): Promise<Blob> {
     const stream = canvas.captureStream(fps);
     const mimeType = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm';
-    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 3_000_000 });
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 900_000 });
     const chunks: Blob[] = [];
 
     recorder.ondataavailable = (e) => {
@@ -408,7 +433,7 @@ export class RouteVideoGeneratorService {
   private dibujarFotograma(
     ctx: CanvasRenderingContext2D,
     fondoCanvas: HTMLCanvasElement,
-    points: Array<{ x: number; y: number }>,
+    points: Array<{ x: number; y: number; mode?: string; distAcum?: number }>,
     progress: number,
     width: number,
     height: number,
@@ -446,12 +471,20 @@ export class RouteVideoGeneratorService {
       const p2 = points[targetIdx + 1];
       currentPos = {
         x: p1.x + (p2.x - p1.x) * remainder,
-        y: p1.y + (p2.y - p1.y) * remainder
+        y: p1.y + (p2.y - p1.y) * remainder,
+        mode: p1.mode,
+        distAcum: p1.distAcum
       };
       currentPoints.push(currentPos);
     } else if (points.length > 0) {
       currentPos = points[points.length - 1];
     }
+
+    // 🌟 Modo de transporte e icono dinámicos para este fotograma exacto
+    const currentPt = points[Math.min(targetIdx, points.length - 1)];
+    const activeMode = currentPt?.mode || options.transportMode || 'driving';
+    const activeIcon = this.obtenerIconoTransporte(activeMode);
+    const activeColor = this.obtenerColorTransporte(activeMode);
 
     if (currentPoints.length > 1) {
       // Halo exterior brillante de contraste
@@ -466,16 +499,37 @@ export class RouteVideoGeneratorService {
       });
       ctx.stroke();
 
-      // Línea viva de color de la ruta
+      // Línea viva de color de la ruta segmentada por modo de transporte
+      let segStartIdx = 0;
+      let segMode = currentPoints[0].mode || activeMode;
+      for (let i = 1; i < currentPoints.length; i++) {
+        const ptMode = currentPoints[i].mode || segMode;
+        if (ptMode !== segMode) {
+          ctx.beginPath();
+          ctx.strokeStyle = this.obtenerColorTransporte(segMode);
+          ctx.lineWidth = 5.5;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          for (let j = segStartIdx; j <= i; j++) {
+            if (j === segStartIdx) ctx.moveTo(currentPoints[j].x, currentPoints[j].y);
+            else ctx.lineTo(currentPoints[j].x, currentPoints[j].y);
+          }
+          ctx.stroke();
+
+          segStartIdx = i;
+          segMode = ptMode;
+        }
+      }
+      // Último tramo de la línea
       ctx.beginPath();
-      ctx.strokeStyle = colorRuta;
+      ctx.strokeStyle = this.obtenerColorTransporte(segMode);
       ctx.lineWidth = 5.5;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      currentPoints.forEach((p, idx) => {
-        if (idx === 0) ctx.moveTo(p.x, p.y);
-        else ctx.lineTo(p.x, p.y);
-      });
+      for (let j = segStartIdx; j < currentPoints.length; j++) {
+        if (j === segStartIdx) ctx.moveTo(currentPoints[j].x, currentPoints[j].y);
+        else ctx.lineTo(currentPoints[j].x, currentPoints[j].y);
+      }
       ctx.stroke();
     }
 
@@ -541,20 +595,20 @@ export class RouteVideoGeneratorService {
     ctx.shadowBlur = 8;
     ctx.shadowOffsetY = 3;
 
-    // Disco circular blanco con borde de color
+    // Disco circular blanco con borde de color dinámico del modo actual
     ctx.beginPath();
     ctx.arc(currentPos.x, currentPos.y, 18, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
     ctx.lineWidth = 3;
-    ctx.strokeStyle = colorRuta;
+    ctx.strokeStyle = activeColor;
     ctx.stroke();
 
-    // Icono emoji del medio de transporte centrado
+    // Icono emoji del medio de transporte centrado (actualizado en tiempo real por frame)
     ctx.font = '20px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(transportIcon, currentPos.x, currentPos.y + 1);
+    ctx.fillText(activeIcon, currentPos.x, currentPos.y + 1);
     ctx.restore();
 
     // 7. HUD Vintage (Caja de instrumentos en esquina superior izquierda)
@@ -570,7 +624,7 @@ export class RouteVideoGeneratorService {
     ctx.shadowBlur = 8;
     ctx.shadowOffsetY = 3;
     ctx.beginPath();
-    ctx.roundRect(28, 24, 320, 84, 10);
+    ctx.roundRect(28, 24, 330, 84, 10);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
@@ -579,7 +633,7 @@ export class RouteVideoGeneratorService {
     ctx.save();
     ctx.strokeStyle = 'rgba(191, 161, 95, 0.45)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(33, 29, 310, 74);
+    ctx.strokeRect(33, 29, 320, 74);
 
     // Título del tramo
     ctx.fillStyle = '#2b1810';
@@ -587,20 +641,21 @@ export class RouteVideoGeneratorService {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     const titleText = options.titulo || `RECORRIDO: PARADA #${numOrigen} ➔ PARADA #${numDestino}`;
-    ctx.fillText(titleText, 44, 40);
+    ctx.fillText(titleText, 44, 38);
 
-    // Kilometraje y progreso en tiempo real
+    // Kilometraje y progreso en tiempo real con etiqueta de medio de transporte
     const kmStr = totalKm < 5 ? kmActual.toFixed(2) : kmActual.toFixed(1);
     const totStr = totalKm < 5 ? totalKm.toFixed(2) : totalKm.toFixed(1);
+    const modoEtiqueta = this.obtenerNombreModoTransporte(activeMode);
     ctx.fillStyle = '#78350f';
     ctx.font = '600 13px sans-serif';
-    ctx.fillText(`${transportIcon}  ${kmStr} km / ${totStr} km (${Math.round(progress * 100)}%)`, 44, 63);
+    ctx.fillText(`${activeIcon}  ${modoEtiqueta} · ${kmStr} km / ${totStr} km (${Math.round(progress * 100)}%)`, 44, 61);
 
     // Barra de progreso estilizada dentro del HUD
     ctx.fillStyle = 'rgba(120, 53, 15, 0.15)';
-    ctx.fillRect(44, 85, 288, 6);
-    ctx.fillStyle = colorRuta;
-    ctx.fillRect(44, 85, Math.max(6, 288 * progress), 6);
+    ctx.fillRect(44, 83, 298, 6);
+    ctx.fillStyle = activeColor;
+    ctx.fillRect(44, 83, Math.max(6, 298 * progress), 6);
     ctx.restore();
   }
 
@@ -696,21 +751,35 @@ export class RouteVideoGeneratorService {
 
   private obtenerIconoTransporte(modo: string): string {
     const m = (modo || '').toLowerCase();
+    if (m.includes('boat') || m.includes('barco') || m.includes('crucero') || m.includes('ship') || m.includes('ferry') || m.includes('mar') || m.includes('embarc') || m.includes('kayak')) return '🚢';
+    if (m.includes('plane') || m.includes('avion') || m.includes('vuelo') || m.includes('flight')) return '✈️';
+    if (m.includes('train') || m.includes('tren') || m.includes('metro') || m.includes('ferrocarril')) return '🚆';
+    if (m.includes('bici') || m.includes('cycling') || m.includes('bike') || m.includes('bicycle')) return '🚴';
+    if (m.includes('bus') || m.includes('autobus') || m.includes('autocar')) return '🚌';
     if (m.includes('walk') || m.includes('andando') || m.includes('caminar') || m.includes('pie')) return '🚶';
-    if (m.includes('boat') || m.includes('barco') || m.includes('crucero') || m.includes('ferry')) return '🚢';
-    if (m.includes('plane') || m.includes('avion') || m.includes('vuelo')) return '✈️';
-    if (m.includes('train') || m.includes('tren') || m.includes('metro')) return '🚆';
-    if (m.includes('bici') || m.includes('cycling') || m.includes('bike')) return '🚴';
+    if (m.includes('coche') || m.includes('car') || m.includes('driving') || m.includes('auto') || m.includes('taxi')) return '🚗';
     return '🚗';
   }
 
   private obtenerColorTransporte(modo: string): string {
     const m = (modo || '').toLowerCase();
-    if (m.includes('walk') || m.includes('andando') || m.includes('caminar')) return '#059669';
-    if (m.includes('boat') || m.includes('barco') || m.includes('crucero')) return '#0284c7';
-    if (m.includes('plane') || m.includes('avion')) return '#7c3aed';
-    if (m.includes('train') || m.includes('tren')) return '#d97706';
-    if (m.includes('bici') || m.includes('cycling')) return '#ea580c';
+    if (m.includes('boat') || m.includes('barco') || m.includes('crucero') || m.includes('ship') || m.includes('ferry') || m.includes('mar') || m.includes('embarc')) return '#0284c7';
+    if (m.includes('plane') || m.includes('avion') || m.includes('vuelo') || m.includes('flight')) return '#7c3aed';
+    if (m.includes('train') || m.includes('tren') || m.includes('metro') || m.includes('ferrocarril')) return '#d97706';
+    if (m.includes('bici') || m.includes('cycling') || m.includes('bike') || m.includes('bicycle')) return '#ea580c';
+    if (m.includes('bus') || m.includes('autobus') || m.includes('autocar')) return '#a855f7';
+    if (m.includes('walk') || m.includes('andando') || m.includes('caminar') || m.includes('pie')) return '#059669';
     return '#dc2626'; // Coche / default
+  }
+
+  private obtenerNombreModoTransporte(modo: string): string {
+    const m = (modo || '').toLowerCase();
+    if (m.includes('boat') || m.includes('barco') || m.includes('crucero') || m.includes('ship') || m.includes('ferry') || m.includes('mar')) return 'En Barco';
+    if (m.includes('plane') || m.includes('avion') || m.includes('vuelo') || m.includes('flight')) return 'En Vuelo';
+    if (m.includes('train') || m.includes('tren') || m.includes('metro')) return 'En Tren';
+    if (m.includes('bici') || m.includes('cycling') || m.includes('bike')) return 'En Bicicleta';
+    if (m.includes('bus') || m.includes('autobus') || m.includes('autocar')) return 'En Autobús';
+    if (m.includes('walk') || m.includes('andando') || m.includes('caminar') || m.includes('pie')) return 'A pie';
+    return 'En Ruta';
   }
 }

@@ -5933,6 +5933,9 @@
                 height: 100%;
                 object-fit: contain;
                 display: block;
+                transform: translateZ(0);
+                backface-visibility: hidden;
+                will-change: transform;
               }
 
               .video-mapa-controls-overlay {
