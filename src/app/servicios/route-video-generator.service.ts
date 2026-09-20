@@ -418,27 +418,7 @@ export class RouteVideoGeneratorService {
     options: RouteVideoOptions,
     onProgress?: (p: ProgresoRenderizadoRuta) => void
   ): Promise<Blob> {
-    const supportsCaptureStream = typeof (canvas as any).captureStream === 'function';
-    if (!supportsCaptureStream) {
-      throw new Error('El navegador no soporta captureStream en Canvas');
-    }
-
-    let stream: MediaStream;
-    let videoTrack: any = null;
-    let usaManualFrame = false;
-
-    try {
-      stream = (canvas as any).captureStream(0);
-      videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack && typeof videoTrack.requestFrame === 'function') {
-        usaManualFrame = true;
-      } else {
-        stream = (canvas as any).captureStream(fps);
-      }
-    } catch {
-      stream = (canvas as any).captureStream(fps);
-    }
-
+    const stream = canvas.captureStream(fps);
     const mimeType = MediaRecorder.isTypeSupported('video/mp4')
       ? 'video/mp4'
       : MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
@@ -452,13 +432,27 @@ export class RouteVideoGeneratorService {
       if (e.data.size > 0) chunks.push(e.data);
     };
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
       recorder.onerror = (e) => reject(e);
 
       recorder.start();
 
-      for (let frame = 0; frame < totalFrames; frame++) {
+      let frame = 0;
+      const frameInterval = 1000 / fps;
+
+      const renderStep = () => {
+        if (frame >= totalFrames) {
+          setTimeout(() => {
+            try {
+              recorder.stop();
+            } catch {
+              resolve(new Blob(chunks, { type: mimeType }));
+            }
+          }, 100);
+          return;
+        }
+
         const progress = frame / (totalFrames - 1);
         this.dibujarFotograma(
           ctx,
@@ -472,35 +466,20 @@ export class RouteVideoGeneratorService {
           options
         );
 
-        if (usaManualFrame && videoTrack) {
-          videoTrack.requestFrame();
-        }
-
+        frame++;
         if (frame % 15 === 0) {
           const pct = 25 + Math.round((frame / totalFrames) * 55);
           onProgress?.({
             fase: 'renderizando',
             porcentaje: pct,
-            mensaje: `Generando animación (${Math.round((frame / totalFrames) * 100)}%)...`
+            mensaje: `Generando vídeo (${Math.round((frame / totalFrames) * 100)}%)...`
           });
         }
 
-        await new Promise(r => {
-          if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(r);
-          } else {
-            setTimeout(r, 0);
-          }
-        });
-      }
+        setTimeout(renderStep, frameInterval);
+      };
 
-      setTimeout(() => {
-        try {
-          recorder.stop();
-        } catch {
-          resolve(new Blob(chunks, { type: mimeType }));
-        }
-      }, 120);
+      renderStep();
     });
   }
 
