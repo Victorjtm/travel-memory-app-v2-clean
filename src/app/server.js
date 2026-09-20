@@ -4725,9 +4725,34 @@ app.post(['/actividades/:id/subtramos/video', '/api/actividades/:id/subtramos/vi
     const relPath = path.relative(uploadsPath, finalFilePath).replace(/\\/g, '/');
 
     const tempInput = req.file.path;
-    // FFmpeg obligatorio con -movflags +faststart para streaming instantáneo
-    const cmd = `${FFMPEG_BIN} -y -i "${tempInput}" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart "${finalFilePath}"`;
+    const duracionObjetivo = parseFloat(req.body.duracionSegundos);
 
+    // Leer duración real del archivo subido en segundos (a través del átomo mvhd de MP4)
+    let duracionRealSubida = 0;
+    try {
+      const buf = fs.readFileSync(tempInput);
+      const mvhdIdx = buf.indexOf(Buffer.from('mvhd'));
+      if (mvhdIdx !== -1) {
+        const version = buf[mvhdIdx + 4];
+        const timescale = buf.readUInt32BE(mvhdIdx + (version === 1 ? 20 : 12));
+        const dur = version === 1 ? Number(buf.readBigUInt64BE(mvhdIdx + 24)) : buf.readUInt32BE(mvhdIdx + 16);
+        if (timescale > 0) duracionRealSubida = dur / timescale;
+      }
+    } catch (e) {}
+
+    let filtroTiempo = '';
+    if (duracionObjetivo > 0 && duracionRealSubida > 0) {
+      const ratio = duracionRealSubida / duracionObjetivo;
+      // Si la duración grabada difiere en más de un 15% (debido a lag de CPU o throttling del navegador)
+      if (ratio > 1.15 || ratio < 0.85) {
+        const factorVelocidad = duracionObjetivo / duracionRealSubida;
+        filtroTiempo = `-vf "setpts=${factorVelocidad.toFixed(6)}*PTS" -r 30`;
+        console.log(`⏱️ [VideoSubtramo] Ajuste automático de velocidad ffmpeg: ${duracionRealSubida.toFixed(2)}s -> ${duracionObjetivo.toFixed(2)}s (factor ${factorVelocidad.toFixed(4)})`);
+      }
+    }
+
+    // FFmpeg obligatorio con -movflags +faststart para streaming instantáneo
+    const cmd = `${FFMPEG_BIN} -y -i "${tempInput}" ${filtroTiempo} -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart "${finalFilePath}"`;
     exec(cmd, async (ffmpegErr, stdout, stderr) => {
       try { if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput); } catch (e) {}
 

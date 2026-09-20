@@ -68,11 +68,24 @@ export class ActividadesItinerariosService extends BaseHttpService {
     return this.get(`${this.apiUrl}/${id}/subtramos/videos`);
   }
 
-  subirVideoSubtramo(id: number, origen: number, destino: number, videoBlob: Blob): Observable<{ success: boolean; url: string; rutaRelativa?: string }> {
+  subirVideoSubtramo(
+    id: number,
+    origen: number,
+    destino: number,
+    videoBlob: Blob,
+    duracionSegundos?: number,
+    fps?: number
+  ): Observable<{ success: boolean; url: string; rutaRelativa?: string }> {
     const formData = new FormData();
     formData.append('video', videoBlob, `ruta_${id}_origen_${origen}_destino_${destino}.mp4`);
     formData.append('idParadaOrigen', origen.toString());
     formData.append('idParadaDestino', destino.toString());
+    if (duracionSegundos && duracionSegundos > 0) {
+      formData.append('duracionSegundos', duracionSegundos.toString());
+    }
+    if (fps && fps > 0) {
+      formData.append('fps', fps.toString());
+    }
     return this.http.post<{ success: boolean; url: string; rutaRelativa?: string }>(`${this.apiUrl}/${id}/subtramos/video`, formData);
   }
 

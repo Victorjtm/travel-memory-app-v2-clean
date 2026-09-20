@@ -84,8 +84,13 @@ export class RouteVideoGeneratorService {
       onProgress?.({ fase: 'descargando_tiles', porcentaje: 15, mensaje: 'Cargando cartografía base...' });
       const videoBlob = await this.renderizarVideoRuta(points, options, onProgress);
 
+      const duracionSeg = options.duracionSegundos || this.calcularDuracionDinamica(options.distanciaKm || 0);
+      const fps = options.fps || 30;
+
       onProgress?.({ fase: 'subiendo', porcentaje: 85, mensaje: 'Guardando vídeo de subtramo en servidor...' });
-      const resp = await firstValueFrom(this.actividadesService.subirVideoSubtramo(actividadId, origen, destino, videoBlob));
+      const resp = await firstValueFrom(
+        this.actividadesService.subirVideoSubtramo(actividadId, origen, destino, videoBlob, duracionSeg, fps)
+      );
 
       onProgress?.({ fase: 'completado', porcentaje: 100, mensaje: '¡Vídeo de subtramo listo!' });
       return resp.url;
@@ -119,13 +124,18 @@ export class RouteVideoGeneratorService {
       onProgress?.({ fase: 'descargando_tiles', porcentaje: 15, mensaje: 'Cargando cartografía base...' });
       const videoBlob = await this.renderizarVideoRuta(points, options, onProgress);
 
+      const duracionSeg = options.duracionSegundos || this.calcularDuracionDinamica(options.distanciaKm || 0);
+      const fps = options.fps || 30;
+
       onProgress?.({ fase: 'subiendo', porcentaje: 85, mensaje: 'Guardando vídeo en servidor...' });
       const resp = await firstValueFrom(
         this.actividadesService.subirVideoSubtramo(
           actividadId,
           options.idParadaOrigen || 0,
           options.idParadaDestino || 1,
-          videoBlob
+          videoBlob,
+          duracionSeg,
+          fps
         )
       );
 
@@ -136,6 +146,40 @@ export class RouteVideoGeneratorService {
       onProgress?.({ fase: 'error', porcentaje: 0, mensaje: err.message || 'Error generando vídeo' });
       throw err;
     }
+  }
+
+  /**
+   * Densifica segmentos entre puntos GPS contiguos que tengan un salto anómalo
+   * superior a maxGapMeters (p.ej. pérdidas de cobertura o tramos unificados sin puntos intermedios),
+   * garantizando una interpolación geométrica y temporal suave y sin parones en el vídeo.
+   */
+  private densificarSaltosGps(points: GpxPoint[], maxGapMeters: number = 80): GpxPoint[] {
+    if (!points || points.length < 2) return points;
+    const result: GpxPoint[] = [points[0]];
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const dist = this.gpxService.getDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+      if (dist > maxGapMeters) {
+        const steps = Math.ceil(dist / maxGapMeters);
+        for (let s = 1; s < steps; s++) {
+          const t = s / steps;
+          const lat = p1.lat + (p2.lat - p1.lat) * t;
+          const lng = p1.lng + (p2.lng - p1.lng) * t;
+          const distAcum = (p1.distAcum || 0) + dist * t;
+          result.push({
+            lat,
+            lng,
+            ele: p1.ele != null && p2.ele != null ? p1.ele + (p2.ele - p1.ele) * t : p1.ele,
+            distAcum,
+            timeAcum: (p1.timeAcum || 0) + ((p2.timeAcum || 0) - (p1.timeAcum || 0)) * t,
+            mode: p1.mode || p2.mode
+          });
+        }
+      }
+      result.push(p2);
+    }
+    return result;
   }
 
   /**
@@ -150,6 +194,8 @@ export class RouteVideoGeneratorService {
     if (options.transportSegments && options.transportSegments.length > 0) {
       points = this.gpxService.applyTransportSegments(points, options.transportSegments);
     }
+    // Densificar cualquier salto anómalo superior a 80m para interpolación fluida y sin teletransportes
+    points = this.densificarSaltosGps(points, 80);
     const width = options.width || 1280;
     const height = options.height || 720;
     const fps = options.fps || 30;
@@ -372,30 +418,47 @@ export class RouteVideoGeneratorService {
     options: RouteVideoOptions,
     onProgress?: (p: ProgresoRenderizadoRuta) => void
   ): Promise<Blob> {
-    const stream = canvas.captureStream(fps);
-    const mimeType = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm';
-    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 900_000 });
+    const supportsCaptureStream = typeof (canvas as any).captureStream === 'function';
+    if (!supportsCaptureStream) {
+      throw new Error('El navegador no soporta captureStream en Canvas');
+    }
+
+    let stream: MediaStream;
+    let videoTrack: any = null;
+    let usaManualFrame = false;
+
+    try {
+      stream = (canvas as any).captureStream(0);
+      videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack && typeof videoTrack.requestFrame === 'function') {
+        usaManualFrame = true;
+      } else {
+        stream = (canvas as any).captureStream(fps);
+      }
+    } catch {
+      stream = (canvas as any).captureStream(fps);
+    }
+
+    const mimeType = MediaRecorder.isTypeSupported('video/mp4')
+      ? 'video/mp4'
+      : MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : 'video/webm';
+
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 1_200_000 });
     const chunks: Blob[] = [];
 
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunks.push(e.data);
     };
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
       recorder.onerror = (e) => reject(e);
 
       recorder.start();
 
-      let frame = 0;
-      const frameInterval = 1000 / fps;
-
-      const renderStep = () => {
-        if (frame >= totalFrames) {
-          recorder.stop();
-          return;
-        }
-
+      for (let frame = 0; frame < totalFrames; frame++) {
         const progress = frame / (totalFrames - 1);
         this.dibujarFotograma(
           ctx,
@@ -409,20 +472,35 @@ export class RouteVideoGeneratorService {
           options
         );
 
-        frame++;
-        if (frame % 20 === 0) {
+        if (usaManualFrame && videoTrack) {
+          videoTrack.requestFrame();
+        }
+
+        if (frame % 15 === 0) {
           const pct = 25 + Math.round((frame / totalFrames) * 55);
           onProgress?.({
             fase: 'renderizando',
             porcentaje: pct,
-            mensaje: `Generando vídeo en tiempo real (${Math.round((frame / totalFrames) * 100)}%)...`
+            mensaje: `Generando animación (${Math.round((frame / totalFrames) * 100)}%)...`
           });
         }
 
-        setTimeout(renderStep, frameInterval);
-      };
+        await new Promise(r => {
+          if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(r);
+          } else {
+            setTimeout(r, 0);
+          }
+        });
+      }
 
-      renderStep();
+      setTimeout(() => {
+        try {
+          recorder.stop();
+        } catch {
+          resolve(new Blob(chunks, { type: mimeType }));
+        }
+      }, 120);
     });
   }
 
