@@ -4767,6 +4767,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }, 4000);
   }
 
+  /**
+   * Determina si una página es un vídeo o animación de ruta (mapa con avatar en movimiento).
+   * Por directriz de diseño, los vídeos de animación de ruta SIEMPRE se reproducen completos
+   * de principio a fin, independientemente de que reproducirVideosCompletos esté activo o no.
+   */
+  esVideoAnimacionRuta(pag?: PaginaMedia | null): boolean {
+    if (!pag) return false;
+    return !!(pag.esMapaAnimado || pag.urlVideoAnimacion || pag.trackGpx);
+  }
+
   iniciarSecuenciaVideosSpread(): void {
     this.detenerVideosActuales();
 
@@ -4821,35 +4831,38 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         }
       }
 
+      const esAnimacionIzq = this.esVideoAnimacionRuta(this.paginaSpreadIzquierda);
+      const esAnimacionDer = this.esVideoAnimacionRuta(this.paginaSpreadDerecha);
+
       // =========================================================================
       // REGLA CRÍTICA DE REPRODUCCIÓN SECUENCIAL:
       // Cuando existen dos medios (izq y der), SIEMPRE se reproduce PRIMERO el de
       // la izquierda y DESPUÉS el de la derecha. NUNCA a la vez.
-      // Tanto vídeos como audios respetan el modo completo (reproducirVideosCompletos)
-      // o el modo parcial (preview de INTERVALO_SLIDESHOW).
+      // 🌟 VÍDEOS DE ANIMACIÓN DE RUTA: SIEMPRE se reproducen completos hasta terminar.
+      // 🌟 VÍDEOS/AUDIOS DE USUARIO: respetan reproducirVideosCompletos (preview 5s si false).
       // =========================================================================
       if (tieneMediaIzq && elMediaIzq) {
         this.videoActualSecuencia = 'izq';
-        console.log('▶️ [Secuencia Medios 1/2] Reproduciendo PRIMERO medio izquierdo...');
+        console.log(`▶️ [Secuencia Medios 1/2] Reproduciendo PRIMERO medio izquierdo (esAnimacion: ${esAnimacionIzq})...`);
         this.reproducirMediaSeguro(elMediaIzq, 'izq');
         this.bajarVolumenAudioViaje();
 
-        if (!this.reproducirVideosCompletos) {
+        if (!this.reproducirVideosCompletos && !esAnimacionIzq) {
           this.timerVideoPreview = setTimeout(() => {
-            console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio izquierdo');
+            console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio izquierdo de usuario');
             try { elMediaIzq.pause(); } catch (e) { }
             this.onVideoIzquierdoTerminado();
           }, this.INTERVALO_SLIDESHOW);
         }
       } else if (tieneMediaDer && elMediaDer) {
         this.videoActualSecuencia = 'der';
-        console.log('▶️ [Secuencia Medios] Solo hay medio derecho, reproduciendo...');
+        console.log(`▶️ [Secuencia Medios] Solo hay medio derecho, reproduciendo (esAnimacion: ${esAnimacionDer})...`);
         this.reproducirMediaSeguro(elMediaDer, 'der');
         this.bajarVolumenAudioViaje();
 
-        if (!this.reproducirVideosCompletos) {
+        if (!this.reproducirVideosCompletos && !esAnimacionDer) {
           this.timerVideoPreview = setTimeout(() => {
-            console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio derecho');
+            console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio derecho de usuario');
             try { elMediaDer.pause(); } catch (e) { }
             this.onVideoDerechoTerminado();
           }, this.INTERVALO_SLIDESHOW);
@@ -4887,7 +4900,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     if (tieneMediaDer && elMediaDer) {
       // REGLA CRÍTICA: Al terminar el de la izquierda, se reproduce el de la derecha
       this.videoActualSecuencia = 'der';
-      console.log('▶️ [Secuencia Medios 2/2] Transición secuencial: reproduciendo medio derecho...');
+      const esAnimacionDer = this.esVideoAnimacionRuta(this.paginaSpreadDerecha);
+      console.log(`▶️ [Secuencia Medios 2/2] Transición secuencial: reproduciendo medio derecho (esAnimacion: ${esAnimacionDer})...`);
       elMediaDer.currentTime = 0;
       if (elMediaDer instanceof HTMLVideoElement) {
         elMediaDer.muted = this.videoMuted;
@@ -4895,9 +4909,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.reproducirMediaSeguro(elMediaDer, 'der');
       this.bajarVolumenAudioViaje();
 
-      if (!this.reproducirVideosCompletos) {
+      if (!this.reproducirVideosCompletos && !esAnimacionDer) {
         this.timerVideoPreview = setTimeout(() => {
-          console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio derecho');
+          console.log('⏱️ [Secuencia Medios] Fin de preview (5s) para medio derecho de usuario');
           try { elMediaDer.pause(); } catch (e) { }
           this.onVideoDerechoTerminado();
         }, this.INTERVALO_SLIDESHOW);
@@ -5088,11 +5102,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.reproduciendoSlideshow = true;
 
     const currentPag = this.paginas[this.paginaActual];
+    const esAnimacion = this.esVideoAnimacionRuta(currentPag) ||
+      this.esVideoAnimacionRuta(this.paginaSpreadIzquierda) ||
+      this.esVideoAnimacionRuta(this.paginaSpreadDerecha);
     const tieneMediaInteractivo = (currentPag?.tipoMedia === 'video' || currentPag?.tipoMedia === 'audio') && this.reproducirVideosCompletos;
     const tieneMapa = (currentPag?.esMapaAnimado || this.spreadActualData?.tipo === 'mapa') && !this.modoRutaImagen;
 
-    if (tieneMapa) {
-      console.log('🗺️ Página inicial del slideshow es mapa animado: pausando timer de 5s hasta completar trayecto');
+    if (esAnimacion || tieneMapa) {
+      console.log('🗺️ Página inicial del slideshow es animación/mapa de ruta: pausando timer hasta completar');
       this.limpiarTimerSlideshow();
     } else if (tieneMediaInteractivo) {
       console.log('🎬 Página inicial del slideshow es vídeo o audio con reproducción completa: pausando timer de 5s hasta que finalice');
@@ -5265,11 +5282,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
       // Control inteligente del timer de slideshow según la diapositiva entrante
       if (this.reproduciendoSlideshow) {
-        if (paginaActual?.esMapaAnimado && !this.modoRutaImagen) {
-          console.log('🗺️ Slideshow navegó a mapa animado: pausando timer de 5s hasta completar trayecto');
+        const esAnimacion = this.esVideoAnimacionRuta(paginaActual);
+        if (esAnimacion || (paginaActual?.esMapaAnimado && !this.modoRutaImagen)) {
+          console.log('🗺️ Slideshow navegó a animación/mapa de ruta: reproduciendo completa hasta el final');
           this.limpiarTimerSlideshow();
-        } else if (paginaActual?.tipoMedia === 'video' && this.reproducirVideosCompletos) {
-          console.log('🎬 Slideshow navegó a vídeo con reproducción completa: pausando timer de 5s');
+        } else if ((paginaActual?.tipoMedia === 'video' || paginaActual?.tipoMedia === 'audio') && this.reproducirVideosCompletos) {
+          console.log('🎬 Slideshow navegó a medio con reproducción completa: pausando timer de 5s');
           this.limpiarTimerSlideshow();
         } else {
           this.reiniciarTimerSlideshow();
@@ -6655,8 +6673,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   onVideoEnded(): void {
     this.restaurarVolumenAudioViaje();
-    if (this.reproduciendoSlideshow && this.reproducirVideosCompletos) {
-      console.log('🎬 Vídeo completo finalizado en slideshow: avanzando a la siguiente diapositiva');
+    const paginaActual = this.paginas[this.paginaActual];
+    const esAnimacion = this.esVideoAnimacionRuta(paginaActual);
+
+    // 🌟 Si es un vídeo de animación de ruta, SIEMPRE avanza tras finalizar completamente.
+    // Para vídeos de usuario, solo avanza automáticamente si reproducirVideosCompletos está activado.
+    if (this.reproduciendoSlideshow && (this.reproducirVideosCompletos || esAnimacion)) {
+      console.log('🎬 Vídeo finalizado en slideshow (animación o vídeo completo): avanzando a la siguiente diapositiva');
       setTimeout(() => {
         if (this.reproduciendoSlideshow) {
           this.avanzarSlideshow();

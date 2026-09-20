@@ -52,10 +52,14 @@ export class RouteVideoGeneratorService {
   calcularDuracionDinamica(distanciaKm: number): number {
     const dist = Math.max(0.05, distanciaKm || 0.1);
     if (dist > 50) {
-      const dur = 7.0 + Math.min(2.0, Math.log10(dist / 50) * 2.0);
+      const dur = 5.0 + Math.min(2.0, Math.log10(dist / 50) * 1.5);
       return Math.round(dur * 10) / 10;
     }
-    const dur = 4.5 + Math.min(6.5, Math.log2(Math.max(1, dist * 2.5)) * 1.5);
+    // Progresión ágil, rápida y dinámica para mayor velocidad del avatar:
+    // - Tramos cortos (< 1 km): ~2.8s a 3.8s
+    // - Tramos medios (2 a 5 km): ~4.8s a 5.9s
+    // - Tramos largos (10 a 50 km): ~6.5s a 7.0s
+    const dur = 2.8 + Math.min(4.2, Math.log2(Math.max(1, dist * 2.0)) * 1.05);
     return Math.round(dur * 10) / 10;
   }
 
@@ -200,7 +204,7 @@ export class RouteVideoGeneratorService {
     const height = options.height || 720;
     const fps = options.fps || 30;
     const duracionSeg = options.duracionSegundos || this.calcularDuracionDinamica(options.distanciaKm || 0);
-    const totalFrames = Math.max(fps * 3, Math.round(fps * duracionSeg));
+    const totalFrames = Math.max(Math.round(fps * 2.5), Math.round(fps * duracionSeg));
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
