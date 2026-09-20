@@ -3855,12 +3855,31 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   onFinAnimacionMapa(): void {
-    console.log('🏁 Animación del mapa completada');
+    // 🛡️ REGLA CRÍTICA: El avatar DEBE llegar hasta el destino final B.
+    // Si hay un elemento <video> de mapa reproduciéndose y NO ha finalizado, ABORTAR cualquier avance prematuro.
+    const vEl = (document.getElementById('video-mapa-animado') as HTMLVideoElement)
+      || (document.getElementById('video-mapa-single') as HTMLVideoElement)
+      || (document.getElementById('video-mapa-der') as HTMLVideoElement)
+      || (document.querySelector('.video-mapa-vintage') as HTMLVideoElement);
+
+    if (vEl && !this.forzarMapaInteractivo) {
+      const dur = vEl.duration;
+      const cur = vEl.currentTime;
+      if (!vEl.ended && isFinite(dur) && dur > 0.5 && cur < (dur - 0.3)) {
+        console.warn(`🛑 [onFinAnimacionMapa] Bloqueado avance prematuro: vídeo en ${cur.toFixed(1)}s de ${dur.toFixed(1)}s (no ha terminado)`);
+        return;
+      }
+    }
+
+    console.log('🏁 [onFinAnimacionMapa] Animación/vídeo de ruta completado al 100% y avatar en destino B');
 
     if (this.timerFallbackMapa) {
       clearTimeout(this.timerFallbackMapa);
       this.timerFallbackMapa = null;
     }
+
+    // Pausa deliberada de 1.2s tras la llegada para contemplar el mapa con el avatar en destino B
+    const pausaLecturaMs = 1200;
 
     if (this.mostrarFullscreen) {
       if (this.reproduciendoSlideshow || this.modoGuiadoActivo) {
@@ -3868,14 +3887,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           if ((this.reproduciendoSlideshow || this.modoGuiadoActivo) && this.mostrarFullscreen) {
             this.avanzarSlideshow();
           }
-        }, 800);
+        }, pausaLecturaMs);
       } else {
         setTimeout(() => {
           if (this.mostrarFullscreen && this.hayPaginaSiguiente) {
             console.log('➡️ Avanzando automáticamente del mapa animado a la foto en pantalla completa');
             this.navegarEnFullscreen(1);
           }
-        }, 1000);
+        }, pausaLecturaMs);
       }
     } else {
       if (this.reproduciendoSlideshow || this.modoGuiadoActivo) {
@@ -3884,14 +3903,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             console.log('➡️ [Modo Guiado / Slideshow] Avanzando automáticamente del mapa al siguiente pliego');
             this.avanzarSlideshow();
           }
-        }, 800);
+        }, pausaLecturaMs);
       } else {
         setTimeout(() => {
           if (this.hayPaginaSiguiente) {
             console.log('➡️ Avanzando automáticamente del mapa animado al siguiente pliego');
             this.cambiarPagina(1);
           }
-        }, 1000);
+        }, pausaLecturaMs);
       }
     }
   }
@@ -4018,27 +4037,41 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.progresoRenderVideoRuta = 'Iniciando generación 60fps...';
       this.cdr.detectChanges();
 
-      const url = await this.routeVideoGeneratorService.generarYSubirVideo(
-        mapa.actividadId,
-        {
-          trackGpx: mapa.trackGpx,
-          transportMode: mapa.tipoTransporteTramo || 'driving',
-          transportSegments: mapa.transportSegments || [],
-          distanciaKm: mapa.distanciaTramoKm || 0,
-          titulo: mapa.titulo || 'Recorrido',
-          idParadaOrigen: mapa.idParadaOrigen,
-          idParadaDestino: mapa.idParadaDestino,
-          fecha: mapa.fecha,
-          origenDireccion: mapa.origenDireccion,
-          destinoDireccion: mapa.destinoDireccion,
-          origenInfo: mapa.origenInfo,
-          destinoInfo: mapa.destinoInfo
-        },
-        (progreso) => {
-          this.progresoRenderVideoRuta = progreso.mensaje;
-          this.cdr.detectChanges();
-        }
-      );
+      const esSubtramo = mapa.idParadaOrigen != null && mapa.idParadaDestino != null;
+      const opts = {
+        trackGpx: mapa.trackGpx,
+        transportMode: mapa.tipoTransporteTramo || 'driving',
+        transportSegments: mapa.transportSegments || [],
+        distanciaKm: mapa.distanciaTramoKm || 0,
+        titulo: mapa.titulo || (esSubtramo ? `Recorrido Parada #${mapa.idParadaOrigen} ➔ #${mapa.idParadaDestino}` : 'Recorrido'),
+        idParadaOrigen: mapa.idParadaOrigen,
+        idParadaDestino: mapa.idParadaDestino,
+        fecha: mapa.fecha,
+        origenDireccion: mapa.origenDireccion,
+        destinoDireccion: mapa.destinoDireccion,
+        origenInfo: mapa.origenInfo,
+        destinoInfo: mapa.destinoInfo
+      };
+
+      const url = esSubtramo
+        ? await this.routeVideoGeneratorService.generarYSubirVideoSubtramo(
+            mapa.actividadId,
+            mapa.idParadaOrigen!,
+            mapa.idParadaDestino!,
+            opts,
+            (progreso) => {
+              this.progresoRenderVideoRuta = progreso.mensaje;
+              this.cdr.detectChanges();
+            }
+          )
+        : await this.routeVideoGeneratorService.generarYSubirVideo(
+            mapa.actividadId,
+            opts,
+            (progreso) => {
+              this.progresoRenderVideoRuta = progreso.mensaje;
+              this.cdr.detectChanges();
+            }
+          );
 
       const urlCompleta = `${environment.apiUrl}/${url.replace(/^\//, '')}`;
       mapa.urlVideoAnimacion = urlCompleta;
@@ -4047,6 +4080,26 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.forzarMapaInteractivo = false;
       this.generandoVideoRutaEnCurso = false;
       this.progresoRenderVideoRuta = '';
+
+      if (esSubtramo) {
+        const datos = this.cacheDatosActividadGpx.get(mapa.actividadId);
+        if (datos) {
+          if (!datos.videosSubtramos) datos.videosSubtramos = [];
+          const idx = datos.videosSubtramos.findIndex(
+            v => v.id_parada_origen === mapa.idParadaOrigen && v.id_parada_destino === mapa.idParadaDestino
+          );
+          if (idx >= 0) {
+            datos.videosSubtramos[idx].url = url;
+          } else {
+            datos.videosSubtramos.push({
+              id_parada_origen: mapa.idParadaOrigen!,
+              id_parada_destino: mapa.idParadaDestino!,
+              url: url
+            });
+          }
+        }
+      }
+
       console.log('🎬 ¡Vídeo de ruta generado con éxito!', mapa.urlVideoAnimacion);
       this.cdr.detectChanges();
     } catch (err: any) {
@@ -4828,35 +4881,32 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   iniciarSecuenciaVideosSpread(): void {
     this.detenerVideosActuales();
 
-    // 🛡️ Watchdog para pliegos de tipo mapa: si la animación/vídeo no emite 'ended', auto-avanzar
+    // 🛡️ Gestión de reproducción para pliegos de tipo mapa
     if (this.spreadActualData?.tipo === 'mapa') {
       const pagMapa = this.spreadActualData.paginaMapa;
-      const dist = pagMapa?.distanciaTramoKm || 0.5;
-      const durSeg = this.routeVideoGeneratorService.calcularDuracionDinamica(dist);
       if (this.timerFallbackMapa) clearTimeout(this.timerFallbackMapa);
 
-      // Intentar leer la duración real del <video> si el MP4 ya está cargado en el DOM
-      let watchdogMs = Math.max(5000, (durSeg + 2.5) * 1000);
-      setTimeout(() => {
-        const vEl = document.getElementById('video-mapa-animado') as HTMLVideoElement
-          || document.getElementById('video-spread-izq') as HTMLVideoElement
-          || document.getElementById('video-spread-der') as HTMLVideoElement;
-        if (vEl && vEl.duration && isFinite(vEl.duration) && vEl.duration > 0.5) {
-          // Usar la duración real del MP4 + 2s de margen
-          const realMs = (vEl.duration + 2.0) * 1000;
-          if (this.timerFallbackMapa) clearTimeout(this.timerFallbackMapa);
-          this.timerFallbackMapa = setTimeout(() => {
-            console.log(`⏱️ [Watchdog Mapa] Duración real del vídeo (${vEl.duration.toFixed(1)}s) cumplida; avanzando`);
-            this.onFinAnimacionMapa();
-          }, realMs);
-          console.log(`🎦 [Watchdog Mapa] Usando duración real del MP4: ${vEl.duration.toFixed(1)}s (watchdog: ${(realMs/1000).toFixed(1)}s)`);
-        }
-      }, 500);
+      // Si existe un vídeo pre-renderizado MP4, la reproducción está gobernada por el evento nativo (ended)
+      // del elemento <video>, que se dispara SOLO tras concluir todo el viaje y el hold en destino B.
+      // NO ejecutamos ningún temporizador prematuro que interrumpa el viaje del avatar.
+      if (pagMapa?.urlVideoAnimacion && !this.forzarMapaInteractivo) {
+        console.log('🎥 [Reproducción Mapa MP4] Reproduciendo ruta completa hasta destino B. Esperando evento nativo (ended)...');
+        // Watchdog de emergencia largo (90s) ÚNICAMENTE por si el vídeo fallase en cargar o decodificar en el dispositivo
+        this.timerFallbackMapa = setTimeout(() => {
+          console.warn('⏱️ [Emergencia Mapa MP4] Timeout de seguridad de 90s alcanzado; verificando estado');
+          this.onFinAnimacionMapa();
+        }, 90000);
+        return;
+      }
 
+      // Si es mapa interactivo Leaflet o animación GPX vectorial basada en código:
+      const dist = pagMapa?.distanciaTramoKm || 0.5;
+      const durSeg = this.routeVideoGeneratorService.calcularDuracionDinamica(dist);
+      const tiempoEsperaMs = Math.max(9000, (durSeg + 4.0) * 1000);
       this.timerFallbackMapa = setTimeout(() => {
-        console.log('⏱️ [Watchdog Mapa] Tiempo de animación cumplido; avanzando de forma segura');
+        console.log('⏱️ [Watchdog Mapa Interactivo] Tiempo de animación cumplido; avanzando');
         this.onFinAnimacionMapa();
-      }, watchdogMs);
+      }, tiempoEsperaMs);
       return;
     }
 

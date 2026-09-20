@@ -5882,9 +5882,9 @@
             0 22px 55px rgba(0, 0, 0, 0.75),
             inset 0 0 45px rgba(180, 150, 100, 0.25);
           overflow: hidden;
-          padding: 12px 18px 18px 18px;
+          padding: 0 !important;
           box-sizing: border-box;
-          cursor: pointer;
+          cursor: default;
 
           .header-mapa-panoramico {
             display: flex;
@@ -5893,6 +5893,40 @@
             padding: 4px 10px 10px 10px;
             border-bottom: 1px solid rgba(191, 161, 95, 0.4);
             flex-shrink: 0;
+
+            &.header-mapa-overlay {
+              position: absolute;
+              top: 14px;
+              left: 18px;
+              z-index: 25;
+              background: rgba(30, 20, 14, 0.85);
+              backdrop-filter: blur(10px);
+              padding: 6px 16px;
+              border-radius: 20px;
+              border: 1px solid rgba(223, 196, 136, 0.45);
+              pointer-events: none;
+              border-bottom: none;
+
+              .titulo-itinerario-mapa {
+                color: #f7efe0;
+                font-size: 0.95rem;
+
+                i {
+                  color: #e2c076;
+                }
+
+                .badge-vintage-distancia {
+                  background: rgba(223, 196, 136, 0.25);
+                  color: #ffdf94;
+                  border-color: rgba(223, 196, 136, 0.5);
+                }
+              }
+
+              .fecha-itinerario-mapa {
+                color: #dfc488;
+                font-size: 0.75rem;
+              }
+            }
 
             .titulo-itinerario-mapa {
               font-family: 'Cinzel', serif;
@@ -5929,14 +5963,14 @@
           }
 
           .mapa-panoramico-wrapper {
-            position: relative;
-            flex: 1;
+            position: absolute;
+            inset: 0;
             width: 100%;
-            min-height: 380px;
-            border-radius: 6px;
+            height: 100%;
+            border-radius: 8px;
             overflow: hidden;
-            margin-top: 8px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            margin-top: 0;
+            box-shadow: none;
 
             app-gpx-animation,
             .mapa-estatico-vintage-view,
@@ -5950,10 +5984,11 @@
             }
 
             .video-mapa-vintage-wrapper {
-              position: relative;
+              position: absolute;
+              inset: 0;
               width: 100%;
               height: 100%;
-              background: #f7efe0;
+              background: #1c1815;
               display: flex;
               align-items: center;
               justify-content: center;
@@ -5961,7 +5996,7 @@
               .video-mapa-vintage {
                 width: 100%;
                 height: 100%;
-                object-fit: contain;
+                object-fit: cover;
                 display: block;
                 transform: translateZ(0);
                 backface-visibility: hidden;
@@ -5972,15 +6007,17 @@
                 position: absolute;
                 top: 14px;
                 right: 14px;
-                z-index: 20;
+                z-index: 25;
+                display: flex;
+                gap: 8px;
 
                 .btn-mapa-switch {
-                  background: rgba(43, 24, 16, 0.85);
+                  background: rgba(43, 24, 16, 0.88);
                   backdrop-filter: blur(8px);
                   color: #f7efe0;
                   border: 1px solid rgba(191, 161, 95, 0.6);
                   border-radius: 20px;
-                  padding: 5px 12px;
+                  padding: 6px 14px;
                   font-size: 11.5px;
                   font-weight: 600;
                   cursor: pointer;
