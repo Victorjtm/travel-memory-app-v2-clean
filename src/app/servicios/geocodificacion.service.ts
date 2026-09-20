@@ -130,6 +130,52 @@ obtenerNombreCorto(ubicacion: UbicacionReversa): string {
 } 
 
   /**
+   * Geocodificación inversa directa por lat/lng.
+   * Devuelve una etiqueta corta (vía + ciudad + región) para usar en etiquetas A/B de vídeos de ruta.
+   * Respeta el caché en localStorage para no saturar Nominatim.
+   */
+  async geocodificarLatLng(lat: number, lng: number): Promise<string> {
+    const cacheKey = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+    if (this.cache.has(cacheKey)) {
+      const cached = this.cache.get(cacheKey)!;
+      return this.formatarEtiquetaRuta(cached);
+    }
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=es`;
+      const resp: any = await fetch(url, { headers: { 'Accept': 'application/json' } }).then(r => r.json());
+      const ubicacion = this.procesarRespuestaNominatim(resp);
+      if (ubicacion) {
+        // Enriquecer con calle/vía si Nominatim la devuelve
+        const addr = resp?.address || {};
+        const via = addr.road || addr.pedestrian || addr.path || addr.footway || addr.street || '';
+        if (via) ubicacion.direccion = via;
+        this.cache.set(cacheKey, ubicacion);
+        this.guardarCacheEnStorage();
+        return this.formatarEtiquetaRuta(ubicacion);
+      }
+    } catch (e) {
+      console.warn('⚠️ [Geocodificacion] Error reverse:', e);
+    }
+    return '';
+  }
+
+  /**
+   * Formatea una UbicacionReversa como etiqueta compacta para el tooltip del vídeo (máx. ~40 chars).
+   * Formato: "Nombre vía, Ciudad, Región" o el subconjunto disponible.
+   */
+  private formatarEtiquetaRuta(ubicacion: UbicacionReversa): string {
+    const partes: string[] = [];
+    if (ubicacion.direccion && !ubicacion.direccion.includes(',')) {
+      // direccion es solo la vía (sin ciudad)
+      partes.push(ubicacion.direccion);
+    }
+    if (ubicacion.ciudad) partes.push(ubicacion.ciudad);
+    if (ubicacion.region && ubicacion.region !== ubicacion.ciudad) partes.push(ubicacion.region);
+    return partes.join(', ');
+  }
+
+  /**
    * Cache management
    */
   private cargarCacheDelStorage(): void {

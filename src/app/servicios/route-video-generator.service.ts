@@ -16,6 +16,12 @@ export interface RouteVideoOptions {
   height?: number;
   idParadaOrigen?: number;
   idParadaDestino?: number;
+  /** Dirección completa del punto de inicio (calle, localidad, provincia) */
+  origenDireccion?: string;
+  /** Dirección completa del punto de destino (calle, localidad, provincia) */
+  destinoDireccion?: string;
+  /** Fecha del tramo en formato YYYY-MM-DD para el HUD */
+  fecha?: string;
 }
 
 export interface ProgresoRenderizadoRuta {
@@ -224,9 +230,9 @@ export class RouteVideoGeneratorService {
     const centerLat = (minLat + maxLat) / 2;
     const centerLng = (minLng + maxLng) / 2;
 
-    // Márgenes seguros en pantalla (en píxeles) para que la ruta respire y muestre el contexto urbano
-    const padX = 220; // Espacio a los lados y para el HUD vintage
-    const padY = 160; // Espacio arriba y abajo para ver el entorno geográfico
+    // Márgenes reducidos para maximizar el área de mapa visible en el fotolibro
+    const padX = 80;  // Espacio mínimo a los lados
+    const padY = 70;  // Espacio mínimo arriba/abajo
     const availW = width - 2 * padX;
     const availH = height - 2 * padY;
 
@@ -508,8 +514,8 @@ export class RouteVideoGeneratorService {
     // 2. Ruta completa punteada sutil (estilo mapa de ruta antiguo)
     ctx.beginPath();
     ctx.strokeStyle = 'rgba(74, 55, 35, 0.35)';
-    ctx.lineWidth = 4;
-    ctx.setLineDash([6, 8]);
+    ctx.lineWidth = 5;
+    ctx.setLineDash([8, 10]);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     points.forEach((p, idx) => {
@@ -584,10 +590,10 @@ export class RouteVideoGeneratorService {
     const activeColor = this.obtenerColorTransporte(activeMode);
 
     if (currentPoints.length > 1) {
-      // Halo exterior brillante de contraste
+      // Halo exterior brillante de contraste (más grueso para mejor legibilidad en libro)
       ctx.beginPath();
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-      ctx.lineWidth = 9;
+      ctx.lineWidth = 12;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       currentPoints.forEach((p, idx) => {
@@ -604,7 +610,7 @@ export class RouteVideoGeneratorService {
         if (ptMode !== segMode) {
           ctx.beginPath();
           ctx.strokeStyle = this.obtenerColorTransporte(segMode);
-          ctx.lineWidth = 5.5;
+          ctx.lineWidth = 8;
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
           for (let j = segStartIdx; j <= i; j++) {
@@ -620,7 +626,7 @@ export class RouteVideoGeneratorService {
       // Último tramo de la línea
       ctx.beginPath();
       ctx.strokeStyle = this.obtenerColorTransporte(segMode);
-      ctx.lineWidth = 5.5;
+      ctx.lineWidth = 8;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       for (let j = segStartIdx; j < currentPoints.length; j++) {
@@ -630,130 +636,313 @@ export class RouteVideoGeneratorService {
       ctx.stroke();
     }
 
+    // ── Helper: dibuja un tooltip tipo globo de mapa sobre el canvas ──────────
+    const dibujarTooltipMarcador = (
+      cx: number, cy: number,
+      texto: string,
+      colorBorde: string,
+      radioMarcador: number
+    ) => {
+      if (!texto) return;
+      const MAX_LINE_PX = 200;
+      ctx.font = '600 11px sans-serif';
+
+      // Partir el texto en líneas según MAX_LINE_PX
+      const palabras = texto.split(' ');
+      const lineas: string[] = [];
+      let lineaActual = '';
+      for (const pal of palabras) {
+        const prueba = lineaActual ? `${lineaActual} ${pal}` : pal;
+        if (ctx.measureText(prueba).width > MAX_LINE_PX && lineaActual) {
+          lineas.push(lineaActual);
+          lineaActual = pal;
+        } else {
+          lineaActual = prueba;
+        }
+      }
+      if (lineaActual) lineas.push(lineaActual);
+
+      const lineH = 15;
+      const padH = 8;
+      const padV = 6;
+      const maxW = Math.max(...lineas.map(l => ctx.measureText(l).width));
+      const boxW = maxW + padH * 2;
+      const boxH = lineas.length * lineH + padV * 2;
+
+      // Posicionar el tooltip encima del marcador
+      const bx = cx - boxW / 2;
+      const by = cy - radioMarcador - 6 - boxH;
+
+      // Sombra
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.22)';
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetY = 2;
+
+      // Fondo del globo
+      ctx.beginPath();
+      ctx.roundRect(bx, by, boxW, boxH, 6);
+      ctx.fillStyle = 'rgba(255,255,255,0.97)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = colorBorde;
+      ctx.stroke();
+
+      // Triángulo puntero hacia el marcador
+      const tSize = 6;
+      ctx.beginPath();
+      ctx.moveTo(cx - tSize, by + boxH);
+      ctx.lineTo(cx + tSize, by + boxH);
+      ctx.lineTo(cx, by + boxH + tSize);
+      ctx.fillStyle = colorBorde;
+      ctx.fill();
+
+      ctx.restore();
+
+      // Texto
+      ctx.save();
+      ctx.fillStyle = '#1e1e1e';
+      ctx.font = '600 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      lineas.forEach((l, i) => {
+        ctx.fillText(l, cx, by + padV + i * lineH);
+      });
+      ctx.restore();
+    };
+
     // 4. Marcador de Inicio (Parada de Origen: Verde Esmeralda con número y halo)
     const pInicio = points[0];
     const numOrigen = options.idParadaOrigen != null && options.idParadaOrigen > 0 ? options.idParadaOrigen : '1';
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetY = 2;
-    // Disco blanco exterior
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.40)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 3;
+    // Disco blanco exterior (más grande)
     ctx.beginPath();
-    ctx.arc(pInicio.x, pInicio.y, 13, 0, Math.PI * 2);
+    ctx.arc(pInicio.x, pInicio.y, 18, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.20)';
     ctx.stroke();
     // Círculo interior verde
     ctx.beginPath();
-    ctx.arc(pInicio.x, pInicio.y, 10, 0, Math.PI * 2);
+    ctx.arc(pInicio.x, pInicio.y, 14, 0, Math.PI * 2);
     ctx.fillStyle = '#15803d';
     ctx.fill();
-    // Número o símbolo
+    ctx.restore();
+    // Número o símbolo (sin shadow para legibilidad)
+    ctx.save();
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 11px sans-serif';
+    ctx.font = 'bold 14px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${numOrigen}`, pInicio.x, pInicio.y + 0.5);
     ctx.restore();
 
+    // Tooltip de dirección de origen (si disponible)
+    if (options.origenDireccion) {
+      dibujarTooltipMarcador(pInicio.x, pInicio.y, options.origenDireccion, '#15803d', 18);
+    }
+
     // 5. Marcador de Fin (Parada de Destino: Rojo Carmesí con número y halo)
     const pFin = points[points.length - 1];
     const numDestino = options.idParadaDestino != null && options.idParadaDestino > 0 ? options.idParadaDestino : '2';
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetY = 2;
-    // Disco blanco exterior
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.40)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 3;
+    // Disco blanco exterior (más grande)
     ctx.beginPath();
-    ctx.arc(pFin.x, pFin.y, 13, 0, Math.PI * 2);
+    ctx.arc(pFin.x, pFin.y, 18, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.20)';
     ctx.stroke();
     // Círculo interior rojo
     ctx.beginPath();
-    ctx.arc(pFin.x, pFin.y, 10, 0, Math.PI * 2);
+    ctx.arc(pFin.x, pFin.y, 14, 0, Math.PI * 2);
     ctx.fillStyle = '#dc2626';
     ctx.fill();
-    // Número o símbolo
+    ctx.restore();
+    // Número o símbolo (sin shadow)
+    ctx.save();
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 11px sans-serif';
+    ctx.font = 'bold 14px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${numDestino}`, pFin.x, pFin.y + 0.5);
     ctx.restore();
 
-    // 6. Vehículo móvil con pulso y sombra 3D
+    // Tooltip de dirección de destino (si disponible)
+    if (options.destinoDireccion) {
+      dibujarTooltipMarcador(pFin.x, pFin.y, options.destinoDireccion, '#dc2626', 18);
+    }
+
+    // 6. Vehículo móvil con pulso y sombra 3D (más grande para mejor visibilidad)
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 3;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.40)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 4;
+
+    // Pulso exterior animado (ring que expande y desvanece con el progreso)
+    const pulsePct = (progress * 12) % 1; // ciclos rápidos
+    const pulseR = 26 + pulsePct * 12;
+    ctx.beginPath();
+    ctx.arc(currentPos.x, currentPos.y, pulseR, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(${activeColor.startsWith('#') ? this.hexToRgb(activeColor) : '220,38,38'}, ${0.5 * (1 - pulsePct)})`;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
 
     // Disco circular blanco con borde de color dinámico del modo actual
     ctx.beginPath();
-    ctx.arc(currentPos.x, currentPos.y, 18, 0, Math.PI * 2);
+    ctx.arc(currentPos.x, currentPos.y, 26, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.strokeStyle = activeColor;
     ctx.stroke();
+    ctx.restore();
 
-    // Icono emoji del medio de transporte centrado (actualizado en tiempo real por frame)
-    ctx.font = '20px sans-serif';
+    // Icono emoji del medio de transporte centrado (sin shadow para nítidez)
+    ctx.save();
+    ctx.font = '28px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(activeIcon, currentPos.x, currentPos.y + 1);
     ctx.restore();
 
-    // 7. HUD Vintage (Caja de instrumentos en esquina superior izquierda)
+    // 7. HUD Vintage mejorado (panel superior izquierdo con telemetría)
     const totalKm = options.distanciaKm || 0;
     const kmActual = totalKm * progress;
+    const duracionSeg = options.duracionSegundos || this.calcularDuracionDinamica(totalKm);
+    const elapsedSeg = duracionSeg * progress;
+    const velocidadKmh = duracionSeg > 0 ? (totalKm / duracionSeg) * 3600 : 0;
+    const modoEtiqueta = this.obtenerNombreModoTransporte(activeMode);
+
+    // Formatear cronómetro HH:MM:SS
+    const hh = Math.floor(elapsedSeg / 3600);
+    const mm = Math.floor((elapsedSeg % 3600) / 60);
+    const ss = Math.floor(elapsedSeg % 60);
+    const cronoStr = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+
+    // Formatear fecha del tramo (si disponible)
+    let fechaStr = '';
+    if (options.fecha) {
+      const parts = options.fecha.split('-');
+      if (parts.length === 3) {
+        fechaStr = `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+
+    const kmStr = totalKm < 5 ? kmActual.toFixed(2) : kmActual.toFixed(1);
+    const totStr = totalKm < 5 ? totalKm.toFixed(2) : totalKm.toFixed(1);
+    const kmhStr = velocidadKmh < 10 ? velocidadKmh.toFixed(1) : Math.round(velocidadKmh).toString();
 
     ctx.save();
-    // Tarjeta pergamino del HUD con sombra
-    ctx.fillStyle = 'rgba(253, 250, 243, 0.96)';
-    ctx.strokeStyle = '#8b6b46';
-    ctx.lineWidth = 1.5;
-    ctx.shadowColor = 'rgba(43, 24, 16, 0.25)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 3;
+    // Panel HUD ampliado (2 filas de datos)
+    ctx.fillStyle = 'rgba(15, 12, 8, 0.82)'; // fondo oscuro semiopaco tipo dashcam
+    ctx.strokeStyle = activeColor;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
     ctx.beginPath();
-    ctx.roundRect(28, 24, 330, 84, 10);
+    ctx.roundRect(20, 16, 420, 96, 10);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
 
-    // Marco interior sutil
     ctx.save();
-    ctx.strokeStyle = 'rgba(191, 161, 95, 0.45)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(33, 29, 320, 74);
 
-    // Título del tramo
-    ctx.fillStyle = '#2b1810';
-    ctx.font = 'bold 14px "Cinzel", "Georgia", serif';
+    // ── Fila 1: Icono + Modo + Fecha + Cronómetro ─────────────────────────────
+    const f1y = 38;
+    ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    const titleText = options.titulo || `RECORRIDO: PARADA #${numOrigen} ➔ PARADA #${numDestino}`;
-    ctx.fillText(titleText, 44, 38);
 
-    // Kilometraje y progreso en tiempo real con etiqueta de medio de transporte
-    const kmStr = totalKm < 5 ? kmActual.toFixed(2) : kmActual.toFixed(1);
-    const totStr = totalKm < 5 ? totalKm.toFixed(2) : totalKm.toFixed(1);
-    const modoEtiqueta = this.obtenerNombreModoTransporte(activeMode);
-    ctx.fillStyle = '#78350f';
-    ctx.font = '600 13px sans-serif';
-    ctx.fillText(`${activeIcon}  ${modoEtiqueta} · ${kmStr} km / ${totStr} km (${Math.round(progress * 100)}%)`, 44, 61);
+    // Icono de transporte (emoji)
+    ctx.font = '18px sans-serif';
+    ctx.fillText(activeIcon, 34, f1y);
 
-    // Barra de progreso estilizada dentro del HUD
-    ctx.fillStyle = 'rgba(120, 53, 15, 0.15)';
-    ctx.fillRect(44, 83, 298, 6);
-    ctx.fillStyle = activeColor;
-    ctx.fillRect(44, 83, Math.max(6, 298 * progress), 6);
+    // Nombre del modo
+    ctx.fillStyle = '#f0e8d8';
+    ctx.font = 'bold 14px "Courier New", monospace';
+    ctx.fillText(modoEtiqueta.toUpperCase(), 60, f1y);
+
+    // Separador
+    ctx.fillStyle = 'rgba(240,232,216,0.4)';
+    ctx.fillRect(185, f1y - 9, 1, 18);
+
+    // Fecha
+    if (fechaStr) {
+      ctx.fillStyle = '#c9b88a';
+      ctx.font = '12px "Courier New", monospace';
+      ctx.fillText(`📅 ${fechaStr}`, 194, f1y);
+    }
+
+    // Separador
+    ctx.fillStyle = 'rgba(240,232,216,0.4)';
+    ctx.fillRect(300, f1y - 9, 1, 18);
+
+    // Cronómetro
+    ctx.fillStyle = '#7dffb0';
+    ctx.font = 'bold 15px "Courier New", monospace';
+    ctx.fillText(`⏱ ${cronoStr}`, 310, f1y);
+
+    // ── Fila 2: Velocidad + Distancia + Barra de progreso ─────────────────────
+    const f2y = 68;
+
+    // Velocidad instantánea
+    ctx.fillStyle = '#ffd060';
+    ctx.font = 'bold 18px "Courier New", monospace';
+    ctx.fillText(`${kmhStr}`, 34, f2y);
+    ctx.fillStyle = '#c9b88a';
+    ctx.font = '11px "Courier New", monospace';
+    ctx.fillText('km/h', 34 + ctx.measureText(kmhStr).width + 3, f2y + 1);
+
+    // Separador
+    ctx.fillStyle = 'rgba(240,232,216,0.4)';
+    ctx.fillRect(120, f2y - 10, 1, 20);
+
+    // Distancia
+    ctx.fillStyle = '#f0e8d8';
+    ctx.font = '13px "Courier New", monospace';
+    ctx.fillText(`📍 ${kmStr} / ${totStr} km`, 128, f2y);
+
+    // Separador
+    ctx.fillStyle = 'rgba(240,232,216,0.4)';
+    ctx.fillRect(310, f2y - 10, 1, 20);
+
+    // Porcentaje
+    ctx.fillStyle = '#c9b88a';
+    ctx.font = 'bold 14px "Courier New", monospace';
+    ctx.fillText(`${Math.round(progress * 100)}%`, 318, f2y);
+
+    // ── Barra de progreso inferior ─────────────────────────────────────────────
+    const barY = 92;
+    const barX = 20;
+    const barW = 420;
+    const barH = 6;
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(barX, barY, barW, barH);
+    // Gradiente de progreso
+    const grad = ctx.createLinearGradient(barX, 0, barX + barW * progress, 0);
+    grad.addColorStop(0, activeColor);
+    grad.addColorStop(1, '#ffffff');
+    ctx.fillStyle = grad;
+    ctx.fillRect(barX, barY, Math.max(barH, barW * progress), barH);
+
     ctx.restore();
+  }
+
+  /** Convierte un color hex #rrggbb a string "r,g,b" para rgba() */
+  private hexToRgb(hex: string): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `${r},${g},${b}`;
   }
 
   /**

@@ -71,6 +71,14 @@ interface PaginaMedia {
   multimedia?: any[];
   timestampReal?: number;
   itinerarioId?: number;
+  /** Etiqueta de dirección (calle, ciudad, región) del punto de inicio del tramo */
+  origenDireccion?: string;
+  /** Etiqueta de dirección (calle, ciudad, región) del punto de destino del tramo */
+  destinoDireccion?: string;
+  /** Coordenadas GPS del primer punto del tramo (para geocodificación lazy) */
+  coordenadasOrigen?: { lat: number; lng: number };
+  /** Coordenadas GPS del último punto del tramo (para geocodificación lazy) */
+  coordenadasDestino?: { lat: number; lng: number };
 }
 
 export interface SpreadLibro {
@@ -3697,8 +3705,22 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           horaFinTramo: horaFinTramo,
           tipoTransporteTramo: tipoTransporteTramo,
           timestampReal: timestampInicio,
-          multimedia: multimediaTramo.length > 0 ? multimediaTramo : archivosGeo
+          multimedia: multimediaTramo.length > 0 ? multimediaTramo : archivosGeo,
+          // Guardar coordenadas para geocodificación lazy de etiquetas A/B del vídeo
+          coordenadasOrigen: ptInicio?.lat != null ? { lat: ptInicio.lat, lng: ptInicio.lng } : undefined,
+          coordenadasDestino: ptFin?.lat != null ? { lat: ptFin.lat, lng: ptFin.lng } : undefined
         };
+
+        // Geocodificar en segundo plano las etiquetas A/B de origen y destino (sin bloquear)
+        if (ptInicio?.lat != null && ptFin?.lat != null && this.geocodificacionService) {
+          Promise.all([
+            this.geocodificacionService.geocodificarLatLng(ptInicio.lat, ptInicio.lng),
+            this.geocodificacionService.geocodificarLatLng(ptFin.lat, ptFin.lng)
+          ]).then(([labelOrigen, labelDestino]) => {
+            if (labelOrigen) paginaMapa.origenDireccion = labelOrigen;
+            if (labelDestino) paginaMapa.destinoDireccion = labelDestino;
+          }).catch(() => {});
+        }
 
         if (!urlVideoRuta) { this.encolarPrecacheSubtramo(paginaMapa); }
         if (!mapasPorActividad.has(actId)) { mapasPorActividad.set(actId, []); }
@@ -3930,9 +3952,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             transportMode: pag.tipoTransporteTramo || 'driving',
             transportSegments: pag.transportSegments || [],
             distanciaKm: pag.distanciaTramoKm || 0,
-            titulo: pag.titulo || `Recorrido Parada #${pag.idParadaOrigen} ➔ #${pag.idParadaDestino}`,
+            titulo: pag.titulo || `Recorrido Parada #${pag.idParadaOrigen} ➞ #${pag.idParadaDestino}`,
             idParadaOrigen: pag.idParadaOrigen,
-            idParadaDestino: pag.idParadaDestino
+            idParadaDestino: pag.idParadaDestino,
+            fecha: pag.fecha,
+            origenDireccion: pag.origenDireccion,
+            destinoDireccion: pag.destinoDireccion
           }
         );
 
@@ -3984,7 +4009,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           distanciaKm: mapa.distanciaTramoKm || 0,
           titulo: mapa.titulo || 'Recorrido',
           idParadaOrigen: mapa.idParadaOrigen,
-          idParadaDestino: mapa.idParadaDestino
+          idParadaDestino: mapa.idParadaDestino,
+          fecha: mapa.fecha,
+          origenDireccion: mapa.origenDireccion,
+          destinoDireccion: mapa.destinoDireccion
         },
         (progreso) => {
           this.progresoRenderVideoRuta = progreso.mensaje;
@@ -4786,10 +4814,29 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       const dist = pagMapa?.distanciaTramoKm || 0.5;
       const durSeg = this.routeVideoGeneratorService.calcularDuracionDinamica(dist);
       if (this.timerFallbackMapa) clearTimeout(this.timerFallbackMapa);
+
+      // Intentar leer la duración real del <video> si el MP4 ya está cargado en el DOM
+      let watchdogMs = Math.max(5000, (durSeg + 2.5) * 1000);
+      setTimeout(() => {
+        const vEl = document.getElementById('video-mapa-animado') as HTMLVideoElement
+          || document.getElementById('video-spread-izq') as HTMLVideoElement
+          || document.getElementById('video-spread-der') as HTMLVideoElement;
+        if (vEl && vEl.duration && isFinite(vEl.duration) && vEl.duration > 0.5) {
+          // Usar la duración real del MP4 + 2s de margen
+          const realMs = (vEl.duration + 2.0) * 1000;
+          if (this.timerFallbackMapa) clearTimeout(this.timerFallbackMapa);
+          this.timerFallbackMapa = setTimeout(() => {
+            console.log(`⏱️ [Watchdog Mapa] Duración real del vídeo (${vEl.duration.toFixed(1)}s) cumplida; avanzando`);
+            this.onFinAnimacionMapa();
+          }, realMs);
+          console.log(`🎦 [Watchdog Mapa] Usando duración real del MP4: ${vEl.duration.toFixed(1)}s (watchdog: ${(realMs/1000).toFixed(1)}s)`);
+        }
+      }, 500);
+
       this.timerFallbackMapa = setTimeout(() => {
         console.log('⏱️ [Watchdog Mapa] Tiempo de animación cumplido; avanzando de forma segura');
         this.onFinAnimacionMapa();
-      }, Math.max(5000, (durSeg + 1.8) * 1000));
+      }, watchdogMs);
       return;
     }
 
