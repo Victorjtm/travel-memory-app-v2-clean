@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { GpxAnimationService, GpxPoint } from './gpx-animation.service';
 import { ActividadesItinerariosService } from './actividades-itinerarios.service';
+import { GeocodificacionService, InfoUbicacionRuta } from './geocodificacion.service';
 import { firstValueFrom } from 'rxjs';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 
@@ -20,6 +21,10 @@ export interface RouteVideoOptions {
   origenDireccion?: string;
   /** Dirección completa del punto de destino (calle, localidad, provincia) */
   destinoDireccion?: string;
+  /** Información estructurada de ubicación del punto de inicio (calle, pueblo, provincia) */
+  origenInfo?: InfoUbicacionRuta;
+  /** Información estructurada de ubicación del punto de destino (calle, pueblo, provincia) */
+  destinoInfo?: InfoUbicacionRuta;
   /** Fecha del tramo en formato YYYY-MM-DD para el HUD */
   fecha?: string;
 }
@@ -38,7 +43,8 @@ export class RouteVideoGeneratorService {
 
   constructor(
     private gpxService: GpxAnimationService,
-    private actividadesService: ActividadesItinerariosService
+    private actividadesService: ActividadesItinerariosService,
+    private geocodificacionService: GeocodificacionService
   ) {}
 
   /**
@@ -217,6 +223,35 @@ export class RouteVideoGeneratorService {
     canvas.height = height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
 
+    // 0. Asegurar información estructurada de Salida (Punto A) y Llegada (Punto B)
+    let infoOrigen = options.origenInfo;
+    let infoDestino = options.destinoInfo;
+
+    if (!infoOrigen && points.length > 0) {
+      if (options.origenDireccion) {
+        infoOrigen = this.geocodificacionService.parsearDireccionTexto(options.origenDireccion);
+      } else {
+        try {
+          infoOrigen = await this.geocodificacionService.obtenerInfoUbicacionPunto(points[0].lat, points[0].lng);
+        } catch (e) {
+          console.warn('⚠️ No se pudo geocodificar punto A:', e);
+        }
+      }
+    }
+
+    if (!infoDestino && points.length > 0) {
+      const pUltimo = points[points.length - 1];
+      if (options.destinoDireccion) {
+        infoDestino = this.geocodificacionService.parsearDireccionTexto(options.destinoDireccion);
+      } else {
+        try {
+          infoDestino = await this.geocodificacionService.obtenerInfoUbicacionPunto(pUltimo.lat, pUltimo.lng);
+        } catch (e) {
+          console.warn('⚠️ No se pudo geocodificar punto B:', e);
+        }
+      }
+    }
+
     // 1. Calcular Bounding Box Geográfico
     let minLat = Infinity, maxLat = -Infinity;
     let minLng = Infinity, maxLng = -Infinity;
@@ -230,11 +265,13 @@ export class RouteVideoGeneratorService {
     const centerLat = (minLat + maxLat) / 2;
     const centerLng = (minLng + maxLng) / 2;
 
-    // Márgenes reducidos para maximizar el área de mapa visible en el fotolibro
-    const padX = 80;  // Espacio mínimo a los lados
-    const padY = 70;  // Espacio mínimo arriba/abajo
+    // Márgenes optimizados para que las tarjetas flotantes sobre Punto A y B
+    // queden perfectamente encuadradas dentro del fotograma sin cortes
+    const padX = 90;       // Espacio horizontal para callouts laterales
+    const padTop = 110;    // Espacio vertical superior para tarjeta de Salida/Llegada y HUD
+    const padBottom = 80;  // Espacio vertical inferior
     const availW = width - 2 * padX;
-    const availH = height - 2 * padY;
+    const availH = height - (padTop + padBottom);
 
     // Proyección Web Mercator EPSG:3857 estándar (isométrica, idéntica a Leaflet)
     const latLngToWorld = (lat: number, lng: number, z: number) => {
@@ -261,12 +298,13 @@ export class RouteVideoGeneratorService {
 
     const centerWorld = latLngToWorld(centerLat, centerLng, bestZoom);
 
-    // Proyección de puntos GPS a coordenadas de píxeles del Canvas centradas en (width/2, height/2)
+    // Proyección de puntos GPS a coordenadas de píxeles del Canvas con compensación vertical
+    const offsetYCentro = (padTop - padBottom) / 2; // ~15px de margen adicional hacia abajo
     const proyectar = (lat: number, lng: number) => {
       const w = latLngToWorld(lat, lng, bestZoom);
       return {
         x: Math.round(width / 2 + (w.x - centerWorld.x)),
-        y: Math.round(height / 2 + (w.y - centerWorld.y))
+        y: Math.round((height / 2 + offsetYCentro) + (w.y - centerWorld.y))
       };
     };
 
@@ -305,6 +343,8 @@ export class RouteVideoGeneratorService {
         colorRuta,
         transportIcon,
         options,
+        infoOrigen,
+        infoDestino,
         onProgress
       );
     } else {
@@ -321,6 +361,8 @@ export class RouteVideoGeneratorService {
         colorRuta,
         transportIcon,
         options,
+        infoOrigen,
+        infoDestino,
         onProgress
       );
     }
@@ -341,6 +383,8 @@ export class RouteVideoGeneratorService {
     colorRuta: string,
     transportIcon: string,
     options: RouteVideoOptions,
+    infoOrigen?: InfoUbicacionRuta,
+    infoDestino?: InfoUbicacionRuta,
     onProgress?: (p: ProgresoRenderizadoRuta) => void
   ): Promise<Blob> {
     const muxer = new Muxer({
@@ -382,7 +426,9 @@ export class RouteVideoGeneratorService {
         height,
         colorRuta,
         transportIcon,
-        options
+        options,
+        infoOrigen,
+        infoDestino
       );
 
       // Crear VideoFrame nativo desde canvas
@@ -426,6 +472,8 @@ export class RouteVideoGeneratorService {
     colorRuta: string,
     transportIcon: string,
     options: RouteVideoOptions,
+    infoOrigen?: InfoUbicacionRuta,
+    infoDestino?: InfoUbicacionRuta,
     onProgress?: (p: ProgresoRenderizadoRuta) => void
   ): Promise<Blob> {
     const stream = canvas.captureStream(fps);
@@ -473,7 +521,9 @@ export class RouteVideoGeneratorService {
           height,
           colorRuta,
           transportIcon,
-          options
+          options,
+          infoOrigen,
+          infoDestino
         );
 
         frame++;
@@ -506,7 +556,9 @@ export class RouteVideoGeneratorService {
     height: number,
     colorRuta: string,
     transportIcon: string,
-    options: RouteVideoOptions
+    options: RouteVideoOptions,
+    infoOrigen?: InfoUbicacionRuta,
+    infoDestino?: InfoUbicacionRuta
   ): void {
     // 1. Fondo de mapa renderizado
     ctx.drawImage(fondoCanvas, 0, 0);
@@ -526,13 +578,6 @@ export class RouteVideoGeneratorService {
     ctx.setLineDash([]);
 
     // 3. Trazado animado hasta el progreso actual
-    //
-    // ✅ INTERPOLACIÓN POR DISTANCIA ACUMULADA (velocidad constante)
-    // Si los puntos tienen distAcum, usamos la distancia total recorrida como
-    // eje temporal → el avatar avanza a velocidad constante independientemente
-    // de la densidad de puntos GPS.
-    // Fallback: si no hay distAcum (puntos sin metadatos), se usa índice (comportamiento anterior).
-
     const hasDistAcum = points.length > 1 &&
       points[points.length - 1].distAcum != null &&
       (points[points.length - 1].distAcum as number) > 0;
@@ -541,11 +586,9 @@ export class RouteVideoGeneratorService {
     let remainder: number;
 
     if (hasDistAcum) {
-      // Distancia objetivo en las mismas unidades que distAcum (km)
       const totalDist = points[points.length - 1].distAcum as number;
       const targetDist = progress * totalDist;
 
-      // Búsqueda binaria del segmento donde cae targetDist
       let lo = 0, hi = points.length - 2;
       while (lo < hi) {
         const mid = (lo + hi + 1) >> 1;
@@ -559,13 +602,11 @@ export class RouteVideoGeneratorService {
       const segLen = d1 - d0;
       remainder = segLen > 0 ? (targetDist - d0) / segLen : 0;
     } else {
-      // Fallback: avance por índice (rutas sin distAcum)
       const targetIdxFloat = progress * (points.length - 1);
       targetIdx = Math.floor(targetIdxFloat);
       remainder = targetIdxFloat - targetIdx;
     }
 
-    // Posición interpolada del vehículo y puntos ya recorridos para el trazo animado
     const currentPoints = points.slice(0, targetIdx + 1);
     let currentPos = points[0];
 
@@ -583,14 +624,14 @@ export class RouteVideoGeneratorService {
       currentPos = points[points.length - 1];
     }
 
-    // 🌟 Modo de transporte e icono dinámicos para este fotograma exacto
+    // Modo de transporte e icono dinámicos para este fotograma exacto
     const currentPt = points[Math.min(targetIdx, points.length - 1)];
     const activeMode = currentPt?.mode || options.transportMode || 'driving';
     const activeIcon = this.obtenerIconoTransporte(activeMode);
     const activeColor = this.obtenerColorTransporte(activeMode);
 
     if (currentPoints.length > 1) {
-      // Halo exterior brillante de contraste (más grueso para mejor legibilidad en libro)
+      // Halo exterior brillante de contraste
       ctx.beginPath();
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
       ctx.lineWidth = 12;
@@ -623,7 +664,6 @@ export class RouteVideoGeneratorService {
           segMode = ptMode;
         }
       }
-      // Último tramo de la línea
       ctx.beginPath();
       ctx.strokeStyle = this.obtenerColorTransporte(segMode);
       ctx.lineWidth = 8;
@@ -636,78 +676,145 @@ export class RouteVideoGeneratorService {
       ctx.stroke();
     }
 
-    // ── Helper: dibuja un tooltip tipo globo de mapa sobre el canvas ──────────
-    const dibujarTooltipMarcador = (
+    // ── Helper: dibuja una tarjeta de dirección destacada y perfectamente encuadrada sobre el canvas ──
+    const dibujarTarjetaPunto = (
       cx: number, cy: number,
-      texto: string,
-      colorBorde: string,
-      radioMarcador: number
+      tipo: 'origen' | 'destino',
+      idParada: number | string,
+      info?: InfoUbicacionRuta | null,
+      direccionPlana?: string,
+      colorTema: string = '#15803d',
+      radioMarcador: number = 18,
+      forzarAbajo: boolean = false
     ) => {
-      if (!texto) return;
-      const MAX_LINE_PX = 200;
-      ctx.font = '600 11px sans-serif';
+      const datos: InfoUbicacionRuta = info && (info.linea1 || info.nombreCompleto)
+        ? info
+        : this.geocodificacionService.parsearDireccionTexto(direccionPlana || '');
 
-      // Partir el texto en líneas según MAX_LINE_PX
-      const palabras = texto.split(' ');
-      const lineas: string[] = [];
-      let lineaActual = '';
-      for (const pal of palabras) {
-        const prueba = lineaActual ? `${lineaActual} ${pal}` : pal;
-        if (ctx.measureText(prueba).width > MAX_LINE_PX && lineaActual) {
-          lineas.push(lineaActual);
-          lineaActual = pal;
-        } else {
-          lineaActual = prueba;
-        }
-      }
-      if (lineaActual) lineas.push(lineaActual);
+      if (!datos || (!datos.linea1 && !datos.nombreCompleto)) return;
 
-      const lineH = 15;
-      const padH = 8;
-      const padV = 6;
-      const maxW = Math.max(...lineas.map(l => ctx.measureText(l).width));
-      const boxW = maxW + padH * 2;
-      const boxH = lineas.length * lineH + padV * 2;
+      const badgeTexto = tipo === 'origen'
+        ? `🟢 SALIDA • PARADA #${idParada}`
+        : `🏁 LLEGADA • PARADA #${idParada}`;
 
-      // Posicionar el tooltip encima del marcador
-      const bx = cx - boxW / 2;
-      const by = cy - radioMarcador - 6 - boxH;
+      const linea1 = datos.linea1 || datos.nombreCompleto;
+      const linea2 = datos.linea2 || '';
 
-      // Sombra
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.22)';
-      ctx.shadowBlur = 6;
-      ctx.shadowOffsetY = 2;
+      // Medir ancho de texto para dimensionar el contenedor
+      ctx.font = 'bold 9.5px sans-serif';
+      const badgeW = ctx.measureText(badgeTexto).width + 14;
 
-      // Fondo del globo
+      ctx.font = 'bold 12px sans-serif';
+      const l1W = ctx.measureText(linea1).width;
+
+      ctx.font = '600 11px sans-serif';
+      const l2W = linea2 ? ctx.measureText(linea2).width : 0;
+
+      const contentW = Math.max(badgeW, l1W, l2W);
+      const cardW = Math.max(170, Math.min(270, contentW + 24));
+      const cardH = linea2 ? 68 : 52;
+
+      // Determinación de posición vertical:
+      // Preferencia: justo encima del marcador
+      let colocarArriba = !forzarAbajo;
+      let by = cy - radioMarcador - 10 - cardH;
+
+      // Si se saldría por arriba del marco o colisionaría con el HUD superior izquierdo:
+      const solapaHUD = cx < 340 && by < 125;
+      if (forzarAbajo || by < 14 || solapaHUD) {
+        by = cy + radioMarcador + 10;
+        colocarArriba = false;
+      }
+
+      // Asegurar que no se sale por el borde inferior
+      if (by + cardH > height - 12) {
+        by = Math.max(12, height - cardH - 12);
+      }
+
+      // Encuadre horizontal dentro del canvas (mínimo 14px de margen con los bordes)
+      let bx = cx - cardW / 2;
+      bx = Math.max(14, Math.min(width - cardW - 14, bx));
+
+      // Sombra flotante tipo tarjeta moderna
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetY = 4;
+
+      // Fondo de la tarjeta (blanco cálido satinado)
       ctx.beginPath();
-      ctx.roundRect(bx, by, boxW, boxH, 6);
-      ctx.fillStyle = 'rgba(255,255,255,0.97)';
+      ctx.roundRect(bx, by, cardW, cardH, 8);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
       ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = colorBorde;
+
+      // Borde temático distintivo (verde salida / rojo llegada)
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = colorTema;
       ctx.stroke();
 
-      // Triángulo puntero hacia el marcador
-      const tSize = 6;
+      // Triángulo puntero hacia el centro del marcador
       ctx.beginPath();
-      ctx.moveTo(cx - tSize, by + boxH);
-      ctx.lineTo(cx + tSize, by + boxH);
-      ctx.lineTo(cx, by + boxH + tSize);
-      ctx.fillStyle = colorBorde;
+      const tSize = 7;
+      const tApexX = Math.max(bx + 16, Math.min(bx + cardW - 16, cx));
+
+      if (colocarArriba) {
+        // Puntero apuntando hacia abajo
+        ctx.moveTo(tApexX - tSize, by + cardH);
+        ctx.lineTo(tApexX + tSize, by + cardH);
+        ctx.lineTo(tApexX, by + cardH + tSize);
+      } else {
+        // Puntero apuntando hacia arriba
+        ctx.moveTo(tApexX - tSize, by);
+        ctx.lineTo(tApexX + tSize, by);
+        ctx.lineTo(tApexX, by - tSize);
+      }
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
       ctx.fill();
+      ctx.stroke();
 
       ctx.restore();
-
-      // Texto
       ctx.save();
-      ctx.fillStyle = '#1e1e1e';
-      ctx.font = '600 11px sans-serif';
+
+      // 1. Badge cabecera (Pill coloreado)
+      const badgeX = bx + 10;
+      const badgeY = by + 8;
+      const badgeH = 17;
+      ctx.beginPath();
+      ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4);
+      ctx.fillStyle = colorTema;
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9.5px sans-serif';
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      lineas.forEach((l, i) => {
-        ctx.fillText(l, cx, by + padV + i * lineH);
-      });
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeTexto, badgeX + badgeW / 2, badgeY + badgeH / 2 + 0.5);
+
+      // 2. Línea 1: Dirección / Calle o PDI (negrita, alto contraste)
+      const textX = bx + 10;
+      const maxTextW = cardW - 20;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 12px sans-serif';
+
+      let l1Cortada = linea1;
+      while (ctx.measureText(l1Cortada).width > maxTextW && l1Cortada.length > 4) {
+        l1Cortada = l1Cortada.slice(0, -2) + '…';
+      }
+      ctx.fillText(l1Cortada, textX, by + 35);
+
+      // 3. Línea 2: Pueblo y Provincia (gris pizarra semi-bold)
+      if (linea2) {
+        ctx.fillStyle = '#475569';
+        ctx.font = '600 11px sans-serif';
+        let l2Cortada = linea2;
+        while (ctx.measureText(l2Cortada).width > maxTextW && l2Cortada.length > 4) {
+          l2Cortada = l2Cortada.slice(0, -2) + '…';
+        }
+        ctx.fillText(l2Cortada, textX, by + 52);
+      }
+
       ctx.restore();
     };
 
@@ -718,7 +825,7 @@ export class RouteVideoGeneratorService {
     ctx.shadowColor = 'rgba(0, 0, 0, 0.40)';
     ctx.shadowBlur = 8;
     ctx.shadowOffsetY = 3;
-    // Disco blanco exterior (más grande)
+    // Disco blanco exterior
     ctx.beginPath();
     ctx.arc(pInicio.x, pInicio.y, 18, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
@@ -732,7 +839,7 @@ export class RouteVideoGeneratorService {
     ctx.fillStyle = '#15803d';
     ctx.fill();
     ctx.restore();
-    // Número o símbolo (sin shadow para legibilidad)
+    // Número identificador
     ctx.save();
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 14px sans-serif';
@@ -741,11 +848,6 @@ export class RouteVideoGeneratorService {
     ctx.fillText(`${numOrigen}`, pInicio.x, pInicio.y + 0.5);
     ctx.restore();
 
-    // Tooltip de dirección de origen (si disponible)
-    if (options.origenDireccion) {
-      dibujarTooltipMarcador(pInicio.x, pInicio.y, options.origenDireccion, '#15803d', 18);
-    }
-
     // 5. Marcador de Fin (Parada de Destino: Rojo Carmesí con número y halo)
     const pFin = points[points.length - 1];
     const numDestino = options.idParadaDestino != null && options.idParadaDestino > 0 ? options.idParadaDestino : '2';
@@ -753,7 +855,7 @@ export class RouteVideoGeneratorService {
     ctx.shadowColor = 'rgba(0, 0, 0, 0.40)';
     ctx.shadowBlur = 8;
     ctx.shadowOffsetY = 3;
-    // Disco blanco exterior (más grande)
+    // Disco blanco exterior
     ctx.beginPath();
     ctx.arc(pFin.x, pFin.y, 18, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
@@ -767,7 +869,7 @@ export class RouteVideoGeneratorService {
     ctx.fillStyle = '#dc2626';
     ctx.fill();
     ctx.restore();
-    // Número o símbolo (sin shadow)
+    // Número identificador
     ctx.save();
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 14px sans-serif';
@@ -776,10 +878,32 @@ export class RouteVideoGeneratorService {
     ctx.fillText(`${numDestino}`, pFin.x, pFin.y + 0.5);
     ctx.restore();
 
-    // Tooltip de dirección de destino (si disponible)
-    if (options.destinoDireccion) {
-      dibujarTooltipMarcador(pFin.x, pFin.y, options.destinoDireccion, '#dc2626', 18);
-    }
+    // Comprobación de proximidad geométrica entre Punto A y Punto B:
+    // Si están muy cercanos en pantalla, origen queda arriba y forzamos destino abajo para que no colisionen
+    const puntosMuyCercanos = Math.abs(pInicio.x - pFin.x) < 180 && Math.abs(pInicio.y - pFin.y) < 110;
+
+    // Renderizado de las tarjetas destacadas sobre el Punto A y el Punto B
+    dibujarTarjetaPunto(
+      pInicio.x, pInicio.y,
+      'origen',
+      numOrigen,
+      infoOrigen,
+      options.origenDireccion,
+      '#15803d',
+      18,
+      false
+    );
+
+    dibujarTarjetaPunto(
+      pFin.x, pFin.y,
+      'destino',
+      numDestino,
+      infoDestino,
+      options.destinoDireccion,
+      '#dc2626',
+      18,
+      puntosMuyCercanos
+    );
 
     // 6. Vehículo móvil con pulso y sombra 3D (más grande para mejor visibilidad)
     ctx.save();

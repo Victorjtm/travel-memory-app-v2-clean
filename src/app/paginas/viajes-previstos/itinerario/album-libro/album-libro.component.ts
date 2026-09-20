@@ -79,6 +79,10 @@ interface PaginaMedia {
   coordenadasOrigen?: { lat: number; lng: number };
   /** Coordenadas GPS del último punto del tramo (para geocodificación lazy) */
   coordenadasDestino?: { lat: number; lng: number };
+  /** Información estructurada de salida (calle, pueblo, provincia) */
+  origenInfo?: any;
+  /** Información estructurada de destino (calle, pueblo, provincia) */
+  destinoInfo?: any;
 }
 
 export interface SpreadLibro {
@@ -2833,7 +2837,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               distanciaKm: pag.distanciaTramoKm || 0,
               titulo: pag.titulo || `Recorrido Parada #${pag.idParadaOrigen} ➔ #${pag.idParadaDestino}`,
               idParadaOrigen: pag.idParadaOrigen,
-              idParadaDestino: pag.idParadaDestino
+              idParadaDestino: pag.idParadaDestino,
+              fecha: pag.fecha,
+              origenDireccion: pag.origenDireccion,
+              destinoDireccion: pag.destinoDireccion,
+              origenInfo: pag.origenInfo,
+              destinoInfo: pag.destinoInfo
             },
             (progreso) => {
               this.loteVideoProgresoTramo = progreso.porcentaje;
@@ -3713,13 +3722,20 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
         // Geocodificar en segundo plano las etiquetas A/B de origen y destino (sin bloquear)
         if (ptInicio?.lat != null && ptFin?.lat != null && this.geocodificacionService) {
-          Promise.all([
-            this.geocodificacionService.geocodificarLatLng(ptInicio.lat, ptInicio.lng),
-            this.geocodificacionService.geocodificarLatLng(ptFin.lat, ptFin.lng)
-          ]).then(([labelOrigen, labelDestino]) => {
-            if (labelOrigen) paginaMapa.origenDireccion = labelOrigen;
-            if (labelDestino) paginaMapa.destinoDireccion = labelDestino;
-          }).catch(() => {});
+          this.geocodificacionService.obtenerInfoUbicacionPunto(ptInicio.lat, ptInicio.lng)
+            .then(info => {
+              if (info) {
+                paginaMapa.origenInfo = info;
+                paginaMapa.origenDireccion = info.nombreCompleto;
+              }
+            }).catch(() => {});
+          this.geocodificacionService.obtenerInfoUbicacionPunto(ptFin.lat, ptFin.lng)
+            .then(info => {
+              if (info) {
+                paginaMapa.destinoInfo = info;
+                paginaMapa.destinoDireccion = info.nombreCompleto;
+              }
+            }).catch(() => {});
         }
 
         if (!urlVideoRuta) { this.encolarPrecacheSubtramo(paginaMapa); }
@@ -3957,7 +3973,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             idParadaDestino: pag.idParadaDestino,
             fecha: pag.fecha,
             origenDireccion: pag.origenDireccion,
-            destinoDireccion: pag.destinoDireccion
+            destinoDireccion: pag.destinoDireccion,
+            origenInfo: pag.origenInfo,
+            destinoInfo: pag.destinoInfo
           }
         );
 
@@ -4012,7 +4030,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           idParadaDestino: mapa.idParadaDestino,
           fecha: mapa.fecha,
           origenDireccion: mapa.origenDireccion,
-          destinoDireccion: mapa.destinoDireccion
+          destinoDireccion: mapa.destinoDireccion,
+          origenInfo: mapa.origenInfo,
+          destinoInfo: mapa.destinoInfo
         },
         (progreso) => {
           this.progresoRenderVideoRuta = progreso.mensaje;

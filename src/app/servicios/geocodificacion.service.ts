@@ -11,13 +11,26 @@ export interface UbicacionReversa {
   nombreCompleto?: string;
 }
 
+export interface InfoUbicacionRuta {
+  calle?: string;
+  pueblo?: string;
+  provincia?: string;
+  pais?: string;
+  linea1: string;          // Dirección / Calle / Lugar (o Pueblo si no hay calle)
+  linea2: string;          // "Pueblo (Provincia)" o "Provincia"
+  nombreCompleto: string;  // Texto en 1 línea para metadatos
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class GeocodificacionService {
   
   private readonly CACHE_KEY = 'geocoding_cache';
+  private readonly CACHE_INFO_KEY = 'geocoding_info_ruta_cache_v2';
   private cache = new Map<string, UbicacionReversa>();
+  private cacheInfoRuta = new Map<string, InfoUbicacionRuta>();
+  private nominatimCola: Promise<any> = Promise.resolve();
   
   constructor(private http: HttpClient) {
     this.cargarCacheDelStorage();
@@ -63,7 +76,6 @@ export class GeocodificacionService {
    */
   private parsearCoordenadas(coordenadas: string): { lat: number, lon: number } | null {
     try {
-      // Formatos soportados: "lat,lon" o "lat, lon"
       const partes = coordenadas.split(',').map(s => s.trim());
       if (partes.length !== 2) return null;
       
@@ -88,91 +100,177 @@ export class GeocodificacionService {
     const address = response.address;
     const ubicacion: UbicacionReversa = {};
     
-    // Extraer información relevante
-    ubicacion.ciudad = address.city || address.town || address.village || address.municipality;
-    ubicacion.region = address.state || address.province || address.region;
+    ubicacion.ciudad = address.city || address.town || address.village || address.municipality || address.hamlet;
+    ubicacion.region = address.province || address.state_district || address.state || address.region;
     ubicacion.pais = address.country;
     ubicacion.direccion = response.display_name;
     
-    // Crear nombre completo simplificado
     const partes = [];
     if (ubicacion.ciudad) partes.push(ubicacion.ciudad);
     if (ubicacion.region && ubicacion.region !== ubicacion.ciudad) partes.push(ubicacion.region);
     if (ubicacion.pais) partes.push(ubicacion.pais);
     
     ubicacion.nombreCompleto = partes.join(', ');
-    
     return ubicacion.nombreCompleto ? ubicacion : null;
   }
-/**
- * Obtiene un nombre corto para mostrar en la UI
- */
-obtenerNombreCorto(ubicacion: UbicacionReversa): string {
-  // Priorizar ciudad y región para mayor especificidad
-  const partes = [];
-  
-  if (ubicacion.ciudad) {
-    partes.push(ubicacion.ciudad);
-  }
-  
-  // Solo añadir región si es diferente a la ciudad
-  if (ubicacion.region && ubicacion.region !== ubicacion.ciudad) {
-    partes.push(ubicacion.region);
-  }
-  
-  // Fallback si no hay ciudad ni región
-  if (partes.length === 0) {
-    if (ubicacion.pais) return ubicacion.pais;
-    return 'Ubicación';
-  }
-  
-  return partes.join(', ');
-} 
 
   /**
-   * Geocodificación inversa directa por lat/lng.
-   * Devuelve una etiqueta corta (vía + ciudad + región) para usar en etiquetas A/B de vídeos de ruta.
-   * Respeta el caché en localStorage para no saturar Nominatim.
+   * Obtiene un nombre corto para mostrar en la UI
    */
-  async geocodificarLatLng(lat: number, lng: number): Promise<string> {
-    const cacheKey = `${lat.toFixed(5)},${lng.toFixed(5)}`;
-    if (this.cache.has(cacheKey)) {
-      const cached = this.cache.get(cacheKey)!;
-      return this.formatarEtiquetaRuta(cached);
-    }
-
-    try {
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=es`;
-      const resp: any = await fetch(url, { headers: { 'Accept': 'application/json' } }).then(r => r.json());
-      const ubicacion = this.procesarRespuestaNominatim(resp);
-      if (ubicacion) {
-        // Enriquecer con calle/vía si Nominatim la devuelve
-        const addr = resp?.address || {};
-        const via = addr.road || addr.pedestrian || addr.path || addr.footway || addr.street || '';
-        if (via) ubicacion.direccion = via;
-        this.cache.set(cacheKey, ubicacion);
-        this.guardarCacheEnStorage();
-        return this.formatarEtiquetaRuta(ubicacion);
-      }
-    } catch (e) {
-      console.warn('⚠️ [Geocodificacion] Error reverse:', e);
-    }
-    return '';
-  }
-
-  /**
-   * Formatea una UbicacionReversa como etiqueta compacta para el tooltip del vídeo (máx. ~40 chars).
-   * Formato: "Nombre vía, Ciudad, Región" o el subconjunto disponible.
-   */
-  private formatarEtiquetaRuta(ubicacion: UbicacionReversa): string {
-    const partes: string[] = [];
-    if (ubicacion.direccion && !ubicacion.direccion.includes(',')) {
-      // direccion es solo la vía (sin ciudad)
-      partes.push(ubicacion.direccion);
-    }
+  obtenerNombreCorto(ubicacion: UbicacionReversa): string {
+    const partes = [];
     if (ubicacion.ciudad) partes.push(ubicacion.ciudad);
     if (ubicacion.region && ubicacion.region !== ubicacion.ciudad) partes.push(ubicacion.region);
+    if (partes.length === 0) {
+      if (ubicacion.pais) return ubicacion.pais;
+      return 'Ubicación';
+    }
     return partes.join(', ');
+  } 
+
+  /**
+   * Extrae la información estructurada de ubicación (Calle/Vía, Pueblo/Localidad y Provincia)
+   * optimizada para las tarjetas de Salida (Punto A) y Llegada (Punto B) del vídeo animado de ruta.
+   */
+  async obtenerInfoUbicacionPunto(lat: number, lng: number): Promise<InfoUbicacionRuta> {
+    const cacheKey = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+    if (this.cacheInfoRuta.has(cacheKey)) {
+      return this.cacheInfoRuta.get(cacheKey)!;
+    }
+
+    const fallbackInfo: InfoUbicacionRuta = {
+      linea1: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+      linea2: '',
+      nombreCompleto: `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+    };
+
+    try {
+      // Cola secuencial con pausa de 800ms para respetar el rate limit de Nominatim
+      const resp = await new Promise<any>((resolve, reject) => {
+        this.nominatimCola = this.nominatimCola
+          .then(() => new Promise(r => setTimeout(r, 800)))
+          .then(async () => {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=es`;
+            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+          })
+          .then(resolve)
+          .catch(reject);
+      });
+
+      if (resp && resp.address) {
+        const info = this.extraerInfoRutaDesdeNominatim(resp);
+        this.cacheInfoRuta.set(cacheKey, info);
+        this.guardarCacheEnStorage();
+        return info;
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Geocodificacion] Error al resolver (${lat}, ${lng}):`, e);
+    }
+
+    return fallbackInfo;
+  }
+
+  /**
+   * Procesa la respuesta de Nominatim aislando calle, pueblo y provincia.
+   */
+  private extraerInfoRutaDesdeNominatim(resp: any): InfoUbicacionRuta {
+    const addr = resp.address || {};
+
+    // 1. Calle / Vía o PDI relevante
+    const via = addr.road || addr.pedestrian || addr.path || addr.footway || addr.street ||
+                addr.amenity || addr.shop || addr.tourism || addr.building || addr.leisure || '';
+    const num = addr.house_number ? `, ${addr.house_number}` : '';
+    const calle = via ? `${via}${num}` : '';
+
+    // 2. Pueblo / Localidad / Ciudad
+    const pueblo = addr.village || addr.town || addr.city || addr.municipality ||
+                   addr.hamlet || addr.suburb || addr.neighbourhood || addr.parish || '';
+
+    // 3. Provincia (en España: province / state_district es la provincia ej. Castellón, Madrid, Burgos;
+    // state suele ser la Comunidad Autónoma ej. Comunidad Valenciana)
+    const provincia = addr.province || addr.state_district || addr.county || addr.state || '';
+    const pais = addr.country || '';
+
+    // Formatear líneas para la tarjeta del mapa:
+    // Línea 1: Vía/Calle (o Pueblo si no hay calle registrada)
+    // Línea 2: Pueblo y Provincia
+    let linea1 = '';
+    let linea2 = '';
+
+    if (calle && pueblo) {
+      linea1 = calle;
+      linea2 = (provincia && provincia.toLowerCase() !== pueblo.toLowerCase())
+        ? `${pueblo} (${provincia})`
+        : pueblo;
+    } else if (calle && !pueblo) {
+      linea1 = calle;
+      linea2 = provincia || pais || '';
+    } else if (!calle && pueblo) {
+      linea1 = pueblo;
+      linea2 = (provincia && provincia.toLowerCase() !== pueblo.toLowerCase())
+        ? provincia
+        : (pais || '');
+    } else if (provincia) {
+      linea1 = provincia;
+      linea2 = pais || '';
+    } else {
+      linea1 = resp.display_name ? resp.display_name.split(',')[0] : 'Ubicación';
+      linea2 = '';
+    }
+
+    const partesTotales = [calle, pueblo, provincia].filter(Boolean);
+    const nombreCompleto = partesTotales.join(', ') || linea1;
+
+    return {
+      calle,
+      pueblo,
+      provincia,
+      pais,
+      linea1,
+      linea2,
+      nombreCompleto
+    };
+  }
+
+  /**
+   * Parsea un texto plano de dirección ya disponible en `linea1` y `linea2`
+   */
+  parsearDireccionTexto(texto: string): InfoUbicacionRuta {
+    if (!texto) {
+      return { linea1: '', linea2: '', nombreCompleto: '' };
+    }
+    const partes = texto.split(',').map(s => s.trim()).filter(Boolean);
+    if (partes.length === 0) {
+      return { linea1: texto, linea2: '', nombreCompleto: texto };
+    }
+    if (partes.length === 1) {
+      return { linea1: partes[0], linea2: '', nombreCompleto: partes[0] };
+    }
+    if (partes.length === 2) {
+      return { linea1: partes[0], linea2: partes[1], nombreCompleto: texto };
+    }
+    // 3 o más partes: ej. "Calle Mayor 10", "Alcossebre (Castellón)"
+    const linea1 = partes[0];
+    const linea2 = `${partes[1]} (${partes.slice(2).join(', ')})`;
+    return {
+      calle: partes[0],
+      pueblo: partes[1],
+      provincia: partes.slice(2).join(', '),
+      linea1,
+      linea2,
+      nombreCompleto: texto
+    };
+  }
+
+  /**
+   * Geocodificación inversa directa por lat/lng (versión compatible hacia atrás).
+   * Devuelve string completo formateado.
+   */
+  async geocodificarLatLng(lat: number, lng: number): Promise<string> {
+    const info = await this.obtenerInfoUbicacionPunto(lat, lng);
+    return info?.nombreCompleto || '';
   }
 
   /**
@@ -185,6 +283,11 @@ obtenerNombreCorto(ubicacion: UbicacionReversa): string {
         const parsedCache = JSON.parse(cacheData);
         this.cache = new Map(Object.entries(parsedCache));
       }
+      const cacheInfoData = localStorage.getItem(this.CACHE_INFO_KEY);
+      if (cacheInfoData) {
+        const parsedInfo = JSON.parse(cacheInfoData);
+        this.cacheInfoRuta = new Map(Object.entries(parsedInfo));
+      }
     } catch (error) {
       console.warn('Error al cargar cache de geocodificación:', error);
     }
@@ -194,6 +297,8 @@ obtenerNombreCorto(ubicacion: UbicacionReversa): string {
     try {
       const cacheObj = Object.fromEntries(this.cache);
       localStorage.setItem(this.CACHE_KEY, JSON.stringify(cacheObj));
+      const cacheInfoObj = Object.fromEntries(this.cacheInfoRuta);
+      localStorage.setItem(this.CACHE_INFO_KEY, JSON.stringify(cacheInfoObj));
     } catch (error) {
       console.warn('Error al guardar cache de geocodificación:', error);
     }
@@ -204,6 +309,8 @@ obtenerNombreCorto(ubicacion: UbicacionReversa): string {
    */
   limpiarCache(): void {
     this.cache.clear();
+    this.cacheInfoRuta.clear();
     localStorage.removeItem(this.CACHE_KEY);
+    localStorage.removeItem(this.CACHE_INFO_KEY);
   }
 }
