@@ -100,11 +100,20 @@
           </button>
         </div>
 
+        <!-- Botón Generar Todos los Vídeos de Animación de este itinerario -->
+        <button type="button" class="btn-generar-videos-tb"
+          *ngIf="incluirAnimacionesMapa"
+          (click)="iniciarGeneracionLoteVideos()"
+          [disabled]="generandoLoteVideos || limpiandoVideosAnimacion"
+          title="Generar todas las animaciones en vídeo MP4 de este itinerario">
+          <i class="fas" [class.fa-film]="!generandoLoteVideos" [class.fa-spinner]="generandoLoteVideos" [class.fa-spin]="generandoLoteVideos"></i>
+        </button>
+
         <!-- Botón Limpiar Vídeos de Animación generados para este itinerario -->
         <button type="button" class="btn-limpiar-videos-tb"
           *ngIf="incluirAnimacionesMapa"
           (click)="confirmarLimpiarVideosAnimacion()"
-          [disabled]="limpiandoVideosAnimacion"
+          [disabled]="generandoLoteVideos || limpiandoVideosAnimacion"
           title="Limpiar vídeos MP4 de animaciones de este itinerario (se volverán a grabar desde cero)">
           <i class="fas" [class.fa-arrows-rotate]="!limpiandoVideosAnimacion" [class.fa-spinner]="limpiandoVideosAnimacion" [class.fa-spin]="limpiandoVideosAnimacion"></i>
         </button>
@@ -2148,6 +2157,61 @@
       </div>
 
     </ng-container>
+
+    <!-- ======================================================== -->
+    <!-- MODAL OVERLAY: PROGRESO GENERACIÓN EN LOTE DE VÍDEOS MP4  -->
+    <!-- ======================================================== -->
+    <div class="lote-videos-modal-backdrop" *ngIf="generandoLoteVideos">
+      <div class="lote-videos-modal-card">
+        <div class="lote-videos-header">
+          <div class="lote-videos-icon-badge">
+            <i class="fas fa-clapperboard fa-spin-pulse"></i>
+          </div>
+          <div class="lote-videos-header-text">
+            <h3>Generando Animaciones en Vídeo</h3>
+            <span class="lote-videos-subtitle">Pre-renderizando subtramos del itinerario en MP4</span>
+          </div>
+        </div>
+
+        <div class="lote-videos-body">
+          <div class="lote-videos-counter-row">
+            <span class="lote-videos-badge-actual">Vídeo {{ loteVideoActual }} de {{ loteVideoTotal }}</span>
+            <span class="lote-videos-pct-global">{{ loteVideoProgresoGlobal }}% total</span>
+          </div>
+
+          <h4 class="lote-videos-tramo-title">{{ loteVideoTitulo }}</h4>
+          <p class="lote-videos-fase-msg"><i class="fas fa-spinner fa-spin"></i> {{ loteVideoMensajeProgreso }}</p>
+
+          <!-- Barra de progreso del vídeo actual -->
+          <div class="lote-videos-progress-wrapper">
+            <div class="lote-videos-progress-label">
+              <span>Progreso del vídeo actual</span>
+              <span>{{ loteVideoProgresoTramo }}%</span>
+            </div>
+            <div class="lote-videos-progress-track">
+              <div class="lote-videos-progress-fill fill-tramo" [style.width.%]="loteVideoProgresoTramo"></div>
+            </div>
+          </div>
+
+          <!-- Barra de progreso global del lote -->
+          <div class="lote-videos-progress-wrapper">
+            <div class="lote-videos-progress-label">
+              <span>Avance global del itinerario</span>
+              <span>{{ loteVideoActual }} de {{ loteVideoTotal }} vídeos</span>
+            </div>
+            <div class="lote-videos-progress-track">
+              <div class="lote-videos-progress-fill fill-global" [style.width.%]="loteVideoProgresoGlobal"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lote-videos-footer">
+          <button type="button" class="btn-cancelar-lote" (click)="detenerGeneracionLoteVideos()">
+            <i class="fas fa-times"></i> Cancelar generación
+          </button>
+        </div>
+      </div>
+    </div>
 
   </div>
 </ng-template>

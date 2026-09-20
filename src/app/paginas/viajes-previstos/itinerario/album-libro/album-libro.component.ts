@@ -259,6 +259,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   generandoVideoRutaEnCurso: boolean = false;
   progresoRenderVideoRuta: string = '';
 
+  // 🎬 Generación en lote de vídeos de animaciones (subtramos)
+  generandoLoteVideos: boolean = false;
+  loteVideoActual: number = 0;
+  loteVideoTotal: number = 0;
+  loteVideoTitulo: string = '';
+  loteVideoProgresoTramo: number = 0;
+  loteVideoProgresoGlobal: number = 0;
+  loteVideoMensajeProgreso: string = '';
+  private cancelarLoteVideos: boolean = false;
+
   reiniciarInstanciaMapa(): void {
     if (!this.mapaRenderKey) {
       this.mapaRenderKey = 'map_active';
@@ -2720,6 +2730,180 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       alert('Ocurrió un error al limpiar los vídeos: ' + (err?.message || 'Error desconocido'));
     } finally {
       this.limpiandoVideosAnimacion = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  /**
+   * Genera en lote todas las animaciones de subtramos del itinerario en vídeos MP4 pre-renderizados
+   * mostrando progreso en tiempo real y permitiendo cancelación.
+   */
+  async iniciarGeneracionLoteVideos(): Promise<void> {
+    if (this.generandoLoteVideos) return;
+
+    // 1. Recolectar todos los subtramos únicos del álbum
+    const fuentes = [...(this.paginasBase || []), ...(this.paginas || [])];
+    const mapaUnico = new Map<string, PaginaMedia>();
+
+    for (const p of fuentes) {
+      if (p.trackGpx && p.actividadId && p.idParadaOrigen !== undefined && p.idParadaDestino !== undefined) {
+        const k = `${p.actividadId}_${p.idParadaOrigen}_${p.idParadaDestino}`;
+        if (!mapaUnico.has(k)) {
+          mapaUnico.set(k, p);
+        }
+      }
+    }
+
+    const subtramosTotales = Array.from(mapaUnico.values());
+
+    if (subtramosTotales.length === 0) {
+      alert('No se encontraron subtramos de ruta con track GPX en este álbum para generar vídeos.');
+      return;
+    }
+
+    const pendientes = subtramosTotales.filter(p => !p.urlVideoAnimacion);
+    let listaAProcesar: PaginaMedia[] = [];
+
+    if (pendientes.length === 0) {
+      const confirmar = window.confirm(
+        `Todos los subtramos de este itinerario (${subtramosTotales.length}) ya tienen vídeo MP4 generado.\n\n¿Deseas volver a generarlos todos desde cero para actualizarlos con el nuevo motor fluido?`
+      );
+      if (!confirmar) return;
+      listaAProcesar = subtramosTotales;
+    } else if (pendientes.length < subtramosTotales.length) {
+      const resp = window.confirm(
+        `Se han detectado ${pendientes.length} subtramos pendientes de un total de ${subtramosTotales.length}.\n\n` +
+        `• Pulsa ACEPTAR para generar los ${pendientes.length} vídeos pendientes.\n` +
+        `• Pulsa CANCELAR si prefieres no iniciar la generación ahora.`
+      );
+      if (!resp) return;
+      listaAProcesar = pendientes;
+    } else {
+      const confirmar = window.confirm(
+        `Se van a generar las animaciones en vídeo MP4 de los ${subtramosTotales.length} subtramos de este itinerario.\n\n` +
+        `Durante el proceso podrás seguir el avance fotograma a fotograma en pantalla.\n\n¿Deseas comenzar?`
+      );
+      if (!confirmar) return;
+      listaAProcesar = subtramosTotales;
+    }
+
+    this.generandoLoteVideos = true;
+    this.cancelarLoteVideos = false;
+    this.loteVideoTotal = listaAProcesar.length;
+    this.loteVideoActual = 0;
+    this.loteVideoProgresoGlobal = 0;
+    this.loteVideoProgresoTramo = 0;
+    this.cdr.detectChanges();
+
+    let completados = 0;
+    let fallidos = 0;
+
+    try {
+      for (let i = 0; i < listaAProcesar.length; i++) {
+        if (this.cancelarLoteVideos) {
+          console.log('🛑 [Generación Lote] Proceso cancelado por el usuario.');
+          break;
+        }
+
+        const pag = listaAProcesar[i];
+        this.loteVideoActual = i + 1;
+        this.loteVideoTitulo = pag.titulo || `Parada #${pag.idParadaOrigen} ➔ Parada #${pag.idParadaDestino}`;
+        this.loteVideoProgresoTramo = 5;
+        this.loteVideoMensajeProgreso = 'Analizando track y cartografía...';
+        this.loteVideoProgresoGlobal = Math.round((i / listaAProcesar.length) * 100);
+        this.cdr.detectChanges();
+
+        try {
+          const url = await this.routeVideoGeneratorService.generarYSubirVideoSubtramo(
+            pag.actividadId!,
+            pag.idParadaOrigen!,
+            pag.idParadaDestino!,
+            {
+              trackGpx: pag.trackGpx!,
+              transportMode: pag.tipoTransporteTramo || 'driving',
+              transportSegments: pag.transportSegments || [],
+              distanciaKm: pag.distanciaTramoKm || 0,
+              titulo: pag.titulo || `Recorrido Parada #${pag.idParadaOrigen} ➔ #${pag.idParadaDestino}`,
+              idParadaOrigen: pag.idParadaOrigen,
+              idParadaDestino: pag.idParadaDestino
+            },
+            (progreso) => {
+              this.loteVideoProgresoTramo = progreso.porcentaje;
+              this.loteVideoMensajeProgreso = progreso.mensaje;
+              this.cdr.detectChanges();
+            }
+          );
+
+          const urlCompleta = `${environment.apiUrl}/${url.replace(/^\//, '')}`;
+          pag.urlVideoAnimacion = urlCompleta;
+          pag.url = urlCompleta;
+          pag.tipoMedia = 'video';
+          pag.mimeType = 'video/mp4';
+
+          // Actualizar en todas las colecciones en memoria
+          const actualizarEnLista = (lista: PaginaMedia[]) => {
+            if (!lista) return;
+            for (const item of lista) {
+              if (item.actividadId === pag.actividadId &&
+                  item.idParadaOrigen === pag.idParadaOrigen &&
+                  item.idParadaDestino === pag.idParadaDestino) {
+                item.urlVideoAnimacion = urlCompleta;
+                item.url = urlCompleta;
+                item.tipoMedia = 'video';
+                item.mimeType = 'video/mp4';
+              }
+            }
+          };
+
+          actualizarEnLista(this.paginasBase);
+          actualizarEnLista(this.paginas);
+
+          // Actualizar caché de la actividad
+          const datos = this.cacheDatosActividadGpx.get(pag.actividadId!);
+          if (datos) {
+            if (!datos.videosSubtramos) datos.videosSubtramos = [];
+            const idxExistente = datos.videosSubtramos.findIndex(
+              (v: any) => v.id_parada_origen === pag.idParadaOrigen && v.id_parada_destino === pag.idParadaDestino
+            );
+            if (idxExistente >= 0) {
+              datos.videosSubtramos[idxExistente].url = url;
+            } else {
+              datos.videosSubtramos.push({
+                id_parada_origen: pag.idParadaOrigen!,
+                id_parada_destino: pag.idParadaDestino!,
+                url: url
+              });
+            }
+          }
+
+          completados++;
+        } catch (subErr) {
+          console.error(`❌ [Generación Lote] Error en subtramo #${pag.idParadaOrigen} ➔ #${pag.idParadaDestino}:`, subErr);
+          fallidos++;
+        }
+
+        this.loteVideoProgresoGlobal = Math.round(((i + 1) / listaAProcesar.length) * 100);
+        this.cdr.detectChanges();
+      }
+    } finally {
+      this.generandoLoteVideos = false;
+      this.forzarMapaInteractivo = false;
+      this.cdr.detectChanges();
+
+      if (this.cancelarLoteVideos) {
+        alert(`Generación detenida. Se completaron ${completados} vídeos antes de cancelar.`);
+      } else if (fallidos === 0 && completados > 0) {
+        alert(`¡Éxito! Se han generado ${completados} animaciones en vídeo MP4.`);
+      } else if (completados > 0) {
+        alert(`Generación finalizada: ${completados} vídeos completados con éxito, ${fallidos} con error.`);
+      }
+    }
+  }
+
+  detenerGeneracionLoteVideos(): void {
+    if (this.generandoLoteVideos) {
+      this.cancelarLoteVideos = true;
+      this.loteVideoMensajeProgreso = 'Cancelando generación de vídeos...';
       this.cdr.detectChanges();
     }
   }
