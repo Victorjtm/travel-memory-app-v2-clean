@@ -8215,10 +8215,12 @@ app.post('/import-tracking', (req, res, next) => {
       }
 
       // PRIORIDAD 1: Intentar extraer fecha de EXIF de la foto
-      if (media.tipo === 'foto' && mediaFile.path) {
+      const fileToReadExif = mediaFile?.path || mediaFilePath;
+      if (media.tipo === 'foto' && fileToReadExif && fs.existsSync(fileToReadExif)) {
         try {
-          console.log(`📷 Leyendo EXIF de: ${mediaFile.originalname}`);
-          const buffer = fs.readFileSync(mediaFile.path);
+          const nombreExif = mediaFile ? mediaFile.originalname : (mediaFileName || path.basename(mediaFilePath));
+          console.log(`📷 Leyendo EXIF de: ${nombreExif}`);
+          const buffer = fs.readFileSync(fileToReadExif);
           const parser = ExifParser.create(buffer);
           const exifData = parser.parse();
 
@@ -8295,7 +8297,7 @@ app.post('/import-tracking', (req, res, next) => {
           [
             actividadId,
             dbTipo,
-            path.basename(decodeURIComponent(mediaFile.originalname)),
+            nombreBaseMedia,
             rutaRelativa,
             (fechaCreacionMedia ? fechaCreacionMedia.split('T')[1].substring(0, 8) : media.timestamp_display),
             JSON.stringify({
