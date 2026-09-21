@@ -4173,11 +4173,16 @@ app.get(['/actividades/:id/gpx', '/api/actividades/:id/gpx'], (req, res) => {
 
     // 1. Si ya existe un archivo GPX físico asociado
     if (actividad.rutaGpxCompleto) {
+      // Priorizar recorrido_reloj.gpx (reloj inteligente) si existe en la actividad
+      const watchGpxRelative = actividad.rutaGpxCompleto.replace('recorrido.gpx', 'recorrido_reloj.gpx');
+      const watchFilePath = path.join(uploadsPath, watchGpxRelative);
       const filePath = path.join(uploadsPath, actividad.rutaGpxCompleto);
-      if (fs.existsSync(filePath)) {
+
+      const targetFile = fs.existsSync(watchFilePath) ? watchFilePath : filePath;
+      if (fs.existsSync(targetFile)) {
         res.setHeader('Content-Type', 'application/gpx+xml');
         res.setHeader('Content-Disposition', `attachment; filename="recorrido_${id}.gpx"`);
-        return res.sendFile(filePath);
+        return res.sendFile(targetFile);
       }
     }
 
@@ -8567,6 +8572,17 @@ app.post('/import-tracking', (req, res, next) => {
     // 9. PROCESAR ARCHIVOS GENERALES (SOLO EN actividades, NO en archivos_asociados)
     // ========================================================================
     console.log('\n📋 Procesando archivos generales...');
+
+    // GPX DEL RELOJ (SI VIENE INCLUIDO) - MÁXIMA PRECISIÓN
+    const watchGpxFile = req.files.find(f => {
+      const b = path.basename(decodeURIComponent(f.originalname));
+      return b === 'recorrido_reloj.gpx' || b === 'recorrido_mifitness.gpx';
+    });
+    if (watchGpxFile) {
+      const watchGpxDest = path.join(actividadPath, 'gpx', 'recorrido_reloj.gpx');
+      fs.renameSync(watchGpxFile.path, watchGpxDest);
+      console.log('⌚ GPX de alta precisión del reloj procesado (guardado en actividades/gpx/recorrido_reloj.gpx)');
+    }
 
     // GPX COMPLETO - SOLO en actividades
     const gpxFile = req.files.find(f => path.basename(decodeURIComponent(f.originalname)) === 'recorrido.gpx');

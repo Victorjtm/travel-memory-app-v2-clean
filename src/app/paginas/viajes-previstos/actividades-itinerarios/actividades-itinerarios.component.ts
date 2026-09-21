@@ -1212,20 +1212,35 @@ export class ActividadesItinerariosComponent implements OnInit {
           archivo.timestampReal = timestamp;
 
           let trackIdx = 0;
+          let displayLat = lat;
+          let displayLng = lng;
+
           if (this.coordenadasGPX && this.coordenadasGPX.length > 0) {
-            let minDist = Infinity;
+            let minDistMeters = Infinity;
+            let closestPt: [number, number] | null = null;
+
             for (let i = 0; i < this.coordenadasGPX.length; i++) {
               const pt = this.coordenadasGPX[i];
-              const d = Math.hypot(pt[0] - lat, pt[1] - lng);
-              if (d < minDist) {
-                minDist = d;
+              const dLatM = (pt[0] - lat) * 111320;
+              const dLngM = (pt[1] - lng) * 111320 * Math.cos(lat * Math.PI / 180);
+              const dMeters = Math.hypot(dLatM, dLngM);
+
+              if (dMeters < minDistMeters) {
+                minDistMeters = dMeters;
                 trackIdx = i;
-                if (d < 0.0001) break;
+                closestPt = pt as [number, number];
+                if (dMeters < 1) break;
               }
+            }
+
+            // Snap-to-Track: Si el marcador está a <= 35m de la ruta, imantarlo al trazado para evitar pines flotantes
+            if (minDistMeters <= 35 && closestPt) {
+              displayLat = closestPt[0];
+              displayLng = closestPt[1];
             }
           }
 
-          return { archivo, lat, lng, timestamp, trackIdx };
+          return { archivo, lat: displayLat, lng: displayLng, rawLat: lat, rawLng: lng, timestamp, trackIdx };
         }
       } catch (err) {
         console.warn(`⚠️ Error parseando ${archivo.nombreArchivo}:`, err);
