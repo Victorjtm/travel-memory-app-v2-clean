@@ -1,0 +1,87 @@
+:host {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.intro-dynamics-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #0d0a08;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+  will-change: opacity;
+
+  &.desvaneciendo {
+    opacity: 0;
+  }
+}
+
+.intro-dynamics-canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Indicador sutil de skip / saltar para el usuario durante la reproducción en vivo */
+.btn-saltar-intro {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 1010;
+  pointer-events: auto;
+  background: rgba(13, 10, 8, 0.65);
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  color: #f3e5ab;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-family: 'Cinzel', 'Georgia', serif;
+  font-size: 0.82rem;
+  letter-spacing: 1px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  &:hover {
+    background: rgba(212, 175, 55, 0.25);
+    border-color: #d4af37;
+    transform: scale(1.04);
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
+  }
+
+  i {
+    font-size: 0.75rem;
+  }
+}
+
+/* Overlay de película analógica durante la ráfaga (grano y aberración cromática) */
+.overlay-efecto-recuerdos {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+
+  &.activo {
+    opacity: 0.85;
+  }
+}

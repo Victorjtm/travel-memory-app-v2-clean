@@ -1,0 +1,12 @@
+<div class="intro-dynamics-container" [class.desvaneciendo]="tiempoActual >= 4.2" *ngIf="activo">
+  <canvas #introCanvas class="intro-dynamics-canvas"></canvas>
+
+  <button *ngIf="permitirSaltar && tiempoActual < 4.2" 
+          type="button" 
+          class="btn-saltar-intro" 
+          (click)="saltarIntro()" 
+          title="Saltar introducción cinemática">
+    <span>Saltar</span>
+    <i class="fas fa-forward"></i>
+  </button>
+</div>

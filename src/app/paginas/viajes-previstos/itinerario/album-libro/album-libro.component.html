@@ -165,6 +165,18 @@
   </div>
 
   <!-- ============================================================ -->
+  <!-- 🎬 INTRODUCCIÓN CINEMÁTICA 3D DYNAMICS (0.0s - 5.0s)        -->
+  <!-- ============================================================ -->
+  <app-intro-cinematica-dynamics
+    *ngIf="mostrarIntroDynamics"
+    [tituloViaje]="infoViaje?.nombre || 'CRUCERO'"
+    [archivosViaje]="paginas"
+    [sonidoActivado]="musicaActivada || !videoMuted"
+    [permitirSaltar]="true"
+    (completado)="onIntroDynamicsCompletada()">
+  </app-intro-cinematica-dynamics>
+
+  <!-- ============================================================ -->
   <!-- BLOQUE: PORTADA DEL LIBRO 3D REALISTA (sólo modo vintage)  -->
   <!-- ============================================================ -->
   <div class="portada-escenario-vintage" *ngIf="estado === 'portada' && modoAlbumVintage"

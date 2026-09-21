@@ -292,19 +292,54 @@ export interface ProgresoVideo {
     return resultado;
   }
 
+  private esDynamicsTimeline(infoViaje: any, escenas: any[]): boolean {
+    if (infoViaje) {
+      const nombre = (infoViaje.nombre || '').toLowerCase();
+      const desc = (infoViaje.descripcion || '').toLowerCase();
+      if (nombre.includes('dynamics') || desc.includes('dynamics') || infoViaje.esDynamics) return true;
+    }
+    if (escenas && escenas.length > 0) {
+      return escenas.some(e => {
+        const n = e.archivo?.nombreArchivo || e.archivo?.nombre || e.titulo || '';
+        const f = (e.archivo?.fuente || e.archivo?.origen || '').toLowerCase();
+        return /^(?:recording|JPEG|VID)-\d{13}|^(?:recording|JPEG|VID)_\d{13}/.test(n) ||
+               f.includes('dynamics') ||
+               n.toLowerCase().includes('dynamics');
+      });
+    }
+    return false;
+  }
+
   private construirTimeline(escenas: any[], infoViaje: any): any[] {
     const timeline = [];
     let currentTime = 0;
 
-    // Título inicial (3s)
-    timeline.push({ 
-      tipo: 'titulo', 
-      start: currentTime, 
-      end: currentTime + 3, 
-      duracion: 3,
-      data: infoViaje.nombre || 'Mi Viaje' 
-    });
-    currentTime += 3;
+    const esDynamics = this.esDynamicsTimeline(infoViaje, escenas);
+
+    if (esDynamics) {
+      // 🎬 INTRO CINEMÁTICA DYNAMICS DETERMINISTA (5.0s EXACTOS)
+      timeline.push({
+        tipo: 'intro_dynamics',
+        start: currentTime,
+        end: currentTime + 5.0,
+        duracion: 5.0,
+        data: {
+          titulo: infoViaje.nombre || 'CRUCERO',
+          escenas: escenas
+        }
+      });
+      currentTime += 5.0;
+    } else {
+      // Título inicial clásico (3s)
+      timeline.push({ 
+        tipo: 'titulo', 
+        start: currentTime, 
+        end: currentTime + 3, 
+        duracion: 3,
+        data: infoViaje.nombre || 'Mi Viaje' 
+      });
+      currentTime += 3;
+    }
 
     for (const escena of escenas) {
       // ✨ NUEVO: Limitar duración de vídeos a MAX_VIDEO_DURATION_SECONDS
@@ -499,7 +534,10 @@ export interface ProgresoVideo {
   ): void {
     const progreso = Math.min(elapsed / escena.duracion, 1);
 
-    if (escena.tipo === 'titulo') {
+    if (escena.tipo === 'intro_dynamics') {
+      this.renderizarIntroDynamicsFrame(escena, elapsed);
+
+    } else if (escena.tipo === 'titulo') {
       this.renderizarTituloFrame(escena.data, progreso);
 
     } else if (escena.tipo === 'carta') {
@@ -543,6 +581,180 @@ export interface ProgresoVideo {
     this.ctx.font = 'bold 72px Arial';
     this.ctx.textAlign = 'center';
     this.ctx.fillText(titulo, this.canvas.width / 2, this.canvas.height / 2);
+  }
+
+  /**
+   * 🎬 RENDERIZADOR DETERMINISTA DE LA INTRO DYNAMICS (5.0s EXACTOS PARA EXPORTACIÓN MP4)
+   * Replica pixel a pixel las 4 fases:
+   * 1. [0.0s - 1.5s] Caída e impacto con polvo y micro-rebote elástico
+   * 2. [1.5s - 2.5s] Zoom-in agresivo hacia el grabado "CRUCERO" a negro total
+   * 3. [2.5s - 4.0s] Ráfaga estroboscópica de recuerdos del viaje
+   * 4. [4.0s - 5.0s] Desaceleración y acoplamiento con la portada dorada final
+   */
+  private renderizarIntroDynamicsFrame(escena: any, t: number): void {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const ctx = this.ctx;
+    const titulo = (escena.data?.titulo || 'CRUCERO').toUpperCase();
+    const listaEscenas = escena.data?.escenas || [];
+
+    // Fondo oscuro madera cálida
+    ctx.fillStyle = '#100a06';
+    ctx.fillRect(0, 0, w, h);
+
+    // FASE 1: IMPACTO Y POLVO (0.0s - 1.5s)
+    if (t <= 1.5) {
+      const tImpacto = 1.25;
+      let yOffset = 0;
+      let escala = 1.0;
+
+      if (t < tImpacto) {
+        const p = t / tImpacto;
+        yOffset = -h * 0.7 * (1 - p * p);
+      } else {
+        const dt = t - tImpacto;
+        const rebote = Math.sin(dt * 35) * Math.exp(-dt * 14) * 25;
+        yOffset = -rebote;
+      }
+
+      ctx.save();
+      ctx.translate(w / 2, h / 2 + yOffset);
+
+      // Sombra volumétrica del libro
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.fillRect(-w * 0.22, -h * 0.26 + 15, w * 0.44, h * 0.52);
+
+      // Tapa de cuero envejecido
+      ctx.fillStyle = '#2d180f';
+      ctx.fillRect(-w * 0.22, -h * 0.26, w * 0.44, h * 0.52);
+
+      // Marco dorado exterior
+      ctx.strokeStyle = '#c59d42';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(-w * 0.20, -h * 0.24, w * 0.40, h * 0.48);
+
+      // Letras grabadas "CRUCERO"
+      ctx.fillStyle = '#e8c46c';
+      ctx.font = `bold ${Math.round(h * 0.07)}px "Cinzel", Georgia, serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(titulo, 0, -h * 0.04);
+
+      ctx.fillStyle = '#be9946';
+      ctx.font = `${Math.round(h * 0.026)}px "Cinzel", Georgia, serif`;
+      ctx.fillText('DIARIO DE VIAJES Y MEMORIAS', 0, h * 0.04);
+      ctx.restore();
+
+      // Partículas de polvo si ya hubo impacto
+      if (t >= tImpacto) {
+        const dt = t - tImpacto;
+        const alphaPolvo = Math.max(0, 0.7 * (1 - dt / 0.8));
+        ctx.fillStyle = `rgba(215, 195, 150, ${alphaPolvo})`;
+        for (let i = 0; i < 60; i++) {
+          const ang = (i / 60) * Math.PI * 2;
+          const dist = (w * 0.22) + dt * 400 + (i % 7) * 20;
+          const px = w / 2 + Math.cos(ang) * dist;
+          const py = h / 2 + 100 + Math.sin(ang) * (dist * 0.35) - dt * 60;
+          ctx.beginPath();
+          ctx.arc(px, py, 3 + (i % 4), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // FASE 2: ZOOM DE IMPACTO (1.5s - 2.5s)
+    else if (t > 1.5 && t <= 2.5) {
+      const pZoom = (t - 1.5) / 1.0;
+      const zoomScale = 1.0 + Math.pow(pZoom, 3) * 6.5;
+
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      ctx.scale(zoomScale, zoomScale);
+
+      ctx.fillStyle = '#2d180f';
+      ctx.fillRect(-w * 0.22, -h * 0.26, w * 0.44, h * 0.52);
+
+      ctx.fillStyle = '#e8c46c';
+      ctx.font = `bold ${Math.round(h * 0.07)}px "Cinzel", Georgia, serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(titulo, 0, -h * 0.04);
+      ctx.restore();
+
+      // Oscurecimiento gradual a negro absoluto
+      if (pZoom > 0.5) {
+        const alphaNegro = (pZoom - 0.5) / 0.5;
+        ctx.fillStyle = `rgba(0, 0, 0, ${alphaNegro})`;
+        ctx.fillRect(0, 0, w, h);
+      }
+    }
+
+    // FASE 3: RÁFAGA DE RECUERDOS (2.5s - 4.0s)
+    else if (t > 2.5 && t <= 4.0) {
+      const pRafaga = (t - 2.5) / 1.5;
+      const totalRecuerdos = Math.max(1, listaEscenas.length);
+      const indice = Math.floor(pRafaga * 24) % totalRecuerdos;
+      const escenaRecuerdo = listaEscenas[indice];
+
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, w, h);
+
+      if (escenaRecuerdo?.data?.imagen) {
+        this.dibujarImagenCentrada(escenaRecuerdo.data.imagen);
+      } else if (escenaRecuerdo?.archivo) {
+        this.dibujarTextoImagen(escenaRecuerdo.archivo);
+      }
+
+      // Viñeteado de película
+      const grad = ctx.createRadialGradient(w / 2, h / 2, w * 0.2, w / 2, h / 2, w * 0.55);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.65)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Destello ámbar analógico
+      const flickerAlpha = (Math.sin(pRafaga * 40) + 1) * 0.12;
+      ctx.fillStyle = `rgba(235, 185, 60, ${flickerAlpha})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // FASE 4: ACOPLAMIENTO CON PORTADA REAL (4.0s - 5.0s)
+    else {
+      const pRetroceso = (t - 4.0) / 1.0;
+      const ease = 1 - Math.pow(1 - pRetroceso, 3);
+
+      ctx.fillStyle = '#140c08';
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      const escalaPortada = 1.3 - ease * 0.3; // 1.3 -> 1.0
+      ctx.scale(escalaPortada, escalaPortada);
+
+      // Portada dorada y relicario central
+      ctx.fillStyle = '#26140b';
+      ctx.fillRect(-w * 0.24, -h * 0.32, w * 0.48, h * 0.64);
+
+      ctx.strokeStyle = '#d4af37';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(-w * 0.22, -h * 0.30, w * 0.44, h * 0.60);
+
+      ctx.fillStyle = '#f3e5ab';
+      ctx.font = `bold ${Math.round(h * 0.055)}px "Cinzel", Georgia, serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(titulo, 0, -h * 0.18);
+
+      // Marco del barco / relicario
+      ctx.fillStyle = 'rgba(212, 175, 55, 0.25)';
+      ctx.fillRect(-w * 0.12, -h * 0.10, w * 0.24, h * 0.26);
+      ctx.strokeStyle = '#d4af37';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-w * 0.12, -h * 0.10, w * 0.24, h * 0.26);
+
+      ctx.fillStyle = '#e8c46c';
+      ctx.font = `italic ${Math.round(h * 0.024)}px "Cinzel", Georgia, serif`;
+      ctx.fillText('DIARIO DE VIAJES Y MEMORIAS', 0, h * 0.22);
+
+      ctx.restore();
+    }
   }
 
 

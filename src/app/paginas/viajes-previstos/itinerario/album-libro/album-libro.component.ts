@@ -21,6 +21,8 @@ import { MiniMapaGpxComponent } from '../../../../componentes/mini-mapa-gpx/mini
 import { GpxAnimationService, GpxPoint } from '../../../../servicios/gpx-animation.service';
 import { TrackEditorService } from '../../../../servicios/track-editor.service';
 import { RouteVideoGeneratorService, ProgresoRenderizadoRuta } from '../../../../servicios/route-video-generator.service';
+import { IntroCinematicaDynamicsComponent } from '../../../../componentes/intro-cinematica-dynamics/intro-cinematica-dynamics.component';
+import { IntroMemoryPreloaderService } from '../../../../servicios/intro-memory-preloader.service';
 
 // ==========================================
 // TIPOS E INTERFACES
@@ -124,7 +126,7 @@ interface CoordenadasDMS {
 @Component({
   selector: 'app-album-libro',
   standalone: true,
-  imports: [CommonModule, FontAwesomeModule, FormsModule, GpxAnimationComponent, MiniMapaGpxComponent],
+  imports: [CommonModule, FontAwesomeModule, FormsModule, GpxAnimationComponent, MiniMapaGpxComponent, IntroCinematicaDynamicsComponent],
   templateUrl: './album-libro.component.html',
   styleUrls: ['./album-libro.component.scss']
 })
@@ -137,6 +139,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   paginas: PaginaMedia[] = [];
   paginaActual = 0;
   estado: 'portada' | 'abierto' | 'contraportada' = 'portada';
+
+  // 🎬 INTRODUCCIÓN CINEMÁTICA 3D DYNAMICS
+  mostrarIntroDynamics: boolean = false;
+  introDynamicsReproducida: boolean = false;
 
   // ==========================================
   // PROPIEDADES PARA AUDIO DEL VIAJE
@@ -2428,6 +2434,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       console.log('===============================');
 
       await this.procesarArchivos(archivos);
+
+      // 🎬 Disparar intro cinemática Dynamics si corresponde y estamos en la portada
+      if (this.esActividadDynamics(archivos) && this.estado === 'portada' && !this.introDynamicsReproducida) {
+        console.log('🎬 [Dynamics] Activando introducción cinemática 3D (5.0s)...');
+        this.mostrarIntroDynamics = true;
+      }
     } catch (error) {
       console.error('❌ Error al cargar datos del álbum:', error);
       this.manejarErrorCarga(error);
@@ -4290,6 +4302,41 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       console.error('❌ Error al cargar actividades por itinerario:', error);
       return actividadesPorItinerario;
     }
+  }
+
+  /**
+   * 🛡️ Determina con máxima precisión si la actividad/viaje actual corresponde al módulo Dynamics.
+   */
+  public esActividadDynamics(archivos?: any[]): boolean {
+    if (this.infoViaje) {
+      const nombre = (this.infoViaje.nombre || '').toLowerCase();
+      const desc = (this.infoViaje.descripcion || '').toLowerCase();
+      if (nombre.includes('dynamics') || desc.includes('dynamics') || (this.infoViaje as any).esDynamics) {
+        return true;
+      }
+    }
+    const items = archivos || this.paginas;
+    if (items && items.length > 0) {
+      return items.some((item: any) => {
+        const arch = item.archivo || item;
+        const n = arch.nombreArchivo || arch.nombre || item.titulo || '';
+        const f = (arch.fuente || arch.origen || '').toLowerCase();
+        return /^(?:recording|JPEG|VID)-\d{13}|^(?:recording|JPEG|VID)_\d{13}/.test(n) ||
+               f.includes('dynamics') ||
+               n.toLowerCase().includes('dynamics');
+      });
+    }
+    return false;
+  }
+
+  /**
+   * 🎬 Callback cuando la intro cinemática de 5 segundos finaliza
+   */
+  public onIntroDynamicsCompletada(): void {
+    console.log('🎬 [IntroDynamics] Secuencia de 5s completada. Portada real interactiva lista.');
+    this.mostrarIntroDynamics = false;
+    this.introDynamicsReproducida = true;
+    this.cdr.detectChanges();
   }
 
   private determinarTipoMedia(archivo: Archivo): TipoMedia {
