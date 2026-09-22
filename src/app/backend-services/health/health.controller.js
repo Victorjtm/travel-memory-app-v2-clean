@@ -165,12 +165,7 @@ class HealthController {
         throw new Error('No se pudo extraer información válida de la báscula.');
       }
 
-      console.log('✅ [HealthController] Métricas de báscula extraídas:', {
-        date: data.measurement_date,
-        weight: data.weight_kg,
-        bmi: data.bmi,
-        body_fat: data.body_fat_pct
-      });
+      console.log('✅ [HealthController] Métricas de báscula extraídas (JSON completo):', JSON.stringify(data, null, 2));
 
       const db = getDbConnection();
       const queryScale = `
