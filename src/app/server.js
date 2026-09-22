@@ -8219,58 +8219,78 @@ app.post('/import-tracking', (req, res, next) => {
         continue;
       }
 
-      // PRIORIDAD 1: Intentar extraer fecha de EXIF de la foto
+      // RESOLUCIÓN ROBUSTA DE FECHAS (Prioridad: 1. EXIF para fotos, 2. Manifest timestamp válido, 3. Epoch en nombre, 4. YYYYMMDD_HHMMSS)
+      const isValidDateStr = (str) => {
+        if (!str) return false;
+        const d = new Date(str);
+        const y = d.getFullYear();
+        return !isNaN(d.getTime()) && y >= 2000 && y <= 2100;
+      };
+
       const fileToReadExif = mediaFile?.path || mediaFilePath;
-      if (media.tipo === 'foto' && fileToReadExif && fs.existsSync(fileToReadExif)) {
+      let fechaResuelta = null;
+
+      // 1. PRIORIDAD MÁXIMA: Si viene timestamp válido en el manifest (Tiempo real UTC generado por la app durante el tracking)
+      if (isValidDateStr(media.timestamp)) {
+        fechaResuelta = new Date(media.timestamp).toISOString();
+        console.log(`✅ [MANIFEST] Usando timestamp real del manifest: ${fechaResuelta}`);
+      }
+
+      // 2. EXIF para fotos (fallback si no vino en manifest)
+      if (!fechaResuelta && media.tipo === 'foto' && fileToReadExif && fs.existsSync(fileToReadExif)) {
         try {
-          const nombreExif = mediaFile ? mediaFile.originalname : (mediaFileName || path.basename(mediaFilePath));
-          console.log(`📷 Leyendo EXIF de: ${nombreExif}`);
           const buffer = fs.readFileSync(fileToReadExif);
           const parser = ExifParser.create(buffer);
           const exifData = parser.parse();
-
           if (exifData.tags?.DateTimeOriginal) {
             const dt = exifData.tags.DateTimeOriginal;
             if (typeof dt === 'number') {
-              fechaCreacionMedia = new Date(dt * 1000).toISOString();
+              fechaResuelta = new Date(dt * 1000).toISOString();
             } else if (typeof dt === 'string') {
               const dateStr = dt.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(' ', 'T');
-              fechaCreacionMedia = new Date(dateStr).toISOString();
+              fechaResuelta = new Date(dateStr).toISOString();
             }
-            console.log(`✅ [PRIORIDAD 1] Fecha de EXIF: ${fechaCreacionMedia}`);
-          } else {
-            throw new Error('No hay DateTimeOriginal en EXIF');
+            console.log(`✅ [EXIF] Fecha extraída: ${fechaResuelta}`);
           }
         } catch (exifErr) {
           console.log(`⚠️ No se pudo leer EXIF: ${exifErr.message}`);
-          console.log(`   Intentando extraer del nombre del archivo...`);
+        }
+      }
 
-          if (media.archivo) {
-            const matchFoto = media.archivo.match(/(\d{4})(\d{2})(\d{2})_?(\d{2})(\d{2})(\d{2})/);
-            if (matchFoto) {
-              const [_, y, m, d, h, min, s] = matchFoto;
-              fechaCreacionMedia = new Date(Date.UTC(
-                parseInt(y), parseInt(m) - 1, parseInt(d),
-                parseInt(h), parseInt(min), parseInt(s)
-              )).toISOString();
-              console.log(`✅ [PRIORIDAD 2] Fecha del nombre (YYYYMMDD_HHMMSS):`);
-              console.log(`   ${y}${m}${d}_${h}${min}${s} → ${fechaCreacionMedia}`);
-            } else {
-              console.log(`⚠️ No se pudo extraer fecha del nombre: ${media.archivo}`);
-              console.log(`✅ [PRIORIDAD 3] Usando timestamp por defecto: ${fechaCreacionMedia}`);
+      // 3. Si no hay fecha aún, intentar extraer del nombre de archivo
+      if (!fechaResuelta) {
+        const fileTargetName = media.archivo || media.nombre || mediaFileName || '';
+
+        // a) Epoch de 13 dígitos (ej. recording-1789981231954..., JPEG_178998..., 178998...)
+        const matchEpoch = fileTargetName.match(/(?:recording-|^|_|JPEG_|VID_)(\d{13})/);
+        if (matchEpoch) {
+          const epochVal = parseInt(matchEpoch[1], 10);
+          if (epochVal > 946684800000 && epochVal < 4102444800000) { // 2000 a 2100
+            fechaResuelta = new Date(epochVal).toISOString();
+            console.log(`✅ [EPOCH 13] Fecha de nombre: ${fechaResuelta}`);
+          }
+        }
+
+        // b) Formato estricto YYYYMMDD_HHMMSS (requiere separador y rangos válidos)
+        if (!fechaResuelta) {
+          const matchDateFmt = fileTargetName.match(/(\d{4})[-_]?(\d{2})[-_]?(\d{2})[T_](\d{2})[-_]?(\d{2})[-_]?(\d{2})/);
+          if (matchDateFmt) {
+            const [_, y, m, d, h, min, s] = matchDateFmt;
+            const numY = parseInt(y, 10), numM = parseInt(m, 10), numD = parseInt(d, 10);
+            const numH = parseInt(h, 10), numMin = parseInt(min, 10), numS = parseInt(s, 10);
+            if (numY >= 2000 && numY <= 2100 && numM >= 1 && numM <= 12 && numD >= 1 && numD <= 31 && numH <= 23 && numMin <= 59 && numS <= 59) {
+              fechaResuelta = new Date(Date.UTC(numY, numM - 1, numD, numH, numMin, numS)).toISOString();
+              console.log(`✅ [DATE FMT] Fecha del nombre: ${fechaResuelta}`);
             }
           }
         }
-      } else if (media.archivo) {
-        const matchFoto = media.archivo.match(/(\d{4})(\d{2})(\d{2})_?(\d{2})(\d{2})(\d{2})/);
-        if (matchFoto) {
-          const [_, y, m, d, h, min, s] = matchFoto;
-          fechaCreacionMedia = new Date(Date.UTC(
-            parseInt(y), parseInt(m) - 1, parseInt(d),
-            parseInt(h), parseInt(min), parseInt(s)
-          )).toISOString();
-          console.log(`✅ [PRIORIDAD 2] Fecha del nombre del archivo: ${fechaCreacionMedia}`);
-        }
+      }
+
+      if (fechaResuelta) {
+        fechaCreacionMedia = fechaResuelta;
+      } else {
+        console.warn(`⚠️ No se pudo determinar fecha precisa para ${media.nombre}, usando actual o fallback`);
+        if (!fechaCreacionMedia) fechaCreacionMedia = new Date().toISOString();
       }
 
       const nombreBaseMedia = mediaFileName || path.basename(decodeURIComponent(mediaFile ? mediaFile.originalname : mediaFilePath));

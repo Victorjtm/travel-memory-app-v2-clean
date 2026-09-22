@@ -361,8 +361,18 @@ export class TrackEditorService {
       }
     }
 
-    // Fallback: extraer timestamp del nombre de archivo (ej: JPEG_20260628_115836_17826...)
+    // Fallback: extraer timestamp del nombre de archivo (ej: JPEG_20260628_115836_17826... o JPEG_1789902604589.jpg)
     if (filename) {
+      // 1. Patrón epoch de 13 dígitos en milisegundos
+      const epochMatch = String(filename).match(/(?:recording-|^|_|JPEG_|VID_)(\d{13})/);
+      if (epochMatch) {
+        const epoch = parseInt(epochMatch[1], 10);
+        if (epoch > 946684800000 && epoch < 4102444800000) {
+          return epoch;
+        }
+      }
+
+      // 2. Patrón estándar YYYYMMDD_HHMMSS
       const nameMatch = String(filename).match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
       if (nameMatch) {
         const year = parseInt(nameMatch[1], 10);
@@ -371,7 +381,7 @@ export class TrackEditorService {
         const hours = parseInt(nameMatch[4], 10);
         const minutes = parseInt(nameMatch[5], 10);
         const seconds = parseInt(nameMatch[6], 10);
-        const d = new Date(year, month, day, hours, minutes, seconds);
+        const d = new Date(Date.UTC(year, month, day, hours, minutes, seconds));
         if (!isNaN(d.getTime())) return d.getTime();
       }
     }
@@ -409,7 +419,7 @@ export class TrackEditorService {
     for (const item of mediaList) {
       let lat: number | null = item.latitud || item.lat || null;
       let lng: number | null = item.longitud || item.lng || item.lon || null;
-      let horaRaw = item.timestampReal || item.horaCaptura || item.fechaCreacion || item.fecha || item.time || item.timestamp;
+      let horaRaw = item.timestampReal || item.fechaCreacion || item.horaCaptura || item.fecha || item.time || item.timestamp;
 
       if ((!lat || !lng || !horaRaw) && item.geolocalizacion) {
         try {

@@ -1116,41 +1116,57 @@ export class ActividadesItinerariosComponent implements OnInit {
    */
   private obtenerTimestampCronologico(archivo: any): number {
     if (!archivo) return 0;
-    const name = archivo.nombreArchivo || archivo.nombre || '';
-    if (name) {
-      const m = name.match(/(\d{13})/);
-      if (m) {
-        const val = Number(m[1]);
-        if (val > 1577836800000 && val < 2051222400000) return val;
-      }
-    }
-    if (archivo.metadatos) {
-      try {
-        const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
-        if (meta?.timestamp) {
-          const t = new Date(meta.timestamp).getTime();
-          if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
-        }
-      } catch (e) { }
-    }
-    if (archivo.fechaTomada || archivo.fechaHora || archivo.fecha) {
-      const t = new Date(archivo.fechaTomada || archivo.fechaHora || archivo.fecha).getTime();
-      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
-    }
+
+    // 🌟 PRIORIDAD 1: fechaCreacion y horaCaptura de la base de datos (Timestamp canónico del evento)
     if (archivo.fechaCreacion) {
       const fecha = new Date(archivo.fechaCreacion);
-      if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string') {
+      if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string' && archivo.horaCaptura !== '00:00:00') {
         const [horas, minutos, segs] = archivo.horaCaptura.split(':').map(Number);
         if (!isNaN(horas) && !isNaN(minutos)) {
           fecha.setHours(horas, minutos, segs || 0, 0);
         }
       }
       const t = fecha.getTime();
-      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+      if (!isNaN(t) && fecha.getFullYear() >= 2000 && fecha.getFullYear() <= 2100) return t;
     }
+
+    // 🌟 PRIORIDAD 2: Metadatos con timestamp
+    if (archivo.metadatos) {
+      try {
+        const meta = typeof archivo.metadatos === 'string' ? JSON.parse(archivo.metadatos) : archivo.metadatos;
+        if (meta?.timestamp) {
+          const t = new Date(meta.timestamp).getTime();
+          const yr = new Date(t).getFullYear();
+          if (!isNaN(t) && yr >= 2000 && yr <= 2100) return t;
+        }
+      } catch (e) { }
+    }
+
+    if (archivo.fechaTomada || archivo.fechaHora || archivo.fecha) {
+      const t = new Date(archivo.fechaTomada || archivo.fechaHora || archivo.fecha).getTime();
+      const yr = new Date(t).getFullYear();
+      if (!isNaN(t) && yr >= 2000 && yr <= 2100) return t;
+    }
+
+    // 🌟 PRIORIDAD 3 (Fallback): Si no hay fecha en BD, extraer de nombre
+    const name = archivo.nombreArchivo || archivo.nombre || '';
+    if (name) {
+      const m = name.match(/(?:recording-|^|_|JPEG_|VID_)(\d{13})/);
+      if (m) {
+        const val = Number(m[1]);
+        if (val > 946684800000 && val < 4102444800000) return val;
+      }
+      const mDate = name.match(/(\d{4})[-_]?(\d{2})[-_]?(\d{2})[T_](\d{2})[-_]?(\d{2})[-_]?(\d{2})/);
+      if (mDate) {
+        const dt = new Date(`${mDate[1]}-${mDate[2]}-${mDate[3]}T${mDate[4]}:${mDate[5]}:${mDate[6]}Z`);
+        if (!isNaN(dt.getTime())) return dt.getTime();
+      }
+    }
+
     if (archivo.created_at) {
       const t = new Date(archivo.created_at).getTime();
-      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+      const yr = new Date(t).getFullYear();
+      if (!isNaN(t) && yr >= 2000 && yr <= 2100) return t;
     }
     return 0;
   }
@@ -1828,7 +1844,7 @@ export class ActividadesItinerariosComponent implements OnInit {
   // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ NUEVO: Toggle panel de estadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­sticas
   toggleSidePanel(): void {
     this.showSidePanel = !this.showSidePanel;
-    console.log(`ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬ÂÃƒâ€šÃ‚ÂºÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€š  Panel lateral: ${this.showSidePanel ? 'VISIBLE' : 'OCULTO'}`);
+    console.log(`ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Ãƒâ€šÃ‚ÂºÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€š  Panel lateral: ${this.showSidePanel ? 'VISIBLE' : 'OCULTO'}`);
 
     // Invalida el tamaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â±o del mapa poco despuÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©s para que se adapte al contenedor redimensionado
     if (this.mapaGPX) {
@@ -1891,12 +1907,12 @@ export class ActividadesItinerariosComponent implements OnInit {
   }
 
   // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ MEJOR OPCIÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œN: Flechas SVG (escalables sin pixelar)
-  private addDirectionArrows(L: any, coordinates: any[], color: string = '#FF0000', opacity: number = 1): void {
+  private addDirectionArrows(L: any, coordinates: any[], color: string = '#0284c7', opacity: number = 1): void {
     if (!this.mapaGPX || coordinates.length < 2) return;
 
     const totalPoints = coordinates.length;
-    // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚Â¨ FASE 1 (IteraciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³n 3): Chevron minimalista, muy sutil
-    const interval = Math.max(Math.floor(totalPoints / 4), 60);
+    // Flecha regular cada ~35 puntos (o proporcional para rutas, ~120-150 metros)
+    const interval = Math.max(Math.floor(totalPoints / 35), 15);
 
     for (let i = interval; i < coordinates.length; i += interval) {
       const prevPoint = coordinates[i - 1];
@@ -1907,26 +1923,26 @@ export class ActividadesItinerariosComponent implements OnInit {
       const arrowIcon = L.divIcon({
         className: 'direction-arrow-svg',
         html: `
-        <svg width="16" height="16" viewBox="0 0 32 32" 
-             style="transform: rotate(${angle}deg); filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3)); opacity: ${opacity * 0.5};">
+        <svg width="18" height="18" viewBox="0 0 32 32" 
+             style="transform: rotate(${angle}deg); filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); opacity: ${opacity};">
           <!-- Fondo/Borde blanco para contraste -->
           <path d="M 6 24 L 16 8 L 26 24" 
                 fill="none" 
                 stroke="white" 
-                stroke-width="6"
-                stroke-linecap="round"
+                stroke-width="7" 
+                stroke-linecap="round" 
                 stroke-linejoin="round"/>
-          <!-- LÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­nea de color semÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ntico -->
+          <!-- Línea de color semántico -->
           <path d="M 6 24 L 16 8 L 26 24" 
                 fill="none" 
                 stroke="${color}" 
-                stroke-width="3"
-                stroke-linecap="round"
+                stroke-width="3.5" 
+                stroke-linecap="round" 
                 stroke-linejoin="round"/>
         </svg>
       `,
-        iconSize: [16, 16],
-        iconAnchor: [8, 12]
+        iconSize: [18, 18],
+        iconAnchor: [9, 9]
       });
 
       L.marker(currentPoint, {
@@ -1937,11 +1953,9 @@ export class ActividadesItinerariosComponent implements OnInit {
       }).addTo(this.mapaGPX);
     }
 
-    console.log(`ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ ${Math.floor(totalPoints / interval)} flechas SVG aÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â±adidas`);
+    console.log(`✅ ${Math.floor(totalPoints / interval)} flechas SVG añadidas a la ruta`);
   }
 
-
-  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ NUEVO: Calcular ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ngulo entre dos puntos
   private calculateAngle(pointA: number[], pointB: number[]): number {
     const lat1 = pointA[0];
     const lng1 = pointA[1];

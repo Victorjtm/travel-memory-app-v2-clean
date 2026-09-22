@@ -5619,16 +5619,6 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     const arch = pagina.archivo || pagina;
 
-    // 🌟 Prioridad 1: Timestamp epoch de 13 dígitos en el nombre de archivo (ej. _1789551427312.jpg o recording-1789...)
-    // Este valor es tiempo UTC absoluto e inmutable, evitando falsos saltos por discrepancias de zona horaria (UTC vs UTC+2)
-    if (arch.nombreArchivo) {
-      const m = arch.nombreArchivo.match(/(\d{13})/);
-      if (m) {
-        const ts = Number(m[1]);
-        if (ts > 1577836800000 && ts < 2051222400000) return ts;
-      }
-    }
-
     // 1. Si tiene horaCaptura válida y fechaCreacion/fechaTomada/pagina.fecha
     let datePart = '';
     if (pagina.fecha) datePart = pagina.fecha.split('T')[0];
@@ -5662,15 +5652,26 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     if (datePart && !datePart.startsWith('1970') && !datePart.startsWith('1792') && timePart) {
       const dt = new Date(`${datePart}T${timePart}Z`);
-      if (!isNaN(dt.getTime())) return dt.getTime();
+      if (!isNaN(dt.getTime()) && dt.getFullYear() >= 2000 && dt.getFullYear() <= 2100) return dt.getTime();
     }
 
-    // 2. Si es audio grabado durante tracking (recording-178946... o metadatos.timestamp)
-    if (arch.nombreArchivo && arch.nombreArchivo.startsWith('recording-')) {
-      const m = arch.nombreArchivo.match(/(\d{13})/);
+    if (arch.metadatos) {
+      try {
+        const meta = typeof arch.metadatos === 'string' ? JSON.parse(arch.metadatos) : arch.metadatos;
+        if (meta?.timestamp) {
+          const t = new Date(meta.timestamp).getTime();
+          const yr = new Date(t).getFullYear();
+          if (!isNaN(t) && yr >= 2000 && yr <= 2100) return t;
+        }
+      } catch (e) { }
+    }
+
+    // 2. Fallback: Timestamp epoch de 13 dígitos en el nombre de archivo
+    if (arch.nombreArchivo) {
+      const m = arch.nombreArchivo.match(/(?:recording-|^|_|JPEG_|VID_)(\d{13})/);
       if (m) {
         const ts = Number(m[1]);
-        if (ts > 1577836800000 && ts < 2051222400000) return ts;
+        if (ts > 946684800000 && ts < 4102444800000) return ts;
       }
     }
 

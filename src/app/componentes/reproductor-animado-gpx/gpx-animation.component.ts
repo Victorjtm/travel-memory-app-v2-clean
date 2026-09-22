@@ -50,6 +50,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
   private marker: any;
   private L: any;
   private baseRoutePolyline: any = null;
+  private baseRouteArrows: any[] = [];
 
   readonly MODE_COLORS: { [key: string]: string } = {
     walking: '#059669',
@@ -311,12 +312,74 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     }
   }
 
+  private clearBaseRouteArrows(): void {
+    if (this.baseRouteArrows && this.baseRouteArrows.length > 0) {
+      this.baseRouteArrows.forEach(m => {
+        try { this.map.removeLayer(m); } catch (e) {}
+      });
+      this.baseRouteArrows = [];
+    }
+  }
+
+  private calculateAngleGpx(pointA: [number, number], pointB: [number, number]): number {
+    const lat1 = pointA[0] * Math.PI / 180;
+    const lat2 = pointB[0] * Math.PI / 180;
+    const dLng = (pointB[1] - pointA[1]) * Math.PI / 180;
+
+    const y = Math.sin(dLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+
+    const brng = Math.atan2(y, x) * 180 / Math.PI;
+    return (brng + 360) % 360;
+  }
+
+  private drawRouteDirectionArrows(): void {
+    if (!this.map || !this.L || !this.points || this.points.length < 2) return;
+    this.clearBaseRouteArrows();
+
+    let accumulatedDist = 0;
+    const ARROW_INTERVAL_M = 120; // Flecha regular cada 120 metros de recorrido
+
+    for (let i = 1; i < this.points.length; i++) {
+      const p1 = this.points[i - 1];
+      const p2 = this.points[i];
+      const segDist = this.getDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+      accumulatedDist += segDist;
+
+      if (accumulatedDist >= ARROW_INTERVAL_M) {
+        accumulatedDist = 0;
+        const angle = this.calculateAngleGpx([p1.lat, p1.lng], [p2.lat, p2.lng]);
+        const arrowIcon = this.L.divIcon({
+          className: 'gpx-route-arrow-svg',
+          html: `
+            <svg width="18" height="18" viewBox="0 0 32 32" style="transform: rotate(${angle}deg); filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); pointer-events: none;">
+              <path d="M 6 24 L 16 8 L 26 24" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M 6 24 L 16 8 L 26 24" fill="none" stroke="#0284c7" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          `,
+          iconSize: [18, 18],
+          iconAnchor: [9, 9]
+        });
+
+        const arrowMarker = this.L.marker([p2.lat, p2.lng], {
+          icon: arrowIcon,
+          interactive: false,
+          keyboard: false,
+          zIndexOffset: 100
+        }).addTo(this.map);
+
+        this.baseRouteArrows.push(arrowMarker);
+      }
+    }
+  }
+
   private drawBaseRoutePolyline(): void {
     if (!this.map || !this.L || !this.points || this.points.length < 2) return;
     if (this.baseRoutePolyline) {
       try { this.map.removeLayer(this.baseRoutePolyline); } catch (e) {}
       this.baseRoutePolyline = null;
     }
+    this.clearBaseRouteArrows();
 
     const latlngs = this.points.map(p => [p.lat, p.lng]);
     this.baseRoutePolyline = this.L.polyline(latlngs, {
@@ -327,6 +390,8 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       lineJoin: 'round',
       dashArray: '4, 8'
     }).addTo(this.map);
+
+    this.drawRouteDirectionArrows();
   }
 
   private updateTrackInPlace(): void {
@@ -348,6 +413,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       try { this.map.removeLayer(this.baseRoutePolyline); } catch (e) {}
       this.baseRoutePolyline = null;
     }
+    this.clearBaseRouteArrows();
 
     if (this.poiLayerGroup) {
       this.poiLayerGroup.clearLayers();
@@ -636,21 +702,8 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
    */
   private getDynamicsTimestamp(item: any): number {
     if (!item) return 0;
-    const name = item.nombreArchivo || item.nombre || '';
-    if (name) {
-      const m = name.match(/(\d{13})/);
-      if (m) {
-        const val = Number(m[1]);
-        if (val > 1577836800000 && val < 2051222400000) return val;
-      }
-      // Regex YYYYMMDD_HHMMSS en nombre de archivo (ej. IMG_20260630_065921.jpg o audio_20260115_202743.wav)
-      const mDate = name.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
-      if (mDate) {
-        const dt = new Date(`${mDate[1]}-${mDate[2]}-${mDate[3]}T${mDate[4]}:${mDate[5]}:${mDate[6]}Z`);
-        if (!isNaN(dt.getTime())) return dt.getTime();
-      }
-    }
-    // Si tiene horaCaptura válida combinada con fecha
+
+    // 🌟 Prioridad 1: fechaCreacion y horaCaptura válidas de base de datos / manifest
     const hc = item.horaCaptura;
     let timePart = '';
     if (hc && typeof hc === 'string' && hc !== '00:00:00' && hc.toLowerCase() !== 'desconocido' && hc.trim() !== '') {
@@ -666,30 +719,56 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       const matchIso = item.fechaCreacion.match(/T(\d{2}:\d{2}:\d{2})/);
       if (matchIso && matchIso[1] !== '00:00:00') timePart = matchIso[1];
     }
-    if (datePart && !datePart.startsWith('1970') && !datePart.startsWith('1792') && timePart) {
+    if (datePart && timePart) {
       const dt = new Date(`${datePart}T${timePart}Z`);
-      if (!isNaN(dt.getTime())) return dt.getTime();
+      if (!isNaN(dt.getTime()) && dt.getFullYear() >= 2000 && dt.getFullYear() <= 2100) return dt.getTime();
     }
+    if (item.fechaCreacion) {
+      const t = new Date(item.fechaCreacion).getTime();
+      const yr = new Date(t).getFullYear();
+      if (!isNaN(t) && yr >= 2000 && yr <= 2100) return t;
+    }
+
+    // 🌟 Prioridad 2: Metadatos con timestamp ISO
     if (item.metadatos) {
       try {
         const meta = typeof item.metadatos === 'string' ? JSON.parse(item.metadatos) : item.metadatos;
         if (meta?.timestamp) {
           const t = new Date(meta.timestamp).getTime();
-          if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+          const yr = new Date(t).getFullYear();
+          if (!isNaN(t) && yr >= 2000 && yr <= 2100) return t;
         }
       } catch (e) { }
     }
+
     if (item.fechaTomada || item.fechaHora || item.fecha) {
       const t = new Date(item.fechaTomada || item.fechaHora || item.fecha).getTime();
-      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+      const yr = new Date(t).getFullYear();
+      if (!isNaN(t) && yr >= 2000 && yr <= 2100) return t;
     }
-    if (item.fechaCreacion) {
-      const t = new Date(item.fechaCreacion).getTime();
-      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+
+    // 🌟 Prioridad 3 (Fallback): Si no hay fecha en BD, extraer del nombre
+    const name = item.nombreArchivo || item.nombre || '';
+    if (name) {
+      const m = name.match(/(?:recording-|^|_|JPEG_|VID_)(\d{13})/);
+      if (m) {
+        const val = Number(m[1]);
+        if (val > 946684800000 && val < 4102444800000) return val; // Años 2000 a 2100
+      }
+      const mDate = name.match(/(\d{4})[-_]?(\d{2})[-_]?(\d{2})[T_](\d{2})[-_]?(\d{2})[-_]?(\d{2})/);
+      if (mDate) {
+        const numY = Number(mDate[1]), numM = Number(mDate[2]), numD = Number(mDate[3]);
+        if (numY >= 2000 && numY <= 2100 && numM >= 1 && numM <= 12 && numD >= 1 && numD <= 31) {
+          const dt = new Date(`${mDate[1]}-${mDate[2]}-${mDate[3]}T${mDate[4]}:${mDate[5]}:${mDate[6]}Z`);
+          if (!isNaN(dt.getTime())) return dt.getTime();
+        }
+      }
     }
+
     if (item.created_at) {
       const t = new Date(item.created_at).getTime();
-      if (!isNaN(t) && new Date(t).getFullYear() >= 2000) return t;
+      const yr = new Date(t).getFullYear();
+      if (!isNaN(t) && yr >= 2000 && yr <= 2100) return t;
     }
     return 0;
   }
@@ -863,7 +942,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     // Agrupación Espacio-Temporal para Rutas Dynamics (10m / 5min)
     // Agrupa micro-paradas contiguas en un solo pin evitando el efecto "yo-yo"
     // ═══════════════════════════════════════════════════════════════════════
-    const CLUSTER_DIST_MAX_M = 10;
+    const CLUSTER_DIST_MAX_M = 35; // Expandido para tolerar margen GPS en paradas de usuario
     const CLUSTER_TIME_MAX_MS = 5 * 60 * 1000; // 5 minutos
 
     interface ClusterGroupData {
@@ -900,8 +979,10 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
         ? Math.abs(item.timestamp - lastItem.timestamp)
         : 0;
 
-      // Criterio de pertenencia: <= 10 metros Y <= 5 minutos
-      const withinDistance = distMeters <= CLUSTER_DIST_MAX_M;
+      // Criterio de pertenencia adaptativo:
+      // Si están muy cerca en el tiempo (<= 75 seg, ej. foto y nota de voz en la misma parada), se tolera hasta 55m de drift GPS
+      const maxAllowedDist = timeDiffMs <= 75 * 1000 ? 55 : CLUSTER_DIST_MAX_M;
+      const withinDistance = distMeters <= maxAllowedDist;
       const withinTime = timeDiffMs <= CLUSTER_TIME_MAX_MS;
 
       if (withinDistance && withinTime) {

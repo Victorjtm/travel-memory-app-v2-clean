@@ -1300,7 +1300,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         // Fallback a archivosMedia o Date.now()
         if (!startTimeMs && this.archivosMedia && this.archivosMedia.length > 0) {
           for (const a of this.archivosMedia) {
-            const raw = a.timestampReal || a.horaCaptura || a.fechaCreacion || a.fecha;
+            const raw = a.timestampReal || a.fechaCreacion || a.horaCaptura || a.fecha;
             const parsed = (this.trackEditorService as any)['parseFlexibleDate']?.(raw, a.nombreArchivo);
             if (parsed) {
               startTimeMs = parsed;
@@ -2379,7 +2379,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       let startMs = Date.now();
       if (this.archivosMedia && this.archivosMedia.length > 0) {
         for (const a of this.archivosMedia) {
-          const raw = a.timestampReal || a.horaCaptura || a.fechaCreacion || a.fecha;
+          const raw = a.timestampReal || a.fechaCreacion || a.horaCaptura || a.fecha;
           const parsed = (this.trackEditorService as any)['parseFlexibleDate']?.(raw, a.nombreArchivo);
           if (parsed) {
             startMs = parsed;
@@ -2466,7 +2466,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
       if (isNaN(startMs) && this.archivosMedia && this.archivosMedia.length > 0) {
         for (const a of this.archivosMedia) {
-          const raw = a.timestampReal || a.horaCaptura || a.fechaCreacion || a.fecha;
+          const raw = a.timestampReal || a.fechaCreacion || a.horaCaptura || a.fecha;
           const parsed = (this.trackEditorService as any)['parseFlexibleDate']?.(raw, a.nombreArchivo);
           if (parsed) {
             startMs = parsed;
@@ -3460,6 +3460,19 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     // 1. Extraer fotos con coordenadas válidas exclusivamente en tierra
     const candidatos: { lat: number; lng: number; timeMs: number; nombre: string }[] = [];
 
+    // Detectar si existe una fecha base común de la actividad a partir de las fotos
+    let baseDatePrefix: string | null = null;
+    for (const item of this.archivosMedia) {
+      const fullDate = item.fechaCreacion || item.timestampReal;
+      if (fullDate && typeof fullDate === 'string' && fullDate.includes('-')) {
+        const d = new Date(fullDate);
+        if (!isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getFullYear() <= 2100) {
+          baseDatePrefix = fullDate.split('T')[0]; // ej: "2026-09-20"
+          break;
+        }
+      }
+    }
+
     for (const item of this.archivosMedia) {
       let lat: number | null = item.latitud ?? item.lat ?? null;
       let lng: number | null = item.longitud ?? item.lng ?? item.lon ?? null;
@@ -3472,7 +3485,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
             : item.geolocalizacion;
           lat = lat ?? (geoData?.latitud ?? geoData?.latitude ?? geoData?.lat ?? null);
           lng = lng ?? (geoData?.longitud ?? geoData?.longitude ?? geoData?.lng ?? geoData?.lon ?? null);
-          horaRaw = horaRaw || geoData?.timestampReal || geoData?.timestamp || geoData?.time || geoData?.fecha;
+          horaRaw = horaRaw || geoData?.timestampReal || geoData?.fechaCreacion || geoData?.timestamp || geoData?.time || geoData?.fecha;
         } catch (e) {
           if (typeof item.geolocalizacion === 'string' && item.geolocalizacion.includes(',')) {
             const parts = item.geolocalizacion.split(',').map((s: string) => parseFloat(s.trim()));
@@ -3491,40 +3504,71 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
             : item.metadatos;
           lat = lat ?? (metaData?.latitud ?? metaData?.latitude ?? metaData?.lat ?? null);
           lng = lng ?? (metaData?.longitud ?? metaData?.longitude ?? metaData?.lng ?? null);
-          horaRaw = horaRaw || metaData?.timestampReal || metaData?.timestamp || metaData?.dateTimeOriginal;
+          horaRaw = horaRaw || metaData?.timestampReal || metaData?.fechaCreacion || metaData?.timestamp || metaData?.dateTimeOriginal;
         } catch (e) {}
       }
 
       const filename = item.nombreArchivo || item.rutaArchivo || '';
       let timeMs: number | null = null;
-      if (horaRaw) {
-        const d = new Date(horaRaw);
-        if (!isNaN(d.getTime())) timeMs = d.getTime();
-      }
-      if (!timeMs && filename) {
-        const nameMatch = String(filename).match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
-        if (nameMatch) {
-          const d = new Date(
-            parseInt(nameMatch[1], 10),
-            parseInt(nameMatch[2], 10) - 1,
-            parseInt(nameMatch[3], 10),
-            parseInt(nameMatch[4], 10),
-            parseInt(nameMatch[5], 10),
-            parseInt(nameMatch[6], 10)
-          );
-          if (!isNaN(d.getTime())) timeMs = d.getTime();
+
+      // 1. Intentar mediante parseFlexibleDate de TrackEditorService (soporta ISO, épocas de 13 dígitos y YYYYMMDD_HHMMSS)
+      timeMs = (this.trackEditorService as any)['parseFlexibleDate']?.(horaRaw, filename);
+
+      // 2. Si no resolvió pero tenemos horaCaptura (HH:mm:ss) y fecha base ("YYYY-MM-DD")
+      if (!timeMs && item.horaCaptura && baseDatePrefix) {
+        const timeClean = String(item.horaCaptura).trim();
+        const combined = new Date(`${baseDatePrefix}T${timeClean.length === 8 ? timeClean : timeClean + ':00'}Z`);
+        if (!isNaN(combined.getTime())) {
+          timeMs = combined.getTime();
         }
       }
-      if (!timeMs) timeMs = Date.now();
+
+      // 3. Fallback directo a fechaCreacion si es un string ISO válido
+      if (!timeMs && item.fechaCreacion) {
+        const d = new Date(item.fechaCreacion);
+        if (!isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getFullYear() <= 2100) {
+          timeMs = d.getTime();
+        }
+      }
+
+      // 4. Fallback directo a epoch de 13 dígitos en nombreArchivo
+      if (!timeMs && filename) {
+        const epochMatch = String(filename).match(/(?:recording-|^|_|JPEG_|VID_)(\d{13})/);
+        if (epochMatch) {
+          const epochVal = parseInt(epochMatch[1], 10);
+          if (epochVal > 946684800000 && epochVal < 4102444800000) {
+            timeMs = epochVal;
+          }
+        }
+      }
 
       if (lat !== null && lng !== null && !isNaN(Number(lat)) && !isNaN(Number(lng)) && Number(lat) !== 0 && Number(lng) !== 0) {
         candidatos.push({
           lat: Number(lat),
           lng: Number(lng),
-          timeMs,
+          timeMs: timeMs || 0,
           nombre: filename
         });
       }
+    }
+
+    // Resolver candidatos que hayan quedado con timeMs === 0 interpolando entre fotos válidas (sin saltar ciegamente a Date.now())
+    const validTimes = candidatos.filter(c => c.timeMs > 0).map(c => c.timeMs);
+    if (validTimes.length > 0) {
+      let lastValid = validTimes[0];
+      for (let c of candidatos) {
+        if (c.timeMs === 0) {
+          c.timeMs = lastValid + 60000;
+          lastValid = c.timeMs;
+        } else {
+          lastValid = c.timeMs;
+        }
+      }
+    } else {
+      const defaultBase = baseDatePrefix ? new Date(baseDatePrefix).getTime() : 1789902604589;
+      candidatos.forEach((c, idx) => {
+        c.timeMs = defaultBase + idx * 60000;
+      });
     }
 
     // Mostrar overlay de progreso ANTES de filtrar (para que el usuario vea feedback inmediato)
@@ -3589,13 +3633,27 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     const allRoutePoints: GpxPoint[] = [];
 
     try {
-      const UMBRAL_DISTANCIA_COCHE = 2500; // 2.5 km (Opción B)
-
       for (let i = 0; i < waypoints.length - 1; i++) {
         const wStart = waypoints[i];
         const wEnd = waypoints[i + 1];
         const distDirect = this.trackEditorService.getDistance(wStart.lat, wStart.lng, wEnd.lat, wEnd.lng);
-        const profile = distDirect >= UMBRAL_DISTANCIA_COCHE ? 'driving' : 'walking';
+        const startTime = wStart.endTimeMs || wStart.startTimeMs;
+        const endTime = wEnd.startTimeMs;
+
+        let profile: 'walking' | 'driving' = 'walking';
+        if (endTime > startTime) {
+          const durationSec = (endTime - startTime) / 1000;
+          const impliedSpeedMps = distDirect / durationSec;
+          if (impliedSpeedMps <= 3.0) {
+            profile = 'walking';
+          } else if (distDirect >= 2500 || impliedSpeedMps > 4.5) {
+            profile = 'driving';
+          } else {
+            profile = 'walking';
+          }
+        } else {
+          profile = distDirect >= 3500 ? 'driving' : 'walking';
+        }
 
         this.progresoGeneracionProbable = `Calculando tramo ${i + 1} de ${waypoints.length - 1} (${profile === 'driving' ? '🚗 Coche' : '🚶 A pie'})...`;
         this.cdr.detectChanges();
@@ -3625,8 +3683,6 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
         }
 
         // Asignar timestamps y modo de transporte a los puntos del tramo
-        const startTime = wStart.endTimeMs || wStart.startTimeMs;
-        const endTime = wEnd.startTimeMs;
         const totalTimeDiff = endTime > startTime ? endTime - startTime : (distDirect / (profile === 'driving' ? 12.5 : 1.39)) * 1000;
 
         // Calcular distancia total del subtramo para interpolación temporal proporcional
