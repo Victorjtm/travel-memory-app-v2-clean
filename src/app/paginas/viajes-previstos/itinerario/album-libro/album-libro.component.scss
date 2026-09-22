@@ -8186,6 +8186,33 @@
     }
   }
 
+  .btn-toggle-videos.btn-generar-videos-panel {
+    background: linear-gradient(135deg, rgba(223, 196, 136, 0.15), rgba(184, 142, 69, 0.25));
+    border: 1px solid rgba(223, 196, 136, 0.5);
+    color: #dfc488;
+    font-weight: 600;
+
+    i {
+      color: #dfc488;
+    }
+
+    &:hover:not(:disabled) {
+      background: linear-gradient(135deg, #dfc488, #c8a75e);
+      color: #1a120b;
+      border-color: #dfc488;
+      box-shadow: 0 4px 14px rgba(223, 196, 136, 0.45);
+
+      i {
+        color: #1a120b;
+      }
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
 /* Indicador de carga de mapa y botón de retorno interactivo (Travel Memory 2026) */
 .mapa-cargando-overlay {
   position: absolute;

@@ -337,8 +337,17 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     if (!this.map || !this.L || !this.points || this.points.length < 2) return;
     this.clearBaseRouteArrows();
 
+    // 1. Calcular distancia total de la traza para espaciado armónico y adaptativo
+    const totalDistM = this.points[this.points.length - 1]?.distAcum || 
+      this.points.reduce((acc, p, idx, arr) => idx > 0 ? acc + this.getDistance(arr[idx - 1].lat, arr[idx - 1].lng, p.lat, p.lng) : 0, 0);
+
+    // En rutas cortas urbanas (< 3 km): una flecha cada 120-150m (~15-20 flechas en total).
+    // En rutas interurbanas / regionales (10-500 km): escalar proporcionalmente para tener un máximo de ~25 flechas
+    // bien espaciadas en toda la ruta, evitando crear miles de nodos en el DOM y masas azules apelotonadas.
+    const targetArrowCount = 25;
+    const ARROW_INTERVAL_M = Math.max(120, totalDistM / targetArrowCount);
+
     let accumulatedDist = 0;
-    const ARROW_INTERVAL_M = 120; // Flecha regular cada 120 metros de recorrido
 
     for (let i = 1; i < this.points.length; i++) {
       const p1 = this.points[i - 1];
@@ -1703,9 +1712,24 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
             effectiveTargetSec = Math.max(minDurationSec, Math.min(4.5, effectiveTargetSec));
           }
 
-          calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
-          // Permitir aceleración hasta 5000 para rutas muy largas
-          calculatedSpeed = Math.max(1, Math.min(5000, Math.round(calculatedSpeed)));
+          // 🛡️ Detección de parada/tiempo muerto en viajes (Dead-Time Compression)
+          const p1Time = p1.time ? p1.time.getTime() : 0;
+          const p2Time = p2.time ? p2.time.getTime() : 0;
+          const timeDiffSec = (p1Time > 0 && p2Time > 0) ? Math.abs(p2Time - p1Time) / 1000 : 0;
+          const isStationaryWait = segmentDistM < 150 && timeDiffSec > 180;
+
+          if (isStationaryWait) {
+            // Comprimir la espera de horas en el puerto o parada a ~2.0s de reloj en pantalla
+            effectiveTargetSec = 2.0;
+            calculatedSpeed = Math.max(20, Math.round(Math.max(segmentDistM, 200) / (7.5 * speedFactor * effectiveTargetSec)));
+          } else if (segmentDistM < 60) {
+            // Tramo muy corto entre paradas consecutivas: evitar velocidad x1 que arrastre o atranque
+            effectiveTargetSec = Math.min(effectiveTargetSec, 1.8);
+            calculatedSpeed = Math.max(10, Math.round(Math.max(segmentDistM, 150) / (7.5 * speedFactor * effectiveTargetSec)));
+          } else {
+            calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
+            calculatedSpeed = Math.max(1, Math.min(5000, Math.round(calculatedSpeed)));
+          }
         } else {
           // 🚀 Animación Estándar (Otros Recorridos): Comportamiento ágil original
           const targetDurationSeconds = Math.max(0.5, safeVisualDistPx / targetPxPerSec);
@@ -1720,8 +1744,22 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
             const longDistMultiplier = Math.min(8.0, 4.0 + (segmentDistM - 50000) / 25000);
             effectiveTargetSec = Math.max(3.5, Math.min(5.5, effectiveTargetSec / longDistMultiplier));
           }
-          calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
-          calculatedSpeed = Math.max(1, Math.min(5000, Math.round(calculatedSpeed)));
+
+          const p1Time = p1.time ? p1.time.getTime() : 0;
+          const p2Time = p2.time ? p2.time.getTime() : 0;
+          const timeDiffSec = (p1Time > 0 && p2Time > 0) ? Math.abs(p2Time - p1Time) / 1000 : 0;
+          const isStationaryWait = segmentDistM < 150 && timeDiffSec > 180;
+
+          if (isStationaryWait) {
+            effectiveTargetSec = 2.0;
+            calculatedSpeed = Math.max(20, Math.round(Math.max(segmentDistM, 200) / (7.5 * speedFactor * effectiveTargetSec)));
+          } else if (segmentDistM < 60) {
+            effectiveTargetSec = Math.min(effectiveTargetSec, 1.8);
+            calculatedSpeed = Math.max(10, Math.round(Math.max(segmentDistM, 150) / (7.5 * speedFactor * effectiveTargetSec)));
+          } else {
+            calculatedSpeed = segmentDistM / (7.5 * speedFactor * effectiveTargetSec);
+            calculatedSpeed = Math.max(1, Math.min(5000, Math.round(calculatedSpeed)));
+          }
         }
 
         console.log(`🎯 [Tramo] pixels=${safeVisualDistPx.toFixed(0)}px, distM=${segmentDistM.toFixed(0)}m, speedFactor=${speedFactor}, targetSec=${effectiveTargetSec.toFixed(1)}s, speed=${calculatedSpeed}, mode=${this.currentMode}`);
@@ -2007,7 +2045,14 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       const pA = this.points[scanIdx];
       const pB = this.points[Math.min(scanIdx + 1, this.points.length - 1)];
       const segLen = (pB.distAcum || 0) - (pA.distAcum || 0);
-      const frac = segLen > 0.001 ? (targetDistM - (pA.distAcum || 0)) / segLen : 0;
+      let frac = 0;
+      if (segLen > 0.05) {
+        frac = (targetDistM - (pA.distAcum || 0)) / segLen;
+      } else {
+        // En puntos GPS estacionarios o micro-derivas (esperas en puerto/paradas),
+        // avanzar al siguiente punto para que el bucle no quede bloqueado
+        frac = 1;
+      }
       targetAdvanceIndex = scanIdx + Math.max(0, Math.min(frac, 1));
     }
 
