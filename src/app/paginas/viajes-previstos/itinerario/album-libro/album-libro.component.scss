@@ -402,7 +402,7 @@
 
         .titulo-dorado-viaje {
           font-family: 'Cinzel', 'Georgia', serif;
-          font-size: clamp(1.65rem, 3.2vw, 2.45rem);
+          font-size: clamp(1.1rem, 2.5vw, 1.85rem);
           font-weight: 800;
           color: #dfc488;
           background: linear-gradient(135deg, #ffffff 0%, #fff7de 18%, #dfc488 48%, #9e7529 78%, #fff0b8 100%);
@@ -412,6 +412,11 @@
           letter-spacing: 0.05em;
           margin: 0;
           line-height: 1.15;
+          word-break: break-word;
+          overflow-wrap: break-word;
+          text-align: center;
+          padding: 0 8%;
+          max-width: 100%;
         }
 
         .fechas-doradas-viaje {

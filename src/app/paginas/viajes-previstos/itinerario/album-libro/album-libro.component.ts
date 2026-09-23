@@ -2436,7 +2436,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       await this.procesarArchivos(archivos);
 
       // 🎬 Disparar intro cinemática Dynamics si corresponde y estamos en la portada
-      if (this.esActividadDynamics(archivos) && this.estado === 'portada' && !this.introDynamicsReproducida) {
+      if (this.estado === 'portada' && !this.introDynamicsReproducida) {
         console.log('🎬 [Dynamics] Activando introducción cinemática 3D (5.0s)...');
         this.mostrarIntroDynamics = true;
       }
@@ -2634,6 +2634,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     // Guardar paginas base y generar mapas animados según configuración
     this.paginasBase = paginasFinales;
     this.paginas = await this.generarPaginasConAnimaciones(this.paginasBase);
+    this.imagenViajeUrlCache = null; // Invalidar cache para re-evaluar con las paginas cargadas
     this.calcularTelemetriaItinerario();
     this.construirSpreads();
 
@@ -4484,21 +4485,30 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       return this.imagenViajeUrlCache;
     }
 
-    if (!this.infoViaje?.imagen || this.imagenViajeError) {
-      this.imagenViajeUrlCache = null;
-      return null;
-    }
+    // Caso 1: El viaje tiene imagen de portada configurada
+    if (this.infoViaje?.imagen && !this.imagenViajeError) {
+      if (this.infoViaje.imagen.startsWith('http')) {
+        this.imagenViajeUrlCache = this.infoViaje.imagen;
+        return this.imagenViajeUrlCache;
+      }
 
-    if (this.infoViaje.imagen.startsWith('http')) {
-      this.imagenViajeUrlCache = this.infoViaje.imagen;
+      const nombreArchivo = this.infoViaje.imagen.split(/[\\/]/).pop();
+      const url = `${environment.apiUrl}/uploads/${nombreArchivo}`;
+      this.imagenViajeUrlCache = url;
       return this.imagenViajeUrlCache;
     }
 
-    const nombreArchivo = this.infoViaje.imagen.split(/[\\/]/).pop();
-    const url = `${environment.apiUrl}/uploads/${nombreArchivo}`;
+    // Caso 2: Fallback → usar la primera imagen real del álbum (paginas)
+    if (this.paginas && this.paginas.length > 0) {
+      const primeraImagen = this.paginas.find(p => p.tipoMedia === 'imagen' && p.url && !p.esIndice);
+      if (primeraImagen) {
+        this.imagenViajeUrlCache = primeraImagen.url;
+        return this.imagenViajeUrlCache;
+      }
+    }
 
-    this.imagenViajeUrlCache = url;
-    return this.imagenViajeUrlCache;
+    this.imagenViajeUrlCache = null;
+    return null;
   }
 
   // ==========================================
@@ -5902,7 +5912,18 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   getDescripcionContextual(): string {
     const totalArchivos = this.paginas.length > 0 ? this.paginas.length - 1 : 0;
     const stats = this.obtenerEstadisticasTipos();
-    const tipos = Object.keys(stats).map(tipo => `${stats[tipo]} ${tipo}s`).join(', ');
+    const plurales: { [key: string]: string } = {
+      'imagen': 'imágenes',
+      'video': 'vídeos',
+      'audio': 'audios',
+      'documento': 'documentos',
+      'pdf': 'PDFs',
+      'texto': 'textos',
+      'carta-manuscrita': 'cartas manuscritas',
+      'mapa-animado': 'mapas animados',
+      'desconocido': 'otros'
+    };
+    const tipos = Object.keys(stats).map(tipo => `${stats[tipo]} ${plurales[tipo] || tipo + 's'}`).join(', ');
 
     if (!this.contextoViaje) return `${totalArchivos} archivos (${tipos})`;
 

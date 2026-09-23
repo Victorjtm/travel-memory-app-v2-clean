@@ -18,11 +18,12 @@ export class IntroMemoryPreloaderService {
 
   /**
    * ⚡ Prepara y precalienta en memoria gráfica (VRAM) una selección equilibrada de recuerdos.
-   * Utiliza createImageBitmap() off-thread para decodificar JPEG/PNG sin congelar el hilo principal.
+   * En rutas con múltiples itinerarios, realiza una mezcla intercalada (round-robin)
+   * extrayendo fotos representativas de cada itinerario.
    */
   async prepararRafagaRecuerdos(
     archivos: any[],
-    totalFrames: number = 30
+    totalFrames: number = 16
   ): Promise<MemoryFrame[]> {
     if (this.precargando) {
       console.log('⏳ [IntroPreloader] Precarga ya en curso...');
@@ -33,34 +34,36 @@ export class IntroMemoryPreloaderService {
     this.liberarMemoria();
 
     try {
-      const itemsValidos = (archivos || []).filter(item => {
-        if (!item) return false;
-        const tipo = (item.tipoMedia || item.tipo || '').toLowerCase();
-        const url = item.url || item.ruta;
-        return url && (tipo === 'imagen' || tipo === 'video' || tipo === 'foto' || !tipo);
-      });
+      // 1. Extraer elementos válidos rastreando pertenencia a itinerarios
+      const itemsConItinerario = this.extraerElementosConItinerario(archivos);
 
-      console.log(`📸 [IntroPreloader] Total de elementos disponibles: ${itemsValidos.length}. Solicitados para ráfaga: ${totalFrames}`);
+      console.log(`📸 [IntroPreloader] Total de fotos disponibles: ${itemsConItinerario.length}. Solicitadas para ráfaga: ${totalFrames}`);
 
-      // Muestreo equilibrado temporal a lo largo de todo el viaje
-      const seleccion = this.muestrearRecuerdos(itemsValidos, totalFrames);
+      if (itemsConItinerario.length === 0) {
+        await this.generarFallbacksVintage(totalFrames);
+        return this.memoriaRafaga;
+      }
 
-      // Decodificación paralela mediante createImageBitmap con resolución exacta 1280x720
-      const promesas = seleccion.map((item, idx) => this.decodificarElementoOffscreen(item, idx));
-      const resultados = await Promise.all(promesas);
+      // 2. Muestreo equilibrado e intercalado entre itinerarios (round-robin)
+      const seleccion = this.muestrearRecuerdosIntercalados(itemsConItinerario, totalFrames);
 
-      this.memoriaRafaga = resultados.filter((f): f is MemoryFrame => f !== null);
+      // 3. Decodificación paralela con decodificación progresiva (inmediata)
+      const promesas = seleccion.map((it, idx) => this.decodificarElementoOffscreen(it.item, idx));
+      await Promise.all(promesas);
 
-      // Si por falta de archivos o errores de red no alcanzamos un mínimo, generamos frames estéticos fallback
-      if (this.memoriaRafaga.length < 10) {
+      // Si por falta de archivos o lentitud de red no alcanzamos un mínimo, generamos frames estéticos fallback
+      if (this.memoriaRafaga.length < 5) {
         console.warn('⚠️ [IntroPreloader] Generando frames fallback dorados vintage para completar ráfaga');
-        await this.generarFallbacksVintage(15 - this.memoriaRafaga.length);
+        await this.generarFallbacksVintage(Math.max(5, totalFrames - this.memoriaRafaga.length));
       }
 
       console.log(`✅ [IntroPreloader] Ráfaga precargada en VRAM: ${this.memoriaRafaga.length} fotogramas listos a 60 FPS.`);
       return this.memoriaRafaga;
     } catch (error) {
       console.error('❌ [IntroPreloader] Error precargando ráfaga:', error);
+      if (this.memoriaRafaga.length === 0) {
+        await this.generarFallbacksVintage(6);
+      }
       return this.memoriaRafaga;
     } finally {
       this.precargando = false;
@@ -68,83 +71,222 @@ export class IntroMemoryPreloaderService {
   }
 
   /**
-   * 🎯 Muestreo estratificado para cubrir principio, nudo y desenlace del viaje
+   * 🗺️ Extrae elementos multimedia detectando automáticamente el itinerario al que pertenecen
    */
-  private muestrearRecuerdos(items: any[], totalDeseado: number): any[] {
+  private extraerElementosConItinerario(archivos: any[]): { item: any; itinerarioId: string | number }[] {
+    let itinerarioActual: string | number = 'general';
+    let contadorItin = 0;
+    const resultado: { item: any; itinerarioId: string | number }[] = [];
+
+    for (const item of archivos || []) {
+      if (!item) continue;
+
+      // Si es una página de separación / carta manuscrita / portada de itinerario, actualizamos el itinerario activo
+      if (item.esCartaManuscrita || item.tipoMedia === 'carta-manuscrita') {
+        contadorItin++;
+        const match = (item.titulo || '').match(/itinerario\s*[:#]?\s*(\d+|[a-zA-ZáéíóúÁÉÍÓÚñÑ]+)/i);
+        if (match) {
+          itinerarioActual = match[1];
+        } else if (item.itinerarioId) {
+          itinerarioActual = item.itinerarioId;
+        } else {
+          itinerarioActual = `itin_${contadorItin}`;
+        }
+        continue;
+      }
+
+      const tipo = (item.tipoMedia || item.tipo || '').toLowerCase();
+      const url = item.url || item.ruta || item.src || item.thumbnailUrl;
+      const esValido = url && (tipo === 'imagen' || tipo === 'video' || tipo === 'foto' || !tipo);
+      if (!esValido) continue;
+
+      // Priorizar itinerario explícito del archivo si existe
+      const itId = item.itinerarioId ?? 
+                   item.archivo?.itinerarioId ?? 
+                   item.idItinerario ?? 
+                   item.archivo?.actividadId ?? 
+                   itinerarioActual;
+
+      resultado.push({
+        item,
+        itinerarioId: itId
+      });
+    }
+
+    return resultado;
+  }
+
+  /**
+   * 🎯 Muestreo equilibrado e intercalado entre itinerarios:
+   * Toma una cuota representativa de cada itinerario y las mezcla en orden alterno
+   * para que el usuario disfrute de fotos de todos los itinerarios del viaje.
+   */
+  private muestrearRecuerdosIntercalados(
+    items: { item: any; itinerarioId: string | number }[],
+    totalDeseado: number
+  ): { item: any; itinerarioId: string | number }[] {
     if (items.length <= totalDeseado) {
       return [...items];
     }
 
-    const resultado: any[] = [];
-    const paso = (items.length - 1) / (totalDeseado - 1);
+    // Agrupar fotos por itinerario
+    const porItinerario = new Map<string | number, { item: any; itinerarioId: string | number }[]>();
+    for (const entrada of items) {
+      const itId = entrada.itinerarioId;
+      if (!porItinerario.has(itId)) {
+        porItinerario.set(itId, []);
+      }
+      porItinerario.get(itId)!.push(entrada);
+    }
 
+    // Si hay más de un itinerario con fotos: mezcla intercalada round-robin
+    if (porItinerario.size > 1) {
+      const grupos = Array.from(porItinerario.values()).filter(g => g.length > 0);
+      const numGrupos = grupos.length;
+      const cuotaPorGrupo = Math.max(1, Math.ceil(totalDeseado / numGrupos));
+
+      // Muestrear temporalmente dentro de cada itinerario
+      const muestrasPorGrupo = grupos.map(grupo => {
+        if (grupo.length <= cuotaPorGrupo) return [...grupo];
+        const paso = (grupo.length - 1) / (cuotaPorGrupo - 1);
+        const sub: { item: any; itinerarioId: string | number }[] = [];
+        for (let i = 0; i < cuotaPorGrupo; i++) {
+          const idx = Math.min(Math.round(i * paso), grupo.length - 1);
+          sub.push(grupo[idx]);
+        }
+        return sub;
+      });
+
+      // Intercalar alternativamente: [Itin1_Foto0, Itin2_Foto0, Itin3_Foto0, Itin1_Foto1, Itin2_Foto1, ...]
+      const resultadoIntercalado: { item: any; itinerarioId: string | number }[] = [];
+      let idxFoto = 0;
+      while (resultadoIntercalado.length < totalDeseado) {
+        let anadidaAlguna = false;
+        for (let g = 0; g < numGrupos; g++) {
+          if (idxFoto < muestrasPorGrupo[g].length) {
+            resultadoIntercalado.push(muestrasPorGrupo[g][idxFoto]);
+            anadidaAlguna = true;
+            if (resultadoIntercalado.length >= totalDeseado) break;
+          }
+        }
+        if (!anadidaAlguna) break;
+        idxFoto++;
+      }
+      return resultadoIntercalado;
+    }
+
+    // Si sólo hay un itinerario: muestreo temporal estratificado directo
+    const resultado: { item: any; itinerarioId: string | number }[] = [];
+    const paso = (items.length - 1) / (totalDeseado - 1);
     for (let i = 0; i < totalDeseado; i++) {
       const index = Math.min(Math.round(i * paso), items.length - 1);
       resultado.push(items[index]);
     }
-
-    // Aleatorizar sutilmente el orden de la ráfaga estroboscópica para dinamismo
-    return this.mezclarArray(resultado);
-  }
-
-  private mezclarArray(arr: any[]): any[] {
-    const copia = [...arr];
-    for (let i = copia.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [copia[i], copia[j]] = [copia[j], copia[i]];
-    }
-    return copia;
+    return resultado;
   }
 
   /**
-   * 🖼️ Decodifica el archivo como ImageBitmap off-the-main-thread
+   * 🖼️ Decodifica el archivo como ImageBitmap off-the-main-thread con timeout y push inmediato
    */
   private async decodificarElementoOffscreen(item: any, indice: number): Promise<MemoryFrame | null> {
     try {
       const url = item.url || item.ruta;
       const esVideo = (item.tipoMedia === 'video' || item.tipo === 'video');
-
-      // Si es vídeo, usamos su miniatura o póster si existe
       const urlCarga = (esVideo && item.urlMiniatura) ? item.urlMiniatura : url;
+      if (!urlCarga) return null;
 
-      const respuesta = await fetch(urlCarga, { mode: 'cors' });
-      if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+      // AbortController con timeout de 2.2 segundos para que peticiones lentas no retrasen la ráfaga
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2200);
 
-      const blob = await respuesta.blob();
+      try {
+        const respuesta = await fetch(urlCarga, { mode: 'cors', signal: controller.signal });
+        clearTimeout(timer);
+        if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
 
-      // Decodificación directa en hilo secundario del navegador a la GPU
-      const bitmap = await createImageBitmap(blob, {
-        resizeWidth: 1280,
-        resizeHeight: 720,
-        resizeQuality: 'medium'
-      });
+        const blob = await respuesta.blob();
 
-      return {
-        bitmap,
-        titulo: item.titulo || item.nombre || `Recuerdo #${indice + 1}`,
-        esVideo,
-        fecha: item.fecha || item.fechaOriginal
-      };
-    } catch (e) {
-      // Fallback si fetch con CORS falla (ejemplo: elemento <img> con crossOrigin)
-      return await this.cargarViaImageTag(item, indice);
+        // Decodificación directa preservando la relación de aspecto original
+        let bitmap = await createImageBitmap(blob);
+        const maxDim = 1280;
+        if (bitmap.width > maxDim || bitmap.height > maxDim) {
+          const scale = Math.min(maxDim / bitmap.width, maxDim / bitmap.height);
+          const w = Math.max(1, Math.round(bitmap.width * scale));
+          const h = Math.max(1, Math.round(bitmap.height * scale));
+          const resized = await createImageBitmap(bitmap, {
+            resizeWidth: w,
+            resizeHeight: h,
+            resizeQuality: 'medium'
+          });
+          bitmap.close();
+          bitmap = resized;
+        }
+
+        const frame: MemoryFrame = {
+          bitmap,
+          titulo: item.titulo || item.nombre || `Recuerdo #${indice + 1}`,
+          esVideo,
+          fecha: item.fecha || item.fechaOriginal
+        };
+
+        // 🚀 Push progresivo inmediato: disponible para vuelo sin esperar al lote completo
+        this.memoriaRafaga.push(frame);
+        return frame;
+      } catch {
+        clearTimeout(timer);
+        // Fallback vía tag <img> si fetch con CORS falla
+        const frameImg = await this.cargarViaImageTag(item, indice);
+        if (frameImg) {
+          this.memoriaRafaga.push(frameImg);
+        }
+        return frameImg;
+      }
+    } catch {
+      return null;
     }
   }
 
   /**
-   * 🌐 Fallback mediante Image() y canvas en caso de que fetch directo esté restringido
+   * 🌐 Fallback mediante Image() y canvas con timeout de seguridad
    */
   private cargarViaImageTag(item: any, indice: number): Promise<MemoryFrame | null> {
     return new Promise((resolve) => {
+      const url = item.url || item.ruta;
+      if (!url) {
+        resolve(null);
+        return;
+      }
+
       const img = new Image();
       img.crossOrigin = 'anonymous';
+
+      let terminado = false;
+      const timeoutId = setTimeout(() => {
+        if (!terminado) {
+          terminado = true;
+          resolve(null);
+        }
+      }, 2000);
+
       img.onload = async () => {
+        if (terminado) return;
+        terminado = true;
+        clearTimeout(timeoutId);
         try {
-          const bitmap = await createImageBitmap(img, {
-            resizeWidth: 1280,
-            resizeHeight: 720,
-            resizeQuality: 'medium'
-          });
+          let bitmap = await createImageBitmap(img);
+          const maxDim = 1280;
+          if (bitmap.width > maxDim || bitmap.height > maxDim) {
+            const scale = Math.min(maxDim / bitmap.width, maxDim / bitmap.height);
+            const w = Math.max(1, Math.round(bitmap.width * scale));
+            const h = Math.max(1, Math.round(bitmap.height * scale));
+            const resized = await createImageBitmap(bitmap, {
+              resizeWidth: w,
+              resizeHeight: h,
+              resizeQuality: 'medium'
+            });
+            bitmap.close();
+            bitmap = resized;
+          }
           resolve({
             bitmap,
             titulo: item.titulo || item.nombre || `Recuerdo #${indice + 1}`,
@@ -155,8 +297,15 @@ export class IntroMemoryPreloaderService {
           resolve(null);
         }
       };
-      img.onerror = () => resolve(null);
-      img.src = item.url || item.ruta;
+
+      img.onerror = () => {
+        if (terminado) return;
+        terminado = true;
+        clearTimeout(timeoutId);
+        resolve(null);
+      };
+
+      img.src = url;
     });
   }
 
@@ -189,14 +338,16 @@ export class IntroMemoryPreloaderService {
       ctx.fillStyle = '#f3e5ab';
       ctx.font = 'italic 36px "Cinzel", "Georgia", serif';
       ctx.textAlign = 'center';
-      ctx.fillText('CRUCERO & RECUERDOS', 640, 360);
+      ctx.fillText('ÁLBUM DE VIAJES & RECUERDOS', 640, 360);
 
-      const bitmap = await createImageBitmap(canvas);
-      this.memoriaRafaga.push({
-        bitmap,
-        titulo: 'Memoria Dorada',
-        esVideo: false
-      });
+      try {
+        const bitmap = await createImageBitmap(canvas);
+        this.memoriaRafaga.push({
+          bitmap,
+          titulo: 'Memoria Dorada',
+          esVideo: false
+        });
+      } catch {}
     }
   }
 

@@ -169,7 +169,8 @@
   <!-- ============================================================ -->
   <app-intro-cinematica-dynamics
     *ngIf="mostrarIntroDynamics"
-    [tituloViaje]="infoViaje?.nombre || 'CRUCERO'"
+    [tituloViaje]="infoViaje?.nombre || getTituloContextual() || 'ÁLBUM DE VIAJES'"
+    [imagenPortada]="getImagenViajeUrl()"
     [archivosViaje]="paginas"
     [sonidoActivado]="musicaActivada || !videoMuted"
     [permitirSaltar]="true"

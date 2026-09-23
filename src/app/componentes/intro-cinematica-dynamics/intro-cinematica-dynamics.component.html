@@ -1,7 +1,7 @@
-<div class="intro-dynamics-container" [class.desvaneciendo]="tiempoActual >= 4.2" *ngIf="activo">
+<div class="intro-dynamics-container" [class.desvaneciendo]="tiempoActual >= (DURACION_TOTAL - 0.7)" *ngIf="activo">
   <canvas #introCanvas class="intro-dynamics-canvas"></canvas>
 
-  <button *ngIf="permitirSaltar && tiempoActual < 4.2" 
+  <button *ngIf="permitirSaltar && tiempoActual < (DURACION_TOTAL - 0.7)" 
           type="button" 
           class="btn-saltar-intro" 
           (click)="saltarIntro()" 
