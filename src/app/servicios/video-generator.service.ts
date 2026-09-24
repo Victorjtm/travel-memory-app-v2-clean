@@ -143,6 +143,14 @@ export interface ProgresoVideo {
         const elementosConectados = new Set<any>();
 
         escenasCargadas.forEach(escena => {
+          // Las animaciones de ruta y la intro 3D son silenciosas: deben permanecer 100% muted para que Chromium permita play()
+          if (escena.esIntro3D || escena.esMapaAnimado) {
+            if (escena.data?.video) {
+              escena.data.video.muted = true;
+            }
+            return;
+          }
+
           const mediaElem = escena.tipo === 'video' ? escena.data?.video : (escena.tipo === 'audio' ? escena.data?.audio : null);
           if (mediaElem && !elementosConectados.has(mediaElem)) {
             try {
@@ -422,9 +430,17 @@ export interface ProgresoVideo {
           this.ctx.fillRect(0, 0, w, h);
           if (escena.titulo) {
             this.ctx.fillStyle = '#f8f4eb';
-            this.ctx.font = 'bold 26px "Cinzel", Georgia, serif';
+            const maxWidth = w - 160;
+            const fontStr = 'bold 26px "Cinzel", Georgia, serif';
+            this.ctx.font = fontStr;
             this.ctx.textAlign = 'center';
-            this.ctx.fillText(escena.titulo, w / 2, h / 2);
+            const lineas = this.dividirTextoEnLineas(escena.titulo, maxWidth, fontStr);
+            const lh = 36;
+            let y = (h - (lineas.length * lh)) / 2 + 20;
+            for (const l of lineas) {
+              this.ctx.fillText(l, w / 2, y);
+              y += lh;
+            }
           }
         }
       };
@@ -477,9 +493,19 @@ export interface ProgresoVideo {
             const escenaActual = timeline[escenaIndex];
             if (escenaActual?.tipo === 'video' && escenaActual.data?.video) {
               const video = escenaActual.data.video as HTMLVideoElement;
+              if (escenaActual.esIntro3D || escenaActual.esMapaAnimado) {
+                video.muted = true;
+              }
               video.currentTime = 0;
               video.playbackRate = 1;
-              video.play().catch((e: any) => console.warn(`⚠️ video.play() ignorado: ${e}`));
+              const playPromise = video.play();
+              if (playPromise !== undefined) {
+                playPromise.catch((e: any) => {
+                  console.warn(`⚠️ video.play() rechazado (${escenaActual.id}), forzando muted: ${e}`);
+                  video.muted = true;
+                  video.play().catch(() => {});
+                });
+              }
               console.log(`🎬 [Clip Vídeo] Iniciado: ${escenaActual.archivo?.nombreArchivo || escenaActual.id}`);
             } else if (escenaActual?.tipo === 'audio') {
               // 🎵 REPRODUCCIÓN FIEL DE NOTA DE VOZ AL MASTER DEST
@@ -571,6 +597,21 @@ export interface ProgresoVideo {
     } else if (escena.tipo === 'video' || escena.tipo === 'intro_3d') {
       const video = escena.data?.video as HTMLVideoElement | undefined;
       if (video) {
+        if (escena.esIntro3D || escena.esMapaAnimado) {
+          video.muted = true;
+        }
+        if (video.paused && !video.ended) {
+          video.play().catch(() => {
+            video.muted = true;
+            video.play().catch(() => {});
+          });
+        }
+        const targetTime = Math.min(elapsed, video.duration || elapsed);
+        if (Math.abs(video.currentTime - targetTime) > 0.15 && !video.ended) {
+          try {
+            video.currentTime = targetTime;
+          } catch {}
+        }
         dibujarFrameVideo(video, escena, config);
       }
 
@@ -600,9 +641,23 @@ export interface ProgresoVideo {
     else if (progreso > 0.8) alpha = (1 - progreso) / 0.2;
 
     this.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-    this.ctx.font = 'bold 72px Arial';
     this.ctx.textAlign = 'center';
-    this.ctx.fillText(titulo, this.canvas.width / 2, this.canvas.height / 2);
+    
+    const maxWidth = this.canvas.width - 200;
+    let fontSize = 52;
+    if (titulo.length > 50) fontSize = 36;
+    else if (titulo.length > 30) fontSize = 44;
+    
+    const fontStr = `bold ${fontSize}px Arial, sans-serif`;
+    this.ctx.font = fontStr;
+    const lineas = this.dividirTextoEnLineas(titulo, maxWidth, fontStr);
+    const lineHeight = fontSize * 1.3;
+    const totalH = lineas.length * lineHeight;
+    let y = (this.canvas.height - totalH) / 2 + fontSize * 0.8;
+    for (const linea of lineas) {
+      this.ctx.fillText(linea, this.canvas.width / 2, y);
+      y += lineHeight;
+    }
   }
 
   /**
@@ -845,25 +900,23 @@ private procesarVideo(archivo: Archivo): Promise<{archivo: Archivo, video: HTMLV
     video.muted = true;
     video.preload = 'metadata'; // ✨ NUEVO: Precargar metadatos
     
-    video.onloadedmetadata = () => {
-      // ✨ NUEVO: Validar que el video tiene duración válida
+    let resuelto = false;
+    const resolver = () => {
+      if (resuelto) return;
+      resuelto = true;
       const duracion = video.duration;
-      if (!duracion || duracion === Infinity || isNaN(duracion)) {
-        console.warn(`⚠️ Video ${archivo.nombreArchivo} tiene duración inválida, usando 5s por defecto`);
-        resolve({
-          archivo,
-          video,
-          duracion: 5
-        });
-      } else {
-        console.log(`✅ Video ${archivo.nombreArchivo} cargado: ${duracion.toFixed(2)}s`);
-        resolve({
-          archivo,
-          video,
-          duracion
-        });
+      const dur = (!duracion || duracion === Infinity || isNaN(duracion)) ? 5 : duracion;
+      resolve({ archivo, video, duracion: dur });
+    };
+
+    video.onloadeddata = () => resolver();
+    video.onloadedmetadata = () => {
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        resolver();
       }
     };
+
+    setTimeout(() => resolver(), 3000);
     
     video.onerror = (e) => {
       console.error(`❌ Error cargando video ${archivo.nombreArchivo}:`, e);
@@ -1073,29 +1126,41 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
     else if (progreso > 0.9) alpha = (1 - progreso) / 0.1;
     this.ctx.globalAlpha = alpha;
     
-    // Título en estilo manuscrito
+    // Título en estilo manuscrito con ajuste de líneas responsivo
+    const titulo = carta.titulo || 'Itinerario';
+    const maxWidth = this.canvas.width - 240;
+    let fontSize = 42;
+    if (titulo.length > 50) fontSize = 32;
+    else if (titulo.length > 30) fontSize = 36;
+
     this.ctx.fillStyle = '#2c1810';
-    this.ctx.font = 'italic bold 48px Georgia, serif';
+    const fontTitulo = `italic bold ${fontSize}px Georgia, serif`;
+    this.ctx.font = fontTitulo;
     this.ctx.textAlign = 'center';
     
-    const titulo = carta.titulo || 'Itinerario';
-    this.ctx.fillText(titulo, this.canvas.width / 2, 150);
+    const lineasTitulo = this.dividirTextoEnLineas(titulo, maxWidth, fontTitulo);
+    let yTitulo = 110;
+    const lineHeightTitulo = fontSize * 1.25;
+    for (const linea of lineasTitulo) {
+      this.ctx.fillText(linea, this.canvas.width / 2, yTitulo);
+      yTitulo += lineHeightTitulo;
+    }
     
     // Descripción
+    let yDesc = Math.max(yTitulo + 35, 220);
     if (carta.descripcion) {
-      this.ctx.font = '28px Georgia, serif';
+      this.ctx.font = '26px Georgia, serif';
       this.ctx.textAlign = 'left';
       
       const lineas = this.dividirTextoEnLineas(
         carta.descripcion, 
         this.canvas.width - 200,
-        '28px Georgia'
+        '26px Georgia, serif'
       );
       
-      let y = 250;
-      for (const linea of lineas.slice(0, 15)) {
-        this.ctx.fillText(linea, 100, y);
-        y += 40;
+      for (const linea of lineas.slice(0, 12)) {
+        this.ctx.fillText(linea, 100, yDesc);
+        yDesc += 36;
       }
     }
     
@@ -1895,14 +1960,23 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       video.muted = true;
       video.preload = 'auto';
 
-      video.onloadedmetadata = () => {
+      let resuelto = false;
+      const resolver = () => {
+        if (resuelto) return;
+        resuelto = true;
         const duracion = video.duration;
-        if (!duracion || duracion === Infinity || isNaN(duracion)) {
-          resolve({ video, duracion: 5 });
-        } else {
-          resolve({ video, duracion });
+        const dur = (!duracion || duracion === Infinity || isNaN(duracion)) ? 5 : duracion;
+        resolve({ video, duracion: dur });
+      };
+
+      video.onloadeddata = () => resolver();
+      video.onloadedmetadata = () => {
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          resolver();
         }
       };
+
+      setTimeout(() => resolver(), 3000);
 
       video.onerror = (e) => {
         console.error(`❌ Error cargando video ${url}:`, e);
