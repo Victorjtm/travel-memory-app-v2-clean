@@ -43,7 +43,7 @@ export class GpxAnimationService {
 
     let distAcum = 0;
     let timeAcum = 0;
-    let prevPoint: L.LatLng | null = null;
+    let prevPoint: { lat: number; lng: number } | null = null;
     let startTime: number | null = null;
     let lastKnownMode: string | undefined = undefined; // Propagar modo entre puntos contiguos
 

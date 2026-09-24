@@ -6745,7 +6745,21 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // MÉTODOS PARA GENERACIÓN DE VIDEO
   // ==========================================
 
+  // Animaciones de ruta pendientes vs totales para exportación de vídeo
+  animacionesRutaTotales: PaginaMedia[] = [];
+  animacionesRutaPendientes: PaginaMedia[] = [];
+  get distanciaMinimaAnimacionMetros(): number {
+    return Math.round((this.distanciaMinimaAnimacionKm || 0.05) * 1000);
+  }
+
+
+  // Vídeo generado listo para previsualizar y compartir
+  urlVideoGenerado: string | null = null;
+  blobVideoGenerado: Blob | null = null;
+  nombreArchivoVideoGenerado: string = 'pelicula-viaje.mp4';
+
   mostrarDialogoVideo(): void {
+    this.actualizarEstadoAnimacionesRuta();
     this.mostrarConfiguracionVideo = true;
     document.body.style.overflow = 'hidden';
   }
@@ -6755,8 +6769,48 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     document.body.style.overflow = '';
   }
 
+  actualizarEstadoAnimacionesRuta(): void {
+    const fuentes = this.paginas || [];
+    const vistas = new Set<string>();
+    const totales: PaginaMedia[] = [];
+    const pendientes: PaginaMedia[] = [];
+
+    for (const p of fuentes) {
+      if (p.esMapaAnimado && !p.esMapaGeneral && !p.esMapaItinerario && p.trackGpx) {
+        const key = `${p.actividadId}_${p.idParadaOrigen}_${p.idParadaDestino}`;
+        if (!vistas.has(key)) {
+          vistas.add(key);
+          totales.push(p);
+          if (!p.urlVideoAnimacion || p.urlVideoAnimacion.trim() === '') {
+            pendientes.push(p);
+          }
+        }
+      }
+    }
+    this.animacionesRutaTotales = totales;
+    this.animacionesRutaPendientes = pendientes;
+  }
+
+  async generarRutasPendientesDesdeModal(): Promise<void> {
+    this.mostrarConfiguracionVideo = false;
+    document.body.style.overflow = '';
+
+    await this.iniciarGeneracionLoteVideos();
+
+    this.actualizarEstadoAnimacionesRuta();
+    this.mostrarConfiguracionVideo = true;
+    document.body.style.overflow = 'hidden';
+    this.cdr.detectChanges();
+  }
+
   async generarVideoViaje(): Promise<void> {
     if (this.generandoVideo) return;
+    this.actualizarEstadoAnimacionesRuta();
+
+    if (this.animacionesRutaPendientes.length > 0) {
+      alert(`Hay ${this.animacionesRutaPendientes.length} animaciones de ruta pendientes de generar en MP4. Pulsa "Generar rutas MP4 pendientes" antes de crear el vídeo del viaje.`);
+      return;
+    }
 
     try {
       this.generandoVideo = true;
@@ -6766,7 +6820,6 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         mensaje: 'Preparando secuencia del viaje...'
       };
 
-      // 1. Construir la secuencia única de escenas basada en el estado actual del álbum
       const secuencia = this.construirSecuenciaEscenas();
 
       if (secuencia.length === 0) {
@@ -6775,16 +6828,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
       console.log('🎬 Secuencia de vídeo construida:', secuencia.length, 'escenas');
 
-      // 2. Ejecutar la generación en el servicio
-      // ✅ Decisión EXPLÍCITA del usuario: usar el checkbox del modal, no el estado paused del audio
       const incluirMusica = !!(this.configuracionExportacion.incluirAudio && this.audioViaje);
       const audioParaExportacion = incluirMusica ? this.audioViaje! : null;
       console.log('🎵 Opción de exportación: incluir música =', incluirMusica);
-      if (incluirMusica) {
-        console.log('🎵 Audio del viaje enviado al generador');
-      } else {
-        console.log('🎵 Exportación sin música por decisión del usuario');
-      }
 
       const videoBlob = await this.videoGeneratorService.generarVideoDesdeSecuencia(
         secuencia,
@@ -6793,34 +6839,29 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         audioParaExportacion,
         (progreso) => {
           this.progresoVideo = progreso;
+          this.cdr.detectChanges();
         }
       );
 
-      // 3. Gestionar la descarga según el formato real obtenido
-      const extension = this.videoGeneratorService.getExtensionVideo();
-      const url = URL.createObjectURL(videoBlob);
-      const a = document.createElement('a');
-      a.href = url;
+      this.blobVideoGenerado = videoBlob;
+      if (this.urlVideoGenerado) {
+        URL.revokeObjectURL(this.urlVideoGenerado);
+      }
+      this.urlVideoGenerado = URL.createObjectURL(videoBlob);
 
       const nombreBase = this.contextoViaje?.itinerarioId
         ? `itinerario-${this.contextoViaje.itinerarioId}`
         : this.sanitizarNombreArchivo(this.infoViaje?.nombre || 'viaje');
 
-      a.download = `viaje-${nombreBase}.${extension}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      this.nombreArchivoVideoGenerado = `viaje-${nombreBase}.mp4`;
 
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-      // Feedback final
       this.progresoVideo = {
         fase: 'completado',
         porcentaje: 100,
-        mensaje: '¡Vídeo listo para compartir!'
+        mensaje: '¡Película del viaje lista!'
       };
-
-      setTimeout(() => this.cerrarDialogoVideo(), 2000);
+      this.generandoVideo = false;
+      this.cdr.detectChanges();
 
     } catch (error) {
       console.error('❌ Error generando vídeo:', error);
@@ -6830,33 +6871,178 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         mensaje: `Error: ${error instanceof Error ? error.message : 'Error desconocido'}`
       };
       this.generandoVideo = false;
+      this.cdr.detectChanges();
     }
   }
 
+  async compartirVideoPorWhatsApp(): Promise<void> {
+    if (!this.blobVideoGenerado) return;
+    const archivo = new File([this.blobVideoGenerado], this.nombreArchivoVideoGenerado, { type: 'video/mp4' });
+
+    if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+      try {
+        await navigator.share({
+          files: [archivo],
+          title: this.infoViaje?.nombre || 'Película del Viaje',
+          text: `🎬 ¡Mira la película de nuestro viaje: ${this.infoViaje?.nombre || 'Mi Viaje'}!`
+        });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+        console.warn('Web Share no disponible, usando fallback:', err);
+      }
+    }
+
+    // Fallback escritorio
+    this.descargarVideoGenerado();
+    const textoMsg = encodeURIComponent(`🎬 ¡Aquí tienes la película de nuestro viaje "${this.infoViaje?.nombre || 'Mi Viaje'}"! Adjunto el vídeo descargado.`);
+    window.open(`https://api.whatsapp.com/send?text=${textoMsg}`, '_blank');
+  }
+
+  descargarVideoGenerado(): void {
+    if (!this.blobVideoGenerado && !this.urlVideoGenerado) return;
+    const url = this.urlVideoGenerado || URL.createObjectURL(this.blobVideoGenerado!);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = this.nombreArchivoVideoGenerado;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
   /**
-   * Construye la secuencia de escenas para el vídeo basándose EXACTAMENTE 
-   * en lo que el usuario ve en las páginas del álbum.
+   * Construye la secuencia fiel de escenas para el vídeo basándose EXACTAMENTE
+   * en lo que el usuario ve en las páginas del álbum (incluyendo 3D intro, cartas, mapas y marcos de lujo).
    */
   private construirSecuenciaEscenas(): EscenaMultimedia[] {
-    // Filtramos el índice si existe al principio
-    return this.paginas
-      .filter(p => !p.esIndice)
-      .map((p, index) => {
-        const fechaHora = this.obtenerFechaHoraSeparadas(p);
+    const secuencia: EscenaMultimedia[] = [];
 
-        return {
-          id: p.archivo?.id || `escena-${index}`,
-          tipo: p.esCartaManuscrita ? 'carta' : (p.tipoMedia === 'video' ? 'video' : 'imagen'),
-          url: p.url,
-          duracion: p.tipoMedia === 'video' ? 0 : 4, // 0 para videos (usarán su duración real), 4s para fotos
-          archivo: p.archivo,
-          titulo: p.titulo,
-          descripcion: p.descripcion,
-          fecha: fechaHora.fecha,
-          hora: fechaHora.hora,
-          itinerarioId: p.archivo?.itinerarioId
-        };
+    // 1. Escena 1: INTRO 3D CINEMÁTICA EN MP4 A 60 FPS
+    secuencia.push({
+      id: 'intro-3d-cinematica',
+      tipo: 'video',
+      url: 'assets/videos/intro-libro-3d.mp4',
+      duracion: 5.4,
+      titulo: this.infoViaje?.nombre || 'Mi Viaje',
+      descripcion: 'Apertura del diario de viaje',
+      esIntro3D: true
+    });
+
+    // 2. Páginas del álbum en orden
+    this.paginas
+      .filter(p => !p.esIndice)
+      .forEach((p, index) => {
+        const fechaHora = this.obtenerFechaHoraSeparadas(p);
+        const badge = this.obtenerBadgeOrden(p, index);
+        const marco = this.obtenerClaseMarco(p, index);
+
+        if (p.esCartaManuscrita) {
+          secuencia.push({
+            id: p.archivo?.id || `carta-${index}`,
+            tipo: 'carta',
+            url: '',
+            duracion: 5,
+            titulo: p.titulo || 'Diario de Viaje',
+            descripcion: p.descripcion || '',
+            fecha: fechaHora.fecha,
+            hora: fechaHora.hora,
+            badgeOrden: badge
+          });
+
+        } else if (p.esMapaGeneral) {
+          secuencia.push({
+            id: `mapa-general-${index}`,
+            tipo: 'mapa_resumen',
+            url: '',
+            duracion: 5,
+            titulo: p.titulo || `MAPA GENERAL: ${this.infoViaje?.nombre || 'Mi Viaje'}`,
+            descripcion: p.descripcion || 'Recorrido unificado y panorámica completa del viaje',
+            trackGpx: p.trackGpx,
+            distanciaKm: p.distanciaTramoKm,
+            badgeOrden: 'Mapa Viaje'
+          });
+
+        } else if (p.esMapaItinerario) {
+          secuencia.push({
+            id: `mapa-itinerario-${index}`,
+            tipo: 'mapa_resumen',
+            url: '',
+            duracion: 5,
+            titulo: p.titulo || 'MAPA DEL ITINERARIO',
+            descripcion: p.descripcion || '',
+            trackGpx: p.trackGpx,
+            distanciaKm: p.distanciaTramoKm,
+            badgeOrden: 'Mapa Itin'
+          });
+
+        } else if (p.esMapaAnimado) {
+          if (p.urlVideoAnimacion && p.urlVideoAnimacion.trim() !== '') {
+            secuencia.push({
+              id: `ruta-video-${p.idParadaOrigen}-${p.idParadaDestino}-${index}`,
+              tipo: 'video',
+              url: p.urlVideoAnimacion,
+              duracion: p.distanciaTramoKm ? this.routeVideoGeneratorService.calcularDuracionDinamica(p.distanciaTramoKm * 1000) : 5,
+              titulo: p.titulo || `Recorrido Parada #${p.idParadaOrigen} ➔ #${p.idParadaDestino}`,
+              descripcion: p.descripcion,
+              fecha: fechaHora.fecha,
+              hora: fechaHora.hora,
+              esMapaAnimado: true,
+              badgeOrden: 'Ruta'
+            });
+          }
+
+        } else {
+          const esAudio = p.tipoMedia === 'audio' || /\.(aac|mp3|m4a|wav|ogg)$/i.test(p.url || p.archivo?.rutaArchivo || '');
+          const esVideo = p.tipoMedia === 'video' || /\.(mp4|mov|webm|avi|mkv)$/i.test(p.url || p.archivo?.rutaArchivo || '');
+
+          if (esVideo) {
+            secuencia.push({
+              id: p.archivo?.id || `video-${index}`,
+              tipo: 'video',
+              url: p.url,
+              duracion: 0,
+              archivo: p.archivo,
+              titulo: p.titulo,
+              descripcion: p.descripcion,
+              fecha: fechaHora.fecha,
+              hora: fechaHora.hora,
+              badgeOrden: badge,
+              itinerarioId: p.archivo?.itinerarioId
+            });
+          } else if (esAudio) {
+            secuencia.push({
+              id: p.archivo?.id || `audio-${index}`,
+              tipo: 'audio',
+              url: p.url,
+              duracion: 4,
+              archivo: p.archivo,
+              titulo: p.titulo || 'Nota de Voz',
+              descripcion: p.descripcion,
+              fecha: fechaHora.fecha,
+              hora: fechaHora.hora,
+              badgeOrden: badge,
+              itinerarioId: p.archivo?.itinerarioId
+            });
+          } else {
+            secuencia.push({
+              id: p.archivo?.id || `foto-${index}`,
+              tipo: 'imagen',
+              url: p.url,
+              duracion: 4,
+              archivo: p.archivo,
+              titulo: p.titulo,
+              descripcion: p.descripcion,
+              fecha: fechaHora.fecha,
+              hora: fechaHora.hora,
+              badgeOrden: badge,
+              claseMarco: marco,
+              itinerarioId: p.archivo?.itinerarioId
+            });
+          }
+        }
       });
+
+    return secuencia;
   }
 
   private obtenerFechaHoraSeparadas(p: PaginaMedia): { fecha: string, hora: string } {

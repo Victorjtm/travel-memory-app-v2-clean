@@ -1,6 +1,6 @@
 import { Archivo } from './archivo';
 
-export type TipoEscena = 'imagen' | 'video' | 'carta' | 'titulo';
+export type TipoEscena = 'imagen' | 'video' | 'carta' | 'titulo' | 'mapa_resumen' | 'intro_3d' | 'audio';
 
 export interface EscenaMultimedia {
   id: string | number;
@@ -14,6 +14,12 @@ export interface EscenaMultimedia {
   hora?: string;
   itinerarioId?: number;
   cargado?: boolean;
+  claseMarco?: string;
+  badgeOrden?: string;
+  esIntro3D?: boolean;
+  esMapaAnimado?: boolean;
+  trackGpx?: string;
+  distanciaKm?: number;
 }
 
 export interface ConfiguracionExportacion {

@@ -1204,4 +1204,187 @@ export class RouteVideoGeneratorService {
     if (m.includes('walk') || m.includes('andando') || m.includes('caminar') || m.includes('pie')) return 'A pie';
     return 'En Ruta';
   }
+  /**
+   * Genera una imagen estática ultra nítida de un mapa general o itinerario
+   * con la cartografía satélite/calles, el recorrido completo en dorado/carmesí,
+   * y una cabecera con el título del viaje o itinerario.
+   */
+  public async generarSnapshotMapa(
+    trackGpx: string,
+    titulo: string,
+    subtitulo: string = '',
+    distanciaKm?: number,
+    width: number = 1920,
+    height: number = 1080
+  ): Promise<HTMLImageElement> {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d')!;
+
+    // Fondo pergamino inicial
+    ctx.fillStyle = '#1a100a';
+    ctx.fillRect(0, 0, width, height);
+
+    if (!trackGpx || trackGpx.trim() === '') {
+      ctx.fillStyle = '#2d180f';
+      ctx.fillRect(80, 80, width - 160, height - 160);
+      ctx.strokeStyle = '#d4af37';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(100, 100, width - 200, height - 200);
+      ctx.fillStyle = '#f3e5ab';
+      ctx.font = 'bold 56px "Cinzel", Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(titulo.toUpperCase(), width / 2, height / 2 - 20);
+      if (subtitulo) {
+        ctx.font = 'italic 32px "Cinzel", Georgia, serif';
+        ctx.fillText(subtitulo, width / 2, height / 2 + 50);
+      }
+      return this.canvasAImagen(canvas);
+    }
+
+    try {
+      const rawPoints = this.gpxService.parseGpx(trackGpx);
+      if (!rawPoints || rawPoints.length === 0) {
+        return this.canvasAImagen(canvas);
+      }
+
+      let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+      for (const p of rawPoints) {
+        if (p.lat < minLat) minLat = p.lat;
+        if (p.lat > maxLat) maxLat = p.lat;
+        if (p.lng < minLng) minLng = p.lng;
+        if (p.lng > maxLng) maxLng = p.lng;
+      }
+
+      const centerLat = (minLat + maxLat) / 2;
+      const centerLng = (minLng + maxLng) / 2;
+
+      const padX = 140;
+      const padY = 140;
+      const availW = width - 2 * padX;
+      const availH = height - 2 * padY;
+
+      const latLngToWorld = (lat: number, lng: number, z: number) => {
+        const scale = 256 * Math.pow(2, z);
+        const x = ((lng + 180) / 360) * scale;
+        const safeLat = Math.max(-85.05112878, Math.min(85.05112878, lat));
+        const latRad = (safeLat * Math.PI) / 180;
+        const y = (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) * 0.5 * scale;
+        return { x, y };
+      };
+
+      let bestZoom = 15;
+      for (let z = 15; z >= 3; z--) {
+        const pMin = latLngToWorld(minLat, minLng, z);
+        const pMax = latLngToWorld(maxLat, maxLng, z);
+        const spanW = Math.abs(pMax.x - pMin.x);
+        const spanH = Math.abs(pMax.y - pMin.y);
+        if (spanW <= availW && spanH <= availH) {
+          bestZoom = z;
+          break;
+        }
+      }
+
+      const centerWorld = latLngToWorld(centerLat, centerLng, bestZoom);
+      const proyectar = (lat: number, lng: number) => {
+        const w = latLngToWorld(lat, lng, bestZoom);
+        return {
+          x: Math.round(width / 2 + (w.x - centerWorld.x)),
+          y: Math.round(height / 2 + (w.y - centerWorld.y))
+        };
+      };
+
+      await this.cargarTilesFondo(ctx, centerWorld, bestZoom, width, height);
+
+      if (rawPoints.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        const startPt = proyectar(rawPoints[0].lat, rawPoints[0].lng);
+        ctx.moveTo(startPt.x, startPt.y);
+        for (let i = 1; i < rawPoints.length; i++) {
+          const pt = proyectar(rawPoints[i].lat, rawPoints[i].lng);
+          ctx.lineTo(pt.x, pt.y);
+        }
+
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.lineWidth = 12;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        ctx.strokeStyle = '#e63946';
+        ctx.lineWidth = 6;
+        ctx.stroke();
+
+        ctx.strokeStyle = '#ffd166';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.restore();
+
+        const pInicio = proyectar(rawPoints[0].lat, rawPoints[0].lng);
+        const pFin = proyectar(rawPoints[rawPoints.length - 1].lat, rawPoints[rawPoints.length - 1].lng);
+
+        const dibujarPin = (p: { x: number; y: number }, color: string, label: string) => {
+          ctx.save();
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, p.x, p.y);
+          ctx.restore();
+        };
+
+        dibujarPin(pInicio, '#2a9d8f', 'A');
+        dibujarPin(pFin, '#e76f51', 'B');
+      }
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(212, 175, 55, 0.85)';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(30, 30, width - 60, height - 60);
+      ctx.strokeStyle = 'rgba(212, 175, 55, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(42, 42, width - 84, height - 84);
+
+      ctx.fillStyle = 'rgba(26, 16, 10, 0.88)';
+      ctx.fillRect(width * 0.15, 45, width * 0.7, 95);
+      ctx.strokeStyle = '#d4af37';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(width * 0.15, 45, width * 0.7, 95);
+
+      ctx.fillStyle = '#f3e5ab';
+      ctx.font = 'bold 36px "Cinzel", Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(titulo.toUpperCase(), width / 2, 90);
+
+      const subTexto = subtitulo || (distanciaKm ? `Recorrido total: ${distanciaKm.toFixed(1)} km` : '');
+      if (subTexto) {
+        ctx.fillStyle = '#d4af37';
+        ctx.font = 'italic 20px "Cinzel", Georgia, serif';
+        ctx.fillText(subTexto, width / 2, 124);
+      }
+      ctx.restore();
+
+      return await this.canvasAImagen(canvas);
+    } catch (err) {
+      console.warn('⚠️ Error generando snapshot mapa:', err);
+      return this.canvasAImagen(canvas);
+    }
+  }
+
+  private canvasAImagen(canvas: HTMLCanvasElement): Promise<HTMLImageElement> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.src = canvas.toDataURL('image/jpeg', 0.92);
+    });
+  }
 }

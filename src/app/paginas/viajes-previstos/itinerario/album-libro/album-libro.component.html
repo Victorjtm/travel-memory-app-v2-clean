@@ -1237,9 +1237,6 @@
 <!-- ========================================= -->
 <!-- BLOQUE: MODAL DE CONFIGURACIÓN DE VIDEO -->
 <!-- ========================================= -->
-<!-- ========================================= -->
-<!-- BLOQUE: MODAL DE CONFIGURACIÓN DE VIDEO -->
-<!-- ========================================= -->
 <div class="modal-video-overlay" [class.activo]="mostrarConfiguracionVideo" (click)="cerrarDialogoVideo()"
   *ngIf="mostrarConfiguracionVideo">
 
@@ -1247,7 +1244,7 @@
 
     <!-- Header del modal -->
     <div class="modal-video-header">
-      <h3><i class="fas fa-video"></i> Generar vídeo del viaje</h3>
+      <h3><i class="fas fa-video"></i> Película del Viaje para WhatsApp</h3>
       <button class="btn-cerrar-modal" (click)="cerrarDialogoVideo()" [disabled]="generandoVideo">
         <i class="fas fa-times"></i>
       </button>
@@ -1256,100 +1253,151 @@
     <!-- Contenido del modal -->
     <div class="modal-video-body">
 
-      <p class="modal-intro">
-        Se creará un vídeo basado en cómo se ve este álbum, listo para descargar y compartir.
-      </p>
-
-      <!-- Opciones Principales (Simples) -->
-      <div class="opciones-principales">
-
-        <div class="config-checkbox" *ngIf="audioViaje">
-          <input type="checkbox" id="incluir-audio" [(ngModel)]="configuracionExportacion.incluirAudio">
-          <label for="incluir-audio">
-            <i class="fas fa-music"></i> Incluir música del viaje
-          </label>
+      <!-- VISTA VIDEO COMPLETADO -->
+      <div class="vista-video-completado" *ngIf="urlVideoGenerado && progresoVideo?.fase === 'completado'">
+        <div class="video-preview-box">
+          <video [src]="urlVideoGenerado" controls playsinline autoplay class="video-preview-player"></video>
         </div>
-
-        <div class="config-checkbox">
-          <input type="checkbox" id="incluir-texto" [(ngModel)]="configuracionExportacion.incluirTexto">
-          <label for="incluir-texto">
-            <i class="fas fa-calendar-day"></i> Mostrar fecha y hora
-          </label>
+        <div class="video-completado-badge">
+          <i class="fas fa-check-circle"></i>
+          <span>¡Película generada con éxito a 60 FPS y lista para compartir!</span>
         </div>
-
-        <div class="config-checkbox">
-          <input type="checkbox" id="incluir-descripcion" [(ngModel)]="configuracionExportacion.incluirDescripcion">
-          <label for="incluir-descripcion">
-            <i class="fas fa-comment-alt"></i> Mostrar descripción si existe
-          </label>
+        <div class="acciones-video-completado">
+          <button type="button" class="btn-whatsapp-share" (click)="compartirVideoPorWhatsApp()">
+            <i class="fab fa-whatsapp"></i> Compartir por WhatsApp
+          </button>
+          <button type="button" class="btn-descargar-archivo" (click)="descargarVideoGenerado()">
+            <i class="fas fa-download"></i> Guardar / Descargar MP4
+          </button>
         </div>
-
-        <div class="config-item-select">
-          <label for="calidad-export">Calidad del vídeo:</label>
-          <select id="calidad-export" [(ngModel)]="configuracionExportacion.calidad">
-            <option value="whatsapp">Estándar (ideal para WhatsApp)</option>
-            <option value="alta">Alta calidad (Full HD)</option>
-          </select>
-        </div>
-
       </div>
 
-      <!-- Opciones Avanzadas (Progressive Disclosure) -->
-      <div class="seccion-avanzada">
-        <button class="btn-toggle-avanzado" (click)="toggleOpcionesAvanzadas()">
-          {{ mostrarOpcionesAvanzadas ? 'Ocultar opciones avanzadas' : 'Más opciones' }}
-          <i class="fas" [class.fa-chevron-up]="mostrarOpcionesAvanzadas"
-            [class.fa-chevron-down]="!mostrarOpcionesAvanzadas"></i>
-        </button>
+      <!-- VISTA CONFIGURACIÓN Y PRERREQUISITOS -->
+      <div class="vista-video-configuracion" *ngIf="!urlVideoGenerado || progresoVideo?.fase !== 'completado'">
 
-        <div class="opciones-avanzadas-contenido" *ngIf="mostrarOpcionesAvanzadas">
-          <div class="config-checkbox">
-            <input type="checkbox" id="mantener-estilo" [(ngModel)]="configuracionExportacion.mantenerEstiloAlbum">
-            <label for="mantener-estilo">Mantener estilo visual del álbum</label>
+        <p class="modal-intro">
+          Se compilará una película cinematográfica fiel al álbum, con la animación 3D inicial, mapas generales, fotografías con marco y vídeos de las rutas a 60 FPS fluidos.
+        </p>
+
+        <!-- ALERTA DE RUTAS PENDIENTES (PRERREQUISITO ESTRICTO) -->
+        <div class="alerta-rutas-pendientes" *ngIf="animacionesRutaPendientes.length > 0">
+          <div class="alerta-header">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Animaciones de ruta pendientes ({{ animacionesRutaPendientes.length }} de {{ animacionesRutaTotales.length }})</strong>
+          </div>
+          <p class="alerta-desc">
+            Para la distancia mínima actual ({{ distanciaMinimaAnimacionMetros }}m), hay {{ animacionesRutaPendientes.length }} tramos sin vídeo MP4. Es obligatorio generarlos para que la película los incluya sin cortes.
+          </p>
+          <button type="button" class="btn-lote-modal" (click)="generarRutasPendientesDesdeModal()" [disabled]="generandoLoteVideos">
+            <i class="fas" [class.fa-film]="!generandoLoteVideos" [class.fa-spinner]="generandoLoteVideos" [class.fa-spin]="generandoLoteVideos"></i>
+            Generar {{ animacionesRutaPendientes.length }} animaciones MP4 pendientes
+          </button>
+        </div>
+
+        <!-- RUTAS LISTAS (BADGE VERDE) -->
+        <div class="alerta-rutas-listas" *ngIf="animacionesRutaPendientes.length === 0 && animacionesRutaTotales.length > 0">
+          <i class="fas fa-check-circle"></i>
+          <span>Todas las animaciones de ruta ({{ animacionesRutaTotales.length }}) están listas en MP4 fluido a 60 FPS.</span>
+        </div>
+
+        <!-- Opciones Principales -->
+        <div class="opciones-principales">
+
+          <div class="config-checkbox" *ngIf="audioViaje">
+            <input type="checkbox" id="incluir-audio" [(ngModel)]="configuracionExportacion.incluirAudio">
+            <label for="incluir-audio">
+              <i class="fas fa-music"></i> Incluir música ambiental del viaje
+            </label>
           </div>
 
-          <div class="aviso-tecnico">
-            <i class="fas fa-info-circle"></i>
-            El formato final (MP4 o WebM) se seleccionará automáticamente según la compatibilidad de tu navegador.
+          <div class="config-checkbox">
+            <input type="checkbox" id="incluir-texto" [(ngModel)]="configuracionExportacion.incluirTexto">
+            <label for="incluir-texto">
+              <i class="fas fa-calendar-day"></i> Mostrar fecha y hora
+            </label>
+          </div>
+
+          <div class="config-checkbox">
+            <input type="checkbox" id="incluir-descripcion" [(ngModel)]="configuracionExportacion.incluirDescripcion">
+            <label for="incluir-descripcion">
+              <i class="fas fa-comment-alt"></i> Mostrar descripción y títulos
+            </label>
+          </div>
+
+          <div class="config-item-select">
+            <label for="calidad-export">Perfil de exportación:</label>
+            <select id="calidad-export" [(ngModel)]="configuracionExportacion.calidad">
+              <option value="whatsapp">Optimizado para WhatsApp (H.264/AAC móvil)</option>
+              <option value="alta">Alta fidelidad (Full HD 1080p)</option>
+            </select>
+          </div>
+
+        </div>
+
+        <!-- Opciones Avanzadas -->
+        <div class="seccion-avanzada">
+          <button class="btn-toggle-avanzado" (click)="toggleOpcionesAvanzadas()">
+            {{ mostrarOpcionesAvanzadas ? 'Ocultar opciones avanzadas' : 'Más opciones' }}
+            <i class="fas" [class.fa-chevron-up]="mostrarOpcionesAvanzadas"
+              [class.fa-chevron-down]="!mostrarOpcionesAvanzadas"></i>
+          </button>
+
+          <div class="opciones-avanzadas-contenido" *ngIf="mostrarOpcionesAvanzadas">
+            <div class="config-checkbox">
+              <input type="checkbox" id="mantener-estilo" [(ngModel)]="configuracionExportacion.mantenerEstiloAlbum">
+              <label for="mantener-estilo">Mantener marcos físicos y encuadre luxury</label>
+            </div>
+
+            <div class="aviso-tecnico">
+              <i class="fas fa-info-circle"></i>
+              El formato final será MP4 (H.264 Main Profile + AAC) con streaming faststart, compatible con cualquier dispositivo y WhatsApp.
+            </div>
           </div>
         </div>
+
       </div>
 
     </div>
 
     <!-- Footer del modal -->
     <div class="modal-video-footer">
-      <button class="btn-cancelar" (click)="cerrarDialogoVideo()" [disabled]="generandoVideo">
-        Cancelar
-      </button>
-      <button class="btn-generar" (click)="generarVideoViaje()" [disabled]="generandoVideo">
-        <i class="fas fa-play" *ngIf="!generandoVideo"></i>
-        <i class="fas fa-spinner fa-spin" *ngIf="generandoVideo"></i>
-        {{ generandoVideo ? 'Generando...' : 'Generar vídeo' }}
-      </button>
+      <ng-container *ngIf="urlVideoGenerado && progresoVideo?.fase === 'completado'">
+        <button class="btn-cancelar" (click)="cerrarDialogoVideo()">
+          Cerrar
+        </button>
+        <button class="btn-repetir-config" (click)="urlVideoGenerado = null; progresoVideo = null">
+          <i class="fas fa-sliders-h"></i> Volver a configurar
+        </button>
+      </ng-container>
+
+      <ng-container *ngIf="!urlVideoGenerado || progresoVideo?.fase !== 'completado'">
+        <div class="footer-msg-bloqueo" *ngIf="animacionesRutaPendientes.length > 0">
+          <i class="fas fa-lock"></i> Genera las {{ animacionesRutaPendientes.length }} rutas pendientes para activar la película
+        </div>
+        <button class="btn-cancelar" (click)="cerrarDialogoVideo()" [disabled]="generandoVideo">
+          Cancelar
+        </button>
+        <button class="btn-generar" (click)="generarVideoViaje()" [disabled]="generandoVideo || animacionesRutaPendientes.length > 0">
+          <i class="fas fa-play" *ngIf="!generandoVideo"></i>
+          <i class="fas fa-spinner fa-spin" *ngIf="generandoVideo"></i>
+          {{ generandoVideo ? 'Generando película...' : 'Generar vídeo' }}
+        </button>
+      </ng-container>
     </div>
 
     <!-- Progreso de generación -->
-    <div class="progreso-video" *ngIf="progresoVideo">
+    <div class="progreso-video" *ngIf="progresoVideo && progresoVideo.fase !== 'completado'">
       <div class="progreso-info">
-        <span class="fase">{{ progresoVideo.fase | titlecase }}</span>
+        <span class="fase">{{ progresoVideo.mensaje || (progresoVideo.fase | titlecase) }}</span>
         <span class="porcentaje">{{ progresoVideo.porcentaje | number:'1.0-0' }}%</span>
       </div>
       <div class="barra-progreso">
         <div class="barra-relleno" [style.width.%]="progresoVideo.porcentaje"></div>
       </div>
-      <p class="mensaje-progreso">{{ progresoVideo.mensaje }}</p>
-
-      <!-- Aviso de compatibilidad si es necesario -->
-      <div class="aviso-webm"
-        *ngIf="progresoVideo.fase === 'completado' && videoGeneratorService.getExtensionVideo() === 'webm'">
-        <i class="fas fa-exclamation-triangle"></i>
-        Nota: Tu navegador ha generado un archivo .webm. Es posible que algunos dispositivos antiguos necesiten un
-        reproductor compatible.
-      </div>
     </div>
 
   </div>
+
 </div>
 
 <!-- ======================================================== -->

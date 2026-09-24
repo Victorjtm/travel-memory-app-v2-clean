@@ -4765,6 +4765,40 @@ app.post(['/actividades/:id/subtramos/video', '/api/actividades/:id/subtramos/vi
   }
 });
 
+// 3.b POST optimizar vídeo completo para máxima compatibilidad con WhatsApp (H.264/AAC + faststart)
+app.post(['/video/optimizar-whatsapp', '/api/video/optimizar-whatsapp'], upload.single('video'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No se ha proporcionado archivo de vídeo' });
+  }
+
+  const tempInput = req.file.path;
+  const tempOutput = path.join(path.dirname(tempInput), `whatsapp_${Date.now()}_${Math.random().toString(36).substring(7)}.mp4`);
+
+  // FFmpeg H.264 Main Profile + AAC + yuv420p + faststart (estándar universal WhatsApp móvil/web)
+  const cmd = `"${FFMPEG_BIN}" -y -i "${tempInput}" -c:v libx264 -preset fast -profile:v main -level 4.0 -pix_fmt yuv420p -b:v 3000k -maxrate 4000k -bufsize 8000k -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${tempOutput}"`;
+
+  console.log('🎬 [FFMPEG] Optimizando película de viaje para WhatsApp...');
+  exec(cmd, (err) => {
+    try { if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput); } catch (e) {}
+
+    if (err) {
+      console.error('❌ Error optimizando vídeo para WhatsApp con ffmpeg:', err.message);
+      try { if (fs.existsSync(tempOutput)) fs.unlinkSync(tempOutput); } catch (e) {}
+      return res.status(500).json({ error: 'Error procesando vídeo con ffmpeg: ' + err.message });
+    }
+
+    console.log('✅ [FFMPEG] Película optimizada con éxito para WhatsApp. Enviando stream...');
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Disposition', 'attachment; filename="pelicula_viaje_whatsapp.mp4"');
+    
+    const readStream = fs.createReadStream(tempOutput);
+    readStream.pipe(res);
+    readStream.on('close', () => {
+      try { if (fs.existsSync(tempOutput)) fs.unlinkSync(tempOutput); } catch (e) {}
+    });
+  });
+});
+
 // 4. DELETE eliminar vídeo de subtramo específico
 app.delete(['/actividades/:id/subtramos/video', '/api/actividades/:id/subtramos/video'], async (req, res) => {
   const id = req.params.id;

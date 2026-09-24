@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { Archivo } from '../modelos/archivo';
 import { environment } from '../../environments/environment';
 import { EscenaMultimedia, ConfiguracionExportacion } from '../modelos/escena-multimedia';
+import { RouteVideoGeneratorService } from './route-video-generator.service';
 import html2canvas from 'html2canvas';
 
 // ── Tipos para requestVideoFrameCallback (aún no en todas las versiones de lib.dom.d.ts) ──
@@ -1811,4 +1812,419 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       return null;
     }
   }
+
+  public async optimizarParaWhatsApp(blob: Blob): Promise<Blob> {
+    try {
+      console.log('🎬 [VideoGenerator] Enviando vídeo a backend para optimización FFmpeg WhatsApp...');
+      const formData = new FormData();
+      formData.append('video', blob, 'video_raw.mp4');
+
+      const response = await fetch(`${environment.apiUrl}/api/video/optimizar-whatsapp`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`Servidor devolvió código HTTP ${response.status}`);
+      }
+
+      const optimizedBlob = await response.blob();
+      console.log('✅ [VideoGenerator] Vídeo optimizado con FFmpeg recibido. Tamaño:', optimizedBlob.size);
+      return optimizedBlob;
+    } catch (err) {
+      console.warn('⚠️ [VideoGenerator] Fallo al optimizar con backend FFmpeg, usando blob original:', err);
+      return blob;
+    }
+  }
+
+  private async cargarImagenUrl(url: string): Promise<HTMLImageElement> {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(blobUrl);
+          resolve(img);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(blobUrl);
+          reject(new Error(`Error cargando imagen: ${url}`));
+        };
+        img.src = blobUrl;
+      });
+    } catch {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error(`Error fallback imagen: ${url}`));
+        img.src = url;
+      });
+    }
+  }
+
+  private procesarVideoUrl(url: string, esCompleto: boolean = false): Promise<{video: HTMLVideoElement, duracion: number}> {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.muted = true;
+      video.preload = 'auto';
+
+      video.onloadedmetadata = () => {
+        const duracion = video.duration;
+        if (!duracion || duracion === Infinity || isNaN(duracion)) {
+          resolve({ video, duracion: 5 });
+        } else {
+          resolve({ video, duracion });
+        }
+      };
+
+      video.onerror = (e) => {
+        console.error(`❌ Error cargando video ${url}:`, e);
+        reject(new Error(`Error cargando video: ${url}`));
+      };
+
+      video.src = (esCompleto || url.includes('intro-libro-3d'))
+        ? url
+        : `${url}#t=0,${this.MAX_VIDEO_DURATION_SECONDS}`;
+    });
+  }
+
+  private dibujarImagenConMarco(
+    imagen: HTMLImageElement,
+    escena: any,
+    config: ConfiguracionExportacion
+  ): void {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const ctx = this.ctx;
+
+    // 1. Fondo elegante cálido con viñeteado
+    const bgGrad = ctx.createRadialGradient(w / 2, h / 2, h * 0.25, w / 2, h / 2, w * 0.65);
+    bgGrad.addColorStop(0, '#1c120c');
+    bgGrad.addColorStop(1, '#090503');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    const marco = escena.claseMarco || 'marco-madera-noble';
+    const isPolaroid = marco === 'marco-polaroid-vintage';
+
+    // 2. Cálculo de encuadre para la foto
+    const maxW = isPolaroid ? w * 0.52 : w * 0.68;
+    const maxH = isPolaroid ? h * 0.58 : h * 0.68;
+    const imgAspect = imagen.width / imagen.height;
+
+    let targetW: number, targetH: number;
+    if (imgAspect > (maxW / maxH)) {
+      targetW = maxW;
+      targetH = targetW / imgAspect;
+    } else {
+      targetH = maxH;
+      targetW = targetH * imgAspect;
+    }
+
+    const imgX = (w - targetW) / 2;
+    const imgY = (h - targetH) / 2 - (isPolaroid ? 45 : 25);
+
+    // 3. Renderizar marco según estilo
+    ctx.save();
+
+    if (marco === 'marco-madera-noble') {
+      const bw = 24;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+      ctx.shadowBlur = 30;
+      ctx.shadowOffsetY = 12;
+
+      const gradMadera = ctx.createLinearGradient(imgX - bw, imgY - bw, imgX + targetW + bw, imgY + targetH + bw);
+      gradMadera.addColorStop(0, '#422416');
+      gradMadera.addColorStop(0.5, '#29140b');
+      gradMadera.addColorStop(1, '#3b2013');
+      ctx.fillStyle = gradMadera;
+      ctx.fillRect(imgX - bw, imgY - bw, targetW + bw * 2, targetH + bw * 2);
+
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = '#150a05';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(imgX - bw + 2, imgY - bw + 2, targetW + (bw - 2) * 2, targetH + (bw - 2) * 2);
+
+      ctx.strokeStyle = '#d4af37';
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(imgX - 3, imgY - 3, targetW + 6, targetH + 6);
+
+    } else if (marco === 'marco-dorado-vintage') {
+      const bw = 22;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+      ctx.shadowBlur = 32;
+      ctx.shadowOffsetY = 14;
+
+      const gradOro = ctx.createLinearGradient(imgX - bw, imgY - bw, imgX + targetW + bw, imgY + targetH + bw);
+      gradOro.addColorStop(0, '#bf953f');
+      gradOro.addColorStop(0.25, '#fcf6ba');
+      gradOro.addColorStop(0.5, '#b38728');
+      gradOro.addColorStop(0.75, '#fbf5b7');
+      gradOro.addColorStop(1, '#aa771c');
+      ctx.fillStyle = gradOro;
+      ctx.fillRect(imgX - bw, imgY - bw, targetW + bw * 2, targetH + bw * 2);
+
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = '#734e06';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(imgX - bw + 2, imgY - bw + 2, targetW + (bw - 2) * 2, targetH + (bw - 2) * 2);
+      ctx.strokeStyle = '#fef3c7';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(imgX - 3, imgY - 3, targetW + 6, targetH + 6);
+
+    } else if (marco === 'marco-paspartu-galeria') {
+      const bw = 38;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+      ctx.shadowBlur = 28;
+      ctx.shadowOffsetY = 10;
+
+      ctx.fillStyle = '#f8f5ee';
+      ctx.fillRect(imgX - bw, imgY - bw, targetW + bw * 2, targetH + bw * 2);
+
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = '#181818';
+      ctx.lineWidth = 7;
+      ctx.strokeRect(imgX - bw + 3.5, imgY - bw + 3.5, targetW + (bw - 3.5) * 2, targetH + (bw - 3.5) * 2);
+
+      ctx.strokeStyle = '#dfd9cc';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(imgX - 1, imgY - 1, targetW + 2, targetH + 2);
+
+    } else if (marco === 'marco-cuero-bronce') {
+      const bw = 24;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+      ctx.shadowBlur = 26;
+      ctx.shadowOffsetY = 10;
+
+      ctx.fillStyle = '#3a2113';
+      ctx.fillRect(imgX - bw, imgY - bw, targetW + bw * 2, targetH + bw * 2);
+
+      ctx.shadowColor = 'transparent';
+      ctx.save();
+      ctx.strokeStyle = '#c5955a';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(imgX - bw + 8, imgY - bw + 8, targetW + (bw - 8) * 2, targetH + (bw - 8) * 2);
+      ctx.restore();
+
+      const remaches = [
+        [imgX - bw + 10, imgY - bw + 10],
+        [imgX + targetW + bw - 10, imgY - bw + 10],
+        [imgX - bw + 10, imgY + targetH + bw - 10],
+        [imgX + targetW + bw - 10, imgY + targetH + bw - 10]
+      ];
+      ctx.fillStyle = '#b07f4a';
+      for (const [rx, ry] of remaches) {
+        ctx.beginPath();
+        ctx.arc(rx, ry, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+    } else if (isPolaroid) {
+      const padTop = 18;
+      const padSide = 18;
+      const padBottom = 82;
+
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+      ctx.shadowBlur = 28;
+      ctx.shadowOffsetY = 12;
+
+      ctx.fillStyle = '#fdfbf7';
+      ctx.fillRect(imgX - padSide, imgY - padTop, targetW + padSide * 2, targetH + padTop + padBottom);
+
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = '#ece7db';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(imgX - padSide, imgY - padTop, targetW + padSide * 2, targetH + padTop + padBottom);
+
+      ctx.fillStyle = '#2b1d14';
+      ctx.font = 'italic bold 22px "Cinzel", Georgia, serif';
+      ctx.textAlign = 'center';
+      const textoPolaroid = escena.titulo || escena.descripcion || 'Recuerdo de viaje';
+      ctx.fillText(textoPolaroid, w / 2, imgY + targetH + 42, targetW);
+
+      if (escena.fecha) {
+        ctx.font = 'italic 16px "Cinzel", Georgia, serif';
+        ctx.fillStyle = '#6b4f3b';
+        ctx.fillText(escena.fecha + (escena.hora ? ' · ' + escena.hora : ''), w / 2, imgY + targetH + 68);
+      }
+    }
+
+    ctx.restore();
+
+    // 4. Dibujar imagen fotográfica dentro del marco
+    ctx.drawImage(imagen, imgX, imgY, targetW, targetH);
+
+    // 5. Pie de foto / Título para marcos no polaroid
+    if (!isPolaroid && (config.incluirTexto || escena.titulo || escena.badgeOrden)) {
+      ctx.save();
+      const badge = escena.badgeOrden || '';
+      const titulo = escena.titulo || '';
+      const fechaHora = [escena.fecha, escena.hora].filter(Boolean).join(' · ');
+
+      const barH = 75;
+      const barY = h - barH - 25;
+      const barW = Math.min(w * 0.72, Math.max(targetW, 400));
+      const barX = (w - barW) / 2;
+
+      ctx.fillStyle = 'rgba(16, 10, 6, 0.82)';
+      ctx.fillRect(barX, barY, barW, barH);
+      ctx.strokeStyle = 'rgba(212, 175, 55, 0.65)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(barX, barY, barW, barH);
+
+      let offsetBadge = 0;
+      if (badge) {
+        ctx.fillStyle = '#d4af37';
+        ctx.font = 'bold 20px "Cinzel", Georgia, serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(badge, barX + 25, barY + 36);
+        offsetBadge = ctx.measureText(badge).width + 15;
+      }
+
+      ctx.fillStyle = '#f8f4eb';
+      ctx.font = 'bold 22px "Cinzel", Georgia, serif';
+      ctx.textAlign = 'left';
+      const maxTitW = barW - 50 - offsetBadge;
+      const textoFinal = titulo || (escena.descripcion ? escena.descripcion.substring(0, 60) : 'Momento del viaje');
+      ctx.fillText(textoFinal, barX + 25 + offsetBadge, barY + 36, maxTitW);
+
+      if (fechaHora && config.incluirTexto) {
+        ctx.fillStyle = '#c5a059';
+        ctx.font = 'italic 16px "Cinzel", Georgia, serif';
+        ctx.fillText(fechaHora, barX + 25, barY + 62);
+      }
+
+      ctx.restore();
+    }
+  }
+
+
+  private procesarAudioUrl(url: string): Promise<{audio: HTMLAudioElement, duracion: number}> {
+    return new Promise((resolve) => {
+      const audio = new Audio();
+      audio.crossOrigin = 'anonymous';
+      audio.preload = 'metadata';
+
+      audio.onloadedmetadata = () => {
+        const d = audio.duration;
+        resolve({ audio, duracion: (!d || isNaN(d) || d === Infinity) ? 4 : Math.min(d, 8) });
+      };
+
+      audio.onerror = () => {
+        console.warn('⚠️ No se pudo cargar elemento de audio:', url);
+        resolve({ audio, duracion: 4 });
+      };
+
+      audio.src = url;
+    });
+  }
+
+  private renderizarAudioNotaFrame(escena: any, elapsed: number): void {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const ctx = this.ctx;
+
+    // Fondo madera cálida con viñeteado
+    const bgGrad = ctx.createRadialGradient(w / 2, h / 2, h * 0.25, w / 2, h / 2, w * 0.65);
+    bgGrad.addColorStop(0, '#1c120c');
+    bgGrad.addColorStop(1, '#090503');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Tarjeta central luxury
+    const cardW = Math.min(w * 0.65, 750);
+    const cardH = Math.min(h * 0.65, 480);
+    const cardX = (w - cardW) / 2;
+    const cardY = (h - cardH) / 2 - 20;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+    ctx.shadowBlur = 35;
+    ctx.shadowOffsetY = 15;
+
+    ctx.fillStyle = '#26150d';
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#d4af37';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(cardX, cardY, cardW, cardH);
+
+    ctx.strokeStyle = 'rgba(212, 175, 55, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cardX + 6, cardY + 6, cardW - 12, cardH - 12);
+
+    // Disco de vinilo
+    const discoX = w / 2;
+    const discoY = cardY + 140;
+    const radioDisco = 80;
+
+    ctx.fillStyle = '#111111';
+    ctx.beginPath();
+    ctx.arc(discoX, discoY, radioDisco, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    for (let r = 25; r < radioDisco; r += 7) {
+      ctx.beginPath();
+      ctx.arc(discoX, discoY, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#d4af37';
+    ctx.beginPath();
+    ctx.arc(discoX, discoY, 22, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.arc(discoX, discoY, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Forma de onda de audio
+    const waveY = cardY + 260;
+    const waveW = cardW - 120;
+    const waveX = cardX + 60;
+    const barras = 32;
+    const anchoBarra = waveW / barras - 4;
+
+    ctx.fillStyle = '#d4af37';
+    for (let b = 0; b < barras; b++) {
+      const ph = elapsed * 8 + b * 0.4;
+      const alt = Math.sin(ph) * 18 + 22;
+      const bx = waveX + b * (anchoBarra + 4);
+      ctx.fillRect(bx, waveY - alt / 2, anchoBarra, alt);
+    }
+
+    // Textos
+    ctx.fillStyle = '#f8f4eb';
+    ctx.font = 'bold 28px "Cinzel", Georgia, serif';
+    ctx.textAlign = 'center';
+    const titulo = escena.titulo || 'NOTA DE VOZ';
+    ctx.fillText(titulo.toUpperCase(), w / 2, cardY + 340);
+
+    if (escena.descripcion) {
+      ctx.fillStyle = '#d8cbaf';
+      ctx.font = 'italic 18px "Cinzel", Georgia, serif';
+      ctx.fillText(escena.descripcion, w / 2, cardY + 375, cardW - 80);
+    }
+
+    const fechaHora = [escena.fecha, escena.hora].filter(Boolean).join(' · ');
+    if (fechaHora) {
+      ctx.fillStyle = '#bfa15f';
+      ctx.font = 'italic 16px "Cinzel", Georgia, serif';
+      ctx.fillText(fechaHora, w / 2, cardY + 415);
+    }
+
+    ctx.restore();
+  }
+
 }
