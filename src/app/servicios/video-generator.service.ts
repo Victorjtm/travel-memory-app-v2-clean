@@ -414,13 +414,13 @@ export interface ProgresoVideo {
     return new Promise((resolve) => {
       // ── Función de pintado de vídeo protegida contra bloqueos de decodificación ──
       const dibujarFrameVideo = (video: HTMLVideoElement, escena: any, config: ConfiguracionExportacion): void => {
-        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA || (video.videoWidth > 0 && video.videoHeight > 0)) {
           this.dibujarVideoCentrado(video);
           if (config.incluirTexto && escena.archivo) {
             this.dibujarTextoImagen(escena.archivo);
           }
         } else {
-          // Si el frame no está listo aún, pintar fondo oscuro luxury con título sin congelar el lienzo
+          // Solo si el frame no está decodificado aún, pintar fondo oscuro luxury con título formateado
           const w = this.canvas.width;
           const h = this.canvas.height;
           const bgGrad = this.ctx.createRadialGradient(w / 2, h / 2, h * 0.25, w / 2, h / 2, w * 0.65);
@@ -430,7 +430,7 @@ export interface ProgresoVideo {
           this.ctx.fillRect(0, 0, w, h);
           if (escena.titulo) {
             this.ctx.fillStyle = '#f8f4eb';
-            const maxWidth = w - 160;
+            const maxWidth = w - 240;
             const fontStr = 'bold 26px "Cinzel", Georgia, serif';
             this.ctx.font = fontStr;
             this.ctx.textAlign = 'center';
@@ -597,20 +597,9 @@ export interface ProgresoVideo {
     } else if (escena.tipo === 'video' || escena.tipo === 'intro_3d') {
       const video = escena.data?.video as HTMLVideoElement | undefined;
       if (video) {
-        if (escena.esIntro3D || escena.esMapaAnimado) {
-          video.muted = true;
-        }
+        video.muted = true;
         if (video.paused && !video.ended) {
-          video.play().catch(() => {
-            video.muted = true;
-            video.play().catch(() => {});
-          });
-        }
-        const targetTime = Math.min(elapsed, video.duration || elapsed);
-        if (Math.abs(video.currentTime - targetTime) > 0.15 && !video.ended) {
-          try {
-            video.currentTime = targetTime;
-          } catch {}
+          video.play().catch(() => {});
         }
         dibujarFrameVideo(video, escena, config);
       }
@@ -1959,6 +1948,12 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       video.crossOrigin = 'anonymous';
       video.muted = true;
       video.preload = 'auto';
+      video.playsInline = true;
+
+      let finalUrl = url;
+      if (url.startsWith('/')) {
+        finalUrl = `${window.location.origin}${url}`;
+      }
 
       let resuelto = false;
       const resolver = () => {
@@ -1966,26 +1961,41 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
         resuelto = true;
         const duracion = video.duration;
         const dur = (!duracion || duracion === Infinity || isNaN(duracion)) ? 5 : duracion;
+        console.log(`✅ [procesarVideoUrl] Vídeo listo: ${finalUrl} (${dur.toFixed(2)}s, readyState: ${video.readyState})`);
         resolve({ video, duracion: dur });
       };
 
       video.onloadeddata = () => resolver();
+      video.oncanplay = () => resolver();
       video.onloadedmetadata = () => {
         if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
           resolver();
         }
       };
 
-      setTimeout(() => resolver(), 3000);
-
       video.onerror = (e) => {
-        console.error(`❌ Error cargando video ${url}:`, e);
-        reject(new Error(`Error cargando video: ${url}`));
+        if (url.includes('intro-libro-3d') && !finalUrl.includes('/uploads/')) {
+          console.warn('⚠️ Falló /assets/videos/intro-libro-3d.mp4, probando desde /uploads/videos/intro-libro-3d.mp4');
+          finalUrl = `${window.location.origin}/uploads/videos/intro-libro-3d.mp4`;
+          video.src = finalUrl;
+          video.load();
+          return;
+        }
+        console.error(`❌ Error cargando video ${finalUrl}:`, e);
+        reject(new Error(`Error cargando video: ${finalUrl}`));
       };
 
+      setTimeout(() => {
+        if (!resuelto) {
+          console.warn(`⏳ [procesarVideoUrl] Timeout 5s esperando video, resolviendo (${finalUrl})`);
+          resolver();
+        }
+      }, 5000);
+
       video.src = (esCompleto || url.includes('intro-libro-3d'))
-        ? url
-        : `${url}#t=0,${this.MAX_VIDEO_DURATION_SECONDS}`;
+        ? finalUrl
+        : `${finalUrl}#t=0,${this.MAX_VIDEO_DURATION_SECONDS}`;
+      video.load();
     });
   }
 
@@ -2374,24 +2384,47 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
     ctx.arc(w / 2, h / 2, 160, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Título
-    ctx.fillStyle = '#f9f6ed';
-    ctx.font = 'bold 44px "Cinzel", Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.fillText((escena.titulo || 'MAPA DE RECORRIDO').toUpperCase(), w / 2, h / 2 - 40);
+    // Título responsivo que no se sale del marco
+    const titulo = (escena.titulo || 'MAPA DE RECORRIDO').toUpperCase();
+    const maxWidth = w - 240;
+    let fontSize = 32;
+    if (titulo.length > 50) fontSize = 24;
+    else if (titulo.length > 30) fontSize = 28;
 
-    // Distancia si la hay
-    if (escena.distanciaKm) {
-      ctx.fillStyle = '#d4af37';
-      ctx.font = 'bold 26px "Cinzel", Georgia, serif';
-      ctx.fillText(`DISTANCIA ACUMULADA: ${Number(escena.distanciaKm).toFixed(1)} KM`, w / 2, h / 2 + 20);
+    const fontTitulo = `bold ${fontSize}px "Cinzel", Georgia, serif`;
+    ctx.fillStyle = '#f9f6ed';
+    ctx.font = fontTitulo;
+    ctx.textAlign = 'center';
+
+    const lineasTitulo = this.dividirTextoEnLineas(titulo, maxWidth, fontTitulo);
+    const lhTitulo = fontSize * 1.35;
+    const totalHTitulo = lineasTitulo.length * lhTitulo;
+    let yTitulo = h / 2 - 50 - (totalHTitulo / 2);
+    for (const l of lineasTitulo) {
+      ctx.fillText(l, w / 2, yTitulo);
+      yTitulo += lhTitulo;
     }
 
-    // Descripción
+    // Distancia acumulada
+    let yDist = yTitulo + 15;
+    if (escena.distanciaKm) {
+      ctx.fillStyle = '#d4af37';
+      ctx.font = 'bold 22px "Cinzel", Georgia, serif';
+      ctx.fillText(`DISTANCIA ACUMULADA: ${Number(escena.distanciaKm).toFixed(1)} KM`, w / 2, yDist);
+      yDist += 35;
+    }
+
+    // Descripción responsiva
     if (escena.descripcion) {
       ctx.fillStyle = '#d0c4ac';
-      ctx.font = 'italic 20px "Cinzel", Georgia, serif';
-      ctx.fillText(escena.descripcion, w / 2, h / 2 + 70, w - 240);
+      const fontDesc = 'italic 18px "Cinzel", Georgia, serif';
+      ctx.font = fontDesc;
+      const lineasDesc = this.dividirTextoEnLineas(escena.descripcion, maxWidth, fontDesc);
+      let yDesc = yDist + 10;
+      for (const l of lineasDesc.slice(0, 3)) {
+        ctx.fillText(l, w / 2, yDesc);
+        yDesc += 26;
+      }
     }
 
     ctx.restore();

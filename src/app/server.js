@@ -257,6 +257,13 @@ if (!fs.existsSync(uploadsPath)) {
 console.log('📁 Sirviendo archivos estáticos desde:', uploadsPath);
 app.use('/uploads', cors(), express.static(uploadsPath));
 
+// Servir assets estáticos tanto en dev como en prod con CORS
+const assetsPath = path.join(__dirname, '../../src/assets');
+if (fs.existsSync(assetsPath)) {
+  console.log('📁 Sirviendo assets estáticos desde:', assetsPath);
+  app.use('/assets', cors(), express.static(assetsPath));
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MÓDULO: SALUD Y RENDIMIENTO FÍSICO (100% AISLADO)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
