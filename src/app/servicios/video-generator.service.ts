@@ -138,34 +138,25 @@ export interface ProgresoVideo {
         console.log('🎵 [Mixer] Exportación sin música de viaje por decisión del usuario o faltan recursos.');
       }
 
-      // 4.b Conectar Audio de Clips de Vídeo
+      // 4.b Conectar Audio de Clips de Vídeo y Notas de Audio
       if (audioCtx && masterDest && localSilencer) {
-        const videosConectados = new Set<HTMLVideoElement>();
-        
+        const elementosConectados = new Set<any>();
+
         escenasCargadas.forEach(escena => {
-          if (escena.tipo === 'video' && escena.data?.video) {
-            const video = escena.data.video as HTMLVideoElement;
-            if (!videosConectados.has(video)) {
-              try {
-                // IMPORTANTE: Quitar el muted para que fluya la señal de audio real a la Web Audio API
-                video.muted = false;
-                
-                const source = audioCtx.createMediaElementSource(video);
-                
-                // Conectar al mixer maestro
-                const clipGain = audioCtx.createGain();
-                clipGain.gain.value = 1.0; // Mantiene el volumen original del clip
-                source.connect(clipGain);
-                clipGain.connect(masterDest);
-                
-                // Silenciar para el usuario local
-                source.connect(localSilencer);
-                
-                videosConectados.add(video);
-                console.log(`🎵 [Clip Audio] Fuente de audio creada y conectada al masterDest para el vídeo: ${escena.archivo?.nombreArchivo}`);
-              } catch (e) {
-                console.error(`❌ [Clip Audio] Error conectando video ${escena.archivo?.nombreArchivo}:`, e);
-              }
+          const mediaElem = escena.tipo === 'video' ? escena.data?.video : (escena.tipo === 'audio' ? escena.data?.audio : null);
+          if (mediaElem && !elementosConectados.has(mediaElem)) {
+            try {
+              mediaElem.muted = false;
+              const source = audioCtx.createMediaElementSource(mediaElem);
+              const clipGain = audioCtx.createGain();
+              clipGain.gain.value = 1.0;
+              source.connect(clipGain);
+              clipGain.connect(masterDest);
+              source.connect(localSilencer);
+              elementosConectados.add(mediaElem);
+              console.log(`🎵 [Clip Audio] Audio conectado al masterDest para: ${escena.titulo || escena.archivo?.nombreArchivo || escena.id}`);
+            } catch (e) {
+              console.warn(`⚠️ [Clip Audio] Error conectando elemento ${escena.archivo?.nombreArchivo || escena.id}:`, e);
             }
           }
         });
@@ -253,40 +244,60 @@ export interface ProgresoVideo {
   private async cargarRecursosSecuencia(secuencia: EscenaMultimedia[], onProgress: (p: number) => void): Promise<any[]> {
     const total = secuencia.length;
     const resultado = [];
-    // ✨ CACHE LOCAL: Evita cargar el mismo vídeo 100 veces si se repite en el álbum
     const cacheRecursos = new Map<string, any>();
 
     for (let i = 0; i < total; i++) {
       const escena = secuencia[i];
-      if (!escena.archivo) {
-        resultado.push(escena);
-        continue;
-      }
-
-      const cacheKey = `${escena.tipo}_${escena.archivo.id || escena.archivo.rutaArchivo}`;
+      const url = escena.url || (escena.archivo ? this.obtenerUrlArchivo(escena.archivo) : '');
+      const cacheKey = `${escena.tipo}_${escena.id || escena.archivo?.id || url}`;
 
       try {
         if (cacheRecursos.has(cacheKey)) {
-          // Reutilizar recurso ya cargado
           resultado.push({ ...escena, data: cacheRecursos.get(cacheKey) });
         } else {
-          let data;
-          if (escena.tipo === 'imagen') {
-            const img = await this.cargarImagen(escena.archivo);
-            data = { imagen: img };
-          } else if (escena.tipo === 'video') {
-            const vidData = await this.procesarVideo(escena.archivo);
-            data = vidData;
-          } else {
-            resultado.push(escena);
-            continue;
+          let data: any = { duracion: escena.duracion || 4 };
+
+          if (escena.tipo === 'video' || escena.tipo === 'intro_3d') {
+            if (escena.archivo) {
+              data = await this.procesarVideo(escena.archivo);
+            } else if (url) {
+              data = await this.procesarVideoUrl(url, true);
+            }
+          } else if (escena.tipo === 'audio') {
+            if (url) {
+              data = await this.procesarAudioUrl(url);
+            }
+          } else if (escena.tipo === 'imagen') {
+            let img: HTMLImageElement | null = null;
+            if (escena.archivo) {
+              img = await this.cargarImagen(escena.archivo);
+            } else if (url) {
+              img = await this.cargarImagenUrl(url);
+            }
+            data = { imagen: img, duracion: escena.duracion || 4 };
+          } else if (escena.tipo === 'mapa_resumen') {
+            let img: HTMLImageElement | null = null;
+            if (url) {
+              try {
+                img = await this.cargarImagenUrl(url);
+              } catch (err) {
+                console.warn('⚠️ No se pudo cargar snapshot mapa desde URL:', err);
+              }
+            }
+            data = { imagen: img, duracion: escena.duracion || 5 };
+          } else if (escena.tipo === 'carta') {
+            data = { duracion: escena.duracion || 5 };
           }
+
           cacheRecursos.set(cacheKey, data);
           resultado.push({ ...escena, data });
         }
       } catch (e) {
         console.warn(`⚠️ Error cargando recurso de escena ${i} (${escena.tipo}):`, e);
-        resultado.push(escena);
+        resultado.push({
+          ...escena,
+          data: { duracion: escena.duracion || 4 }
+        });
       }
       onProgress(((i + 1) / total) * 100);
     }
@@ -315,45 +326,54 @@ export interface ProgresoVideo {
     const timeline = [];
     let currentTime = 0;
 
-    const esDynamics = this.esDynamicsTimeline(infoViaje, escenas);
-
-    if (esDynamics) {
-      // 🎬 INTRO CINEMÁTICA DYNAMICS DETERMINISTA (5.0s EXACTOS)
-      timeline.push({
-        tipo: 'intro_dynamics',
-        start: currentTime,
-        end: currentTime + 5.0,
-        duracion: 5.0,
-        data: {
-          titulo: infoViaje.nombre || 'CRUCERO',
-          escenas: escenas
-        }
-      });
-      currentTime += 5.0;
-    } else {
-      // Título inicial clásico (3s)
-      timeline.push({ 
-        tipo: 'titulo', 
-        start: currentTime, 
-        end: currentTime + 3, 
-        duracion: 3,
-        data: infoViaje.nombre || 'Mi Viaje' 
-      });
-      currentTime += 3;
+    // Solo añadir título clásico si la secuencia no tiene ya un vídeo de intro 3D
+    const tieneIntro3D = escenas.some(e => e.esIntro3D || e.tipo === 'intro_3d' || e.id === 'intro-3d-cinematica');
+    if (!tieneIntro3D) {
+      const esDynamics = this.esDynamicsTimeline(infoViaje, escenas);
+      if (esDynamics) {
+        timeline.push({
+          tipo: 'intro_dynamics',
+          start: currentTime,
+          end: currentTime + 5.0,
+          duracion: 5.0,
+          data: {
+            titulo: infoViaje?.nombre || 'CRUCERO',
+            escenas: escenas
+          }
+        });
+        currentTime += 5.0;
+      } else {
+        timeline.push({ 
+          tipo: 'titulo', 
+          start: currentTime, 
+          end: currentTime + 3, 
+          duracion: 3,
+          data: infoViaje?.nombre || 'Mi Viaje' 
+        });
+        currentTime += 3;
+      }
     }
 
     for (const escena of escenas) {
-      // ✨ NUEVO: Limitar duración de vídeos a MAX_VIDEO_DURATION_SECONDS
-      let duracion = 4; // Default para imágenes
-      
-      if (escena.tipo === 'video') {
-        const duracionReal = escena.data.duracion || 5;
-        duracion = Math.min(duracionReal, this.MAX_VIDEO_DURATION_SECONDS);
-        console.log(`🎥 Limitando video ${escena.archivo?.nombreArchivo || ''} a ${duracion}s (Original: ${duracionReal}s)`);
+      let duracion = escena?.duracion || 4;
+
+      if (escena.tipo === 'video' || escena.tipo === 'intro_3d') {
+        const duracionReal = escena.data?.duracion || escena.duracion || 5;
+        if (escena.esIntro3D || escena.esMapaAnimado) {
+          duracion = duracionReal;
+        } else {
+          duracion = Math.min(duracionReal, this.MAX_VIDEO_DURATION_SECONDS);
+        }
+      } else if (escena.tipo === 'audio') {
+        duracion = escena.data?.duracion || escena.duracion || 4;
       } else if (escena.tipo === 'carta') {
-        duracion = 5;
+        duracion = escena.duracion || 5;
+      } else if (escena.tipo === 'mapa_resumen') {
+        duracion = escena.duracion || 5;
+      } else if (escena.tipo === 'imagen') {
+        duracion = escena.duracion || 4;
       }
-      
+
       timeline.push({ 
         ...escena, 
         start: currentTime, 
@@ -443,11 +463,13 @@ export interface ProgresoVideo {
             rVFCHandle = null;
           }
 
-          // Pausar vídeo anterior
+          // Pausar vídeo o audio anterior
           const escenaAnterior = timeline[ultimoEscenaIndex];
           if (escenaAnterior?.tipo === 'video') {
             escenaAnterior.data?.video?.pause();
             console.log(`🎵 [Clip Audio] Audio del clip finalizado: ${escenaAnterior.archivo?.nombreArchivo || 'desconocido'}`);
+          } else if (escenaAnterior?.tipo === 'audio') {
+            escenaAnterior.data?.audio?.pause();
           }
 
           ultimoEscenaIndex = escenaIndex;
@@ -533,7 +555,8 @@ export interface ProgresoVideo {
     config: ConfiguracionExportacion,
     dibujarFrameVideo: (v: HTMLVideoElement, e: any, c: ConfiguracionExportacion) => void
   ): void {
-    const progreso = Math.min(elapsed / escena.duracion, 1);
+    const duracion = escena.duracion || 4;
+    const progreso = Math.min(elapsed / duracion, 1);
 
     if (escena.tipo === 'intro_dynamics') {
       this.renderizarIntroDynamicsFrame(escena, elapsed);
@@ -544,31 +567,41 @@ export interface ProgresoVideo {
     } else if (escena.tipo === 'carta') {
       this.renderizarCartaFrame(escena, progreso);
 
-    } else if (escena.tipo === 'video') {
+    } else if (escena.tipo === 'mapa_resumen') {
+      if (escena.data?.imagen) {
+        this.dibujarImagenCentrada(escena.data.imagen, 'contain');
+      } else {
+        this.renderizarMapaResumenFallback(escena, elapsed);
+      }
+
+    } else if (escena.tipo === 'audio') {
+      this.renderizarAudioNotaFrame(escena, elapsed);
+
+    } else if (escena.tipo === 'video' || escena.tipo === 'intro_3d') {
       const video = escena.data?.video as HTMLVideoElement | undefined;
       if (video) {
-        // FASE 2: sin video.currentTime = elapsed (no seeks correctivos)
-        // El vídeo avanza solo con play() + playbackRate=1
-        // FASE 4: rVFC pinta directamente; rAF solo pinta si rVFC no está activo
-        // Si rVFC está activo, el pintado ya lo hace el callback de rVFC — aquí no pintamos
-        // (el flag rVFCHandle no es accesible aquí por diseño; dibujarFrameVideo hace la guarda)
         dibujarFrameVideo(video, escena, config);
       }
 
     } else if (escena.tipo === 'imagen') {
-      this.dibujarImagenCentrada(escena.data.imagen);
-      if (config.incluirTexto) this.dibujarTextoImagen(escena.archivo);
+      if (escena.data?.imagen) {
+        this.dibujarImagenCentrada(escena.data.imagen);
+        if (escena.claseMarco) {
+          this.dibujarMarcoLujo(escena.claseMarco);
+        }
+      }
+      if (config.incluirTexto && escena.archivo) {
+        this.dibujarTextoImagen(escena.archivo);
+      }
     }
   }
 
-  // Mantener método async original como deprecated-wrapper para compatibilidad
-  // con cualquier llamada externa pendiente (no se usa en el loop principal).
   /** @deprecated Usar renderizarFrameEscenaSync */
   private async renderizarFrameEscena(escena: any, elapsed: number, config: ConfiguracionExportacion): Promise<void> {
     this.renderizarFrameEscenaSync(escena, elapsed, config, (video, esc, cfg) => {
       if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
         this.dibujarVideoCentrado(video);
-        if (cfg.incluirTexto) this.dibujarTextoImagen(esc.archivo);
+        if (cfg.incluirTexto && esc.archivo) this.dibujarTextoImagen(esc.archivo);
       }
     });
   }
@@ -969,7 +1002,7 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
 }
 
     private dibujarTextoImagen(archivo: Archivo): void {
-      if (!archivo.descripcion && !archivo.fechaCreacion) return;
+      if (!archivo || (!archivo.descripcion && !archivo.fechaCreacion)) return;
 
       const padding = this.canvas.width * 0.05; // 5% de margen
       const maxWidth = this.canvas.width - (padding * 2);
@@ -2222,6 +2255,94 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       ctx.fillStyle = '#bfa15f';
       ctx.font = 'italic 16px "Cinzel", Georgia, serif';
       ctx.fillText(fechaHora, w / 2, cardY + 415);
+    }
+
+    ctx.restore();
+  }
+
+
+  private dibujarMarcoLujo(claseMarco: string): void {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const ctx = this.ctx;
+
+    ctx.save();
+    if (claseMarco.includes('oro') || claseMarco.includes('gold')) {
+      ctx.strokeStyle = '#d4af37';
+      ctx.lineWidth = 14;
+      ctx.strokeRect(30, 30, w - 60, h - 60);
+      ctx.strokeStyle = 'rgba(255, 235, 150, 0.6)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(40, 40, w - 80, h - 80);
+    } else if (claseMarco.includes('cuero') || claseMarco.includes('madera')) {
+      ctx.strokeStyle = '#2d180f';
+      ctx.lineWidth = 16;
+      ctx.strokeRect(30, 30, w - 60, h - 60);
+      ctx.strokeStyle = '#bfa15f';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(42, 42, w - 84, h - 84);
+    } else if (claseMarco.includes('pergamino')) {
+      ctx.strokeStyle = '#d8cbaf';
+      ctx.lineWidth = 12;
+      ctx.strokeRect(30, 30, w - 60, h - 60);
+      ctx.strokeStyle = 'rgba(120, 85, 45, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(38, 38, w - 76, h - 76);
+    } else {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(30, 30, w - 60, h - 60);
+    }
+    ctx.restore();
+  }
+
+  private renderizarMapaResumenFallback(escena: any, elapsed: number): void {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const ctx = this.ctx;
+
+    // Fondo pergamino oscuro de viaje
+    const grad = ctx.createRadialGradient(w / 2, h / 2, 200, w / 2, h / 2, w * 0.7);
+    grad.addColorStop(0, '#23150d');
+    grad.addColorStop(1, '#0e0704');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Marco exterior dorado
+    ctx.save();
+    ctx.strokeStyle = '#d4af37';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(60, 60, w - 120, h - 120);
+
+    ctx.strokeStyle = 'rgba(212, 175, 55, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(72, 72, w - 144, h - 144);
+
+    // Círculo brújula sutil
+    ctx.strokeStyle = 'rgba(212, 175, 55, 0.12)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, 160, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Título
+    ctx.fillStyle = '#f9f6ed';
+    ctx.font = 'bold 44px "Cinzel", Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText((escena.titulo || 'MAPA DE RECORRIDO').toUpperCase(), w / 2, h / 2 - 40);
+
+    // Distancia si la hay
+    if (escena.distanciaKm) {
+      ctx.fillStyle = '#d4af37';
+      ctx.font = 'bold 26px "Cinzel", Georgia, serif';
+      ctx.fillText(`DISTANCIA ACUMULADA: ${Number(escena.distanciaKm).toFixed(1)} KM`, w / 2, h / 2 + 20);
+    }
+
+    // Descripción
+    if (escena.descripcion) {
+      ctx.fillStyle = '#d0c4ac';
+      ctx.font = 'italic 20px "Cinzel", Georgia, serif';
+      ctx.fillText(escena.descripcion, w / 2, h / 2 + 70, w - 240);
     }
 
     ctx.restore();
