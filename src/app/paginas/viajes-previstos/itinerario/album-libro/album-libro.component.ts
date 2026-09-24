@@ -6921,8 +6921,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     secuencia.push({
       id: 'intro-3d-cinematica',
       tipo: 'video',
-      url: 'assets/videos/intro-libro-3d.mp4',
-      duracion: 5.4,
+      url: '/assets/videos/intro-libro-3d.mp4',
+      duracion: 5.8,
       titulo: this.infoViaje?.nombre || 'Mi Viaje',
       descripcion: 'Apertura del diario de viaje',
       esIntro3D: true
