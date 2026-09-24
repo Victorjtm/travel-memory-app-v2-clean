@@ -694,8 +694,9 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.markersLayerGroup.clearLayers();
 
-    const grupos: { [key: string]: any[] } = {};
-    const UMBRAL = 0.0001; // ~10 metros
+    // Agrupación geodésica exacta por umbral de 25 metros
+    const grupos: Array<{ lat: number; lng: number; items: any[] }> = [];
+    const RADIO_METROS = 25;
 
     this.fotosViaje.forEach(foto => {
       let lat = 0;
@@ -721,51 +722,119 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
       }
 
       if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+        const pLatLng = L.latLng(lat, lng);
         let grupoEncontrado = false;
-        for (const clave in grupos) {
-          const [gLat, gLng] = clave.split(',').map(parseFloat);
-          if (Math.abs(gLat - lat) < UMBRAL && Math.abs(gLng - lng) < UMBRAL) {
-            grupos[clave].push({ archivo: foto, lat, lng });
+        for (const grupo of grupos) {
+          const gLatLng = L.latLng(grupo.lat, grupo.lng);
+          if (pLatLng.distanceTo(gLatLng) <= RADIO_METROS) {
+            grupo.items.push({ archivo: foto, lat, lng });
             grupoEncontrado = true;
             break;
           }
         }
         if (!grupoEncontrado) {
-          const clave = `${lat},${lng}`;
-          grupos[clave] = [{ archivo: foto, lat, lng }];
+          grupos.push({
+            lat,
+            lng,
+            items: [{ archivo: foto, lat, lng }]
+          });
         }
       }
     });
 
-    for (const clave in grupos) {
-      const items = grupos[clave];
+    for (const grupo of grupos) {
+      const items = grupo.items;
       const primerItem = items[0];
       const primerArchivo = primerItem.archivo;
       const tieneMultiples = items.length > 1;
       const numeroSecuencial = primerArchivo.numeroSecuencial || 1;
-      const thumbUrl = this.getThumbnailUrl(primerArchivo);
 
-      const esVid = this.esVideo(primerArchivo);
-      const htmlBadge = `
-        <div class="photo-marker-pin" style="position: relative; width: 44px; height: 44px; cursor: pointer; transition: transform 0.2s;">
-          ${esVid
-            ? `<video src="${thumbUrl}#t=0.5" preload="metadata" muted playsinline style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #3b82f6; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></video><span style="position: absolute; bottom: 0; left: 0; background: rgba(0,0,0,0.75); color: white; border-radius: 50%; width: 15px; height: 15px; display: flex; align-items: center; justify-content: center; font-size: 8px;">▶</span>`
-            : `<img src="${thumbUrl}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);" />`
-          }
-          <span style="position: absolute; top: -4px; right: -4px; background: #3b82f6; color: white; border-radius: 10px; padding: 1px 5px; font-size: 10px; font-weight: bold; border: 1px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">
-            #${numeroSecuencial}${tieneMultiples ? ` (${items.length})` : ''}
-          </span>
-        </div>
-      `;
+      // ⚡ MARCADOR ULTRA-LIGERO (Sin etiquetas <img> ni <video> para zoom instantáneo a 60 FPS)
+      let htmlBadge = '';
+      let anchoIcono = 34;
+      let altoIcono = 34;
+      let anchorX = 17;
+      let anchorY = 17;
+
+      if (!tieneMultiples) {
+        // Foto individual: Círculo estilizado con el número de foto
+        htmlBadge = `
+          <div class="photo-marker-pin single" style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+            color: #ffffff;
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 13px;
+            font-weight: 800;
+            border: 2px solid #ffffff;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.15s ease;
+          ">
+            #${numeroSecuencial}
+          </div>
+        `;
+      } else {
+        // Múltiples fotos dentro de 25m: Insignia con números de las fotos agrupadas
+        const numerosOrdenados = items
+          .map(it => it.archivo.numeroSecuencial || 1)
+          .sort((a, b) => a - b);
+
+        let chipsHtml = '';
+        if (numerosOrdenados.length <= 4) {
+          chipsHtml = numerosOrdenados
+            .map(num => `<span style="background: #2563eb; color: #fff; border-radius: 6px; padding: 1px 5px; font-size: 11px; font-weight: bold; border: 1px solid rgba(255,255,255,0.4);">#${num}</span>`)
+            .join('');
+        } else {
+          // Si son más de 4 fotos, mostramos las 3 primeras y el contador restante
+          const primeras = numerosOrdenados.slice(0, 3);
+          const restantes = numerosOrdenados.length - 3;
+          chipsHtml = primeras
+            .map(num => `<span style="background: #2563eb; color: #fff; border-radius: 6px; padding: 1px 5px; font-size: 11px; font-weight: bold; border: 1px solid rgba(255,255,255,0.4);">#${num}</span>`)
+            .join('') + `<span style="background: #0ea5e9; color: #fff; border-radius: 6px; padding: 1px 5px; font-size: 11px; font-weight: bold; border: 1px solid rgba(255,255,255,0.4);">+${restantes}</span>`;
+        }
+
+        htmlBadge = `
+          <div class="photo-marker-pin cluster" style="
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            background: rgba(15, 23, 42, 0.94);
+            padding: 3px 6px;
+            border-radius: 16px;
+            border: 2px solid #ffffff;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+            transition: transform 0.15s ease;
+          ">
+            ${chipsHtml}
+          </div>
+        `;
+
+        // Calcular ancho proporcional aproximado
+        const cantidadChips = Math.min(numerosOrdenados.length, 4);
+        anchoIcono = Math.max(48, cantidadChips * 32 + 16);
+        altoIcono = 28;
+        anchorX = Math.round(anchoIcono / 2);
+        anchorY = Math.round(altoIcono / 2);
+      }
 
       const customIcon = L.divIcon({
         className: 'custom-photo-marker-div',
         html: htmlBadge,
-        iconSize: [44, 44],
-        iconAnchor: [22, 22]
+        iconSize: [anchoIcono, altoIcono],
+        iconAnchor: [anchorX, anchorY]
       });
 
-      const marker = L.marker([primerItem.lat, primerItem.lng], { icon: customIcon });
+      const marker = L.marker([grupo.lat, grupo.lng], { icon: customIcon });
       const popupHtml = this.crearPopupContent(items, numeroSecuencial, items.length, tieneMultiples);
 
       marker.bindPopup(popupHtml, {
@@ -824,7 +893,7 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
            </div>`;
 
       popupContent += `
-        <div class="archivo-item-popup" style="display: flex; gap: 10px; padding: 6px; background: #f8fafc; border-radius: 8px; align-items: center;">
+        <div class="archivo-item-popup" id="popup-item-${archivo.id}" style="display: flex; transition: background 0.3s ease; gap: 10px; padding: 6px; background: #f8fafc; border-radius: 8px; align-items: center;">
           ${mediaTag}
           <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden;">
             <strong style="font-size: 12px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;" onclick="window.dispatchEvent(new CustomEvent('tm-abrir-media', { detail: '${archivo.id}' }))" title="${archivo.nombreArchivo}">${archivo.nombreArchivo}</strong>

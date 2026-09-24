@@ -47,7 +47,7 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
   tiempoActual: number = 0; // 0.0s a 7.50s exactos
 
   // Duración pausada y cinematográfica: 7.5 segundos
-  public readonly DURACION_TOTAL: number = 7.5;
+  public readonly DURACION_TOTAL: number = 6.8;
   private renderer!: THREE.WebGLRenderer;
   private scene!: THREE.Scene;
   private camera!: THREE.PerspectiveCamera;
@@ -298,6 +298,7 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     this.ctxCuero = this.canvasCuero.getContext('2d')!;
 
     this.texturaCuero = new THREE.CanvasTexture(this.canvasCuero);
+    this.texturaCuero.colorSpace = THREE.SRGBColorSpace;
     this.texturaCuero.anisotropy = 8;
 
     this.repintarCubiertaLibro();
@@ -684,6 +685,8 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     const cy = (h - nh) * 0.5;
 
     ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.beginPath();
     ctx.rect(x, y, w, h);
     ctx.clip();
@@ -733,13 +736,15 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
   private construirPlanoRecuerdos(): void {
     const geo = new THREE.PlaneGeometry(2, 2);
     this.texturaRecuerdoActual = new THREE.CanvasTexture(this.canvasRecuerdos);
+    this.texturaRecuerdoActual.colorSpace = THREE.SRGBColorSpace;
 
     this.materialRecuerdos = new THREE.MeshBasicMaterial({
       map: this.texturaRecuerdoActual,
       transparent: true,
       opacity: 0,
       depthTest: false,
-      depthWrite: false
+      depthWrite: false,
+      toneMapped: false
     });
 
     this.planoRecuerdos = new THREE.Mesh(geo, this.materialRecuerdos);
@@ -773,14 +778,14 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
    * 5. CIERRE 3D DE LA TAPA (5.8s - 6.6s)
    * 6. ENCUADRE FINAL DEL LIBRO CERRADO Y TRANSICIÓN AL DOM (6.6s - 7.5s)
    */
-  public actualizarEstadoCinematico(t: number): void {
+    public actualizarEstadoCinematico(t: number): void {
     const ANGULO_MAX_APERTURA = Math.PI * 0.82; // ~148 grados
 
     // -------------------------------------------------------------
-    // FASE 1: IMPACTO (0.0s - 0.8s) - Libro cae y rebota
+    // FASE 1: IMPACTO (0.0s - 0.75s) - Libro cae y rebota sobre la mesa
     // -------------------------------------------------------------
-    if (t <= 0.8) {
-      const tImpacto = 0.65;
+    if (t <= 0.75) {
+      const tImpacto = 0.58;
 
       if (t < tImpacto) {
         const p = t / tImpacto;
@@ -797,7 +802,7 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
         }
 
         const deltaImpacto = t - tImpacto;
-        const amplitud = 0.28 * Math.exp(-deltaImpacto * 18);
+        const amplitud = 0.26 * Math.exp(-deltaImpacto * 18);
         const rebote = Math.sin(deltaImpacto * 42) * amplitud;
 
         this.libroGroup.position.y = Math.max(0, rebote);
@@ -814,13 +819,13 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     }
 
     // -------------------------------------------------------------
-    // FASE 2: PAUSA DE LECTURA TRANQUILA DE LA PORTADA (0.8s - 2.2s)
+    // FASE 2: PAUSA DE APRECIACIÓN EN LA MESA (0.75s - 1.30s)
     // -------------------------------------------------------------
-    else if (t > 0.8 && t <= 2.2) {
+    else if (t > 0.75 && t <= 1.30) {
       this.polvoParticles.visible = false;
       this.libroGroup.position.y = 0;
-      this.libroGroup.rotation.set(-0.15, 0, 0); // Inclinación frontal óptima para lectura
-      this.tapaPivotGroup.rotation.z = 0; // Tapa cerrada
+      this.libroGroup.rotation.set(-0.15, 0, 0);
+      this.tapaPivotGroup.rotation.z = 0;
 
       this.camera.position.set(0, 3.2, 3.2);
       this.camera.lookAt(0, 0.35, 0.25);
@@ -829,18 +834,17 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     }
 
     // -------------------------------------------------------------
-    // FASE 3: APERTURA SUAVE 3D DE LA TAPA (2.2s - 3.0s)
+    // FASE 3: APERTURA SUAVE 3D DE LA TAPA (1.30s - 2.10s)
     // -------------------------------------------------------------
-    else if (t > 2.2 && t <= 3.0) {
+    else if (t > 1.30 && t <= 2.10) {
       if (!this.sonidoAperturaEmitido) {
         this.emitirSonidoApertura();
         this.sonidoAperturaEmitido = true;
       }
 
-      const pApertura = (t - 2.2) / 0.8; // 0 a 1 suave
-      const ease = (1 - Math.cos(pApertura * Math.PI)) / 2; // Smooth in-out
+      const pApertura = (t - 1.30) / 0.80; // 0 a 1 suave
+      const ease = (1 - Math.cos(pApertura * Math.PI)) / 2;
 
-      // La tapa se abre rotando hacia la izquierda
       this.tapaPivotGroup.rotation.z = ease * ANGULO_MAX_APERTURA;
       this.luzInteriorLibro.intensity = ease * 2.5;
 
@@ -850,59 +854,43 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     }
 
     // -------------------------------------------------------------
-    // FASE 4: VUELO SERENO DE FOTOS DESDE LA PÁGINA DERECHA (3.0s - 5.8s)
+    // FASE 4: VUELO Y RETORNO DE FOTOS (2.10s - 5.70s)
+    // Las fotos salen hacia el usuario y regresan al libro abierto
     // -------------------------------------------------------------
-    else if (t > 3.0 && t <= 5.8) {
+    else if (t > 2.10 && t <= 5.70) {
       this.tapaPivotGroup.rotation.z = ANGULO_MAX_APERTURA;
       this.luzInteriorLibro.intensity = 2.5;
 
       this.actualizarVueloFotosDesdeLibro(t);
       this.texturaRecuerdoActual!.needsUpdate = true;
       this.materialRecuerdos.opacity = 1.0;
+
+      this.camera.position.set(0, 3.1, 3.1);
+      this.camera.lookAt(0, 0.35, 0.25);
     }
 
     // -------------------------------------------------------------
-    // FASE 5: CIERRE SUAVE 3D DE LA TAPA (5.8s - 6.6s)
+    // FASE 5: EL LIBRO SE QUEDA ABIERTO Y TRANSICIÓN FLUIDA AL DOM (5.70s - 6.80s)
+    // El libro permanece abierto mostrando sus dos páginas interiores
     // -------------------------------------------------------------
-    else if (t > 5.8 && t <= 6.6) {
+    else if (t > 5.70) {
       this.ctxRecuerdos.clearRect(0, 0, 1280, 720);
       this.texturaRecuerdoActual!.needsUpdate = true;
       this.materialRecuerdos.opacity = 0;
 
-      const pCierre = (t - 5.8) / 0.8; // 0 a 1 suave
-      const easeCierre = (1 - Math.cos(pCierre * Math.PI)) / 2;
+      // ¡LA TAPA PERMANECE TOTALMENTE ABIERTA!
+      this.tapaPivotGroup.rotation.z = ANGULO_MAX_APERTURA;
+      this.luzInteriorLibro.intensity = 2.0;
 
-      this.tapaPivotGroup.rotation.z = (1 - easeCierre) * ANGULO_MAX_APERTURA;
-      this.luzInteriorLibro.intensity = (1 - easeCierre) * 2.0;
-
-      if (t >= 6.5 && !this.sonidoCierreEmitido) {
-        this.emitirSonidoCierre();
-        this.sonidoCierreEmitido = true;
-      }
-
-      this.camera.position.set(0, 3.2, 3.2);
-      this.camera.lookAt(0, 0.35, 0.25);
-      this.libroGroup.rotation.set(-0.15, 0, 0);
-    }
-
-    // -------------------------------------------------------------
-    // FASE 6: ENCUADRE FINAL DEL LIBRO CERRADO Y TRANSICIÓN AL DOM (6.6s - 7.5s)
-    // -------------------------------------------------------------
-    else if (t > 6.6) {
-      this.tapaPivotGroup.rotation.z = 0;
-      this.luzInteriorLibro.intensity = 0;
-      this.materialRecuerdos.opacity = 0;
-
-      const pRetroceso = (t - 6.6) / 0.9; // 0 a 1
-      const easeOut = 1 - Math.pow(1 - pRetroceso, 3);
+      const pTrans = Math.min(1.0, (t - 5.70) / 1.10);
+      const easeTrans = (1 - Math.cos(pTrans * Math.PI)) / 2;
 
       this.camera.position.x = 0;
-      this.camera.position.y = THREE.MathUtils.lerp(3.2, 3.1, easeOut);
-      this.camera.position.z = THREE.MathUtils.lerp(3.2, 3.4, easeOut);
+      this.camera.position.y = THREE.MathUtils.lerp(3.1, 2.9, easeTrans);
+      this.camera.position.z = THREE.MathUtils.lerp(3.1, 2.8, easeTrans);
       this.camera.lookAt(0, 0.35, 0.2);
 
       this.libroGroup.rotation.set(-0.15, 0, 0);
-      this.scene.background = new THREE.Color(0x0d0a08);
     }
   }
 
@@ -910,19 +898,18 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
    * 🚀 FASE 4: Genera y anima las fotos emergiendo de la página derecha del libro
    * a un ritmo sereno y pausado (no enloquecido), creciendo suavemente hacia la cámara
    */
-  private actualizarVueloFotosDesdeLibro(t: number): void {
+    private actualizarVueloFotosDesdeLibro(t: number): void {
     const ctx = this.ctxRecuerdos;
     const CW = 1280;
     const CH = 720;
 
     ctx.clearRect(0, 0, CW, CH);
 
-    // Spawn cada 220ms (ritmo pausado y agradable, tiempo para apreciar cada foto)
-    const INTERVALO_SPAWN = 0.22;
-    if (t <= 5.3 && t - this.ultimoTiempoSpawn >= INTERVALO_SPAWN) {
+    // Spawn de fotos desde t=2.15s hasta t=4.00s (ritmo fluido y armonioso)
+    const INTERVALO_SPAWN = 0.17;
+    if (t >= 2.15 && t <= 4.00 && t - this.ultimoTiempoSpawn >= INTERVALO_SPAWN) {
       this.ultimoTiempoSpawn = t;
 
-      // Obtener frames: primero de framesPrecargados o progresivamente del servicio
       const framesDisponibles = this.framesPrecargados.length > 0
         ? this.framesPrecargados
         : this.preloaderService.obtenerTodosLosFrames();
@@ -941,7 +928,6 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
       if (frame) {
         this.indiceSiguienteFoto++;
 
-        // Exclusivamente fotos cuadradas y rectangulares (Polaroids, postales, retratos, apaisadas)
         const formatos: ('polaroid' | 'cuadrado' | 'postal' | 'vertical' | 'panoramica')[] = [
           'polaroid',
           'cuadrado',
@@ -953,11 +939,10 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
         ];
         const formato = formatos[this.indiceSiguienteFoto % formatos.length];
 
-        // Dispersión suave en abanico
         const anguloAbanico = ((this.indiceSiguienteFoto * 137.5) % 360) * (Math.PI / 180);
-        const radioDrift = 240 + Math.random() * 200;
+        const radioDrift = 280 + Math.random() * 220;
         const driftX = Math.cos(anguloAbanico) * radioDrift;
-        const driftY = -150 - Math.random() * 200;
+        const driftY = -140 - Math.random() * 220;
 
         let anchoBase = 320;
         let altoBase = 240;
@@ -965,14 +950,14 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
         switch (formato) {
           case 'polaroid':
             anchoBase = 290;
-            altoBase = 350;
+            altoBase = 340;
             break;
           case 'cuadrado':
             anchoBase = 290;
             altoBase = 290;
             break;
           case 'postal':
-            anchoBase = 350;
+            anchoBase = 340;
             altoBase = 240;
             break;
           case 'vertical':
@@ -980,19 +965,20 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
             altoBase = 340;
             break;
           case 'panoramica':
-            anchoBase = 390;
+            anchoBase = 380;
             altoBase = 230;
             break;
         }
 
+        // Cada foto viaja 1.65 segundos: sale hacia el usuario y regresa al libro
         this.fotosEnVuelo.push({
           frame,
           tiempoInicio: t,
-          duracion: 1.15, // 1.15 segundos de vuelo suave hacia la cámara
+          duracion: 1.65,
           formato,
           driftX,
           driftY,
-          giroMax: ((Math.random() - 0.5) * 14) * (Math.PI / 180),
+          giroMax: ((Math.random() - 0.5) * 16) * (Math.PI / 180),
           anchoBase,
           altoBase
         });
@@ -1001,25 +987,31 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
 
     this.fotosEnVuelo = this.fotosEnVuelo.filter(f => (t - f.tiempoInicio) < f.duracion);
 
-    // Origen: página derecha del libro abierto
-    const origenX = CW * 0.56;
-    const origenY = CH * 0.60;
+    // Origen y retorno: página derecha del libro abierto
+    const origenX = CW * 0.58;
+    const origenY = CH * 0.62;
 
     for (const foto of this.fotosEnVuelo) {
       const p = (t - foto.tiempoInicio) / foto.duracion;
 
-      // Crecimiento suave de escala: de 0.14 en la página a 2.3 al salir de la pantalla
-      const escala = 0.14 + Math.pow(p, 1.6) * 2.2;
+      // Curva armónica de ida y vuelta: u=0 al inicio, u=1 en el cenit hacia el usuario (p=0.5), u=0 al regresar (p=1.0)
+      const u = Math.sin(p * Math.PI);
 
-      const posX = origenX + foto.driftX * Math.pow(p, 1.15);
-      const posY = origenY + foto.driftY * Math.pow(p, 1.15);
-      const rot = foto.giroMax * p;
+      // Crecimiento y contracción: escala 0.14 en el libro -> hasta 2.05 frente al usuario -> 0.14 de vuelta al libro
+      const escala = 0.14 + Math.pow(u, 1.25) * 1.90;
 
+      // Trayectoria curvada elegante de ida y regreso
+      const curvatura = Math.sin(p * Math.PI * 2) * 40;
+      const posX = origenX + foto.driftX * Math.pow(u, 1.1) + curvatura;
+      const posY = origenY + foto.driftY * Math.pow(u, 1.1) - Math.abs(curvatura) * 0.4;
+      const rot = foto.giroMax * Math.sin(p * Math.PI);
+
+      // Transparencia suave al emerger y al aterrizar en el libro
       let alpha = 1.0;
-      if (p < 0.1) {
-        alpha = p / 0.1;
-      } else if (p > 0.85) {
-        alpha = Math.max(0, 1.0 - (p - 0.85) / 0.15);
+      if (p < 0.08) {
+        alpha = p / 0.08;
+      } else if (p > 0.90) {
+        alpha = Math.max(0, (1.0 - p) / 0.10);
       }
 
       ctx.save();
@@ -1029,9 +1021,9 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
       ctx.scale(escala, escala);
 
       ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
-      ctx.shadowBlur = 10 + p * 26;
-      ctx.shadowOffsetX = 4 + p * 10;
-      ctx.shadowOffsetY = 6 + p * 16;
+      ctx.shadowBlur = 8 + u * 24;
+      ctx.shadowOffsetX = 3 + u * 8;
+      ctx.shadowOffsetY = 5 + u * 14;
 
       this.dibujarTarjetaFoto(ctx, foto);
 
@@ -1039,58 +1031,58 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     }
   }
 
-  private dibujarTarjetaFoto(ctx: CanvasRenderingContext2D, foto: FotoVuelo): void {
+    private dibujarTarjetaFoto(ctx: CanvasRenderingContext2D, foto: FotoVuelo): void {
     const { frame, formato, anchoBase: w, altoBase: h } = foto;
     const rx = -w / 2;
     const ry = -h / 2;
 
     switch (formato) {
       case 'polaroid': {
-        ctx.fillStyle = '#fefdfa';
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(rx, ry, w, h);
 
         ctx.shadowColor = 'transparent';
 
-        const pad = 16;
+        const pad = 10;
         const fotoW = w - pad * 2;
-        const fotoH = h - pad - 60;
+        const fotoH = h - pad - 45;
         this.dibujarImagenCover(ctx, frame.bitmap, rx + pad, ry + pad, fotoW, fotoH);
 
-        ctx.fillStyle = '#403020';
-        ctx.font = 'italic 16px "Georgia", serif';
+        ctx.fillStyle = '#2d2015';
+        ctx.font = 'bold 15px "Cinzel", "Georgia", serif';
         ctx.textAlign = 'center';
-        const txt = frame.titulo ? frame.titulo.substring(0, 22) : 'Recuerdo';
-        ctx.fillText(txt, 0, ry + h - 22);
+        const txt = frame.titulo ? frame.titulo.substring(0, 24) : 'Recuerdo';
+        ctx.fillText(txt, 0, ry + h - 16);
         break;
       }
 
       case 'cuadrado': {
-        ctx.fillStyle = '#fcfaf4';
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(rx, ry, w, h);
 
         ctx.shadowColor = 'transparent';
 
-        const pad = 14;
+        const pad = 8;
         this.dibujarImagenCover(ctx, frame.bitmap, rx + pad, ry + pad, w - pad * 2, h - pad * 2);
 
-        ctx.strokeStyle = 'rgba(212, 175, 55, 0.5)';
+        ctx.strokeStyle = 'rgba(212, 175, 55, 0.65)';
         ctx.lineWidth = 2;
         ctx.strokeRect(rx + pad, ry + pad, w - pad * 2, h - pad * 2);
         break;
       }
 
       case 'postal': {
-        ctx.fillStyle = '#f7f1e5';
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(rx, ry, w, h);
 
         ctx.shadowColor = 'transparent';
 
-        const pad = 14;
+        const pad = 8;
         this.dibujarImagenCover(ctx, frame.bitmap, rx + pad, ry + pad, w - pad * 2, h - pad * 2);
 
-        ctx.strokeStyle = 'rgba(160, 120, 70, 0.5)';
+        ctx.strokeStyle = 'rgba(160, 120, 70, 0.45)';
         ctx.lineWidth = 1.5;
-        ctx.strokeRect(rx + 6, ry + 6, w - 12, h - 12);
+        ctx.strokeRect(rx + 4, ry + 4, w - 8, h - 8);
         break;
       }
 
@@ -1101,22 +1093,22 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
         ctx.shadowColor = 'transparent';
 
         ctx.strokeStyle = '#dfc488';
-        ctx.lineWidth = 2.5;
-        ctx.strokeRect(rx + 5, ry + 5, w - 10, h - 10);
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rx + 4, ry + 4, w - 8, h - 8);
 
-        const pad = 12;
+        const pad = 8;
         this.dibujarImagenCover(ctx, frame.bitmap, rx + pad, ry + pad, w - pad * 2, h - pad * 2);
         break;
       }
 
       case 'panoramica':
       default: {
-        ctx.fillStyle = '#faf7f0';
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(rx, ry, w, h);
 
         ctx.shadowColor = 'transparent';
 
-        const pad = 12;
+        const pad = 8;
         this.dibujarImagenCover(ctx, frame.bitmap, rx + pad, ry + pad, w - pad * 2, h - pad * 2);
 
         ctx.strokeStyle = '#c59d42';

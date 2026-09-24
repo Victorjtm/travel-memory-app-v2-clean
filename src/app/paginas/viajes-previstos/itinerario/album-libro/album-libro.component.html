@@ -234,7 +234,7 @@
     </div>
 
     <!-- Tapa del Libro 3D -->
-    <div class="tapa-libro-vintage" role="button" tabindex="0" (click)="abrirLibro()"
+    <div class="tapa-libro-vintage" role="button" tabindex="0" (click)="iniciarGenerarRecorridoAnimado($event)"
       aria-label="Abrir álbum de recuerdos">
 
       <!-- Capas de textura y relieve fotográfico de cuero envejecido -->
@@ -348,14 +348,14 @@
 
         <!-- Acciones Principales: Modo Guiado y Abrir Libro -->
         <div class="acciones-portada-vintage">
-          <button class="btn-vivir-recuerdo-oro" type="button" (click)="iniciarModoGuiado($event)"
-            title="Iniciar recorrido guiado por puntos de interés">
+          <button class="btn-vivir-recuerdo-oro" type="button" (click)="iniciarGenerarRecorridoAnimado($event)"
+            title="Generar recorrido y abrir el álbum con animación">
             <span class="play-ring" aria-hidden="true"></span>
             <i class="fas fa-route"></i>
-            <span>Recorrido Guiado</span>
+            <span>Generar Recorrido</span>
           </button>
 
-          <button class="btn-abrir-libro-vintage" type="button" (click)="abrirLibro(); $event.stopPropagation()">
+          <button class="btn-abrir-libro-vintage" type="button" (click)="iniciarGenerarRecorridoAnimado($event)">
             <i class="fas fa-book-open"></i>
             <span>Abrir Diario</span>
           </button>
@@ -958,8 +958,7 @@
               <!-- 3. Mapa Animado -->
               <div class="thumb-fallback thumb-mapa" *ngIf="pagina.esMapaAnimado">
                 <i [class]="obtenerIconoTransporte(pagina.tipoTransporteTramo)"></i>
-                <span class="fallback-label">{{ pagina.distanciaTramoKm ? (pagina.distanciaTramoKm | number:'1.0-1') + '
-                  km' : 'RUTA' }}</span>
+                <span class="fallback-label">{{ pagina.esMapaGeneral ? 'MAPA VIAJE' : (pagina.esMapaItinerario ? 'MAPA ITIN' : (pagina.distanciaTramoKm ? (pagina.distanciaTramoKm | number:'1.0-1') + ' km' : 'RUTA')) }}</span>
               </div>
 
               <!-- 4. Imagen -->
@@ -1657,11 +1656,6 @@
             <div class="foto-polaroid-vintage polaroid-single-maximizada"
               (click)="toggleFullscreenSinglePage(null, $event)" title="Hacer clic en la foto para volver a 2 páginas">
               <!-- 4 esquineras doradas -->
-              <span class="esquinera-foto sup-izq"></span>
-              <span class="esquinera-foto sup-der"></span>
-              <span class="esquinera-foto inf-izq"></span>
-              <span class="esquinera-foto inf-der"></span>
-
               <!-- Imagen -->
               <img *ngIf="pagSingle.tipoMedia === 'imagen'" [src]="pagSingle.url" [alt]="pagSingle.titulo"
                 class="imagen-foto-vintage imagen-single-maximizada" loading="lazy" decoding="async" />
@@ -1774,6 +1768,24 @@
       <div class="lienzo-mapa-doble-pagina"
         *ngIf="spreadActualData?.tipo === 'mapa' && spreadActualData?.paginaMapa as pagMapa"
         (click)="hayPaginaSiguiente && cambiarPagina(1)" title="Click para ir a las siguientes páginas">
+        <!-- MODO MAPA RESUMEN ESTRUCTURAL (VIAJE COMPLETO O ITINERARIO) -->
+        <ng-container *ngIf="pagMapa.esMapaGeneral || pagMapa.esMapaItinerario; else modoMapaSubtramo">
+          <app-mapa-resumen-spread
+            [trackGpx]="pagMapa.trackGpx || ''"
+            [titulo]="pagMapa.titulo"
+            [subtitulo]="pagMapa.descripcion"
+            [distanciaKm]="pagMapa.distanciaTramoKm || 0"
+            [fechaInicio]="pagMapa.fecha"
+            [duracionDias]="pagMapa.duracionDias"
+            [itinerariosCount]="listaItinerarios.length || 1"
+            [itinerariosLista]="listaItinerarios"
+            [esMapaGeneral]="pagMapa.esMapaGeneral || false"
+            [esMapaItinerario]="pagMapa.esMapaItinerario || false">
+          </app-mapa-resumen-spread>
+        </ng-container>
+
+        <ng-template #modoMapaSubtramo>
+
         <div class="textura-papel-antiguo" aria-hidden="true"></div>
 
         <div class="header-mapa-panoramico" [class.header-mapa-overlay]="pagMapa.urlVideoAnimacion && !forzarMapaInteractivo">
@@ -1845,7 +1857,9 @@
           <span>Ruta: {{ pagMapa.distanciaTramoKm ? (pagMapa.distanciaTramoKm | number:'1.1-1') + ' km' : 'Itinerario'
             }}</span>
         </div>
-      </div>
+      
+        </ng-template>
+</div>
 
       <!-- ======================================================== -->
       <!-- MODO FOTO / INTRO: PÁGINA IZQUIERDA Y DERECHA ESTÁNDAR   -->
@@ -1908,15 +1922,10 @@
 
             <!-- Caso Foto / Vídeo / Mapa Estándar en página izquierda -->
             <div class="foto-vintage-container" *ngIf="!pagIzq.esIndice && !pagIzq.esCartaManuscrita">
-              <div class="foto-polaroid-vintage" [class.polaroid-clickable-fullscreen]="fullscreen"
+              <div class="foto-polaroid-vintage" [ngClass]="obtenerClaseMarco(pagIzq, 0)" [class.polaroid-clickable-fullscreen]="fullscreen"
                 (click)="onFotoClick(pagIzq, fullscreen, $event)"
                 [title]="fullscreen ? 'Hacer clic para ver en 1 página maximizada' : ''">
                 <!-- Esquinas de montaje vintage -->
-                <span class="esquinera-foto sup-izq"></span>
-                <span class="esquinera-foto sup-der"></span>
-                <span class="esquinera-foto inf-izq"></span>
-                <span class="esquinera-foto inf-der"></span>
-
                 <img *ngIf="pagIzq.tipoMedia === 'imagen'" [src]="pagIzq.url" [alt]="pagIzq.titulo"
                   class="imagen-foto-vintage" loading="lazy" decoding="async" />
                 <div *ngIf="pagIzq.tipoMedia === 'video'" class="video-preview-vintage">
@@ -2093,14 +2102,9 @@
             <!-- Caso: Foto / Vídeo / Audio Estándar (spreadActual > 0) -->
             <div class="foto-vintage-container"
               *ngIf="spreadActual > 0 && !pagDer.esIndice && !pagDer.esCartaManuscrita && !pagDer.esMapaAnimado">
-              <div class="foto-polaroid-vintage foto-principal" [class.polaroid-clickable-fullscreen]="fullscreen"
+              <div class="foto-polaroid-vintage foto-principal" [ngClass]="obtenerClaseMarco(pagDer, 1)" [class.polaroid-clickable-fullscreen]="fullscreen"
                 (click)="onFotoClick(pagDer, fullscreen, $event)"
                 [title]="fullscreen ? 'Hacer clic para ver en 1 página maximizada' : ''">
-                <span class="esquinera-foto sup-izq"></span>
-                <span class="esquinera-foto sup-der"></span>
-                <span class="esquinera-foto inf-izq"></span>
-                <span class="esquinera-foto inf-der"></span>
-
                 <img *ngIf="pagDer.tipoMedia === 'imagen'" [src]="pagDer.url" [alt]="pagDer.titulo"
                   class="imagen-foto-vintage" loading="lazy" decoding="async" />
                 <div *ngIf="pagDer.tipoMedia === 'video'" class="video-preview-vintage">
@@ -2183,10 +2187,6 @@
           <ng-container *ngIf="direccionVolteo3D === 'adelante'">
             <div class="foto-vintage-container" *ngIf="paginaVolteoSaliente as pSal">
               <div class="foto-polaroid-vintage" *ngIf="pSal.tipoMedia === 'imagen' || !pSal.esCartaManuscrita">
-                <span class="esquinera-foto sup-izq"></span>
-                <span class="esquinera-foto sup-der"></span>
-                <span class="esquinera-foto inf-izq"></span>
-                <span class="esquinera-foto inf-der"></span>
                 <img *ngIf="pSal.tipoMedia === 'imagen'" [src]="pSal.url" [alt]="pSal.titulo"
                   class="imagen-foto-vintage" />
                 <div *ngIf="pSal.tipoMedia === 'video'" class="video-preview-vintage">
@@ -2224,10 +2224,6 @@
           <ng-container *ngIf="direccionVolteo3D === 'atras'">
             <div class="foto-vintage-container" *ngIf="paginaVolteoEntrante as pEnt">
               <div class="foto-polaroid-vintage" *ngIf="pEnt.tipoMedia === 'imagen' || !pEnt.esCartaManuscrita">
-                <span class="esquinera-foto sup-izq"></span>
-                <span class="esquinera-foto sup-der"></span>
-                <span class="esquinera-foto inf-izq"></span>
-                <span class="esquinera-foto inf-der"></span>
                 <img *ngIf="pEnt.tipoMedia === 'imagen'" [src]="pEnt.url" [alt]="pEnt.titulo"
                   class="imagen-foto-vintage" />
               </div>

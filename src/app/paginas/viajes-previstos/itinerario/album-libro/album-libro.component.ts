@@ -18,6 +18,7 @@ import { EscenaMultimedia, ConfiguracionExportacion } from '../../../../modelos/
 
 import { GpxAnimationComponent } from '../../../../componentes/reproductor-animado-gpx/gpx-animation.component';
 import { MiniMapaGpxComponent } from '../../../../componentes/mini-mapa-gpx/mini-mapa-gpx.component';
+import { MapaResumenSpreadComponent } from '../../../../componentes/mapa-resumen-spread/mapa-resumen-spread.component';
 import { GpxAnimationService, GpxPoint } from '../../../../servicios/gpx-animation.service';
 import { TrackEditorService } from '../../../../servicios/track-editor.service';
 import { RouteVideoGeneratorService, ProgresoRenderizadoRuta } from '../../../../servicios/route-video-generator.service';
@@ -49,6 +50,9 @@ interface PaginaMedia {
   esIndice?: boolean;
   esCartaManuscrita?: boolean;
   esMapaAnimado?: boolean;
+  esMapaGeneral?: boolean;
+  esMapaItinerario?: boolean;
+  duracionDias?: number;
   idParadaOrigen?: number;
   idParadaDestino?: number;
   trackGpx?: string;
@@ -126,7 +130,7 @@ interface CoordenadasDMS {
 @Component({
   selector: 'app-album-libro',
   standalone: true,
-  imports: [CommonModule, FontAwesomeModule, FormsModule, GpxAnimationComponent, MiniMapaGpxComponent, IntroCinematicaDynamicsComponent],
+  imports: [CommonModule, FontAwesomeModule, FormsModule, GpxAnimationComponent, MiniMapaGpxComponent, IntroCinematicaDynamicsComponent, MapaResumenSpreadComponent],
   templateUrl: './album-libro.component.html',
   styleUrls: ['./album-libro.component.scss']
 })
@@ -2436,10 +2440,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       await this.procesarArchivos(archivos);
 
       // 🎬 Disparar intro cinemática Dynamics si corresponde y estamos en la portada
-      if (this.estado === 'portada' && !this.introDynamicsReproducida) {
-        console.log('🎬 [Dynamics] Activando introducción cinemática 3D (5.0s)...');
-        this.mostrarIntroDynamics = true;
-      }
+      // 🛡️ REGLA: Al entrar desde el menú, la portada interactiva se muestra directamente sin animación.
+      // La cinemática 3D se dispara única y exclusivamente cuando el usuario pulsa "Generar Recorrido".
+      this.mostrarIntroDynamics = false;
     } catch (error) {
       console.error('❌ Error al cargar datos del álbum:', error);
       this.manejarErrorCarga(error);
@@ -3284,7 +3287,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     await this.precargarDatosGpxActividades(paginasInput);
 
     if (!this.incluirAnimacionesMapa) {
-      return paginasInput.filter(p => !p.esMapaAnimado);
+      return paginasInput.filter(p => !p.esMapaAnimado || p.esMapaGeneral || p.esMapaItinerario);
     }
 
     const cacheKey = `${this.contextoViaje?.viajeId || 0}_${this.contextoViaje?.itinerarioId || 0}_${this.distanciaMinimaAnimacionKm}_${paginasInput.length}`;
@@ -3799,6 +3802,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     // 2. Dividir paginasInput en bloques de itinerario (cada bloque empieza con Diario/Índice)
     interface BloqueItinerario {
       cabecera?: PaginaMedia;
+      mapaEstructural?: PaginaMedia;
       fotos: PaginaMedia[];
       actividadIds: Set<number>;
     }
@@ -3807,10 +3811,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     let bloqueActual: BloqueItinerario = { fotos: [], actividadIds: new Set<number>() };
 
     for (const pag of paginasInput) {
+      if (pag.esMapaGeneral || pag.esMapaItinerario) {
+        bloqueActual.mapaEstructural = pag;
+        continue;
+      }
       if (pag.esMapaAnimado) continue;
 
       if (pag.esCartaManuscrita || pag.esIndice) {
-        if (bloqueActual.cabecera || bloqueActual.fotos.length > 0) {
+        if (bloqueActual.cabecera || bloqueActual.fotos.length > 0 || bloqueActual.mapaEstructural) {
           bloques.push(bloqueActual);
         }
         bloqueActual = {
@@ -3826,7 +3834,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
     }
 
-    if (bloqueActual.cabecera || bloqueActual.fotos.length > 0) {
+    if (bloqueActual.cabecera || bloqueActual.fotos.length > 0 || bloqueActual.mapaEstructural) {
       bloques.push(bloqueActual);
     }
 
@@ -3859,6 +3867,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       // Ensamblar bloque: [Diario/Índice, ...contenidoDelBloque]
       if (bloque.cabecera) {
         resultado.push(bloque.cabecera);
+      }
+      if (bloque.mapaEstructural) {
+        resultado.push(bloque.mapaEstructural);
       }
       resultado.push(...contenidoDelBloque);
     }
@@ -4123,19 +4134,73 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
   }
 
-  private async crearPaginasConDescripcionesItinerarios(archivos: PaginaMedia[]): Promise<PaginaMedia[]> {
-    console.log('📋 Creando páginas con descripciones de itinerarios...');
+  calcularDiasEntreFechas(inicio?: string, fin?: string): number {
+    if (!inicio) return 1;
+    const fIni = new Date(inicio);
+    const fFin = fin ? new Date(fin) : fIni;
+    if (isNaN(fIni.getTime())) return 1;
+    const diff = Math.abs(fFin.getTime() - fIni.getTime());
+    return Math.max(1, Math.round(diff / (1000 * 60 * 60 * 24)) + 1);
+  }
 
-    // DEBUG: Ver qué itinerarioId tienen los archivos
-    console.log('=== DEBUG ARCHIVOS ===');
-    archivos.forEach((archivo, index) => {
-      console.log(`Archivo ${index}: ${archivo.archivo.nombreArchivo} - itinerarioId: ${archivo.archivo.itinerarioId}`);
-    });
-    console.log('======================');
+  private async resolverGpxItinerario(actsItin: any[], fotosItin: PaginaMedia[]): Promise<{ gpx: string; distanciaKm: number; puntos: GpxPoint[] }> {
+    const puntosItin: GpxPoint[] = [];
+    let distanciaTotalKm = 0;
+
+    for (const act of actsItin) {
+      try {
+        let gpxXml: string | null = null;
+
+        // 1. Intentar resolver segmento canónico en memoria
+        if (this.gpxAnimationService && typeof (this.gpxAnimationService as any).resolveCanonicalGpxXml === 'function') {
+          gpxXml = (this.gpxAnimationService as any).resolveCanonicalGpxXml(act.id);
+        }
+
+        // 2. Fallback directo al servicio de actividades si no estaba en caché
+        if (!gpxXml && this.actividadesItinerariosService) {
+          try {
+            const blob = await firstValueFrom(this.actividadesItinerariosService.obtenerGPX(act.id).pipe(takeUntil(this.destroy$)));
+            if (blob && blob.size > 0) {
+              gpxXml = await blob.text();
+            }
+          } catch {}
+        }
+
+        if (gpxXml && gpxXml.trim().length > 0) {
+          const pts = this.gpxAnimationService.parseGpx(gpxXml);
+          if (pts && pts.length > 0) {
+            if (puntosItin.length > 0) {
+              pts[0].isGap = true;
+            }
+            puntosItin.push(...pts);
+            for (let i = 1; i < pts.length; i++) {
+              distanciaTotalKm += this.getDistanceMetros(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng) / 1000;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`⚠️ Error al resolver GPX de actividad ${act.id}: ${err}`);
+      }
+    }
+
+    let gpxFinal = '';
+    if (puntosItin.length > 0 && this.trackEditorService) {
+      gpxFinal = this.trackEditorService.pointsToGpxXml(puntosItin);
+    }
+
+    return {
+      gpx: gpxFinal,
+      distanciaKm: distanciaTotalKm,
+      puntos: puntosItin
+    };
+  }
+
+  private async crearPaginasConDescripcionesItinerarios(archivos: PaginaMedia[]): Promise<PaginaMedia[]> {
+    console.log('📖 Creando páginas con descripciones de itinerarios y mapas de doble página...');
 
     const paginasFinales: PaginaMedia[] = [];
 
-    // Página 1 inicial: Carta manuscrita de Introducción del Itinerario ("ITINERARIO: ESPAÑA")
+    // Página 1 inicial: Carta manuscrita de Introducción del Viaje ("ITINERARIO: ESPAÑA")
     const nombreViaje = (this.infoViaje?.nombre || 'ESPAÑA').toUpperCase();
     const tituloIntroViaje = nombreViaje.startsWith('ITINERARIO') ? nombreViaje : `ITINERARIO: ${nombreViaje}`;
     const descIntroViaje = this.infoViaje?.descripcion || 'Diario de viaje, memorias fotográficas y recorrido detallado del itinerario.';
@@ -4151,11 +4216,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     };
     paginasFinales.push(paginaIntroViaje);
 
-    // Agrupar archivos por itinerario (usando itinerarioId directo o buscando su actividadId)
+    // Agrupar archivos por itinerario
     const archivosPorItinerario = new Map<number, PaginaMedia[]>();
     const archivosSinItinerario: PaginaMedia[] = [];
-
-    // Necesitamos cargar las actividades para saber a qué itinerario pertenece cada archivo
     const actividadesPorItinerario = await this.cargarActividadesPorItinerario();
 
     archivos.forEach(archivo => {
@@ -4163,7 +4226,6 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
       if (!itinerarioId && archivo.archivo?.actividadId) {
         const actividadId = archivo.archivo.actividadId;
-        // Buscar a qué itinerario pertenece esta actividad
         for (const [itId, actividades] of actividadesPorItinerario.entries()) {
           if (actividades.some((act: any) => act.id === actividadId)) {
             itinerarioId = itId;
@@ -4184,80 +4246,140 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     console.log(`📊 Archivos agrupados: ${archivosPorItinerario.size} itinerarios con fotos, ${archivosSinItinerario.length} fotos sin itinerario`);
 
-    // Ordenar las fotos de cada itinerario por fecha y hora reales (más antiguas primero)
     archivosPorItinerario.forEach((fotos, itinerarioId) => {
       fotos.sort((a, b) => this.obtenerTimestampReal(a) - this.obtenerTimestampReal(b));
-      console.log(`📅 Ordenadas ${fotos.length} fotos del itinerario ${itinerarioId} por timestamp real`);
     });
 
-    // Ordenar itinerarios por fecha de inicio (más antiguos primero)
     const itinerariosOrdenados = this.listaItinerarios.sort((a, b) => {
       const fechaA = new Date(a.fechaInicio || 0);
       const fechaB = new Date(b.fechaInicio || 0);
       return fechaA.getTime() - fechaB.getTime();
     });
 
-    // Para cada itinerario, añadir descripción + fotos ordenadas
+    // Comprobar si el viaje tiene un solo itinerario con fotos (o viaje == itinerario)
+    const itinerariosConFotos = itinerariosOrdenados.filter(it => (archivosPorItinerario.get(it.id) || []).length > 0);
+    const esItinerarioUnico = itinerariosConFotos.length <= 1;
+
+    // Puntos acumulados de todos los itinerarios para el Mapa General del Viaje
+    const puntosTodosItinerarios: GpxPoint[] = [];
+    let distanciaTotalViajeKm = 0;
+
+    // Generar mapas y contenido para cada itinerario
+    const contenidoItinerarios: PaginaMedia[] = [];
+
     for (const itinerario of itinerariosOrdenados) {
       const fotosItinerario = archivosPorItinerario.get(itinerario.id) || [];
 
-      // Solo procesar itinerarios que tienen fotos
       if (fotosItinerario.length > 0) {
+        let itinerarioCompleto: any = null;
         try {
-          const itinerarioCompleto = await firstValueFrom(
+          itinerarioCompleto = await firstValueFrom(
             this.itinerarioService.obtenerItinerarioGeneral(itinerario.id)
               .pipe(takeUntil(this.destroy$))
           );
+        } catch (error) {
+          console.warn(`⚠️ Error al cargar itinerario ${itinerario.id}: ${error}`);
+        }
 
-          // Crear página de descripción del itinerario
+        const tituloItin = (itinerarioCompleto?.nombre || itinerario.nombre || `Itinerario #${itinerario.id}`).toUpperCase();
+        const descItin = itinerarioCompleto?.descripcionGeneral || itinerario.descripcion || 'Diario de viaje y recorrido del itinerario.';
+        const fechaItin = itinerarioCompleto?.fechaInicio || itinerario.fechaInicio || '';
+        const diasItin = itinerarioCompleto?.duracionDias || this.calcularDiasEntreFechas(fechaItin, itinerarioCompleto?.fechaFin) || 1;
+
+        // Resolver GPX del itinerario
+        const actsItin = actividadesPorItinerario.get(itinerario.id) || [];
+        const infoItinGpx = await this.resolverGpxItinerario(actsItin, fotosItinerario);
+
+        if (infoItinGpx.puntos.length > 0) {
+          if (puntosTodosItinerarios.length > 0) {
+            infoItinGpx.puntos[0].isGap = true;
+          }
+          puntosTodosItinerarios.push(...infoItinGpx.puntos);
+          distanciaTotalViajeKm += infoItinGpx.distanciaKm;
+        }
+
+        if (esItinerarioUnico) {
+          // 💡 Si el viaje consta de un único itinerario, el itinerario ES el viaje completo.
+          // Enriquecemos la carta del viaje si es necesario y NO duplicamos la carta ni el mapa del itinerario.
+          if (descItin && (!paginaIntroViaje.descripcion || paginaIntroViaje.descripcion.includes('Diario de viaje, memorias fotográficas'))) {
+            paginaIntroViaje.descripcion = descItin;
+          }
+          contenidoItinerarios.push(...fotosItinerario);
+          console.log(`✅ Itinerario único ${itinerario.id}: Asimilado en el Mapa General del Viaje, omitida duplicación estructural y añadidas ${fotosItinerario.length} fotos.`);
+        } else {
+          // 1. Carta manuscrita de descripción del itinerario
           const paginaDescripcion: PaginaMedia = {
             archivo: {} as Archivo,
             url: '',
-            titulo: `Itinerario: ${itinerarioCompleto.destinosPorDia?.split(',')[0] || 'Destino'} (${itinerarioCompleto.duracionDias} días)`,
-            descripcion: itinerarioCompleto.descripcionGeneral || 'Sin descripción disponible',
-            fecha: itinerarioCompleto.fechaInicio || '',
+            titulo: `Itinerario: ${itinerarioCompleto?.destinosPorDia?.split(',')[0] || tituloItin}`,
+            descripcion: descItin,
+            fecha: fechaItin,
             tipoMedia: 'carta-manuscrita',
             mimeType: '',
-            esCartaManuscrita: true
+            esCartaManuscrita: true,
+            itinerarioId: itinerario.id
           };
+          contenidoItinerarios.push(paginaDescripcion);
 
-          // Añadir descripción seguida de las fotos ordenadas
-          paginasFinales.push(paginaDescripcion);
-          paginasFinales.push(...fotosItinerario);
-
-          console.log(`✅ Procesado itinerario ${itinerario.id}: descripción + ${fotosItinerario.length} fotos ordenadas`);
-
-        } catch (error) {
-          console.error(`❌ Error al cargar itinerario ${itinerario.id}:`, error);
-
-          // Crear página de descripción básica aunque falle la carga
-          const paginaDescripcionError: PaginaMedia = {
+          // 2. Mapa específico del Itinerario a doble página
+          const paginaMapaItin: PaginaMedia = {
             archivo: {} as Archivo,
             url: '',
-            titulo: `Itinerario #${itinerario.id}`,
-            descripcion: 'No se pudo cargar la descripción del itinerario',
-            fecha: itinerario.fechaInicio || '',
-            tipoMedia: 'carta-manuscrita',
+            titulo: `MAPA: ${tituloItin}`,
+            descripcion: descItin,
+            fecha: fechaItin,
+            tipoMedia: 'mapa-animado',
             mimeType: '',
-            esCartaManuscrita: true
+            cargado: true,
+            esMapaAnimado: true,
+            esMapaItinerario: true,
+            duracionDias: diasItin,
+            trackGpx: infoItinGpx.gpx,
+            distanciaTramoKm: infoItinGpx.distanciaKm,
+            itinerarioId: itinerario.id,
+            multimedia: fotosItinerario
           };
+          contenidoItinerarios.push(paginaMapaItin);
 
-          // Añadir descripción seguida de las fotos ordenadas
-          paginasFinales.push(paginaDescripcionError);
-          paginasFinales.push(...fotosItinerario);
-
-          console.log(`⚠️ Procesado itinerario ${itinerario.id} con error: descripción + ${fotosItinerario.length} fotos ordenadas`);
+          // 3. Fotos ordenadas del itinerario
+          contenidoItinerarios.push(...fotosItinerario);
+          console.log(`✅ Procesado itinerario ${itinerario.id}: descripción + mapa doble página + ${fotosItinerario.length} fotos`);
         }
-      } else {
-        console.log(`ℹ️ Itinerario ${itinerario.id} sin fotos, se omite`);
       }
     }
 
-    // Añadir fotos sin itinerario al final (también ordenadas)
-    if (archivosSinItinerario.length > 0) {
-      // Ordenar fotos sin itinerario
-      archivosSinItinerario.sort((a, b) => this.obtenerTimestampReal(a) - this.obtenerTimestampReal(b));
+    // Página 2 inicial: Mapa General de todo el Viaje (Doble página panorámica)
+    const gpxGeneralViaje = (puntosTodosItinerarios.length > 0 && this.trackEditorService)
+      ? this.trackEditorService.pointsToGpxXml(puntosTodosItinerarios)
+      : '';
 
+    const diasTotalesViaje = this.calcularDiasEntreFechas(this.infoViaje?.fechaInicio, this.infoViaje?.fechaFin);
+
+    const paginaMapaGeneralViaje: PaginaMedia = {
+      archivo: {} as Archivo,
+      url: '',
+      titulo: `MAPA GENERAL: ${nombreViaje}`,
+      descripcion: `Recorrido unificado y vista panorámica de ${nombreViaje}`,
+      fecha: this.infoViaje?.fechaInicio || '',
+      tipoMedia: 'mapa-animado',
+      mimeType: '',
+      cargado: true,
+      esMapaAnimado: true,
+      esMapaGeneral: true,
+      duracionDias: diasTotalesViaje,
+      trackGpx: gpxGeneralViaje,
+      distanciaTramoKm: distanciaTotalViajeKm,
+      multimedia: [],
+      visualSessionData: null
+    };
+    paginasFinales.push(paginaMapaGeneralViaje);
+
+    // Añadir todos los itinerarios (carta + mapa doble página + fotos)
+    paginasFinales.push(...contenidoItinerarios);
+
+    // Añadir fotos sin itinerario al final si las hubiera
+    if (archivosSinItinerario.length > 0) {
+      archivosSinItinerario.sort((a, b) => this.obtenerTimestampReal(a) - this.obtenerTimestampReal(b));
       const paginaSinItinerario: PaginaMedia = {
         archivo: {} as Archivo,
         url: '',
@@ -4268,14 +4390,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         mimeType: '',
         esCartaManuscrita: true
       };
-
       paginasFinales.push(paginaSinItinerario);
       paginasFinales.push(...archivosSinItinerario);
-
-      console.log(`📎 Añadidas ${archivosSinItinerario.length} fotos sin itinerario (ordenadas)`);
     }
 
-    console.log(`📖 Creadas ${paginasFinales.length} páginas con descripciones e itinerarios correctamente ordenados`);
+    console.log(`📖 Creadas ${paginasFinales.length} páginas con mapas de doble página (viaje completo e itinerarios) e historias ordenadas`);
     return paginasFinales;
   }
 
@@ -4334,9 +4453,31 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
    * 🎬 Callback cuando la intro cinemática de 5 segundos finaliza
    */
   public onIntroDynamicsCompletada(): void {
-    console.log('🎬 [IntroDynamics] Secuencia de 5s completada. Portada real interactiva lista.');
+    console.log('🎬 [IntroDynamics] Secuencia completada con el libro abierto. Abriendo páginas del álbum...');
     this.mostrarIntroDynamics = false;
     this.introDynamicsReproducida = true;
+
+    // Transición directa al libro abierto (el libro 3D ya quedó abierto en la mesa)
+    this.estado = 'abierto';
+    this.abriendoPortada3D = false;
+    this.modoRecuerdoActivo = true;
+    this.modoGuiadoActivo = true;
+    this.spreadActual = 0;
+    this.paginaActual = 0;
+
+    this.reiniciarInstanciaMapa();
+    this.precargarSiguienteVideo();
+    this.precargarContenidoVentana(0);
+    this.iniciarSecuenciaVideosSpread();
+    this.intentarReproducirAudioViaje();
+
+    setTimeout(() => {
+      if (this.reproducirEnFullscreen) {
+        this.abrirPaginaActualEnFullscreen();
+      }
+      this.iniciarSlideshow();
+    }, 150);
+
     this.cdr.detectChanges();
   }
 
@@ -4587,22 +4728,38 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.abrirLibro(true, false);
   }
 
+  iniciarGenerarRecorridoAnimado(event?: Event): void {
+    event?.stopPropagation();
+    console.log('📖 [Generar Recorrido] Disparado por el usuario.');
+    if (this.estado === 'portada') {
+      this.iniciarCinematicaYApertura(true, true);
+    } else {
+      this.iniciarModoGuiado(event);
+    }
+  }
+
+  iniciarCinematicaYApertura(activarModoRecuerdo: boolean = true, modoGuiado: boolean = true): void {
+    console.log('🎬 [AlbumLibro] Iniciando cinemática 3D (libro cae a la mesa, se abre, fotos vuelan y vuelven)...');
+    this.mostrarIntroDynamics = true;
+    this.cdr.detectChanges();
+  }
+
   iniciarModoGuiado(event?: Event): void {
     event?.stopPropagation();
-    if (this.estado === 'abierto') {
-      this.modoGuiadoActivo = true;
-      this.modoRecuerdoActivo = true;
-      this.intentarReproducirAudioViaje();
-      if (this.paginaActualData?.esIndice) {
-        this.paginaActual = this.obtenerPrimeraPaginaMemoria();
-      }
-      if (this.reproducirEnFullscreen) {
-        this.abrirPaginaActualEnFullscreen();
-      }
-      this.iniciarSlideshow();
-    } else {
-      this.abrirLibro(true, true);
+    if (this.estado === 'portada') {
+      this.iniciarGenerarRecorridoAnimado(event);
+      return;
     }
+    this.modoGuiadoActivo = true;
+    this.modoRecuerdoActivo = true;
+    this.intentarReproducirAudioViaje();
+    if (this.paginaActualData?.esIndice) {
+      this.paginaActual = this.obtenerPrimeraPaginaMemoria();
+    }
+    if (this.reproducirEnFullscreen) {
+      this.abrirPaginaActualEnFullscreen();
+    }
+    this.iniciarSlideshow();
   }
 
   toggleModoRecuerdo(event?: Event): void {
@@ -4774,7 +4931,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               this.paginaSpreadDerecha?.tipoMedia === 'video' ||
               this.paginaSpreadDerecha?.tipoMedia === 'audio'
             );
-            const tieneMapa = this.spreadActualData?.tipo === 'mapa' && !this.modoRutaImagen;
+            const esMapaEstructural = this.spreadActualData?.paginaMapa?.esMapaGeneral || this.spreadActualData?.paginaMapa?.esMapaItinerario;
+            const tieneMapa = this.spreadActualData?.tipo === 'mapa' && !this.modoRutaImagen && !esMapaEstructural;
             if (!tieneMediaInteractivo && !tieneMapa) {
               this.reiniciarTimerSlideshow();
             } else {
@@ -4799,8 +4957,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             this.paginaSpreadDerecha?.tipoMedia === 'video' ||
             this.paginaSpreadDerecha?.tipoMedia === 'audio'
           );
-          const tieneMapa = this.spreadActualData?.tipo === 'mapa' && !this.modoRutaImagen;
-          if (!tieneMediaInteractivo && !tieneMapa) {
+          const esMapaEstructural = this.spreadActualData?.paginaMapa?.esMapaGeneral || this.spreadActualData?.paginaMapa?.esMapaItinerario;
+            const tieneMapa = this.spreadActualData?.tipo === 'mapa' && !this.modoRutaImagen && !esMapaEstructural;
+            if (!tieneMediaInteractivo && !tieneMapa) {
             this.reiniciarTimerSlideshow();
           } else {
             this.limpiarTimerSlideshow();
@@ -5280,7 +5439,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.esVideoAnimacionRuta(this.paginaSpreadIzquierda) ||
       this.esVideoAnimacionRuta(this.paginaSpreadDerecha);
     const tieneMediaInteractivo = (currentPag?.tipoMedia === 'video' || currentPag?.tipoMedia === 'audio') && this.reproducirVideosCompletos;
-    const tieneMapa = (currentPag?.esMapaAnimado || this.spreadActualData?.tipo === 'mapa') && !this.modoRutaImagen;
+    const esMapaEstructural = currentPag?.esMapaGeneral || currentPag?.esMapaItinerario ||
+      this.spreadActualData?.paginaMapa?.esMapaGeneral || this.spreadActualData?.paginaMapa?.esMapaItinerario;
+    const tieneMapa = (currentPag?.esMapaAnimado || this.spreadActualData?.tipo === 'mapa') && !this.modoRutaImagen && !esMapaEstructural;
 
     if (esAnimacion || tieneMapa) {
       console.log('🗺️ Página inicial del slideshow es animación/mapa de ruta: pausando timer hasta completar');
@@ -6278,10 +6439,25 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     return ['imagen', 'video', 'audio', 'pdf'].includes(tipo);
   }
 
+  obtenerClaseMarco(pagina?: PaginaMedia | null, index: number = 0): string {
+    if (!pagina) return 'marco-madera-noble';
+    const marcos = [
+      'marco-madera-noble',
+      'marco-dorado-vintage',
+      'marco-paspartu-galeria',
+      'marco-cuero-bronce',
+      'marco-polaroid-vintage'
+    ];
+    const id = (pagina.archivo?.id || 0) + (pagina.archivo?.numeroSecuencial || 0) + index;
+    return marcos[Math.abs(id) % marcos.length];
+  }
+
   obtenerBadgeOrden(pagina: PaginaMedia, index: number): string {
     if (!pagina) return '';
     if (pagina.esIndice) return 'Índice';
     if (pagina.esCartaManuscrita) return 'Diario';
+    if (pagina.esMapaGeneral) return 'Mapa Viaje';
+    if (pagina.esMapaItinerario) return 'Mapa Itin';
     if (pagina.esMapaAnimado) return 'Ruta';
     if (pagina.archivo?.numeroSecuencial) {
       return '#' + pagina.archivo.numeroSecuencial;
