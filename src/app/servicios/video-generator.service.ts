@@ -66,6 +66,77 @@ export interface ProgresoVideo {
     audioViaje?: HTMLAudioElement | null,
     onProgress?: (progreso: ProgresoVideo) => void
   ): Promise<Blob> {
+    const viajeId = infoViaje?.id || 0;
+    try {
+      onProgress?.({ fase: 'cargando', porcentaje: 5, mensaje: 'Conectando con el motor de renderizado FFmpeg...' });
+
+      const audioViajeUrl = (configuracion.incluirAudio && audioViaje && audioViaje.src) ? audioViaje.src : null;
+
+      let pct = 10;
+      const progressTimer = setInterval(() => {
+        if (pct < 85) {
+          pct += 5;
+          let msg = 'Renderizando escenas y rutas a 30 FPS fluidos...';
+          if (pct >= 45) msg = 'Componiendo animaciones de ruta y fotos...';
+          if (pct >= 70) msg = 'Ensamblando película en alta definición (1080p)...';
+          onProgress?.({ fase: 'generando', porcentaje: pct, mensaje: msg });
+        }
+      }, 1200);
+
+      onProgress?.({ fase: 'generando', porcentaje: 15, mensaje: 'Procesando secuencia de viaje en servidor...' });
+
+      const backendUrl = environment.apiUrl || 'http://localhost:3000';
+      const endpoint = `${backendUrl}/api/viajes/${viajeId}/generar-pelicula-servidor`;
+
+      console.log('🎬 [VideoGenerator] Enviando solicitud a servidor FFmpeg:', endpoint);
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secuencia,
+          configuracion,
+          infoViaje,
+          audioViajeUrl
+        })
+      });
+
+      clearInterval(progressTimer);
+
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        throw new Error(errorData.error || `Error del servidor HTTP ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      if (!data.success || !data.url) {
+        throw new Error('Respuesta inválida del servidor');
+      }
+
+      onProgress?.({ fase: 'procesando', porcentaje: 90, mensaje: 'Descargando película optimizada...' });
+
+      const videoFullUrl = data.url.startsWith('http') ? data.url : `${backendUrl}${data.url.startsWith('/') ? '' : '/'}${data.url}`;
+      const videoResp = await fetch(videoFullUrl);
+      if (!videoResp.ok) {
+        throw new Error(`Error descargando vídeo generado: HTTP ${videoResp.status}`);
+      }
+
+      const videoBlob = await videoResp.blob();
+      onProgress?.({ fase: 'completado', porcentaje: 100, mensaje: '¡Película generada con éxito!' });
+      return videoBlob;
+
+    } catch (serverError: any) {
+      console.warn('⚠️ [VideoGenerator] Falló generación en servidor, ejecutando fallback local:', serverError);
+      return this.generarVideoClienteFallback(secuencia, infoViaje, configuracion, audioViaje, onProgress);
+    }
+  }
+
+  async generarVideoClienteFallback(
+    secuencia: EscenaMultimedia[],
+    infoViaje: any,
+    configuracion: ConfiguracionExportacion,
+    audioViaje?: HTMLAudioElement | null,
+    onProgress?: (progreso: ProgresoVideo) => void
+  ): Promise<Blob> {
     try {
       // 1. Configuración inicial
       this.configurarResolucion(configuracion.calidad === 'alta' ? '1080p' : '720p');

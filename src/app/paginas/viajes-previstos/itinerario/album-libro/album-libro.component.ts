@@ -6937,43 +6937,54 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         const marco = this.obtenerClaseMarco(p, index);
 
         if (p.esCartaManuscrita) {
-          secuencia.push({
-            id: p.archivo?.id || `carta-${index}`,
-            tipo: 'carta',
-            url: '',
-            duracion: 5,
-            titulo: p.titulo || 'Diario de Viaje',
-            descripcion: p.descripcion || '',
-            fecha: fechaHora.fecha,
-            hora: fechaHora.hora,
-            badgeOrden: badge
-          });
+          const desc = (p.descripcion || '').trim();
+          const tit = (p.titulo || '').trim().toLowerCase();
+          // Omitir cartas sin contenido descriptivo real o páginas que sólo digan 'Itinerario'
+          if (desc.length >= 15 && desc.toLowerCase() !== 'itinerario' && tit !== 'itinerario') {
+            secuencia.push({
+              id: p.archivo?.id || `carta-${index}`,
+              tipo: 'carta',
+              url: '',
+              duracion: 5,
+              titulo: p.titulo || 'Diario de Viaje',
+              descripcion: desc,
+              fecha: fechaHora.fecha,
+              hora: fechaHora.hora,
+              badgeOrden: badge
+            });
+          }
 
         } else if (p.esMapaGeneral) {
-          secuencia.push({
-            id: `mapa-general-${index}`,
-            tipo: 'mapa_resumen',
-            url: '',
-            duracion: 5,
-            titulo: p.titulo || `MAPA GENERAL: ${this.infoViaje?.nombre || 'Mi Viaje'}`,
-            descripcion: p.descripcion || 'Recorrido unificado y panorámica completa del viaje',
-            trackGpx: p.trackGpx,
-            distanciaKm: p.distanciaTramoKm,
-            badgeOrden: 'Mapa Viaje'
-          });
+          const mapaUrl = p.urlMapaRenderizado || p.url;
+          if (mapaUrl && mapaUrl.trim().length > 0) {
+            secuencia.push({
+              id: `mapa-general-${index}`,
+              tipo: 'mapa_resumen',
+              url: mapaUrl,
+              duracion: 5,
+              titulo: p.titulo || `MAPA GENERAL: ${this.infoViaje?.nombre || 'Mi Viaje'}`,
+              descripcion: p.descripcion || 'Recorrido unificado y panorámica completa del viaje',
+              trackGpx: p.trackGpx,
+              distanciaKm: p.distanciaTramoKm,
+              badgeOrden: 'Mapa Viaje'
+            });
+          }
 
         } else if (p.esMapaItinerario) {
-          secuencia.push({
-            id: `mapa-itinerario-${index}`,
-            tipo: 'mapa_resumen',
-            url: '',
-            duracion: 5,
-            titulo: p.titulo || 'MAPA DEL ITINERARIO',
-            descripcion: p.descripcion || '',
-            trackGpx: p.trackGpx,
-            distanciaKm: p.distanciaTramoKm,
-            badgeOrden: 'Mapa Itin'
-          });
+          const mapaUrl = p.urlMapaRenderizado || p.url;
+          if (mapaUrl && mapaUrl.trim().length > 0) {
+            secuencia.push({
+              id: `mapa-itinerario-${index}`,
+              tipo: 'mapa_resumen',
+              url: mapaUrl,
+              duracion: 5,
+              titulo: p.titulo || 'MAPA DEL ITINERARIO',
+              descripcion: p.descripcion || '',
+              trackGpx: p.trackGpx,
+              distanciaKm: p.distanciaTramoKm,
+              badgeOrden: 'Mapa Itin'
+            });
+          }
 
         } else if (p.esMapaAnimado) {
           if (p.urlVideoAnimacion && p.urlVideoAnimacion.trim() !== '') {

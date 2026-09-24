@@ -4833,6 +4833,36 @@ app.delete(['/actividades/:id/subtramos/video', '/api/actividades/:id/subtramos/
   }
 });
 
+// 3.c POST Generar película completa de viaje en el servidor con FFmpeg (Ultrarrápido y fluido 30 FPS)
+let generadorPeliculaFFmpegService;
+try {
+  generadorPeliculaFFmpegService = require('./backend-services/generador-pelicula-ffmpeg.service');
+} catch (e) {
+  console.error('Error cargando generador-pelicula-ffmpeg.service:', e);
+}
+
+app.post(['/viajes/:id/generar-pelicula-servidor', '/api/viajes/:id/generar-pelicula-servidor'], express.json({ limit: '50mb' }), async (req, res) => {
+  const viajeId = req.params.id;
+  const { secuencia, configuracion, infoViaje, audioViajeUrl } = req.body;
+
+  try {
+    if (!generadorPeliculaFFmpegService) {
+      generadorPeliculaFFmpegService = require('./backend-services/generador-pelicula-ffmpeg.service');
+    }
+    const resultado = await generadorPeliculaFFmpegService.generarPeliculaViaje(
+      viajeId,
+      secuencia,
+      configuracion,
+      infoViaje,
+      audioViajeUrl
+    );
+    res.json(resultado);
+  } catch (error) {
+    console.error('❌ [FFMPEG Pelicula] Error en endpoint:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 5. DELETE eliminar todos los vídeos de subtramos de un itinerario (para regeneración limpia)
 app.delete(['/itinerarios/:id/subtramos/videos', '/api/itinerarios/:id/subtramos/videos'], async (req, res) => {
   const itinerarioId = req.params.id;
