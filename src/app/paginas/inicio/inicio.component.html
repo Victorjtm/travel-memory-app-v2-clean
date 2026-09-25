@@ -174,6 +174,32 @@
 
         <div class="config-form">
           <h3>Datos del viaje</h3>
+
+          <!-- Selector inteligente de viaje existente vs viaje nuevo -->
+          <div class="form-group" *ngIf="viajesExistentesCoincidentes && viajesExistentesCoincidentes.length > 0" style="background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.25); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+            <label style="font-weight: 600; color: #1e40af; margin-bottom: 8px; display: block;">
+              <i class="fa-solid fa-route" style="margin-right: 6px;"></i>Destino de la importación
+            </label>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                <input type="radio" name="modoImportacion" value="anadir_actividad" [(ngModel)]="modoImportacion" style="margin-top: 3px;">
+                <span style="flex: 1;">
+                  <strong>Añadir como actividad al viaje existente</strong> (Recomendado)
+                  <select *ngIf="modoImportacion === 'anadir_actividad'" [(ngModel)]="viajeExistenteSeleccionadoId" class="form-select" style="margin-top: 6px; font-size: 0.9rem; width: 100%;">
+                    <option *ngFor="let v of viajesExistentesCoincidentes" [value]="v.id">
+                      {{ v.nombre }}
+                    </option>
+                  </select>
+                </span>
+              </label>
+
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="radio" name="modoImportacion" value="crear_viaje" [(ngModel)]="modoImportacion">
+                <span>Crear un nuevo viaje independiente</span>
+              </label>
+            </div>
+          </div>
+
           <div class="form-group">
             <label for="destino">Destino del viaje</label>
             <input type="text" id="destino" [(ngModel)]="destinoViaje" placeholder="Ej: Malaga, Espana" class="form-input" required>

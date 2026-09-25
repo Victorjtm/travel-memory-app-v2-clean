@@ -89,6 +89,9 @@ export class InicioComponent implements OnInit {
 
   // Estado de importación
   mostrarModalImport = false;
+  viajesExistentesCoincidentes: any[] = [];
+  viajeExistenteSeleccionadoId: number | null = null;
+  modoImportacion: 'anadir_actividad' | 'crear_viaje' = 'crear_viaje';
 
   importando = false;
   progresoSubida = 0;
@@ -324,6 +327,38 @@ export class InicioComponent implements OnInit {
         this.destinoViaje = this.manifestData.destino || 'España';
       }
 
+      // Buscar si ya existe algún viaje coincidente para la fecha del recorrido
+      this.viajesExistentesCoincidentes = [];
+      this.viajeExistenteSeleccionadoId = null;
+      this.modoImportacion = 'crear_viaje';
+
+      try {
+        const fechaStr = this.obtenerFechaTracking();
+        const fechaIso = fechaStr && fechaStr.length === 8 ? `${fechaStr.slice(0, 4)}-${fechaStr.slice(4, 6)}-${fechaStr.slice(6, 8)}` : null;
+
+        if (fechaIso) {
+          const todosViajes: any = await this.http.get(`${this.API_URL}/viajes`).toPromise();
+          if (Array.isArray(todosViajes) && todosViajes.length > 0) {
+            this.viajesExistentesCoincidentes = todosViajes.filter((v: any) => {
+              const fIni = v.fecha_inicio ? v.fecha_inicio.split('T')[0] : '';
+              const fFin = v.fecha_fin ? v.fecha_fin.split('T')[0] : '';
+              return (fIni && fFin && fIni <= fechaIso && fechaIso <= fFin) || fIni === fechaIso || fFin === fechaIso;
+            });
+
+            if (this.viajesExistentesCoincidentes.length > 0) {
+              this.modoImportacion = 'anadir_actividad';
+              this.viajeExistenteSeleccionadoId = this.viajesExistentesCoincidentes[0].id;
+              if (this.viajesExistentesCoincidentes[0].destino) {
+                this.destinoViaje = this.viajesExistentesCoincidentes[0].destino;
+              }
+              console.log(`🎯 [Importar] Se detectaron ${this.viajesExistentesCoincidentes.length} viajes existentes para ${fechaIso}. Seleccionado: ${this.viajesExistentesCoincidentes[0].nombre}`);
+            }
+          }
+        }
+      } catch (errViajes) {
+        console.warn('⚠️ No se pudieron consultar viajes existentes:', errViajes);
+      }
+
       // Mostrar modal de configuración
       this.mostrarModalImport = true;
 
@@ -541,6 +576,9 @@ export class InicioComponent implements OnInit {
     this.buscandoVideosMtp = false;
     this.mensajeMtp = '';
     this.origenVideos = '';
+    this.viajesExistentesCoincidentes = [];
+    this.viajeExistenteSeleccionadoId = null;
+    this.modoImportacion = 'crear_viaje';
   }
 
   /**
@@ -603,6 +641,12 @@ export class InicioComponent implements OnInit {
       const formData = new FormData();
       formData.append('destino', this.destinoViaje);
       formData.append('tipoActividadId', this.tipoActividadId.toString());
+
+      // Si se seleccionó añadir a viaje existente, enviar viajeId
+      if (this.modoImportacion === 'anadir_actividad' && this.viajeExistenteSeleccionadoId) {
+        formData.append('viajeId', this.viajeExistenteSeleccionadoId.toString());
+        console.log(`📌 [Importar] Vinculando actividad a viaje existente ID: ${this.viajeExistenteSeleccionadoId}`);
+      }
 
       // Si se extrajeron vídeos por MTP en Modo Dynamics, enviarlos
       if (this.videosExtraidosMtp && this.videosExtraidosMtp.length > 0) {

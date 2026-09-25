@@ -7618,7 +7618,7 @@ app.post('/import-tracking', (req, res, next) => {
 
   try {
     // 1. VALIDAR DATOS RECIBIDOS
-    const { destino, tipoActividadId, videosMtpExtraidos } = req.body;
+    const { destino, tipoActividadId, videosMtpExtraidos, viajeId: viajeIdReq } = req.body;
     let mtpVideosList = [];
     if (videosMtpExtraidos) {
       try {
@@ -7907,40 +7907,73 @@ app.post('/import-tracking', (req, res, next) => {
     console.log('=====================================\n');
 
     // ========================================================================
-    // 4. CREAR VIAJE
+    // 4. CREAR VIAJE O USAR EXISTENTE
     // ========================================================================
-    console.log('\n📁 Creando viaje...');
+    console.log('\n📁 Determinando viaje (nuevo o reutilizando existente)...');
 
-    viajeId = await new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO viajes (nombre, destino, fecha_inicio, fecha_fin, descripcion) 
-          VALUES (?, ?, ?, ?, ?)`,
-        [
-          nombreViaje,
-          destinoCompleto,
-          fechaRecorridoReal,
-          fechaRecorridoReal,
-          `Tracking importado desde AudioPhotoApp - ${distKmViaje} km - ${duracionViaje}`
-        ],
-        function (err) {
-          if (err) return reject(err);
-          console.log('✅ Viaje creado con ID:', this.lastID);
-          console.log('   Nombre:', nombreViaje);
-          resolve(this.lastID);
+    let viajeExistente = null;
+    if (viajeIdReq) {
+      const vId = parseInt(viajeIdReq, 10);
+      if (!isNaN(vId) && vId > 0) {
+        viajeExistente = await new Promise((resolve) => {
+          db.get('SELECT * FROM viajes WHERE id = ?', [vId], (err, row) => resolve(row || null));
+        });
+        if (viajeExistente) {
+          viajeId = viajeExistente.id;
+          console.log(`✅ [IMPORT] Reutilizando viaje existente ID ${viajeId}: "${viajeExistente.nombre}"`);
         }
-      );
-    });
+      }
+    }
+
+    if (!viajeId) {
+      viajeId = await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT INTO viajes (nombre, destino, fecha_inicio, fecha_fin, descripcion) 
+            VALUES (?, ?, ?, ?, ?)`,
+          [
+            nombreViaje,
+            destinoCompleto,
+            fechaRecorridoReal,
+            fechaRecorridoReal,
+            `Tracking importado desde AudioPhotoApp - ${distKmViaje} km - ${duracionViaje}`
+          ],
+          function (err) {
+            if (err) return reject(err);
+            console.log('✅ Viaje creado con ID:', this.lastID);
+            console.log('   Nombre:', nombreViaje);
+            resolve(this.lastID);
+          }
+        );
+      });
+    } else if (viajeExistente) {
+      // Si el viaje ya existía, ampliar fechas límite si la actividad está fuera de rango
+      let fIni = viajeExistente.fecha_inicio;
+      let fFin = viajeExistente.fecha_fin;
+      let changed = false;
+      if (fechaRecorridoReal && (!fIni || fechaRecorridoReal < fIni)) {
+        fIni = fechaRecorridoReal;
+        changed = true;
+      }
+      if (fechaRecorridoReal && (!fFin || fechaRecorridoReal > fFin)) {
+        fFin = fechaRecorridoReal;
+        changed = true;
+      }
+      if (changed) {
+        db.run('UPDATE viajes SET fecha_inicio = ?, fecha_fin = ? WHERE id = ?', [fIni, fFin, viajeId]);
+        console.log(`📅 Rango de fechas del viaje ${viajeId} actualizado: ${fIni} a ${fFin}`);
+      }
+    }
 
     // ========================================================================
-    // 5. CREAR ITINERARIO
+    // 5. ITINERARIO: REUTILIZAR SI YA EXISTE PARA ESTE DÍA O CREAR UNO NUEVO
     // ========================================================================
-    console.log('\n📅 Creando itinerario...');
+    console.log('\n📅 Buscando o creando itinerario...');
 
     const horaInicioItinerario = '00:00';
     const horaFinItinerario = '23:59';
 
-    const horaInicioActividad = manifestData.estadisticas?.horaInicio || '00:00';
-    const horaFinActividad = manifestData.estadisticas?.horaFin || '23:59';
+    const horaInicioActividad = manifestData.estadisticas?.horaInicio || manifestData.hora_inicio || '00:00';
+    const horaFinActividad = manifestData.estadisticas?.horaFin || manifestData.hora_fin || '23:59';
 
     console.log(`✅ Horas extraídas del manifest (datos REALES):`);
     console.log(`  Actividad inicio: ${horaInicioActividad}`);
@@ -7956,30 +7989,43 @@ app.post('/import-tracking', (req, res, next) => {
 
     const tipoViaje = TIPO_VIAJE_MAP[manifestData.perfil_transporte?.id] || 'naturaleza';
 
-    itinerarioId = await new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO ItinerarioGeneral 
-          (viajePrevistoId, fechaInicio, fechaFin, duracionDias, destinosPorDia, 
-            descripcionGeneral, horaInicio, horaFin, tipoDeViaje) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          viajeId,
-          fechaRecorridoReal,
-          fechaRecorridoReal,
-          1,
-          destinoCompleto,
-          `Recorrido de ${distKmViaje} km en ${duracionViaje}`,
-          horaInicioItinerario,
-          horaFinItinerario,
-          tipoViaje
-        ],
-        function (err) {
-          if (err) return reject(err);
-          console.log('✅ Itinerario creado con ID:', this.lastID);
-          resolve(this.lastID);
-        }
+    // Buscar si ya existe un itinerario para este viaje en esta fecha
+    itinerarioId = await new Promise((resolve) => {
+      db.get(
+        `SELECT id FROM ItinerarioGeneral WHERE viajePrevistoId = ? AND fechaInicio = ? LIMIT 1`,
+        [viajeId, fechaRecorridoReal],
+        (err, row) => resolve(row ? row.id : null)
       );
     });
+
+    if (itinerarioId) {
+      console.log(`✅ [IMPORT] Reutilizando itinerario existente ID ${itinerarioId} para el viaje ${viajeId} en la fecha ${fechaRecorridoReal}`);
+    } else {
+      itinerarioId = await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT INTO ItinerarioGeneral 
+            (viajePrevistoId, fechaInicio, fechaFin, duracionDias, destinosPorDia, 
+              descripcionGeneral, horaInicio, horaFin, tipoDeViaje) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            viajeId,
+            fechaRecorridoReal,
+            fechaRecorridoReal,
+            1,
+            destinoCompleto,
+            `Recorrido de ${distKmViaje} km en ${duracionViaje}`,
+            horaInicioItinerario,
+            horaFinItinerario,
+            tipoViaje
+          ],
+          function (err) {
+            if (err) return reject(err);
+            console.log('✅ Itinerario creado con ID:', this.lastID);
+            resolve(this.lastID);
+          }
+        );
+      });
+    }
 
     // ========================================================================
     // 6. CREAR ACTIVIDAD
