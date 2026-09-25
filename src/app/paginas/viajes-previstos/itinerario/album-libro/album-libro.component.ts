@@ -262,6 +262,33 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   modoAlbumVintage: boolean = localStorage.getItem('album_modo_vintage') !== 'false';
   reproducirEnFullscreen: boolean = localStorage.getItem('album_reproducir_fullscreen') !== 'false';
   modoRutaImagen: boolean = localStorage.getItem('album_modo_ruta_imagen') === 'true';
+
+  // ==========================================
+  // CONFIGURACIÓN MODO ZOOM CINEMÁTICO & DESACOPLE MULTIMEDIA
+  // ==========================================
+  modoZoomCinematico: boolean = localStorage.getItem('album_modo_zoom_cinematico') === 'true';
+  secuenciaCinematicaEnCurso: boolean = false;
+  private abortControllerCinematico: AbortController | null = null;
+  private timerCinematicoHold: any = null;
+
+  elementoMaximizado: {
+    pagina: PaginaMedia;
+    tipo: 'imagen' | 'video' | 'audio';
+    lado: 'izq' | 'der';
+    zoom: number;
+    rotacion: number;
+    panX: number;
+    panY: number;
+    isDragging?: boolean;
+    startX?: number;
+    startY?: number;
+    startPanX?: number;
+    startPanY?: number;
+    animandoEntrada?: boolean;
+    animandoSalida?: boolean;
+    esCinematico?: boolean;
+  } | null = null;
+
   hojaVolteando3D: boolean = false;
   abriendoPortada3D: boolean = false;
   direccionVolteo3D: 'adelante' | 'atras' = 'adelante';
@@ -4869,14 +4896,18 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.centrarMiniaturaActiva(this.paginaActual);
         this.precargarSiguienteVideo();
         if (this.reproduciendoSlideshow) {
-          const currentPag = this.paginas[this.paginaActual];
-          const tieneMediaInteractivo = currentPag?.tipoMedia === 'video' || currentPag?.tipoMedia === 'audio';
-          const tieneMapa = currentPag?.esMapaAnimado && !this.modoRutaImagen;
-          if (!tieneMediaInteractivo && !tieneMapa) {
-            this.reiniciarTimerSlideshow();
-          } else {
+          if (this.modoZoomCinematico) {
             this.limpiarTimerSlideshow();
-    if (this.timerFallbackMapa) { clearTimeout(this.timerFallbackMapa); this.timerFallbackMapa = null; }
+          } else {
+            const currentPag = this.paginas[this.paginaActual];
+            const tieneMediaInteractivo = currentPag?.tipoMedia === 'video' || currentPag?.tipoMedia === 'audio';
+            const tieneMapa = currentPag?.esMapaAnimado && !this.modoRutaImagen;
+            if (!tieneMediaInteractivo && !tieneMapa) {
+              this.reiniciarTimerSlideshow();
+            } else {
+              this.limpiarTimerSlideshow();
+              if (this.timerFallbackMapa) { clearTimeout(this.timerFallbackMapa); this.timerFallbackMapa = null; }
+            }
           }
         }
         this.cdr.detectChanges();
@@ -4925,18 +4956,22 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           this.precargarContenidoVentana(this.paginaActual);
 
           if (this.reproduciendoSlideshow) {
-            const tieneMediaInteractivo = (
-              this.paginaSpreadIzquierda?.tipoMedia === 'video' ||
-              this.paginaSpreadIzquierda?.tipoMedia === 'audio' ||
-              this.paginaSpreadDerecha?.tipoMedia === 'video' ||
-              this.paginaSpreadDerecha?.tipoMedia === 'audio'
-            );
-            const esMapaEstructural = this.spreadActualData?.paginaMapa?.esMapaGeneral || this.spreadActualData?.paginaMapa?.esMapaItinerario;
-            const tieneMapa = this.spreadActualData?.tipo === 'mapa' && !this.modoRutaImagen && !esMapaEstructural;
-            if (!tieneMediaInteractivo && !tieneMapa) {
-              this.reiniciarTimerSlideshow();
-            } else {
+            if (this.modoZoomCinematico) {
               this.limpiarTimerSlideshow();
+            } else {
+              const tieneMediaInteractivo = (
+                this.paginaSpreadIzquierda?.tipoMedia === 'video' ||
+                this.paginaSpreadIzquierda?.tipoMedia === 'audio' ||
+                this.paginaSpreadDerecha?.tipoMedia === 'video' ||
+                this.paginaSpreadDerecha?.tipoMedia === 'audio'
+              );
+              const esMapaEstructural = this.spreadActualData?.paginaMapa?.esMapaGeneral || this.spreadActualData?.paginaMapa?.esMapaItinerario;
+              const tieneMapa = this.spreadActualData?.tipo === 'mapa' && !this.modoRutaImagen && !esMapaEstructural;
+              if (!tieneMediaInteractivo && !tieneMapa) {
+                this.reiniciarTimerSlideshow();
+              } else {
+                this.limpiarTimerSlideshow();
+              }
             }
           }
 
@@ -4951,18 +4986,22 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.centrarMiniaturaActiva(this.paginaActual);
         this.precargarSiguienteVideo();
         if (this.reproduciendoSlideshow) {
-          const tieneMediaInteractivo = (
-            this.paginaSpreadIzquierda?.tipoMedia === 'video' ||
-            this.paginaSpreadIzquierda?.tipoMedia === 'audio' ||
-            this.paginaSpreadDerecha?.tipoMedia === 'video' ||
-            this.paginaSpreadDerecha?.tipoMedia === 'audio'
-          );
-          const esMapaEstructural = this.spreadActualData?.paginaMapa?.esMapaGeneral || this.spreadActualData?.paginaMapa?.esMapaItinerario;
+          if (this.modoZoomCinematico) {
+            this.limpiarTimerSlideshow();
+          } else {
+            const tieneMediaInteractivo = (
+              this.paginaSpreadIzquierda?.tipoMedia === 'video' ||
+              this.paginaSpreadIzquierda?.tipoMedia === 'audio' ||
+              this.paginaSpreadDerecha?.tipoMedia === 'video' ||
+              this.paginaSpreadDerecha?.tipoMedia === 'audio'
+            );
+            const esMapaEstructural = this.spreadActualData?.paginaMapa?.esMapaGeneral || this.spreadActualData?.paginaMapa?.esMapaItinerario;
             const tieneMapa = this.spreadActualData?.tipo === 'mapa' && !this.modoRutaImagen && !esMapaEstructural;
             if (!tieneMediaInteractivo && !tieneMapa) {
-            this.reiniciarTimerSlideshow();
-          } else {
-            this.limpiarTimerSlideshow();
+              this.reiniciarTimerSlideshow();
+            } else {
+              this.limpiarTimerSlideshow();
+            }
           }
         }
         this.cdr.detectChanges();
@@ -5123,6 +5162,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         console.log('⏱️ [Watchdog Mapa Interactivo] Tiempo de animación cumplido; avanzando');
         this.onFinAnimacionMapa();
       }, tiempoEsperaMs);
+      return;
+    }
+
+    // 🎬 SI MODO ZOOM CINEMÁTICO ESTÁ ACTIVO Y EL SLIDESHOW / MODO RECUERDO ESTÁ CORRIENDO:
+    if (this.modoZoomCinematico && this.reproduciendoSlideshow) {
+      this.limpiarTimerSlideshow();
+      this.ejecutarSecuenciaCinematicaSpread();
       return;
     }
 
@@ -5434,6 +5480,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     console.log('▶️ Iniciando slideshow...');
     this.reproduciendoSlideshow = true;
 
+    if (this.modoZoomCinematico) {
+      console.log('🎬 Modo Zoom Cinemático activo: delegando secuencia en ejecutarSecuenciaCinematicaSpread()');
+      this.limpiarTimerSlideshow();
+      this.iniciarSecuenciaVideosSpread();
+      return;
+    }
+
     const currentPag = this.paginas[this.paginaActual];
     const esAnimacion = this.esVideoAnimacionRuta(currentPag) ||
       this.esVideoAnimacionRuta(this.paginaSpreadIzquierda) ||
@@ -5476,6 +5529,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     console.log('⏸️ Deteniendo slideshow...');
     this.reproduciendoSlideshow = false;
     this.modoRecuerdoActivo = false;
+    this.cancelarSecuenciaCinematica();
     this.limpiarTimerSlideshow();
     if (this.audioViaje) {
       this.audioViaje.pause();
@@ -5926,12 +5980,422 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // MÉTODOS DE PÁGINA ÚNICA EN FULLSCREEN (ÁLBUM VINTAGE 3D)
   // ==========================================
 
-  onFotoClick(pagina: PaginaMedia | null, isFullscreen: boolean, event?: Event): void {
+  onFotoClick(pagina: PaginaMedia | null, isFullscreen: boolean, event?: Event, lado: 'izq' | 'der' = 'der'): void {
     if (event) {
       event.stopPropagation();
     }
-    if (isFullscreen) {
+    if (!pagina) return;
+
+    if (pagina.tipoMedia === 'imagen' || pagina.tipoMedia === 'video' || pagina.tipoMedia === 'audio') {
+      this.abrirElementoInteractivo(pagina, lado, event);
+    } else if (isFullscreen) {
       this.toggleFullscreenSinglePage(pagina, event);
+    }
+  }
+
+  // ==========================================
+  // GESTIÓN DE ELEMENTO MAXIMIZADO / DESACOPLADO (INTERACTIVO Y CINEMÁTICO)
+  // ==========================================
+
+  toggleModoZoomCinematico(event?: Event): void {
+    if (event) event.stopPropagation();
+    this.modoZoomCinematico = !this.modoZoomCinematico;
+    try {
+      localStorage.setItem('album_modo_zoom_cinematico', this.modoZoomCinematico ? 'true' : 'false');
+    } catch (e) {}
+
+    console.log(`🎬 Modo Zoom Cinemático: ${this.modoZoomCinematico ? 'ACTIVADO' : 'DESACTIVADO'}`);
+
+    if (this.modoZoomCinematico && this.reproduciendoSlideshow) {
+      this.limpiarTimerSlideshow();
+      this.iniciarSecuenciaVideosSpread();
+    } else if (!this.modoZoomCinematico && this.secuenciaCinematicaEnCurso) {
+      this.cancelarSecuenciaCinematica();
+      this.iniciarSecuenciaVideosSpread();
+    }
+    this.cdr.detectChanges();
+  }
+
+  cancelarSecuenciaCinematica(): void {
+    if (this.abortControllerCinematico) {
+      this.abortControllerCinematico.abort();
+      this.abortControllerCinematico = null;
+    }
+    if (this.timerCinematicoHold) {
+      clearTimeout(this.timerCinematicoHold);
+      this.timerCinematicoHold = null;
+    }
+    this.secuenciaCinematicaEnCurso = false;
+    if (this.elementoMaximizado?.esCinematico) {
+      this.cerrarElementoMaximizado(true);
+    }
+  }
+
+  abrirElementoInteractivo(pagina: PaginaMedia | null | undefined, lado: 'izq' | 'der', event?: Event, esCinematico: boolean = false): void {
+    if (event) event.stopPropagation();
+    if (!pagina || !pagina.url) return;
+
+    this.pausarMediosPliego();
+
+    const tipo: 'imagen' | 'video' | 'audio' =
+      pagina.tipoMedia === 'video' ? 'video' :
+      (pagina.tipoMedia === 'audio' ? 'audio' : 'imagen');
+
+    this.elementoMaximizado = {
+      pagina,
+      tipo,
+      lado,
+      zoom: 1.0,
+      rotacion: 0,
+      panX: 0,
+      panY: 0,
+      animandoEntrada: true,
+      esCinematico
+    };
+
+    setTimeout(() => {
+      if (this.elementoMaximizado) {
+        this.elementoMaximizado.animandoEntrada = false;
+        this.cdr.detectChanges();
+      }
+    }, 40);
+
+    this.cdr.detectChanges();
+  }
+
+  cerrarElementoMaximizado(esAutoCinematico: boolean = false): void {
+    if (!this.elementoMaximizado) return;
+
+    if (!esAutoCinematico && this.secuenciaCinematicaEnCurso) {
+      this.cancelarSecuenciaCinematica();
+    }
+
+    const vModal = document.getElementById('video-fullscreen-modal') as HTMLVideoElement;
+    if (vModal) {
+      try { vModal.pause(); } catch (e) {}
+    }
+    const aModal = document.getElementById('audio-fullscreen-modal') as HTMLAudioElement;
+    if (aModal) {
+      try { aModal.pause(); } catch (e) {}
+    }
+
+    this.elementoMaximizado.animandoSalida = true;
+    this.cdr.detectChanges();
+
+    setTimeout(() => {
+      this.elementoMaximizado = null;
+      this.cdr.detectChanges();
+    }, 280);
+  }
+
+  pausarMediosPliego(): void {
+    const vIzq = document.getElementById('video-spread-izq') as HTMLVideoElement;
+    const vDer = document.getElementById('video-spread-der') as HTMLVideoElement;
+    const aIzq = document.getElementById('audio-spread-izq') as HTMLAudioElement;
+    const aDer = document.getElementById('audio-spread-der') as HTMLAudioElement;
+    if (vIzq) try { vIzq.pause(); } catch (e) {}
+    if (vDer) try { vDer.pause(); } catch (e) {}
+    if (aIzq) try { aIzq.pause(); } catch (e) {}
+    if (aDer) try { aDer.pause(); } catch (e) {}
+  }
+
+  zoomIn(): void {
+    if (!this.elementoMaximizado) return;
+    this.elementoMaximizado.zoom = Math.min(+(this.elementoMaximizado.zoom + 0.25).toFixed(2), 4.0);
+    this.cdr.detectChanges();
+  }
+
+  zoomOut(): void {
+    if (!this.elementoMaximizado) return;
+    this.elementoMaximizado.zoom = Math.max(+(this.elementoMaximizado.zoom - 0.25).toFixed(2), 0.5);
+    if (this.elementoMaximizado.zoom <= 1.0) {
+      this.elementoMaximizado.panX = 0;
+      this.elementoMaximizado.panY = 0;
+    }
+    this.cdr.detectChanges();
+  }
+
+  rotarIzquierda(): void {
+    if (!this.elementoMaximizado) return;
+    this.elementoMaximizado.rotacion = (this.elementoMaximizado.rotacion - 90) % 360;
+    this.cdr.detectChanges();
+  }
+
+  rotarDerecha(): void {
+    if (!this.elementoMaximizado) return;
+    this.elementoMaximizado.rotacion = (this.elementoMaximizado.rotacion + 90) % 360;
+    this.cdr.detectChanges();
+  }
+
+  resetZoom(): void {
+    if (!this.elementoMaximizado) return;
+    this.elementoMaximizado.zoom = 1.0;
+    this.elementoMaximizado.rotacion = 0;
+    this.elementoMaximizado.panX = 0;
+    this.elementoMaximizado.panY = 0;
+    this.cdr.detectChanges();
+  }
+
+  onWheelZoom(event: WheelEvent): void {
+    if (!this.elementoMaximizado || this.elementoMaximizado.tipo !== 'imagen') return;
+    event.preventDefault();
+    if (event.deltaY < 0) {
+      this.zoomIn();
+    } else {
+      this.zoomOut();
+    }
+  }
+
+  onPointerDown(event: PointerEvent): void {
+    if (!this.elementoMaximizado || this.elementoMaximizado.tipo !== 'imagen') return;
+    this.elementoMaximizado.isDragging = true;
+    this.elementoMaximizado.startX = event.clientX;
+    this.elementoMaximizado.startY = event.clientY;
+    this.elementoMaximizado.startPanX = this.elementoMaximizado.panX;
+    this.elementoMaximizado.startPanY = this.elementoMaximizado.panY;
+    (event.target as HTMLElement)?.setPointerCapture?.(event.pointerId);
+  }
+
+  onPointerMove(event: PointerEvent): void {
+    if (!this.elementoMaximizado || !this.elementoMaximizado.isDragging) return;
+    const dx = event.clientX - (this.elementoMaximizado.startX || 0);
+    const dy = event.clientY - (this.elementoMaximizado.startY || 0);
+    this.elementoMaximizado.panX = (this.elementoMaximizado.startPanX || 0) + dx;
+    this.elementoMaximizado.panY = (this.elementoMaximizado.startPanY || 0) + dy;
+    this.cdr.detectChanges();
+  }
+
+  onPointerUp(event: PointerEvent): void {
+    if (!this.elementoMaximizado) return;
+    this.elementoMaximizado.isDragging = false;
+    try {
+      (event.target as HTMLElement)?.releasePointerCapture?.(event.pointerId);
+    } catch (e) {}
+  }
+
+  obtenerTransformFotoMaximizada(): string {
+    if (!this.elementoMaximizado) return 'none';
+    const { zoom, rotacion, panX, panY } = this.elementoMaximizado;
+    return `translate3d(${panX}px, ${panY}px, 0) scale(${zoom}) rotate(${rotacion}deg)`;
+  }
+
+  onVideoModalEnded(): void {
+    console.log('🎬 [Modal Vídeo] Vídeo finalizado en pantalla completa');
+  }
+
+  onAudioModalEnded(): void {
+    console.log('🎵 [Modal Audio] Audio finalizado en pantalla completa');
+  }
+
+  @HostListener('document:keydown.escape', ['$event'])
+  onEscapeKey(event: KeyboardEvent): void {
+    if (this.elementoMaximizado) {
+      this.cerrarElementoMaximizado();
+    }
+  }
+
+  // ==========================================
+  // ORQUESTACIÓN CINEMÁTICA SECUENCIAL
+  // ==========================================
+
+  async ejecutarSecuenciaCinematicaSpread(): Promise<void> {
+    if (this.abortControllerCinematico) {
+      this.abortControllerCinematico.abort();
+    }
+    this.abortControllerCinematico = new AbortController();
+    const signal = this.abortControllerCinematico.signal;
+    this.secuenciaCinematicaEnCurso = true;
+
+    console.log(`🎬 [Zoom Cinemático] Iniciando secuencia cinemática para Spread ${this.spreadActual}`);
+
+    const tieneIzq = this.esMediaValidoParaZoom(this.paginaSpreadIzquierda);
+    const tieneDer = this.esMediaValidoParaZoom(this.paginaSpreadDerecha);
+
+    if (!tieneIzq && !tieneDer) {
+      console.log('🎬 [Zoom Cinemático] Spread sin fotos ni multimedia; esperando pausa para lectura...');
+      await this.esperarCinematico(3000, signal);
+      if (!signal.aborted && this.reproduciendoSlideshow) {
+        this.secuenciaCinematicaEnCurso = false;
+        this.cambiarPagina(1);
+      }
+      return;
+    }
+
+    // 1. Elemento Izquierdo
+    if (tieneIzq && this.paginaSpreadIzquierda) {
+      await this.ejecutarPasoCinematico(this.paginaSpreadIzquierda, 'izq', signal);
+    }
+
+    if (signal.aborted || !this.reproduciendoSlideshow) {
+      this.secuenciaCinematicaEnCurso = false;
+      return;
+    }
+
+    // 2. Elemento Derecho
+    if (tieneDer && this.paginaSpreadDerecha) {
+      await this.ejecutarPasoCinematico(this.paginaSpreadDerecha, 'der', signal);
+    }
+
+    if (signal.aborted || !this.reproduciendoSlideshow) {
+      this.secuenciaCinematicaEnCurso = false;
+      return;
+    }
+
+    this.secuenciaCinematicaEnCurso = false;
+
+    // 3. Pasar a la siguiente página tras completar ambos lados
+    if (this.reproduciendoSlideshow) {
+      console.log('🎬 [Zoom Cinemático] Pliego completado con éxito. Pasando a siguiente página...');
+      setTimeout(() => {
+        if (this.reproduciendoSlideshow && !signal.aborted) {
+          this.cambiarPagina(1);
+        }
+      }, 500);
+    }
+  }
+
+  private esMediaValidoParaZoom(p: PaginaMedia | null | undefined): boolean {
+    if (!p || !p.url) return false;
+    if (p.esIndice || p.esCartaManuscrita || p.esMapaAnimado || p.esMapaGeneral || p.esMapaItinerario) return false;
+    return p.tipoMedia === 'imagen' || p.tipoMedia === 'video' || p.tipoMedia === 'audio';
+  }
+
+  private esperarCinematico(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        resolve();
+      }, ms);
+      signal.addEventListener('abort', () => {
+        clearTimeout(timer);
+        resolve();
+      }, { once: true });
+    });
+  }
+
+  private async ejecutarPasoCinematico(pagina: PaginaMedia, lado: 'izq' | 'der', signal: AbortSignal): Promise<void> {
+    if (signal.aborted || !this.reproduciendoSlideshow) return;
+
+    if (pagina.tipoMedia === 'imagen') {
+      // CASO 1: FOTO
+      console.log(`🎬 [Zoom Cinemático] Foto ${lado}: zoom a pantalla completa...`);
+      this.abrirElementoInteractivo(pagina, lado, undefined, true);
+      // Esperar ~2.8s para que se aprecie al detalle
+      await this.esperarCinematico(2800, signal);
+      if (signal.aborted) return;
+      this.cerrarElementoMaximizado(true);
+      await this.esperarCinematico(380, signal);
+    } else if (pagina.tipoMedia === 'video') {
+      // CASO 2: VÍDEO
+      console.log(`🎬 [Zoom Cinemático] Vídeo ${lado}: pantalla completa y reproducción...`);
+      this.abrirElementoInteractivo(pagina, lado, undefined, true);
+      this.bajarVolumenAudioViaje();
+
+      await new Promise<void>((resolve) => {
+        const checkVideo = () => {
+          const v = document.getElementById('video-fullscreen-modal') as HTMLVideoElement;
+          if (!v) {
+            resolve();
+            return;
+          }
+          v.muted = this.videoMuted;
+          const onEnded = () => {
+            cleanup();
+            resolve();
+          };
+          const onError = () => {
+            cleanup();
+            resolve();
+          };
+          let timerPreview: any = null;
+          if (!this.reproducirVideosCompletos) {
+            timerPreview = setTimeout(() => {
+              cleanup();
+              resolve();
+            }, this.INTERVALO_SLIDESHOW);
+          }
+          const onAbort = () => {
+            cleanup();
+            resolve();
+          };
+          signal.addEventListener('abort', onAbort, { once: true });
+
+          const cleanup = () => {
+            v.removeEventListener('ended', onEnded);
+            v.removeEventListener('error', onError);
+            if (timerPreview) clearTimeout(timerPreview);
+            signal.removeEventListener('abort', onAbort);
+          };
+
+          v.addEventListener('ended', onEnded, { once: true });
+          v.addEventListener('error', onError, { once: true });
+
+          v.play().catch(err => {
+            console.warn('Auto-play vídeo cinemático bloqueado:', err);
+            resolve();
+          });
+        };
+
+        setTimeout(checkVideo, 120);
+      });
+
+      this.restaurarVolumenAudioViaje();
+      if (signal.aborted) return;
+      this.cerrarElementoMaximizado(true);
+      await this.esperarCinematico(380, signal);
+    } else if (pagina.tipoMedia === 'audio') {
+      // CASO 3: AUDIO
+      // "El libro se detiene al abrir la página. El audio comienza a reproducirse de forma automatizada completando su pista (o fragmento) mientras la página se mantiene fija a la vista del espectador."
+      console.log(`🎬 [Zoom Cinemático] Audio ${lado}: reproduciendo pista en página fija...`);
+      this.bajarVolumenAudioViaje();
+
+      const audioId = lado === 'izq' ? 'audio-spread-izq' : 'audio-spread-der';
+      await new Promise<void>((resolve) => {
+        const a = document.getElementById(audioId) as HTMLAudioElement;
+        if (!a) {
+          resolve();
+          return;
+        }
+        a.currentTime = 0;
+        const onEnded = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = () => {
+          cleanup();
+          resolve();
+        };
+        let timerPreview: any = null;
+        if (!this.reproducirVideosCompletos) {
+          timerPreview = setTimeout(() => {
+            cleanup();
+            resolve();
+          }, this.INTERVALO_SLIDESHOW);
+        }
+        const onAbort = () => {
+          cleanup();
+          resolve();
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+
+        const cleanup = () => {
+          a.removeEventListener('ended', onEnded);
+          a.removeEventListener('error', onError);
+          if (timerPreview) clearTimeout(timerPreview);
+          signal.removeEventListener('abort', onAbort);
+        };
+
+        a.addEventListener('ended', onEnded, { once: true });
+        a.addEventListener('error', onError, { once: true });
+
+        a.play().catch(err => {
+          console.warn('Auto-play audio cinemático bloqueado:', err);
+          resolve();
+        });
+      });
+
+      this.restaurarVolumenAudioViaje();
+      if (signal.aborted) return;
+      await this.esperarCinematico(500, signal);
     }
   }
 

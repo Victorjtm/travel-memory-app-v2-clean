@@ -119,6 +119,15 @@
         </button>
       </div>
 
+      <!-- 5b. Botón Conmutable Zoom Cinemático en Fotos / Multimedia -->
+      <button class="toolbar-icon toolbar-action-btn btn-toolbar-zoom-cinematico"
+        [class.active]="modoZoomCinematico"
+        (click)="toggleModoZoomCinematico($event)"
+        [title]="modoZoomCinematico ? 'Zoom en Fotos / Multimedia: Activado (Click para desactivar)' : 'Zoom en Fotos / Multimedia: Desactivado (Click para activar)'"
+        aria-label="Zoom en Fotos / Multimedia">
+        <i class="fas fa-search-plus" aria-hidden="true"></i>
+      </button>
+
       <!-- 6. Botón para abrir directamente la página actual en Fullscreen -->
       <button class="toolbar-icon toolbar-action-btn" (click)="abrirPaginaActualEnFullscreen()"
         title="Ampliar a pantalla completa">
@@ -1455,6 +1464,113 @@
   </div>
 </div>
 
+<!-- ======================================================== -->
+<!-- MODAL DE ELEMENTO MAXIMIZADO / DESACOPLADO A PANTALLA COMPLETA -->
+<!-- (Fotos con Zoom/Rotación, Vídeos con Controles y Audios) -->
+<!-- ======================================================== -->
+<div class="libro-media-fullscreen-overlay"
+  *ngIf="elementoMaximizado"
+  [class.animando-entrada]="elementoMaximizado.animandoEntrada"
+  [class.animando-salida]="elementoMaximizado.animandoSalida"
+  (click)="cerrarElementoMaximizado()"
+  role="dialog"
+  aria-modal="true">
+
+  <!-- Botón X de Retorno al Libro -->
+  <button type="button" class="btn-cerrar-fullscreen-media" (click)="cerrarElementoMaximizado(); $event.stopPropagation()"
+    title="Cerrar y volver al libro (Esc)" aria-label="Cerrar">
+    <i class="fas fa-times"></i>
+  </button>
+
+  <!-- CASO 1: FOTO A PANTALLA COMPLETA CON ZOOM Y ROTACIÓN -->
+  <div class="fullscreen-media-container foto-container"
+    *ngIf="elementoMaximizado.tipo === 'imagen'"
+    (click)="$event.stopPropagation()"
+    (wheel)="onWheelZoom($event)">
+
+    <div class="foto-zoom-stage"
+      (pointerdown)="onPointerDown($event)"
+      (pointermove)="onPointerMove($event)"
+      (pointerup)="onPointerUp($event)"
+      (pointercancel)="onPointerUp($event)"
+      [class.arrastrando]="elementoMaximizado.isDragging">
+      <img [src]="elementoMaximizado.pagina.url"
+        [alt]="elementoMaximizado.pagina.titulo"
+        class="img-maximizada-desacoplada"
+        [class.cinematico-kenburns]="elementoMaximizado.esCinematico"
+        [style.transform]="obtenerTransformFotoMaximizada()"
+        draggable="false" />
+    </div>
+
+    <!-- Barra Flotante de Herramientas de Manipulación de Imagen (Zoom / Rotar / Reset) -->
+    <div class="media-zoom-toolbar" (click)="$event.stopPropagation()">
+      <button type="button" class="btn-zoom-tool" (click)="zoomIn()" title="Acercar (Zoom +)">
+        <i class="fas fa-search-plus"></i>
+      </button>
+      <button type="button" class="btn-zoom-tool" (click)="zoomOut()" title="Alejar (Zoom -)">
+        <i class="fas fa-search-minus"></i>
+      </button>
+      <span class="zoom-nivel-badge">{{ (elementoMaximizado.zoom * 100).toFixed(0) }}%</span>
+      <button type="button" class="btn-zoom-tool" (click)="rotarIzquierda()" title="Rotar a la izquierda (90°)">
+        <i class="fas fa-rotate-left"></i>
+      </button>
+      <button type="button" class="btn-zoom-tool" (click)="rotarDerecha()" title="Rotar a la derecha (90°)">
+        <i class="fas fa-rotate-right"></i>
+      </button>
+      <button type="button" class="btn-zoom-tool btn-reset" (click)="resetZoom()" title="Restablecer tamaño y posición">
+        <i class="fas fa-arrows-rotate"></i>
+      </button>
+    </div>
+
+    <!-- Pie / Título de la Foto Maximizada -->
+    <div class="media-fullscreen-footer" *ngIf="elementoMaximizado.pagina.titulo || elementoMaximizado.pagina.descripcion">
+      <h3 *ngIf="elementoMaximizado.pagina.titulo">{{ elementoMaximizado.pagina.titulo }}</h3>
+      <p *ngIf="elementoMaximizado.pagina.descripcion && !esTextoDuplicado(elementoMaximizado.pagina.titulo, elementoMaximizado.pagina.descripcion)">
+        {{ elementoMaximizado.pagina.descripcion }}
+      </p>
+    </div>
+  </div>
+
+  <!-- CASO 2: VÍDEO A PANTALLA COMPLETA CON CONTROLES NATIVOS -->
+  <div class="fullscreen-media-container video-container"
+    *ngIf="elementoMaximizado.tipo === 'video'"
+    (click)="$event.stopPropagation()">
+    <video id="video-fullscreen-modal"
+      [src]="elementoMaximizado.pagina.url"
+      class="video-maximizado-desacoplado"
+      controls
+      autoplay
+      playsinline
+      [muted]="videoMuted"
+      (ended)="onVideoModalEnded()"></video>
+
+    <div class="media-fullscreen-footer" *ngIf="elementoMaximizado.pagina.titulo">
+      <h3>{{ elementoMaximizado.pagina.titulo }}</h3>
+    </div>
+  </div>
+
+  <!-- CASO 3: REPRODUCTOR DE AUDIO MAXIMIZADO / CÓMODO -->
+  <div class="fullscreen-media-container audio-container"
+    *ngIf="elementoMaximizado.tipo === 'audio'"
+    (click)="$event.stopPropagation()">
+    <div class="audio-max-card">
+      <div class="vinilo-max-disco girando">
+        <i class="fas fa-compact-disc"></i>
+      </div>
+      <h3 class="audio-max-title">{{ elementoMaximizado.pagina.titulo || 'Pista de Audio' }}</h3>
+      <p class="audio-max-desc" *ngIf="elementoMaximizado.pagina.descripcion">{{ elementoMaximizado.pagina.descripcion }}</p>
+      
+      <audio id="audio-fullscreen-modal"
+        [src]="elementoMaximizado.pagina.url"
+        controls
+        autoplay
+        class="audio-max-control"
+        (ended)="onAudioModalEnded()"></audio>
+    </div>
+  </div>
+
+</div>
+
 <!-- ========================================= -->
 <!-- BLOQUE: MODAL DE MAPA GPX INDIVIDUAL -->
 <!-- ========================================= -->
@@ -1971,12 +2087,13 @@
             <!-- Caso Foto / Vídeo / Mapa Estándar en página izquierda -->
             <div class="foto-vintage-container" *ngIf="!pagIzq.esIndice && !pagIzq.esCartaManuscrita">
               <div class="foto-polaroid-vintage" [ngClass]="obtenerClaseMarco(pagIzq, 0)" [class.polaroid-clickable-fullscreen]="fullscreen"
-                (click)="onFotoClick(pagIzq, fullscreen, $event)"
-                [title]="fullscreen ? 'Hacer clic para ver en 1 página maximizada' : ''">
+                (click)="onFotoClick(pagIzq, fullscreen, $event, 'izq')"
+                title="Hacer clic para ver a pantalla completa">
                 <!-- Esquinas de montaje vintage -->
                 <img *ngIf="pagIzq.tipoMedia === 'imagen'" [src]="pagIzq.url" [alt]="pagIzq.titulo"
                   class="imagen-foto-vintage" loading="lazy" decoding="async" />
-                <div *ngIf="pagIzq.tipoMedia === 'video'" class="video-preview-vintage">
+                <div *ngIf="pagIzq.tipoMedia === 'video'" class="video-preview-vintage"
+                  (click)="abrirElementoInteractivo(pagIzq, 'izq', $event)">
                   <video id="video-spread-izq" *ngIf="pagIzq.url" [src]="pagIzq.url" class="video-foto-vintage"
                     playsinline [muted]="videoMuted" preload="auto" (play)="onVideoSpreadPlay('izq')"
                     (pause)="onVideoSpreadPause('izq')" (ended)="onVideoIzquierdoTerminado()"></video>
@@ -1986,11 +2103,13 @@
                   </button>
                 </div>
                 <!-- Reproductor de Audio Vintage página izquierda -->
-                <div *ngIf="pagIzq.tipoMedia === 'audio'" class="audio-vintage-box" (click)="$event.stopPropagation()">
+                <div *ngIf="pagIzq.tipoMedia === 'audio'" class="audio-vintage-box"
+                  (click)="abrirElementoInteractivo(pagIzq, 'izq', $event)">
                   <div class="vinilo-vintage-disco">
                     <i class="fas fa-compact-disc"></i>
                   </div>
                   <audio id="audio-spread-izq" [src]="pagIzq.url" controls preload="auto" class="audio-vintage-control"
+                    (click)="$event.stopPropagation()"
                     (play)="onAudioItemPlay()" (pause)="onAudioItemPause()"
                     (ended)="onVideoIzquierdoTerminado()" (error)="onVideoIzquierdoTerminado()"></audio>
                 </div>
@@ -2000,6 +2119,9 @@
                     [distanciaKm]="pagIzq.distanciaTramoKm"
                     [transportMode]="pagIzq.tipoTransporteTramo || 'driving'"></app-mini-mapa-gpx>
                 </div>
+                <div class="lupa-zoom-overlay"
+                  (click)="abrirElementoInteractivo(pagIzq, 'izq', $event)"><i class="fas fa-search-plus"></i>
+                  Ampliar</div>
               </div>
 
               <div class="pie-foto-vintage"
@@ -2151,11 +2273,12 @@
             <div class="foto-vintage-container"
               *ngIf="spreadActual > 0 && !pagDer.esIndice && !pagDer.esCartaManuscrita && !pagDer.esMapaAnimado">
               <div class="foto-polaroid-vintage foto-principal" [ngClass]="obtenerClaseMarco(pagDer, 1)" [class.polaroid-clickable-fullscreen]="fullscreen"
-                (click)="onFotoClick(pagDer, fullscreen, $event)"
-                [title]="fullscreen ? 'Hacer clic para ver en 1 página maximizada' : ''">
+                (click)="onFotoClick(pagDer, fullscreen, $event, 'der')"
+                title="Hacer clic para ver a pantalla completa">
                 <img *ngIf="pagDer.tipoMedia === 'imagen'" [src]="pagDer.url" [alt]="pagDer.titulo"
                   class="imagen-foto-vintage" loading="lazy" decoding="async" />
-                <div *ngIf="pagDer.tipoMedia === 'video'" class="video-preview-vintage">
+                <div *ngIf="pagDer.tipoMedia === 'video'" class="video-preview-vintage"
+                  (click)="abrirElementoInteractivo(pagDer, 'der', $event)">
                   <video id="video-spread-der" *ngIf="pagDer.url" [src]="pagDer.url" class="video-foto-vintage"
                     playsinline [muted]="videoMuted" preload="auto" (play)="onVideoSpreadPlay('der')"
                     (pause)="onVideoSpreadPause('der')" (ended)="onVideoDerechoTerminado()"></video>
@@ -2166,16 +2289,18 @@
                 </div>
 
                 <!-- Reproductor de Audio Vintage -->
-                <div *ngIf="pagDer.tipoMedia === 'audio'" class="audio-vintage-box" (click)="$event.stopPropagation()">
+                <div *ngIf="pagDer.tipoMedia === 'audio'" class="audio-vintage-box"
+                  (click)="abrirElementoInteractivo(pagDer, 'der', $event)">
                   <div class="vinilo-vintage-disco">
                     <i class="fas fa-compact-disc"></i>
                   </div>
                   <audio id="audio-spread-der" [src]="pagDer.url" controls preload="auto" class="audio-vintage-control"
+                    (click)="$event.stopPropagation()"
                     (play)="onAudioItemPlay()" (pause)="onAudioItemPause()" (ended)="onVideoDerechoTerminado()" (error)="onVideoDerechoTerminado()"></audio>
                 </div>
 
-                <div class="lupa-zoom-overlay" *ngIf="!fullscreen"
-                  (click)="abrirPaginaActualEnFullscreen(); $event.stopPropagation()"><i class="fas fa-search-plus"></i>
+                <div class="lupa-zoom-overlay"
+                  (click)="abrirElementoInteractivo(pagDer, 'der', $event)"><i class="fas fa-search-plus"></i>
                   Ampliar</div>
               </div>
 
