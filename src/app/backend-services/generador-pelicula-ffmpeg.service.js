@@ -130,8 +130,8 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
 
         const localMedia = resolverRutaLocal(esc.url);
 
-        // A. ESCENA TIPO VIDEO (Intro 3D, animación de ruta o vídeo de usuario)
-        if (esc.tipo === 'video' || esc.esIntro3D || esc.esMapaAnimado) {
+        // A. ESCENA TIPO VIDEO (Intro 3D, Outro 3D, animación de ruta o vídeo de usuario)
+        if (esc.tipo === 'video' || esc.esIntro3D || esc.esOutro3D || esc.esMapaAnimado) {
           if (!localMedia || !fs.existsSync(localMedia)) {
             console.warn(`⚠️ [PeliculaServer] Vídeo no encontrado localmente: ${esc.url}`);
             return;

@@ -214,8 +214,8 @@ export interface ProgresoVideo {
         const elementosConectados = new Set<any>();
 
         escenasCargadas.forEach(escena => {
-          // Las animaciones de ruta y la intro 3D son silenciosas: deben permanecer 100% muted para que Chromium permita play()
-          if (escena.esIntro3D || escena.esMapaAnimado) {
+          // Las animaciones de ruta, la intro 3D y el outro 3D deben permanecer muted para que Chromium permita play()
+          if (escena.esIntro3D || escena.esOutro3D || escena.esMapaAnimado) {
             if (escena.data?.video) {
               escena.data.video.muted = true;
             }
@@ -438,7 +438,7 @@ export interface ProgresoVideo {
 
       if (escena.tipo === 'video' || escena.tipo === 'intro_3d') {
         const duracionReal = escena.data?.duracion || escena.duracion || 5;
-        if (escena.esIntro3D || escena.esMapaAnimado) {
+        if (escena.esIntro3D || escena.esOutro3D || escena.esMapaAnimado) {
           duracion = duracionReal;
         } else {
           duracion = Math.min(duracionReal, this.MAX_VIDEO_DURATION_SECONDS);
@@ -564,7 +564,7 @@ export interface ProgresoVideo {
             const escenaActual = timeline[escenaIndex];
             if (escenaActual?.tipo === 'video' && escenaActual.data?.video) {
               const video = escenaActual.data.video as HTMLVideoElement;
-              if (escenaActual.esIntro3D || escenaActual.esMapaAnimado) {
+              if (escenaActual.esIntro3D || escenaActual.esOutro3D || escenaActual.esMapaAnimado) {
                 video.muted = true;
               }
               video.currentTime = 0;
@@ -2045,9 +2045,10 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       };
 
       video.onerror = (e) => {
-        if (url.includes('intro-libro-3d') && !finalUrl.includes('/uploads/')) {
-          console.warn('⚠️ Falló /assets/videos/intro-libro-3d.mp4, probando desde /uploads/videos/intro-libro-3d.mp4');
-          finalUrl = `${window.location.origin}/uploads/videos/intro-libro-3d.mp4`;
+        if ((url.includes('intro-libro-3d') || url.includes('outro-libro-3d')) && !finalUrl.includes('/uploads/')) {
+          const videoName = url.includes('outro-libro-3d') ? 'outro-libro-3d.mp4' : 'intro-libro-3d.mp4';
+          console.warn(`⚠️ Falló /assets/videos/${videoName}, probando desde /uploads/videos/${videoName}`);
+          finalUrl = `${window.location.origin}/uploads/videos/${videoName}`;
           video.src = finalUrl;
           video.load();
           return;
@@ -2063,7 +2064,7 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
         }
       }, 5000);
 
-      video.src = (esCompleto || url.includes('intro-libro-3d'))
+      video.src = (esCompleto || url.includes('intro-libro-3d') || url.includes('outro-libro-3d'))
         ? finalUrl
         : `${finalUrl}#t=0,${this.MAX_VIDEO_DURATION_SECONDS}`;
       video.load();

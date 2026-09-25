@@ -1571,6 +1571,52 @@
 
 </div>
 
+<!-- ======================================================== -->
+<!-- MODAL OUTRO CINEMÁTICO: CIERRE Y ESTANTERÍA DE RECUERDOS -->
+<!-- ======================================================== -->
+<div class="modal-outro-cinematico-overlay"
+  *ngIf="mostrarModalOutro"
+  (click)="cerrarOutroModal()"
+  role="dialog"
+  aria-modal="true">
+
+  <!-- Botón X de Cierre -->
+  <button type="button" class="btn-cerrar-fullscreen-media" (click)="cerrarOutroModal(); $event.stopPropagation()"
+    title="Cerrar y volver al libro (Esc)" aria-label="Cerrar">
+    <i class="fas fa-times"></i>
+  </button>
+
+  <div class="modal-outro-container" (click)="$event.stopPropagation()">
+    <div class="video-outro-wrapper">
+      <video id="video-outro-modal"
+        src="/assets/videos/outro-libro-3d.mp4"
+        class="video-outro-player"
+        autoplay
+        playsinline
+        controls
+        (ended)="onOutroVideoEnded()"></video>
+    </div>
+
+    <!-- Botonera y dedicatoria final bajo el vídeo -->
+    <div class="outro-modal-footer">
+      <div class="outro-footer-text">
+        <span class="outro-badge-oro"><i class="fas fa-bookmark"></i> Estantería de los Recuerdos</span>
+        <h3>{{ infoViaje?.nombre || 'Mi Viaje Inolvidable' }}</h3>
+        <p>Los recuerdos de este viaje quedan guardados para siempre en la estantería de tu memoria.</p>
+      </div>
+
+      <div class="outro-footer-actions">
+        <button type="button" class="btn-outro-action primary" (click)="mostrarDialogoVideo(); cerrarOutroModal()">
+          <i class="fas fa-video"></i> Crear Película Completa MP4
+        </button>
+        <button type="button" class="btn-outro-action" (click)="volverAlInicio()">
+          <i class="fas fa-book-open"></i> Volver a la Portada
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ========================================= -->
 <!-- BLOQUE: MODAL DE MAPA GPX INDIVIDUAL -->
 <!-- ========================================= -->
@@ -2331,6 +2377,13 @@
                 <span class="adorno-esquina inf-der"></span>
                 <div class="marca-agua-vintage">
                   <i class="fas fa-feather-alt"></i>
+                </div>
+                <div class="cierre-estanteria-prompt" *ngIf="spreadActual === totalSpreads - 1">
+                  <span class="sello-fin-vintage">✦ FIN DEL RECORRIDO ✦</span>
+                  <p class="frase-estanteria-vintage">Los recuerdos de este viaje quedan guardados para siempre.</p>
+                  <button type="button" class="btn-guardar-estanteria-vintage" (click)="mostrarOutroEstanteriaRecuerdos(); $event.stopPropagation()">
+                    <i class="fas fa-bookmark"></i> Colocar en la Estantería de Recuerdos
+                  </button>
                 </div>
               </div>
               <!-- Numeración difuminada esquina inferior derecha -->

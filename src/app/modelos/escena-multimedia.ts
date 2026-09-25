@@ -17,6 +17,7 @@ export interface EscenaMultimedia {
   claseMarco?: string;
   badgeOrden?: string;
   esIntro3D?: boolean;
+  esOutro3D?: boolean;
   esMapaAnimado?: boolean;
   trackGpx?: string;
   distanciaKm?: number;

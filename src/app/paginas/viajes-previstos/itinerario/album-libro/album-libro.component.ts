@@ -289,6 +289,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     esCinematico?: boolean;
   } | null = null;
 
+  mostrarModalOutro: boolean = false;
+
   hojaVolteando3D: boolean = false;
   abriendoPortada3D: boolean = false;
   direccionVolteo3D: 'adelante' | 'atras' = 'adelante';
@@ -5559,8 +5561,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         this.cambiarPagina(1);
         this.cdr.detectChanges();
       } else {
-        console.log('🏁 Fin del álbum alcanzado en slideshow');
+        console.log('🏁 Fin del álbum alcanzado en slideshow: mostrando Outro Estantería de los Recuerdos');
         this.detenerSlideshow();
+        this.mostrarOutroEstanteriaRecuerdos();
       }
       return;
     }
@@ -6192,6 +6195,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     if (this.elementoMaximizado) {
       this.cerrarElementoMaximizado();
     }
+    if (this.mostrarModalOutro) {
+      this.cerrarOutroModal();
+    }
   }
 
   // ==========================================
@@ -6245,12 +6251,18 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     // 3. Pasar a la siguiente página tras completar ambos lados
     if (this.reproduciendoSlideshow) {
-      console.log('🎬 [Zoom Cinemático] Pliego completado con éxito. Pasando a siguiente página...');
-      setTimeout(() => {
-        if (this.reproduciendoSlideshow && !signal.aborted) {
-          this.cambiarPagina(1);
-        }
-      }, 500);
+      if (this.spreadActual + 1 < this.totalSpreads) {
+        console.log('🎬 [Zoom Cinemático] Pliego completado con éxito. Pasando a siguiente página...');
+        setTimeout(() => {
+          if (this.reproduciendoSlideshow && !signal.aborted) {
+            this.cambiarPagina(1);
+          }
+        }, 500);
+      } else {
+        console.log('🎬 [Zoom Cinemático] Fin del álbum alcanzado. Mostrando Outro Estantería de los Recuerdos...');
+        this.detenerSlideshow();
+        this.mostrarOutroEstanteriaRecuerdos();
+      }
     }
   }
 
@@ -6397,6 +6409,46 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       if (signal.aborted) return;
       await this.esperarCinematico(500, signal);
     }
+  }
+
+  // ==========================================
+  // OUTRO CINEMÁTICO: ESTANTERÍA DE LOS RECUERDOS
+  // ==========================================
+
+  mostrarOutroEstanteriaRecuerdos(): void {
+    console.log('📚 [Outro] Mostrando secuencia final: Estantería de los Recuerdos');
+    this.pausarMediosPliego();
+    this.detenerSlideshow();
+    this.cancelarSecuenciaCinematica();
+    this.mostrarModalOutro = true;
+    this.cdr.detectChanges();
+
+    setTimeout(() => {
+      const vOutro = document.getElementById('video-outro-modal') as HTMLVideoElement;
+      if (vOutro) {
+        vOutro.currentTime = 0;
+        vOutro.muted = this.videoMuted;
+        vOutro.play().catch(e => console.warn('Auto-play vídeo outro bloqueado:', e));
+      }
+    }, 150);
+  }
+
+  cerrarOutroModal(): void {
+    const vOutro = document.getElementById('video-outro-modal') as HTMLVideoElement;
+    if (vOutro) {
+      try { vOutro.pause(); } catch (e) {}
+    }
+    this.mostrarModalOutro = false;
+    this.cdr.detectChanges();
+  }
+
+  onOutroVideoEnded(): void {
+    console.log('🎬 [Outro] Vídeo completado: El libro descansa en la Estantería de los Recuerdos.');
+  }
+
+  volverAlInicio(): void {
+    this.cerrarOutroModal();
+    this.irAPagina(0);
   }
 
   toggleFullscreenSinglePage(pagina: PaginaMedia | null, event?: Event): void {
@@ -7516,6 +7568,18 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           }
         }
       });
+
+    // 3. Escena Final: OUTRO 3D CINEMÁTICA EN MP4 A 60 FPS
+    // Cierre del libro de recuerdos y colocación en la Estantería de los Recuerdos
+    secuencia.push({
+      id: 'outro-3d-cinematica',
+      tipo: 'video',
+      url: '/assets/videos/outro-libro-3d.mp4',
+      duracion: 11.8,
+      titulo: 'Estantería de los Recuerdos',
+      descripcion: 'Cierre del libro y guardado en la estantería',
+      esOutro3D: true
+    });
 
     return secuencia;
   }
