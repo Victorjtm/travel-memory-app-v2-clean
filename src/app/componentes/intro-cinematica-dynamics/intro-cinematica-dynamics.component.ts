@@ -46,8 +46,8 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
   activo: boolean = true;
   tiempoActual: number = 0; // 0.0s a 7.50s exactos
 
-  // Duración pausada y cinematográfica: 7.5 segundos
-  public readonly DURACION_TOTAL: number = 6.8;
+  // Duración pausada y cinematográfica: 11.2 segundos (caída visible, zoom a portada y lectura tranquila)
+  public readonly DURACION_TOTAL: number = 11.2;
   private renderer!: THREE.WebGLRenderer;
   private scene!: THREE.Scene;
   private camera!: THREE.PerspectiveCamera;
@@ -770,29 +770,31 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
   };
 
   /**
-   * 🎛️ Orquestador de las 5 fases cinemáticas (7.5s pausados y cinematográficos):
-   * 1. Caída e impacto (0.0s - 0.8s)
-   * 2. PAUSA DE LECTURA TRANQUILA DE LA PORTADA (0.8s - 2.2s)
-   * 3. APERTURA SUAVE 3D DE LA TAPA (2.2s - 3.0s) -> izquierda marrón limpio
-   * 4. VUELO SERENO DE FOTOS DESDE LA PÁGINA DERECHA (3.0s - 5.8s) -> sin prisas
-   * 5. CIERRE 3D DE LA TAPA (5.8s - 6.6s)
-   * 6. ENCUADRE FINAL DEL LIBRO CERRADO Y TRANSICIÓN AL DOM (6.6s - 7.5s)
+   * 🎛️ Orquestador de las fases cinemáticas (11.2s pausados y cinematográficos):
+   * 1. Caída majestuosa y visible con impacto y rebote amortiguado (0.0s - 1.40s)
+   * 2. Travelling cinematográfico (ZOOM) suave hacia el título y foto de portada (1.40s - 2.80s)
+   * 3. Pausa de lectura tranquila y contemplación del título y portada en primer plano (2.80s - 5.40s)
+   * 4. Apertura suave, pausada y majestuosa de la tapa 3D con luz interior (5.40s - 7.20s)
+   * 5. Vuelo sereno y sosegado de los recuerdos fotográficos (7.20s - 10.20s)
+   * 6. Encuadre final del libro abierto y transición al álbum interactivo (10.20s - 11.20s)
    */
-    public actualizarEstadoCinematico(t: number): void {
+  public actualizarEstadoCinematico(t: number): void {
     const ANGULO_MAX_APERTURA = Math.PI * 0.82; // ~148 grados
 
     // -------------------------------------------------------------
-    // FASE 1: IMPACTO (0.0s - 0.75s) - Libro cae y rebota sobre la mesa
+    // FASE 1: CAÍDA MAJESTUOSA Y VISIBLE (0.0s - 1.40s)
+    // El libro desciende con inercia perceptible y rebota suavemente sobre la mesa
     // -------------------------------------------------------------
-    if (t <= 0.75) {
-      const tImpacto = 0.58;
+    if (t <= 1.40) {
+      const tImpacto = 1.10;
 
       if (t < tImpacto) {
         const p = t / tImpacto;
-        const progresoCaida = p * p;
-        this.libroGroup.position.y = 4.0 * (1 - progresoCaida);
-        this.libroGroup.rotation.x = -0.2 * (1 - progresoCaida);
-        this.libroGroup.rotation.z = 0.08 * (1 - progresoCaida);
+        const progresoCaida = Math.pow(p, 2.2); // Caída con aceleración realista y visible
+        this.libroGroup.position.y = 4.8 * (1 - progresoCaida);
+        this.libroGroup.rotation.x = -0.32 * (1 - progresoCaida) - 0.15;
+        this.libroGroup.rotation.y = 0.08 * (1 - progresoCaida);
+        this.libroGroup.rotation.z = 0.10 * (1 - progresoCaida);
         this.polvoParticles.visible = false;
         this.tapaPivotGroup.rotation.z = 0;
       } else {
@@ -802,8 +804,8 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
         }
 
         const deltaImpacto = t - tImpacto;
-        const amplitud = 0.26 * Math.exp(-deltaImpacto * 18);
-        const rebote = Math.sin(deltaImpacto * 42) * amplitud;
+        const amplitud = 0.22 * Math.exp(-deltaImpacto * 14);
+        const rebote = Math.sin(deltaImpacto * 36) * amplitud;
 
         this.libroGroup.position.y = Math.max(0, rebote);
         this.libroGroup.rotation.set(-0.15, 0, 0);
@@ -812,52 +814,85 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
         this.actualizarParticulasPolvo(deltaImpacto);
       }
 
-      this.camera.position.set(0, 3.2, 3.2);
+      this.camera.position.set(0, 3.4, 3.4);
       this.camera.lookAt(0, 0.35, 0.25);
       this.materialRecuerdos.opacity = 0;
       this.luzInteriorLibro.intensity = 0;
     }
 
     // -------------------------------------------------------------
-    // FASE 2: PAUSA DE APRECIACIÓN EN LA MESA (0.75s - 1.30s)
+    // FASE 2: TRAVELLING CINEMATOGRÁFICO (ZOOM) HACIA EL TÍTULO Y PORTADA (1.40s - 2.80s)
+    // La cámara se acerca suavemente para destacar el título en oro y el relicario
     // -------------------------------------------------------------
-    else if (t > 0.75 && t <= 1.30) {
+    else if (t > 1.40 && t <= 2.80) {
       this.polvoParticles.visible = false;
-      this.libroGroup.position.y = 0;
+      this.libroGroup.position.set(0, 0, 0);
       this.libroGroup.rotation.set(-0.15, 0, 0);
       this.tapaPivotGroup.rotation.z = 0;
-
-      this.camera.position.set(0, 3.2, 3.2);
-      this.camera.lookAt(0, 0.35, 0.25);
       this.materialRecuerdos.opacity = 0;
       this.luzInteriorLibro.intensity = 0;
+
+      const pZoom = (t - 1.40) / 1.40;
+      const easeZoom = (1 - Math.cos(pZoom * Math.PI)) / 2;
+
+      // Travelling suave desde plano general hacia primer plano de la portada
+      this.camera.position.x = 0;
+      this.camera.position.y = THREE.MathUtils.lerp(3.4, 2.15, easeZoom);
+      this.camera.position.z = THREE.MathUtils.lerp(3.4, 2.05, easeZoom);
+
+      const targetY = THREE.MathUtils.lerp(0.35, 0.30, easeZoom);
+      const targetZ = THREE.MathUtils.lerp(0.25, 0.10, easeZoom);
+      this.camera.lookAt(0, targetY, targetZ);
     }
 
     // -------------------------------------------------------------
-    // FASE 3: APERTURA SUAVE 3D DE LA TAPA (1.30s - 2.10s)
+    // FASE 3: PAUSA DE LECTURA TRANQUILA Y CONTEMPLACIÓN (2.80s - 5.40s)
+    // 2.6 segundos para leer el título, subtítulo, fecha y ver la foto sin prisas
     // -------------------------------------------------------------
-    else if (t > 1.30 && t <= 2.10) {
+    else if (t > 2.80 && t <= 5.40) {
+      this.polvoParticles.visible = false;
+      this.libroGroup.position.set(0, 0, 0);
+      this.libroGroup.rotation.set(-0.15, 0, 0);
+      this.tapaPivotGroup.rotation.z = 0;
+      this.materialRecuerdos.opacity = 0;
+      this.luzInteriorLibro.intensity = 0;
+
+      // Sutilísimo micro-dolly flotante que mantiene viva la escena 3D
+      const pHold = (t - 2.80) / 2.60;
+      this.camera.position.set(0, 2.15 - pHold * 0.04, 2.05 - pHold * 0.04);
+      this.camera.lookAt(0, 0.30, 0.10);
+    }
+
+    // -------------------------------------------------------------
+    // FASE 4: APERTURA SUAVE Y MAJESTUOSA DEL LIBRO 3D (5.40s - 7.20s)
+    // La tapa se abre despacio (1.8s) y la cámara retrocede para encuadrar las dos páginas
+    // -------------------------------------------------------------
+    else if (t > 5.40 && t <= 7.20) {
       if (!this.sonidoAperturaEmitido) {
         this.emitirSonidoApertura();
         this.sonidoAperturaEmitido = true;
       }
 
-      const pApertura = (t - 1.30) / 0.80; // 0 a 1 suave
-      const ease = (1 - Math.cos(pApertura * Math.PI)) / 2;
+      const pApertura = (t - 5.40) / 1.80; // 0 a 1 suave en 1.80s
+      const easeApertura = (1 - Math.cos(pApertura * Math.PI)) / 2;
 
-      this.tapaPivotGroup.rotation.z = ease * ANGULO_MAX_APERTURA;
-      this.luzInteriorLibro.intensity = ease * 2.5;
+      this.tapaPivotGroup.rotation.z = easeApertura * ANGULO_MAX_APERTURA;
+      this.luzInteriorLibro.intensity = easeApertura * 2.5;
 
-      this.camera.position.set(0, 3.2, 3.2);
-      this.camera.lookAt(0, 0.35, 0.25);
+      // La cámara retrocede suavemente para encuadrar la doble página abierta
+      this.camera.position.x = 0;
+      this.camera.position.y = THREE.MathUtils.lerp(2.11, 3.10, easeApertura);
+      this.camera.position.z = THREE.MathUtils.lerp(2.01, 3.10, easeApertura);
+      this.camera.lookAt(0, 0.35, THREE.MathUtils.lerp(0.10, 0.25, easeApertura));
+
       this.materialRecuerdos.opacity = 0;
     }
 
     // -------------------------------------------------------------
-    // FASE 4: VUELO Y RETORNO DE FOTOS (2.10s - 5.70s)
-    // Las fotos salen hacia el usuario y regresan al libro abierto
+    // FASE 5: VUELO Y RETORNO SERENO DE RECUERDOS (7.20s - 10.20s)
+    // Las fotos emergen con calma desde la página derecha hacia el usuario
     // -------------------------------------------------------------
-    else if (t > 2.10 && t <= 5.70) {
+    else if (t > 7.20 && t <= 10.20) {
       this.tapaPivotGroup.rotation.z = ANGULO_MAX_APERTURA;
       this.luzInteriorLibro.intensity = 2.5;
 
@@ -870,19 +905,19 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     }
 
     // -------------------------------------------------------------
-    // FASE 5: EL LIBRO SE QUEDA ABIERTO Y TRANSICIÓN FLUIDA AL DOM (5.70s - 6.80s)
+    // FASE 6: EL LIBRO SE QUEDA ABIERTO Y TRANSICIÓN FLUIDA AL DOM (10.20s - 11.20s)
     // El libro permanece abierto mostrando sus dos páginas interiores
     // -------------------------------------------------------------
-    else if (t > 5.70) {
+    else if (t > 10.20) {
       this.ctxRecuerdos.clearRect(0, 0, 1280, 720);
       this.texturaRecuerdoActual!.needsUpdate = true;
       this.materialRecuerdos.opacity = 0;
 
-      // ¡LA TAPA PERMANECE TOTALMENTE ABIERTA!
+      // La tapa permanece totalmente abierta mostrando el pergamino
       this.tapaPivotGroup.rotation.z = ANGULO_MAX_APERTURA;
       this.luzInteriorLibro.intensity = 2.0;
 
-      const pTrans = Math.min(1.0, (t - 5.70) / 1.10);
+      const pTrans = Math.min(1.0, (t - 10.20) / 1.00);
       const easeTrans = (1 - Math.cos(pTrans * Math.PI)) / 2;
 
       this.camera.position.x = 0;
@@ -895,19 +930,19 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * 🚀 FASE 4: Genera y anima las fotos emergiendo de la página derecha del libro
-   * a un ritmo sereno y pausado (no enloquecido), creciendo suavemente hacia la cámara
+   * 🚀 FASE 5: Genera y anima las fotos emergiendo de la página derecha del libro
+   * a un ritmo sereno y pausado, creciendo suavemente hacia la cámara
    */
-    private actualizarVueloFotosDesdeLibro(t: number): void {
+  private actualizarVueloFotosDesdeLibro(t: number): void {
     const ctx = this.ctxRecuerdos;
     const CW = 1280;
     const CH = 720;
 
     ctx.clearRect(0, 0, CW, CH);
 
-    // Spawn de fotos desde t=2.15s hasta t=4.00s (ritmo fluido y armonioso)
-    const INTERVALO_SPAWN = 0.17;
-    if (t >= 2.15 && t <= 4.00 && t - this.ultimoTiempoSpawn >= INTERVALO_SPAWN) {
+    // Spawn de fotos desde t=7.25s hasta t=9.30s (ritmo fluido, pausado y armonioso)
+    const INTERVALO_SPAWN = 0.28;
+    if (t >= 7.25 && t <= 9.30 && t - this.ultimoTiempoSpawn >= INTERVALO_SPAWN) {
       this.ultimoTiempoSpawn = t;
 
       const framesDisponibles = this.framesPrecargados.length > 0
@@ -970,11 +1005,11 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
             break;
         }
 
-        // Cada foto viaja 1.65 segundos: sale hacia el usuario y regresa al libro
+        // Cada foto viaja 1.85 segundos: sale hacia el usuario y regresa al libro con calma
         this.fotosEnVuelo.push({
           frame,
           tiempoInicio: t,
-          duracion: 1.65,
+          duracion: 1.85,
           formato,
           driftX,
           driftY,
