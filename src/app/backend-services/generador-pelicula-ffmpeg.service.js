@@ -128,7 +128,11 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
         const segName = `seg_${String(globalIdx).padStart(4, '0')}.mp4`;
         const segPath = path.join(tmpDir, segName);
 
-        const localMedia = resolverRutaLocal(esc.url);
+        let localMedia = resolverRutaLocal(esc.url);
+        if ((!localMedia || !fs.existsSync(localMedia)) && esc.esIntro3D) {
+          console.warn(`⚠️ [PeliculaServer] Intro personalizada no encontrada en ${esc.url}, usando intro base por defecto`);
+          localMedia = resolverRutaLocal('/assets/videos/intro-libro-3d.mp4');
+        }
 
         // A. ESCENA TIPO VIDEO (Intro 3D, Outro 3D, animación de ruta o vídeo de usuario)
         if (esc.tipo === 'video' || esc.esIntro3D || esc.esOutro3D || esc.esMapaAnimado) {

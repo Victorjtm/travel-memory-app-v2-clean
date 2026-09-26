@@ -24,6 +24,7 @@ import { TrackEditorService } from '../../../../servicios/track-editor.service';
 import { RouteVideoGeneratorService, ProgresoRenderizadoRuta } from '../../../../servicios/route-video-generator.service';
 import { IntroCinematicaDynamicsComponent } from '../../../../componentes/intro-cinematica-dynamics/intro-cinematica-dynamics.component';
 import { IntroMemoryPreloaderService } from '../../../../servicios/intro-memory-preloader.service';
+import { IntroVideoGeneratorService } from '../../../../servicios/intro-video-generator.service';
 
 // ==========================================
 // TIPOS E INTERFACES
@@ -106,6 +107,7 @@ interface ContextoViaje {
 }
 
 interface InfoViaje {
+  id?: number;
   nombre: string;
   descripcion?: string;
   fechaInicio?: string;
@@ -1190,6 +1192,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     private geocodificacionService: GeocodificacionService,
     public videoGeneratorService: VideoGeneratorService,
     public routeVideoGeneratorService: RouteVideoGeneratorService,
+    public introVideoGeneratorService: IntroVideoGeneratorService,
     private gpxAnimationService: GpxAnimationService,
     private trackEditorService: TrackEditorService,
     private cdr: ChangeDetectorRef,
@@ -7274,10 +7277,72 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   blobVideoGenerado: Blob | null = null;
   nombreArchivoVideoGenerado: string = 'pelicula-viaje.mp4';
 
+  // Control de estado de la intro 3D personalizada del viaje
+  introVideoLista: boolean = false;
+  urlIntroVideoViaje: string | null = null;
+  generandoIntro3D: boolean = false;
+  progresoIntro3D: string = '';
+
   mostrarDialogoVideo(): void {
     this.actualizarEstadoAnimacionesRuta();
+    this.verificarEstadoIntroVideo();
     this.mostrarConfiguracionVideo = true;
     document.body.style.overflow = 'hidden';
+  }
+
+  async verificarEstadoIntroVideo(): Promise<void> {
+    const vId = this.infoViaje?.id || this.contextoViaje?.viajeId;
+    if (!vId) return;
+    try {
+      const res = await this.introVideoGeneratorService.verificarIntroExiste(vId);
+      this.introVideoLista = res.exists;
+      this.urlIntroVideoViaje = res.url;
+      this.cdr.detectChanges();
+    } catch {
+      this.introVideoLista = false;
+      this.urlIntroVideoViaje = null;
+    }
+  }
+
+  async generarIntro3DManual(): Promise<void> {
+    const vId = this.infoViaje?.id || this.contextoViaje?.viajeId;
+    if (this.generandoIntro3D || !vId) return;
+    try {
+      this.generandoIntro3D = true;
+      this.progresoIntro3D = 'Iniciando renderizado 3D de portada...';
+      this.cdr.detectChanges();
+
+      const titulo = this.infoViaje?.nombre || this.getTituloContextual() || 'Mi Viaje';
+      const imagenPortada = this.getImagenViajeUrl();
+
+      const urlGenerada = await this.introVideoGeneratorService.generarYSubirVideoIntro(
+        vId,
+        titulo,
+        imagenPortada,
+        this.paginas,
+        (p) => {
+          this.progresoIntro3D = p.mensaje;
+          if (this.generandoVideo) {
+            this.progresoVideo = {
+              fase: 'generando',
+              porcentaje: Math.round(p.porcentaje * 0.15),
+              mensaje: `Portada 3D: ${p.mensaje}`
+            };
+          }
+          this.cdr.detectChanges();
+        }
+      );
+      this.urlIntroVideoViaje = urlGenerada;
+      this.introVideoLista = true;
+      console.log('✅ [AlbumLibro] Intro 3D personalizada generada con éxito:', urlGenerada);
+    } catch (err) {
+      console.error('❌ Error generando intro 3D personalizada:', err);
+      alert('No se pudo generar la animación 3D de la portada: ' + (err instanceof Error ? err.message : 'Error desconocido'));
+    } finally {
+      this.generandoIntro3D = false;
+      this.progresoIntro3D = '';
+      this.cdr.detectChanges();
+    }
   }
 
   cerrarDialogoVideo(): void {
@@ -7330,9 +7395,21 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     try {
       this.generandoVideo = true;
+
+      // Comprobar y generar la intro 3D personalizada si aún no existe
+      if (!this.introVideoLista || !this.urlIntroVideoViaje) {
+        this.progresoVideo = {
+          fase: 'generando',
+          porcentaje: 2,
+          mensaje: 'Generando animación 3D de portada con los datos del viaje...'
+        };
+        this.cdr.detectChanges();
+        await this.generarIntro3DManual();
+      }
+
       this.progresoVideo = {
         fase: 'cargando',
-        porcentaje: 0,
+        porcentaje: 5,
         mensaje: 'Preparando secuencia del viaje...'
       };
 
@@ -7433,11 +7510,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   private construirSecuenciaEscenas(): EscenaMultimedia[] {
     const secuencia: EscenaMultimedia[] = [];
 
-    // 1. Escena 1: INTRO 3D CINEMÁTICA EN MP4 A 60 FPS
+    // 1. Escena 1: INTRO 3D CINEMÁTICA EN MP4 (Personalizada con título y foto del viaje)
+    const viajeId = this.infoViaje?.id || this.contextoViaje?.viajeId;
+    const introUrl = this.urlIntroVideoViaje || (viajeId ? `/uploads/${viajeId}/intro_3d_${viajeId}.mp4` : '/assets/videos/intro-libro-3d.mp4');
+
     secuencia.push({
       id: 'intro-3d-cinematica',
       tipo: 'video',
-      url: '/assets/videos/intro-libro-3d.mp4',
+      url: introUrl,
       duracion: 10.5,
       titulo: this.infoViaje?.nombre || 'Mi Viaje',
       descripcion: 'Apertura del diario de viaje',

@@ -4833,7 +4833,81 @@ app.delete(['/actividades/:id/subtramos/video', '/api/actividades/:id/subtramos/
   }
 });
 
-// 3.c POST Generar película completa de viaje en el servidor con FFmpeg (Ultrarrápido y fluido 30 FPS)
+// 3.c GESTIÓN DE LA INTRO 3D PERSONALIZADA DEL VIAJE
+app.post(['/viajes/:id/intro-video', '/api/viajes/:id/intro-video'], upload.single('video'), async (req, res) => {
+  const viajeId = req.params.id;
+  if (!req.file) {
+    return res.status(400).json({ error: 'No se ha proporcionado archivo de vídeo para la intro' });
+  }
+
+  const targetDir = path.join(uploadsPath, String(viajeId));
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  const finalFileName = `intro_3d_${viajeId}.mp4`;
+  const finalFilePath = path.join(targetDir, finalFileName);
+  const relPath = `/uploads/${viajeId}/${finalFileName}`;
+  const tempInput = req.file.path;
+
+  // Audio acústico ambiental y de apertura de la intro de referencia
+  const baseAudio = path.resolve(__dirname, '../assets/videos/intro-libro-3d.mp4');
+  let cmd;
+  if (fs.existsSync(baseAudio)) {
+    cmd = `${FFMPEG_BIN} -y -i "${tempInput}" -i "${baseAudio}" -c:v libx264 -preset fast -pix_fmt yuv420p -map 0:v:0 -map 1:a:0? -c:a aac -ar 44100 -ac 2 -shortest -movflags +faststart "${finalFilePath}"`;
+  } else {
+    cmd = `${FFMPEG_BIN} -y -i "${tempInput}" -c:v libx264 -preset fast -pix_fmt yuv420p -movflags +faststart "${finalFilePath}"`;
+  }
+
+  exec(cmd, (err) => {
+    try { if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput); } catch (e) {}
+
+    if (err) {
+      console.warn('⚠️ [IntroVideo] Advertencia en optimización FFmpeg, usando copia directa:', err.message);
+      try {
+        fs.copyFileSync(tempInput, finalFilePath);
+      } catch (copyErr) {
+        return res.status(500).json({ error: 'Error guardando intro 3D', detalle: copyErr.message });
+      }
+    }
+
+    console.log(`🎬 [IntroVideo] Intro 3D personalizada registrada con éxito para Viaje #${viajeId}: ${relPath}`);
+    res.json({
+      success: true,
+      url: relPath
+    });
+  });
+});
+
+app.get(['/viajes/:id/intro-video', '/api/viajes/:id/intro-video'], async (req, res) => {
+  const viajeId = req.params.id;
+  const finalFileName = `intro_3d_${viajeId}.mp4`;
+  const finalFilePath = path.join(uploadsPath, String(viajeId), finalFileName);
+
+  if (fs.existsSync(finalFilePath)) {
+    res.json({ exists: true, url: `/uploads/${viajeId}/${finalFileName}` });
+  } else {
+    res.json({ exists: false, url: null });
+  }
+});
+
+app.delete(['/viajes/:id/intro-video', '/api/viajes/:id/intro-video'], async (req, res) => {
+  const viajeId = req.params.id;
+  const finalFileName = `intro_3d_${viajeId}.mp4`;
+  const finalFilePath = path.join(uploadsPath, String(viajeId), finalFileName);
+
+  try {
+    if (fs.existsSync(finalFilePath)) {
+      fs.unlinkSync(finalFilePath);
+    }
+    console.log(`🧹 [IntroVideo] Intro 3D eliminada para Viaje #${viajeId}`);
+    res.json({ success: true, message: 'Intro 3D eliminada correctamente' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 3.d POST Generar película completa de viaje en el servidor con FFmpeg (Ultrarrápido y fluido 30 FPS)
 let generadorPeliculaFFmpegService;
 try {
   generadorPeliculaFFmpegService = require('./backend-services/generador-pelicula-ffmpeg.service');

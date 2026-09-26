@@ -1309,6 +1309,30 @@
           <span>Todas las animaciones de ruta ({{ animacionesRutaTotales.length }}) están listas en MP4 fluido a 60 FPS.</span>
         </div>
 
+        <!-- ESTADO DE LA PORTADA 3D PERSONALIZADA -->
+        <div class="alerta-intro-3d" [class.intro-lista]="introVideoLista" [class.intro-pendiente]="!introVideoLista">
+          <div class="alerta-header">
+            <i class="fas" [class.fa-check-circle]="introVideoLista" [class.fa-book-open]="!introVideoLista"></i>
+            <strong>Portada 3D cinematográfica: {{ introVideoLista ? 'Personalizada para este viaje' : 'Pendiente de renderizar' }}</strong>
+          </div>
+          <p class="alerta-desc" *ngIf="introVideoLista">
+            La animación 3D del libro incluye el título "{{ infoViaje?.nombre || 'Mi Viaje' }}" y la fotografía de portada.
+          </p>
+          <p class="alerta-desc" *ngIf="!introVideoLista">
+            Se renderizará automáticamente en 3D con el título y la foto de este viaje al iniciar la exportación. También puedes generarla ahora.
+          </p>
+          <div class="intro-acciones-box">
+            <button type="button" class="btn-lote-modal" *ngIf="!introVideoLista" (click)="generarIntro3DManual()" [disabled]="generandoIntro3D">
+              <i class="fas" [class.fa-cube]="!generandoIntro3D" [class.fa-spinner]="generandoIntro3D" [class.fa-spin]="generandoIntro3D"></i>
+              {{ generandoIntro3D ? (progresoIntro3D || 'Renderizando portada 3D...') : 'Generar portada 3D ahora' }}
+            </button>
+            <button type="button" class="btn-regenerar-intro" *ngIf="introVideoLista" (click)="generarIntro3DManual()" [disabled]="generandoIntro3D">
+              <i class="fas" [class.fa-sync-alt]="!generandoIntro3D" [class.fa-spinner]="generandoIntro3D" [class.fa-spin]="generandoIntro3D"></i>
+              {{ generandoIntro3D ? (progresoIntro3D || 'Actualizando...') : 'Regenerar portada 3D' }}
+            </button>
+          </div>
+        </div>
+
         <!-- Opciones Principales -->
         <div class="opciones-principales">
 
