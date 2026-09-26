@@ -4217,7 +4217,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     let gpxFinal = '';
     if (puntosItin.length > 0 && this.trackEditorService) {
-      gpxFinal = this.trackEditorService.pointsToGpxXml(puntosItin);
+      try {
+        gpxFinal = this.trackEditorService.pointsToGpxXml(puntosItin);
+      } catch (err) {
+        console.warn('⚠️ Error al generar GPX XML para itinerario:', err);
+      }
     }
 
     return {
@@ -4381,9 +4385,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
 
     // Página 2 inicial: Mapa General de todo el Viaje (Doble página panorámica)
-    const gpxGeneralViaje = (puntosTodosItinerarios.length > 0 && this.trackEditorService)
-      ? this.trackEditorService.pointsToGpxXml(puntosTodosItinerarios)
-      : '';
+    let gpxGeneralViaje = '';
+    if (puntosTodosItinerarios.length > 0 && this.trackEditorService) {
+      try {
+        gpxGeneralViaje = this.trackEditorService.pointsToGpxXml(puntosTodosItinerarios);
+      } catch (err) {
+        console.warn('⚠️ Error al generar GPX XML general del viaje:', err);
+      }
+    }
 
     const diasTotalesViaje = this.calcularDiasEntreFechas(this.infoViaje?.fechaInicio, this.infoViaje?.fechaFin);
 

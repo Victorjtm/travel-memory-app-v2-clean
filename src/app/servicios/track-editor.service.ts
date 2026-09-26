@@ -649,6 +649,28 @@ export class TrackEditorService {
   }
 
   /**
+   * Convierte de forma 100% segura cualquier valor de tiempo a string ISO-8601,
+   * evitando que Date.toISOString() arroje RangeError si la fecha es inválida o NaN.
+   */
+  public safeIsoString(val: any): string | undefined {
+    if (!val) return undefined;
+    if (val instanceof Date) {
+      return !isNaN(val.getTime()) ? val.toISOString() : undefined;
+    }
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (!trimmed) return undefined;
+      const d = new Date(trimmed);
+      return !isNaN(d.getTime()) ? d.toISOString() : trimmed;
+    }
+    if (typeof val === 'number' && !isNaN(val)) {
+      const d = new Date(val);
+      return !isNaN(d.getTime()) ? d.toISOString() : undefined;
+    }
+    return undefined;
+  }
+
+  /**
    * Re-serializa un array de GpxPoint[] a GPX XML.
    * Soporta multi-segment (un <trkseg> por cada segmento) y single-segment (todo junto).
    * Esto permite pasar puntos editados al GpxAnimationComponent
@@ -701,8 +723,8 @@ export class TrackEditorService {
         if (p.ele !== undefined) {
           xml += `        <ele>${p.ele}</ele>\n`;
         }
-        if (p.time) {
-          const timeStr = p.time instanceof Date ? p.time.toISOString() : p.time;
+        const timeStr = this.safeIsoString(p.time);
+        if (timeStr) {
           xml += `        <time>${timeStr}</time>\n`;
         }
         const mode = p.mode || p.hfMode;
@@ -806,14 +828,14 @@ export class TrackEditorService {
             return {
               lat: anchorProp.lat ?? ptFallback.lat,
               lng: anchorProp.lng ?? ptFallback.lng,
-              time: anchorProp.time ? (typeof anchorProp.time === 'string' ? anchorProp.time : anchorProp.time.toISOString()) : (ptFallback.time ? ptFallback.time.toISOString() : undefined),
+              time: this.safeIsoString(anchorProp.time) || this.safeIsoString(ptFallback.time),
               index: anchorProp.index
             };
           }
           return {
             lat: ptFallback.lat,
             lng: ptFallback.lng,
-            time: ptFallback.time ? ptFallback.time.toISOString() : undefined
+            time: this.safeIsoString(ptFallback.time)
           };
         };
 
@@ -850,14 +872,14 @@ export class TrackEditorService {
             return {
               lat: anchorProp.lat ?? ptFallback.lat,
               lng: anchorProp.lng ?? ptFallback.lng,
-              time: anchorProp.time ? (typeof anchorProp.time === 'string' ? anchorProp.time : anchorProp.time.toISOString()) : (ptFallback.time ? ptFallback.time.toISOString() : undefined),
+              time: this.safeIsoString(anchorProp.time) || this.safeIsoString(ptFallback.time),
               index: anchorProp.index ?? (ptFallback as any).index
             };
           }
           return {
             lat: ptFallback.lat,
             lng: ptFallback.lng,
-            time: ptFallback.time ? ptFallback.time.toISOString() : undefined,
+            time: this.safeIsoString(ptFallback.time),
             index: (ptFallback as any).index
           };
         };

@@ -56,9 +56,20 @@ export class GpxAnimationService {
       if (lat === 0 || lng === 0) continue;
 
       const currentLatLng = { lat, lng };
-      const currentTime = timeEl ? new Date(timeEl.textContent || '').getTime() : null;
+      let currentTime: number | null = null;
+      let parsedDate: Date | undefined = undefined;
+      if (timeEl && timeEl.textContent) {
+        const text = timeEl.textContent.trim();
+        if (text) {
+          const d = new Date(text);
+          if (!isNaN(d.getTime())) {
+            currentTime = d.getTime();
+            parsedDate = d;
+          }
+        }
+      }
 
-      if (i === 0) {
+      if (i === 0 && currentTime !== null) {
         startTime = currentTime;
       }
 
@@ -75,8 +86,8 @@ export class GpxAnimationService {
         distAcum += d;
       }
 
-      if (startTime !== null && currentTime !== null) {
-        timeAcum = (currentTime - startTime) / 1000;
+      if (startTime !== null && currentTime !== null && !isNaN(startTime) && !isNaN(currentTime)) {
+        timeAcum = Math.max(0, (currentTime - startTime) / 1000);
       } else if (prevPoint && !isGap) {
         // Si no hay timestamps, simulamos un tiempo basado en una velocidad media (5 km/h)
         const d = this.getDistance(prevPoint.lat, prevPoint.lng, lat, lng);
@@ -98,7 +109,7 @@ export class GpxAnimationService {
         lat,
         lng,
         ele: eleEl ? parseFloat(eleEl.textContent || '0') : undefined,
-        time: timeEl ? new Date(timeEl.textContent || '') : undefined,
+        time: parsedDate,
         distAcum,
         timeAcum,
         mode: transportMode,
