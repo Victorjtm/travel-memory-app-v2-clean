@@ -4854,9 +4854,9 @@ app.post(['/viajes/:id/intro-video', '/api/viajes/:id/intro-video'], upload.sing
   const baseAudio = path.resolve(__dirname, '../assets/videos/intro-libro-3d.mp4');
   let cmd;
   if (fs.existsSync(baseAudio)) {
-    cmd = `${FFMPEG_BIN} -y -i "${tempInput}" -i "${baseAudio}" -c:v libx264 -preset fast -pix_fmt yuv420p -map 0:v:0 -map 1:a:0? -c:a aac -ar 44100 -ac 2 -shortest -movflags +faststart "${finalFilePath}"`;
+    cmd = `${FFMPEG_BIN} -y -fflags +genpts -r 30 -i "${tempInput}" -i "${baseAudio}" -c:v libx264 -preset fast -r 30 -pix_fmt yuv420p -map 0:v:0 -map 1:a:0? -c:a aac -ar 44100 -ac 2 -t 10.5 -movflags +faststart "${finalFilePath}"`;
   } else {
-    cmd = `${FFMPEG_BIN} -y -i "${tempInput}" -c:v libx264 -preset fast -pix_fmt yuv420p -movflags +faststart "${finalFilePath}"`;
+    cmd = `${FFMPEG_BIN} -y -fflags +genpts -r 30 -i "${tempInput}" -c:v libx264 -preset fast -r 30 -pix_fmt yuv420p -t 10.5 -movflags +faststart "${finalFilePath}"`;
   }
 
   exec(cmd, (err) => {

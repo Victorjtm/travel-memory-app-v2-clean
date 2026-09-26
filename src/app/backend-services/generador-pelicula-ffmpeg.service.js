@@ -143,7 +143,14 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
 
           const tieneAudio = await videoTieneAudio(localMedia);
 
-          const vf = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
+          // Si es un vídeo de usuario grabado en vertical (9:16), aplicar fondo desenfocado (blurred pillarbox)
+          let vf;
+          if (!esc.esIntro3D && !esc.esOutro3D && !esc.esMapaAnimado) {
+            vf = 'split[main][bg];[bg]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=25:5[bgblur];[main]scale=1920:1080:force_original_aspect_ratio=decrease[fg];[bgblur][fg]overlay=(W-w)/2:(H-h)/2';
+          } else {
+            vf = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
+          }
+
           const args = ['-y', '-i', localMedia];
 
           if (tieneAudio) {
@@ -168,23 +175,28 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
           return;
         }
 
-        // B. ESCENA TIPO AUDIO
+        // B. ESCENA TIPO AUDIO (Con onda animada y título limpio sin truncamiento)
         if (esc.tipo === 'audio') {
           if (!localMedia || !fs.existsSync(localMedia)) return;
           const dur = await obtenerDuracionAudio(localMedia);
           const durFinal = Math.max(3.5, dur);
 
-          let vf = 'scale=1920:1080';
-          if (configuracion.incluirTexto && fontPath) {
-            const textoBadge = (esc.titulo || 'Nota de Voz').replace(/'/g, '');
-            vf += `,drawtext=text='${textoBadge}':fontcolor=white:fontsize=44:x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.7:boxborderw=24:fontfile='${fontPath}'`;
+          const txtFile = path.join(tmpDir, `txt_audio_${globalIdx}.txt`);
+          const tituloLimpio = (esc.titulo || 'Nota de Voz').trim();
+          fs.writeFileSync(txtFile, `🎙️ ${tituloLimpio}`, 'utf-8');
+
+          let drawTextFilter = '';
+          if (configuracion.incluirTexto !== false && fontPath) {
+            drawTextFilter = `,drawtext=textfile='${txtFile.replace(/\\/g, '/')}':fontcolor=white:fontsize=46:x=(w-text_w)/2:y=(h-text_h)/2-90:box=1:boxcolor=black@0.7:boxborderw=24:fontfile='${fontPath}'`;
           }
 
           await runFFmpeg([
             '-y',
-            '-f', 'lavfi', '-t', String(durFinal), '-i', 'color=c=0x1a2430:s=1920x1080:d=' + durFinal,
+            '-f', 'lavfi', '-t', String(durFinal), '-i', `color=c=0x0a1128:s=1920x1080:d=${durFinal}`,
             '-i', localMedia,
-            '-vf', vf,
+            '-filter_complex', `[1:a]showwaves=s=1600x260:mode=cline:colors=0x38bdf8:scale=cbrt[waves];[0:v][waves]overlay=160:H-360${drawTextFilter}[v]`,
+            '-map', '[v]',
+            '-map', '1:a',
             '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-shortest',
             segPath
@@ -226,19 +238,34 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
         const dur = Number(esc.duracion) > 0 ? Number(esc.duracion) : 3.5;
         let vf = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
 
-        // Superponer subtítulo/badge inferior si está activado
+        // Superponer subtítulo inferior limpio si está activado
         if (configuracion.incluirTexto !== false && fontPath) {
-          let textoBadge = '';
-          if (esc.badgeOrden && esc.badgeOrden !== 'Ruta') {
-            textoBadge = `Parada #${esc.badgeOrden}`;
-          }
-          if (esc.titulo && esc.titulo.trim().length > 0 && esc.titulo.toLowerCase() !== 'itinerario') {
-            textoBadge = textoBadge ? `${textoBadge} - ${esc.titulo.trim()}` : esc.titulo.trim();
+          const esNombreArchivoCrudo = (t) => {
+            if (!t) return false;
+            const lower = t.toLowerCase();
+            return /^(jpeg|video|img|dsc|rec|recording|photo|audi)[\w\d_\-\.]+/i.test(lower) ||
+                   /\.(jpg|jpeg|png|mp4|aac|mp3|m4a)$/i.test(lower);
+          };
+
+          let textoPrincipal = '';
+          if (esc.titulo && !esNombreArchivoCrudo(esc.titulo) && esc.titulo.toLowerCase() !== 'itinerario') {
+            textoPrincipal = esc.titulo.trim();
+          } else if (esc.descripcion && !esNombreArchivoCrudo(esc.descripcion) && esc.descripcion.toLowerCase() !== 'itinerario' && esc.descripcion.length < 60) {
+            textoPrincipal = esc.descripcion.trim();
           }
 
-          if (textoBadge) {
-            const txtSanitizado = textoBadge.replace(/'/g, '').replace(/:/g, ' -').substring(0, 75);
-            vf += `,drawtext=text='${txtSanitizado}':fontcolor=white:fontsize=36:x=80:y=h-110:box=1:boxcolor=black@0.65:boxborderw=16:fontfile='${fontPath}'`;
+          const horaLimpia = esc.hora ? ` · ${esc.hora} h` : '';
+          let textoFinal = '';
+          if (textoPrincipal) {
+            textoFinal = `${textoPrincipal}${horaLimpia}`;
+          } else if (horaLimpia) {
+            textoFinal = `${horaLimpia.replace(/^\s*·\s*/, '')}`;
+          }
+
+          if (textoFinal) {
+            const txtFile = path.join(tmpDir, `txt_img_${globalIdx}.txt`);
+            fs.writeFileSync(txtFile, textoFinal, 'utf-8');
+            vf += `,drawtext=textfile='${txtFile.replace(/\\/g, '/')}':fontcolor=white:fontsize=36:x=80:y=h-110:box=1:boxcolor=black@0.65:boxborderw=16:fontfile='${fontPath}'`;
           }
         }
 

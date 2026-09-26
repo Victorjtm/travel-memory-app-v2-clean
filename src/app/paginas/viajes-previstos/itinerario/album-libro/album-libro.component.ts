@@ -2334,6 +2334,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       console.log('✅ Información del viaje recibida:', viaje);
 
       this.infoViaje = {
+        id: viajeId,
         nombre: viaje.nombre || `Viaje #${viajeId}`,
         fechaInicio: viaje.fechaInicio || '',
         fechaFin: viaje.fechaFin || '',
@@ -2345,6 +2346,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     } catch (error) {
       console.error('❌ Error al cargar información del viaje:', error);
       this.infoViaje = {
+        id: viajeId,
         nombre: `Viaje #${viajeId}`,
         fechaInicio: '',
         fechaFin: '',
@@ -2887,8 +2889,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               idParadaOrigen: pag.idParadaOrigen,
               idParadaDestino: pag.idParadaDestino,
               fecha: pag.fecha,
-              origenDireccion: pag.origenDireccion,
-              destinoDireccion: pag.destinoDireccion,
+              horaSalida: pag.horaInicioTramo || undefined,
+              horaLlegada: pag.horaFinTramo || undefined,
+              origenDireccion: (pag.origenDireccion || (pag.coordenadasOrigen ? this.obtenerUbicacionCercana(pag.coordenadasOrigen.lat, pag.coordenadasOrigen.lng) : undefined)) || undefined,
+              destinoDireccion: (pag.destinoDireccion || (pag.coordenadasDestino ? this.obtenerUbicacionCercana(pag.coordenadasDestino.lat, pag.coordenadasDestino.lng) : undefined)) || undefined,
               origenInfo: pag.origenInfo,
               destinoInfo: pag.destinoInfo
             },
@@ -3768,22 +3772,33 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           coordenadasDestino: ptFin?.lat != null ? { lat: ptFin.lat, lng: ptFin.lng } : undefined
         };
 
-        // Geocodificar en segundo plano las etiquetas A/B de origen y destino (sin bloquear)
-        if (ptInicio?.lat != null && ptFin?.lat != null && this.geocodificacionService) {
-          this.geocodificacionService.obtenerInfoUbicacionPunto(ptInicio.lat, ptInicio.lng)
-            .then(info => {
-              if (info) {
-                paginaMapa.origenInfo = info;
-                paginaMapa.origenDireccion = info.nombreCompleto;
-              }
-            }).catch(() => {});
-          this.geocodificacionService.obtenerInfoUbicacionPunto(ptFin.lat, ptFin.lng)
-            .then(info => {
-              if (info) {
-                paginaMapa.destinoInfo = info;
-                paginaMapa.destinoDireccion = info.nombreCompleto;
-              }
-            }).catch(() => {});
+        // Asignar direcciones inmediatas desde la caché de ubicaciones precargadas
+        const locOrigen = ptInicio?.lat != null ? this.obtenerUbicacionCercana(ptInicio.lat, ptInicio.lng) : null;
+        const locDestino = ptFin?.lat != null ? this.obtenerUbicacionCercana(ptFin.lat, ptFin.lng) : null;
+
+        if (locOrigen) paginaMapa.origenDireccion = locOrigen;
+        if (locDestino) paginaMapa.destinoDireccion = locDestino;
+
+        // Geocodificar en segundo plano si no estaba en caché
+        if ((!paginaMapa.origenDireccion || !paginaMapa.destinoDireccion) && ptInicio?.lat != null && ptFin?.lat != null && this.geocodificacionService) {
+          if (!paginaMapa.origenDireccion) {
+            this.geocodificacionService.obtenerInfoUbicacionPunto(ptInicio.lat, ptInicio.lng)
+              .then(info => {
+                if (info && !/^-?\d+\.\d+/.test(info.nombreCompleto)) {
+                  paginaMapa.origenInfo = info;
+                  paginaMapa.origenDireccion = info.nombreCompleto;
+                }
+              }).catch(() => {});
+          }
+          if (!paginaMapa.destinoDireccion) {
+            this.geocodificacionService.obtenerInfoUbicacionPunto(ptFin.lat, ptFin.lng)
+              .then(info => {
+                if (info && !/^-?\d+\.\d+/.test(info.nombreCompleto)) {
+                  paginaMapa.destinoInfo = info;
+                  paginaMapa.destinoDireccion = info.nombreCompleto;
+                }
+              }).catch(() => {});
+          }
         }
 
         if (!urlVideoRuta) { this.encolarPrecacheSubtramo(paginaMapa); }
@@ -4047,8 +4062,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             idParadaOrigen: pag.idParadaOrigen,
             idParadaDestino: pag.idParadaDestino,
             fecha: pag.fecha,
-            origenDireccion: pag.origenDireccion,
-            destinoDireccion: pag.destinoDireccion,
+            horaSalida: pag.horaInicioTramo || undefined,
+            horaLlegada: pag.horaFinTramo || undefined,
+            origenDireccion: (pag.origenDireccion || (pag.coordenadasOrigen ? this.obtenerUbicacionCercana(pag.coordenadasOrigen.lat, pag.coordenadasOrigen.lng) : undefined)) || undefined,
+            destinoDireccion: (pag.destinoDireccion || (pag.coordenadasDestino ? this.obtenerUbicacionCercana(pag.coordenadasDestino.lat, pag.coordenadasDestino.lng) : undefined)) || undefined,
             origenInfo: pag.origenInfo,
             destinoInfo: pag.destinoInfo
           }
@@ -4103,8 +4120,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         idParadaOrigen: mapa.idParadaOrigen,
         idParadaDestino: mapa.idParadaDestino,
         fecha: mapa.fecha,
-        origenDireccion: mapa.origenDireccion,
-        destinoDireccion: mapa.destinoDireccion,
+        horaSalida: mapa.horaInicioTramo || undefined,
+        horaLlegada: mapa.horaFinTramo || undefined,
+        origenDireccion: (mapa.origenDireccion || (mapa.coordenadasOrigen ? this.obtenerUbicacionCercana(mapa.coordenadasOrigen.lat, mapa.coordenadasOrigen.lng) : undefined)) || undefined,
+        destinoDireccion: (mapa.destinoDireccion || (mapa.coordenadasDestino ? this.obtenerUbicacionCercana(mapa.coordenadasDestino.lat, mapa.coordenadasDestino.lng) : undefined)) || undefined,
         origenInfo: mapa.origenInfo,
         destinoInfo: mapa.destinoInfo
       };
@@ -6824,6 +6843,33 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     console.log('✅ Precarga de ubicaciones completada');
   }
 
+  obtenerUbicacionCercana(lat?: number, lng?: number): string | null {
+    if (lat == null || lng == null || !this.ubicacionesCache || this.ubicacionesCache.size === 0) return null;
+    let mejorUbicacion: string | null = null;
+    let menorDistancia = Infinity;
+
+    this.ubicacionesCache.forEach((nombre, key) => {
+      if (!nombre || nombre === 'Ubicación') return;
+      const partes = key.split(',');
+      if (partes.length === 2) {
+        const cLat = parseFloat(partes[0]);
+        const cLng = parseFloat(partes[1]);
+        if (!isNaN(cLat) && !isNaN(cLng)) {
+          const d = Math.hypot(lat - cLat, lng - cLng);
+          if (d < menorDistancia) {
+            menorDistancia = d;
+            mejorUbicacion = nombre;
+          }
+        }
+      }
+    });
+
+    if (menorDistancia < 0.02) { // Coincidencia dentro de radio cercano
+      return mejorUbicacion;
+    }
+    return null;
+  }
+
   // MÉTODO DE DEBUG para verificar las coordenadas
   debugCoordenadas(): void {
     console.log('=== DEBUG COORDENADAS ===');
@@ -7521,7 +7567,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     // 1. Escena 1: INTRO 3D CINEMÁTICA EN MP4 (Personalizada con título y foto del viaje)
     const viajeId = this.infoViaje?.id || this.contextoViaje?.viajeId;
-    const introUrl = this.urlIntroVideoViaje || (viajeId ? `/uploads/${viajeId}/intro_3d_${viajeId}.mp4` : '/assets/videos/intro-libro-3d.mp4');
+    const backendUrl = environment.apiUrl || 'http://localhost:3000';
+    const introUrl = this.urlIntroVideoViaje || (viajeId ? `${backendUrl}/uploads/${viajeId}/intro_3d_${viajeId}.mp4` : '/assets/videos/intro-libro-3d.mp4');
 
     secuencia.push({
       id: 'intro-3d-cinematica',

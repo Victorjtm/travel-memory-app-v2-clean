@@ -11,7 +11,7 @@
     "start:frontend": "ng serve --host 0.0.0.0 --disable-host-check --configuration mobile",
     "start:https": "ng serve --ssl --host 0.0.0.0 --disable-host-check",
     "start:full-https": "npm-run-all --parallel start:backend start:https",
-    "start:backend": "node --watch src/app/server.js",
+    "start:backend": "node --watch --watch-path=src/app/server.js --watch-path=src/app/backend-services src/app/server.js",
     "start:prod": "npm run build && cross-env NODE_ENV=production PORT=4000 serve -s dist/travel-memory-app --single",
     "ngrok": "start-ngrok.bat",
     "electron": "electron ."

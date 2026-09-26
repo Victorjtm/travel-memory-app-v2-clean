@@ -13,6 +13,7 @@ export interface EscenaMultimedia {
   fecha?: string;
   hora?: string;
   itinerarioId?: number;
+  viajeId?: number;
   cargado?: boolean;
   claseMarco?: string;
   badgeOrden?: string;

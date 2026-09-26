@@ -382,8 +382,8 @@ export class IntroVideoGeneratorService {
         camera.position.z = THREE.MathUtils.lerp(3.4, 2.05, easeZoom);
         camera.lookAt(0, THREE.MathUtils.lerp(0.35, 0.30, easeZoom), THREE.MathUtils.lerp(0.25, 0.10, easeZoom));
       }
-      // FASE 3: Pausa de lectura sosegada del título y foto (2.80s - 5.40s)
-      else if (t > 2.80 && t <= 5.40) {
+      // FASE 3: Pausa de lectura sosegada del título y foto (2.80s - 4.40s)
+      else if (t > 2.80 && t <= 4.40) {
         polvoParticles.visible = false;
         libroGroup.position.set(0, 0, 0);
         libroGroup.rotation.set(-0.15, 0, 0);
@@ -391,13 +391,13 @@ export class IntroVideoGeneratorService {
         matRecuerdos.opacity = 0;
         luzInteriorLibro.intensity = 0;
 
-        const pHold = (t - 2.80) / 2.60;
+        const pHold = (t - 2.80) / 1.60;
         camera.position.set(0, 2.15 - pHold * 0.04, 2.05 - pHold * 0.04);
         camera.lookAt(0, 0.30, 0.10);
       }
-      // FASE 4: Apertura majestuosa de la tapa (5.40s - 7.20s)
-      else if (t > 5.40 && t <= 7.20) {
-        const pAp = (t - 5.40) / 1.80;
+      // FASE 4: Apertura majestuosa de la tapa (4.40s - 6.20s)
+      else if (t > 4.40 && t <= 6.20) {
+        const pAp = (t - 4.40) / 1.80;
         const easeAp = (1 - Math.cos(pAp * Math.PI)) / 2;
         tapaPivotGroup.rotation.z = easeAp * ANGULO_MAX_APERTURA;
         luzInteriorLibro.intensity = easeAp * 2.5;
@@ -408,8 +408,8 @@ export class IntroVideoGeneratorService {
         camera.lookAt(0, 0.35, THREE.MathUtils.lerp(0.10, 0.25, easeAp));
         matRecuerdos.opacity = 0;
       }
-      // FASE 5: Vuelo de recuerdos desde el libro abierto (7.20s - 10.20s)
-      else if (t > 7.20 && t <= 10.20) {
+      // FASE 5: Vuelo de recuerdos desde el libro abierto (6.20s - 10.20s)
+      else if (t > 6.20 && t <= 10.20) {
         tapaPivotGroup.rotation.z = ANGULO_MAX_APERTURA;
         luzInteriorLibro.intensity = 2.5;
 
@@ -504,7 +504,8 @@ export class IntroVideoGeneratorService {
     } else {
       // Fallback con MediaRecorder
       onProgress?.({ fase: 'renderizando', porcentaje: 30, mensaje: 'Renderizando con MediaRecorder...' });
-      const stream = canvas.captureStream(this.FPS);
+      const stream = (canvas as any).captureStream ? (canvas as any).captureStream(0) : canvas.captureStream(this.FPS);
+      const videoTrack = stream.getVideoTracks()[0];
       const mimeType = MediaRecorder.isTypeSupported('video/mp4;codecs=h264')
         ? 'video/mp4;codecs=h264'
         : (MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm');
@@ -522,8 +523,12 @@ export class IntroVideoGeneratorService {
         const t = frame / this.FPS;
         actualizarEstadoCinematico(t);
         renderer.render(scene, camera);
+        if (videoTrack && (videoTrack as any).requestFrame) {
+          (videoTrack as any).requestFrame();
+        }
         await new Promise(r => setTimeout(r, 1000 / this.FPS));
       }
+      await new Promise(r => setTimeout(r, 350));
       recorder.stop();
       resultadoBlob = await finishedPromise;
     }
@@ -876,7 +881,7 @@ export class IntroVideoGeneratorService {
     ctx.clearRect(0, 0, CW, CH);
 
     const INTERVALO_SPAWN = 0.28;
-    if (t >= 7.25 && t <= 9.30 && t - getUltimoSpawn() >= INTERVALO_SPAWN) {
+    if (t >= 6.20 && t <= 9.80 && t - getUltimoSpawn() >= INTERVALO_SPAWN) {
       setUltimoSpawn(t);
       const framesDisponibles = framesPrecargados;
       let frame: MemoryFrame | null = null;

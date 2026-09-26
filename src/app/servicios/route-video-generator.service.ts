@@ -27,6 +27,8 @@ export interface RouteVideoOptions {
   destinoInfo?: InfoUbicacionRuta;
   /** Fecha del tramo en formato YYYY-MM-DD para el HUD */
   fecha?: string;
+  horaSalida?: string;
+  horaLlegada?: string;
 }
 
 export interface ProgresoRenderizadoRuta {
@@ -490,7 +492,8 @@ export class RouteVideoGeneratorService {
     infoDestino?: InfoUbicacionRuta,
     onProgress?: (p: ProgresoRenderizadoRuta) => void
   ): Promise<Blob> {
-    const stream = canvas.captureStream(fps);
+    const stream = (canvas as any).captureStream ? (canvas as any).captureStream(0) : canvas.captureStream(fps);
+    const videoTrack = stream.getVideoTracks()[0];
     const mimeType = MediaRecorder.isTypeSupported('video/mp4')
       ? 'video/mp4'
       : MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
@@ -521,7 +524,7 @@ export class RouteVideoGeneratorService {
             } catch {
               resolve(new Blob(chunks, { type: mimeType }));
             }
-          }, 100);
+          }, 150);
           return;
         }
 
@@ -541,6 +544,10 @@ export class RouteVideoGeneratorService {
           infoOrigen,
           infoDestino
         );
+
+        if (videoTrack && (videoTrack as any).requestFrame) {
+          (videoTrack as any).requestFrame();
+        }
 
         frame++;
         if (frame % 15 === 0) {
@@ -696,7 +703,6 @@ export class RouteVideoGeneratorService {
     const dibujarTarjetaPunto = (
       cx: number, cy: number,
       tipo: 'origen' | 'destino',
-      idParada: number | string,
       info?: InfoUbicacionRuta | null,
       direccionPlana?: string,
       colorTema: string = '#15803d',
@@ -707,14 +713,20 @@ export class RouteVideoGeneratorService {
         ? info
         : this.geocodificacionService.parsearDireccionTexto(direccionPlana || '');
 
-      if (!datos || (!datos.linea1 && !datos.nombreCompleto)) return;
+      let linea1 = datos?.linea1 || datos?.nombreCompleto || '';
+      let linea2 = datos?.linea2 || '';
 
+      // Si linea1 contiene solo coordenadas numéricas, sustituir por descripción limpia
+      if (/^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(linea1.trim()) || !linea1) {
+        linea1 = tipo === 'origen' ? 'Inicio del trayecto' : 'Destino del trayecto';
+        linea2 = '';
+      }
+
+      const hora = tipo === 'origen' ? options.horaSalida : options.horaLlegada;
+      const horaStr = hora ? ` · ${hora} h` : '';
       const badgeTexto = tipo === 'origen'
-        ? `🟢 SALIDA • PARADA #${idParada}`
-        : `🏁 LLEGADA • PARADA #${idParada}`;
-
-      const linea1 = datos.linea1 || datos.nombreCompleto;
-      const linea2 = datos.linea2 || '';
+        ? `🟢 PUNTO A · SALIDA${horaStr}`
+        : `🏁 PUNTO B · LLEGADA${horaStr}`;
 
       ctx.save();
       // Medir ancho de texto para dimensionar el contenedor con tipografía grande y muy clara
@@ -831,9 +843,8 @@ export class RouteVideoGeneratorService {
       ctx.restore();
     };
 
-    // 4. Marcador de Inicio (Parada de Origen: Verde Esmeralda con número y halo)
+    // 4. Marcador de Inicio (Parada de Origen: Verde Esmeralda con halo)
     const pInicio = points[0];
-    const numOrigen = options.idParadaOrigen != null && options.idParadaOrigen > 0 ? options.idParadaOrigen : '1';
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
     ctx.shadowBlur = 10;
@@ -852,18 +863,17 @@ export class RouteVideoGeneratorService {
     ctx.fillStyle = '#15803d';
     ctx.fill();
     ctx.restore();
-    // Número identificador
+    // Letra A identificadora
     ctx.save();
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 17px sans-serif';
+    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`${numOrigen}`, pInicio.x, pInicio.y + 0.5);
+    ctx.fillText('A', pInicio.x, pInicio.y + 0.5);
     ctx.restore();
 
-    // 5. Marcador de Fin (Parada de Destino: Rojo Carmesí con número y halo)
+    // 5. Marcador de Fin (Punto B: Rojo Carmesí)
     const pFin = points[points.length - 1];
-    const numDestino = options.idParadaDestino != null && options.idParadaDestino > 0 ? options.idParadaDestino : '2';
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
     ctx.shadowBlur = 10;
@@ -882,13 +892,13 @@ export class RouteVideoGeneratorService {
     ctx.fillStyle = '#dc2626';
     ctx.fill();
     ctx.restore();
-    // Número identificador
+    // Letra B identificadora
     ctx.save();
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 17px sans-serif';
+    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`${numDestino}`, pFin.x, pFin.y + 0.5);
+    ctx.fillText('B', pFin.x, pFin.y + 0.5);
     ctx.restore();
 
     // Proximidad geométrica entre Punto A y Punto B
@@ -898,7 +908,6 @@ export class RouteVideoGeneratorService {
     dibujarTarjetaPunto(
       pInicio.x, pInicio.y,
       'origen',
-      numOrigen,
       infoOrigen,
       options.origenDireccion,
       '#15803d',
@@ -909,7 +918,6 @@ export class RouteVideoGeneratorService {
     dibujarTarjetaPunto(
       pFin.x, pFin.y,
       'destino',
-      numDestino,
       infoDestino,
       options.destinoDireccion,
       '#dc2626',

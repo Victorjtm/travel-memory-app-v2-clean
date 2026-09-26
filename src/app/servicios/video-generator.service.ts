@@ -66,7 +66,16 @@ export interface ProgresoVideo {
     audioViaje?: HTMLAudioElement | null,
     onProgress?: (progreso: ProgresoVideo) => void
   ): Promise<Blob> {
-    const viajeId = infoViaje?.id || 0;
+    let viajeId = infoViaje?.id || 0;
+    if (!viajeId && secuencia && secuencia.length > 0) {
+      for (const esc of secuencia) {
+        const match = esc.url?.match(/\/uploads\/(\d+)\//);
+        if (match) {
+          viajeId = parseInt(match[1], 10);
+          break;
+        }
+      }
+    }
     try {
       onProgress?.({ fase: 'cargando', porcentaje: 5, mensaje: 'Conectando con el motor de renderizado FFmpeg...' });
 
@@ -299,6 +308,10 @@ export interface ProgresoVideo {
       escenasCargadas.forEach(escena => {
         if (escena.data?.video) {
           const v = escena.data.video;
+          v.onloadeddata = null;
+          v.oncanplay = null;
+          v.onloadedmetadata = null;
+          v.onerror = null;
           v.pause();
           v.src = "";
           v.load();
@@ -960,10 +973,17 @@ private procesarVideo(archivo: Archivo): Promise<{archivo: Archivo, video: HTMLV
     video.muted = true;
     video.preload = 'metadata'; // ✨ NUEVO: Precargar metadatos
     
+    const cleanupListeners = () => {
+      video.onloadeddata = null;
+      video.onloadedmetadata = null;
+      video.onerror = null;
+    };
+
     let resuelto = false;
     const resolver = () => {
       if (resuelto) return;
       resuelto = true;
+      cleanupListeners();
       const duracion = video.duration;
       const dur = (!duracion || duracion === Infinity || isNaN(duracion)) ? 5 : duracion;
       resolve({ archivo, video, duracion: dur });
@@ -979,6 +999,8 @@ private procesarVideo(archivo: Archivo): Promise<{archivo: Archivo, video: HTMLV
     setTimeout(() => resolver(), 3000);
     
     video.onerror = (e) => {
+      if (resuelto) return;
+      cleanupListeners();
       console.error(`❌ Error cargando video ${archivo.nombreArchivo}:`, e);
       reject(new Error(`Error cargando video ${archivo.nombreArchivo}`));
     };
@@ -2022,14 +2044,24 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       video.playsInline = true;
 
       let finalUrl = url;
-      if (url.startsWith('/')) {
+      if (url.startsWith('/uploads/')) {
+        finalUrl = `${environment.apiUrl || 'http://localhost:3000'}${url}`;
+      } else if (url.startsWith('/')) {
         finalUrl = `${window.location.origin}${url}`;
       }
+
+      const cleanupVideoListeners = () => {
+        video.onloadeddata = null;
+        video.oncanplay = null;
+        video.onloadedmetadata = null;
+        video.onerror = null;
+      };
 
       let resuelto = false;
       const resolver = () => {
         if (resuelto) return;
         resuelto = true;
+        cleanupVideoListeners();
         const duracion = video.duration;
         const dur = (!duracion || duracion === Infinity || isNaN(duracion)) ? 5 : duracion;
         console.log(`✅ [procesarVideoUrl] Vídeo listo: ${finalUrl} (${dur.toFixed(2)}s, readyState: ${video.readyState})`);
@@ -2045,14 +2077,16 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       };
 
       video.onerror = (e) => {
+        if (resuelto) return;
         if ((url.includes('intro-libro-3d') || url.includes('outro-libro-3d')) && !finalUrl.includes('/uploads/')) {
           const videoName = url.includes('outro-libro-3d') ? 'outro-libro-3d.mp4' : 'intro-libro-3d.mp4';
           console.warn(`⚠️ Falló /assets/videos/${videoName}, probando desde /uploads/videos/${videoName}`);
-          finalUrl = `${window.location.origin}/uploads/videos/${videoName}`;
+          finalUrl = `${environment.apiUrl || 'http://localhost:3000'}/uploads/videos/${videoName}`;
           video.src = finalUrl;
           video.load();
           return;
         }
+        cleanupVideoListeners();
         console.error(`❌ Error cargando video ${finalUrl}:`, e);
         reject(new Error(`Error cargando video: ${finalUrl}`));
       };
