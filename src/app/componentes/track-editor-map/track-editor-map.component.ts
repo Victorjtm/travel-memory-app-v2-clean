@@ -1,3 +1,4 @@
+import { environment } from '../../../environments/environment';
 import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, ElementRef, ViewChild, AfterViewInit, OnChanges, SimpleChanges, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -172,7 +173,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     this.buscandoLugar = true;
     this.errorBusquedaLugar = null;
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`;
+      const url = `${environment.apiUrl}/api/geocodificacion/search?q=${encodeURIComponent(q)}&limit=1`;
       const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
       const data = await res.json();
       if (data && data.length > 0) {

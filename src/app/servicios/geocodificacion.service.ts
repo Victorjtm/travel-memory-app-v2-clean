@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of, catchError } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { environment } from '../../environments/environment';
 
 export interface UbicacionReversa {
   ciudad?: string;
@@ -52,8 +53,8 @@ export class GeocodificacionService {
       return of(this.cache.get(cacheKey)!);
     }
 
-    // Llamar a la API de OpenStreetMap (Nominatim)
-    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.lat}&lon=${coords.lon}&addressdetails=1`;
+    // Llamar al endpoint proxy con caché en backend (evita CORS y 429 de OSM)
+    const url = `${environment.apiUrl}/api/geocodificacion/reverse?lat=${coords.lat}&lon=${coords.lon}&addressdetails=1`;
     
     return this.http.get<any>(url).pipe(
       map(response => {
@@ -145,12 +146,12 @@ export class GeocodificacionService {
     };
 
     try {
-      // Cola secuencial con pausa de 800ms para respetar el rate limit de Nominatim
+      // Consulta al backend con caché SQLite/RAM y proxy a Nominatim
       const resp = await new Promise<any>((resolve, reject) => {
         this.nominatimCola = this.nominatimCola
-          .then(() => new Promise(r => setTimeout(r, 800)))
+          .then(() => new Promise(r => setTimeout(r, 60)))
           .then(async () => {
-            const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=es`;
+            const url = `${environment.apiUrl}/api/geocodificacion/reverse?lat=${lat}&lon=${lng}&addressdetails=1&accept-language=es`;
             const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             return r.json();

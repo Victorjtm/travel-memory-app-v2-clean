@@ -310,7 +310,7 @@ export class ArchivosComponent implements OnInit, OnDestroy {
 
       await this.nominatimQueue;
 
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+      const url = `${environment.apiUrl}/api/geocodificacion/reverse?lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -319,8 +319,7 @@ export class ArchivosComponent implements OnInit, OnDestroy {
       try {
         res = await fetch(url, {
           headers: {
-            'User-Agent': 'TravelMemoryApp/1.0',
-            'Accept-Language': 'es'
+            'Accept': 'application/json'
           },
           signal: controller.signal
         });

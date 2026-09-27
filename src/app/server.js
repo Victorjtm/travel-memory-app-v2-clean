@@ -283,6 +283,58 @@ const db = new sqlite3.Database('./viajes.db', (err) => {
   }
 });
 
+// Inicializar servicio de geocodificación con proxy y caché SQLite/RAM
+const GeocodificacionBackendService = require('./backend-services/geocodificacion.backend.service');
+const geocodificacionBackend = new GeocodificacionBackendService(db);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ENDPOINTS GEOCODIFICACIÓN (PROXY + CACHÉ PERSISTENTE DE 2 NIVELES)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.get('/api/geocodificacion/reverse', cors(), async (req, res) => {
+  try {
+    const { lat, lon, lng, zoom, addressdetails } = req.query;
+    const l = lat;
+    const lo = lon != null ? lon : lng;
+    if (l == null || lo == null) {
+      return res.status(400).json({ error: 'Parámetros lat y lon/lng requeridos' });
+    }
+
+    const resultado = await geocodificacionBackend.reverseGeocode({
+      lat: l,
+      lon: lo,
+      zoom: zoom ? parseInt(zoom, 10) : 18,
+      addressdetails: addressdetails !== undefined ? parseInt(addressdetails, 10) : 1,
+      lang: req.query['accept-language'] || 'es'
+    });
+
+    res.json(resultado || {});
+  } catch (error) {
+    console.error('❌ Error en /api/geocodificacion/reverse:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/geocodificacion/search', cors(), async (req, res) => {
+  try {
+    const { q, limit, addressdetails } = req.query;
+    if (!q) {
+      return res.json([]);
+    }
+
+    const resultado = await geocodificacionBackend.searchGeocode({
+      q,
+      limit: limit ? parseInt(limit, 10) : 5,
+      addressdetails: addressdetails !== undefined ? parseInt(addressdetails, 10) : 1,
+      lang: req.query['accept-language'] || 'es'
+    });
+
+    res.json(resultado || []);
+  } catch (error) {
+    console.error('❌ Error en /api/geocodificacion/search:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Helper para promesas de SQLite
 const dbQuery = {
   get: (sql, params) => new Promise((resolve, reject) => db.get(sql, params, (err, row) => err ? reject(err) : resolve(row))),
@@ -6465,44 +6517,16 @@ app.get('/archivos/:id/exif', async (req, res) => {
  */
 async function obtenerUbicacionDesdeGPS(lat, lon) {
   try {
-    const https = require('https');
-    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`;
-
-    return new Promise((resolve, reject) => {
-      https.get(url, {
-        headers: {
-          'User-Agent': 'TravelMemoryApp/1.0' // Requerido por Nominatim
-        }
-      }, (response) => {
-        let data = '';
-
-        response.on('data', chunk => {
-          data += chunk;
-        });
-
-        response.on('end', () => {
-          try {
-            const result = JSON.parse(data);
-
-            if (result && result.address) {
-              const address = result.address;
-
-              resolve({
-                ciudad: address.city || address.town || address.village || address.municipality,
-                region: address.state || address.province || address.region,
-                pais: address.country
-              });
-            } else {
-              resolve(null);
-            }
-          } catch (parseError) {
-            reject(parseError);
-          }
-        });
-      }).on('error', (error) => {
-        reject(error);
-      });
-    });
+    const data = await geocodificacionBackend.reverseGeocode({ lat, lon });
+    if (data && data.address) {
+      const address = data.address;
+      return {
+        ciudad: address.city || address.town || address.village || address.municipality,
+        region: address.state || address.province || address.region,
+        pais: address.country
+      };
+    }
+    return null;
   } catch (error) {
     console.error('Error en geocoding:', error.message);
     return null;
@@ -7911,26 +7935,10 @@ app.post('/import-tracking', (req, res, next) => {
     if (coordenadasGPS) {
       try {
         console.log(`\n🌍 Obteniendo dirección desde coordenadas GPS...`);
-        const https = require('https');
-
-        const geocodingURL = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${coordenadasGPS.lat}&lon=${coordenadasGPS.lng}&zoom=10&addressdetails=1`;
-
-        const geocodingData = await new Promise((resolve, reject) => {
-          https.get(geocodingURL, {
-            headers: {
-              'User-Agent': 'TravelApp/1.0'
-            }
-          }, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-              try {
-                resolve(JSON.parse(data));
-              } catch (e) {
-                reject(e);
-              }
-            });
-          }).on('error', reject);
+        const geocodingData = await geocodificacionBackend.reverseGeocode({
+          lat: coordenadasGPS.lat,
+          lon: coordenadasGPS.lng,
+          zoom: 10
         });
 
         if (geocodingData && geocodingData.address) {
@@ -9253,24 +9261,12 @@ async function geocodeDestino(destino) {
     return null;
   }
 
-  const endpoint = 'https://nominatim.openstreetmap.org/search';
-  const response = await axios.get(endpoint, {
-    params: {
-      q: destino.trim(),
-      format: 'json',
-      limit: 1
-    },
-    timeout: 12000,
-    headers: {
-      'User-Agent': 'travel-memory-app/1.0 (mapa-viajes-previstos)'
-    }
-  });
-
-  if (!Array.isArray(response.data) || response.data.length === 0) {
+  const resultados = await geocodificacionBackend.searchGeocode({ q: destino.trim(), limit: 1 });
+  if (!Array.isArray(resultados) || resultados.length === 0) {
     return null;
   }
 
-  const resultado = response.data[0];
+  const resultado = resultados[0];
   return {
     lat: Number(resultado.lat),
     lng: Number(resultado.lon),

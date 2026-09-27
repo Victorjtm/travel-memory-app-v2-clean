@@ -1,3 +1,4 @@
+import { environment } from '../../environments/environment';
 import { Component, OnInit, OnDestroy, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -594,7 +595,7 @@ export class SelectorUbicacionComponent implements OnInit, OnDestroy {
     this.buscando = true;
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(this.textoBusqueda)}&limit=1&addressdetails=1`
+        `${environment.apiUrl}/api/geocodificacion/search?q=${encodeURIComponent(this.textoBusqueda)}&limit=1&addressdetails=1`
       );
       const data = await response.json();
 
@@ -628,7 +629,7 @@ export class SelectorUbicacionComponent implements OnInit, OnDestroy {
   private async buscarDireccionReversa(lat: number, lng: number): Promise<void> {
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`
+        `${environment.apiUrl}/api/geocodificacion/reverse?lat=${lat}&lon=${lng}&addressdetails=1`
       );
       const data = await response.json();
 

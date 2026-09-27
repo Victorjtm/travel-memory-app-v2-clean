@@ -947,9 +947,9 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
       );
       await this.nominatimQueue;
 
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+      const url = `${environment.apiUrl}/api/geocodificacion/reverse?lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
       const res = await fetch(url, {
-        headers: { 'User-Agent': 'TravelMemoryApp/1.0', 'Accept-Language': 'es' }
+        headers: { 'Accept': 'application/json' }
       });
       if (!res.ok) {
         const fallback = `${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
