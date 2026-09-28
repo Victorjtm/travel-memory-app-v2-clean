@@ -151,6 +151,24 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
             vf = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
           }
 
+          // Placa cinemática en el Outro 3D (Destino, Fecha, Kilómetros, Tiempo y Pasos)
+          if (esc.esOutro3D && configuracion.incluirTexto !== false && fontPath) {
+            const txtOutroTitle = path.join(tmpDir, `txt_outro_t_${globalIdx}.txt`);
+            const txtOutroSub = path.join(tmpDir, `txt_outro_s_${globalIdx}.txt`);
+            const t1 = (esc.titulo || 'Estantería de los Recuerdos').toUpperCase();
+            const metrics = esc.subtitulo ? `${esc.fecha ? esc.fecha + '   ·   ' : ''}${esc.subtitulo}` : (esc.fecha || '');
+            fs.writeFileSync(txtOutroTitle, `✦  ${t1}  ✦`, 'utf-8');
+            fs.writeFileSync(txtOutroSub, metrics, 'utf-8');
+
+            const pTitle = txtOutroTitle.replace(/\\/g, '/');
+            const pSub = txtOutroSub.replace(/\\/g, '/');
+
+            vf += `,drawtext=textfile='${pTitle}':fontfile='${fontPath}':fontsize=38:fontcolor=0xfef3c7:x=(w-text_w)/2:y=65:box=1:boxcolor=0x0f172a@0.85:boxborderw=20:enable='between(t,0.8,5.8)'`;
+            if (metrics) {
+              vf += `,drawtext=textfile='${pSub}':fontfile='${fontPath}':fontsize=24:fontcolor=0xfcd34d:x=(w-text_w)/2:y=125:enable='between(t,0.8,5.8)'`;
+            }
+          }
+
           const args = ['-y', '-i', localMedia];
 
           if (tieneAudio) {

@@ -1619,6 +1619,32 @@
         playsinline
         controls
         (ended)="onOutroVideoEnded()"></video>
+
+      <!-- Placa / Sello Cinemático Grabado sobre el vídeo -->
+      <div class="placa-recuerdo-cinematica" *ngIf="mostrarModalOutro">
+        <div class="placa-recuerdo-inner">
+          <div class="placa-adorno-top">
+            <span class="adorno-estrella">✦</span> ESTANTERÍA DE LOS RECUERDOS <span class="adorno-estrella">✦</span>
+          </div>
+          <h2 class="placa-titulo">{{ infoViaje?.nombre || infoViaje?.destino || 'Viaje Inolvidable' }}</h2>
+          <div class="placa-fecha" *ngIf="obtenerFechaViajeTexto()">
+            <i class="far fa-calendar-alt"></i> {{ obtenerFechaViajeTexto() }}
+          </div>
+          <div class="placa-metricas" *ngIf="obtenerDistanciaTotalTexto() || obtenerDuracionTotalTexto() || obtenerPasosTotalesTexto()">
+            <span class="placa-metrica" *ngIf="obtenerDistanciaTotalTexto()">
+              <i class="fas fa-route"></i> {{ obtenerDistanciaTotalTexto() }}
+            </span>
+            <span class="placa-separador" *ngIf="obtenerDistanciaTotalTexto() && (obtenerDuracionTotalTexto() || obtenerPasosTotalesTexto())">·</span>
+            <span class="placa-metrica" *ngIf="obtenerDuracionTotalTexto()">
+              <i class="fas fa-stopwatch"></i> {{ obtenerDuracionTotalTexto() }}
+            </span>
+            <span class="placa-separador" *ngIf="obtenerDuracionTotalTexto() && obtenerPasosTotalesTexto()">·</span>
+            <span class="placa-metrica" *ngIf="obtenerPasosTotalesTexto()">
+              <i class="fas fa-shoe-prints"></i> {{ obtenerPasosTotalesTexto() }}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Botonera y dedicatoria final bajo el vídeo -->

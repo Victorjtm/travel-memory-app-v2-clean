@@ -22,6 +22,7 @@ export interface EscenaMultimedia {
   esMapaAnimado?: boolean;
   trackGpx?: string;
   distanciaKm?: number;
+  subtitulo?: string;
 }
 
 export interface ConfiguracionExportacion {

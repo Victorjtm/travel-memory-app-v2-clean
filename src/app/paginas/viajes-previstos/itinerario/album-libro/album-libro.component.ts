@@ -109,6 +109,7 @@ interface ContextoViaje {
 interface InfoViaje {
   id?: number;
   nombre: string;
+  destino?: string;
   descripcion?: string;
   fechaInicio?: string;
   fechaFin?: string;
@@ -6482,6 +6483,85 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.irAPagina(0);
   }
 
+  obtenerFechaViajeTexto(): string {
+    const fIni = this.infoViaje?.fechaInicio || this.telemetriaActual?.fechaActual || '';
+    const fFin = this.infoViaje?.fechaFin || '';
+    if (!fIni) return '';
+    try {
+      const dIni = new Date(fIni);
+      if (isNaN(dIni.getTime())) return fIni;
+      const fIniStr = dIni.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+      if (fFin && fFin !== fIni) {
+        const dFin = new Date(fFin);
+        if (!isNaN(dFin.getTime())) {
+          const fFinStr = dFin.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+          return `${fIniStr} – ${fFinStr}`;
+        }
+      }
+      return fIniStr;
+    } catch {
+      return fIni;
+    }
+  }
+
+  obtenerDistanciaTotalTexto(): string {
+    const km = this.distanciaTotalKm;
+    if (!km || km <= 0) return '';
+    return `${km.toFixed(2).replace('.', ',')} km`;
+  }
+
+  obtenerDuracionTotalTexto(): string {
+    let duracionMs = 0;
+    if (this.cacheDatosActividadGpx && this.cacheDatosActividadGpx.size > 0) {
+      let minTs = Infinity;
+      let maxTs = -Infinity;
+      this.cacheDatosActividadGpx.forEach(d => {
+        const pts: any[] = d.points || [];
+        if (pts.length >= 2 && pts[0].time && pts[pts.length - 1].time) {
+          const t0 = new Date(pts[0].time).getTime();
+          const t1 = new Date(pts[pts.length - 1].time).getTime();
+          if (!isNaN(t0) && !isNaN(t1) && t1 > t0) {
+            minTs = Math.min(minTs, t0);
+            maxTs = Math.max(maxTs, t1);
+          }
+        }
+      });
+      if (minTs < Infinity && maxTs > -Infinity) {
+        duracionMs = maxTs - minTs;
+      }
+    }
+    if (duracionMs <= 0 && this.paginas.length > 0) {
+      let minTs = Infinity;
+      let maxTs = -Infinity;
+      this.paginas.forEach(p => {
+        const ts = p.timestampReal || (p.fecha ? new Date(p.fecha).getTime() : 0);
+        if (ts > 0) {
+          minTs = Math.min(minTs, ts);
+          maxTs = Math.max(maxTs, ts);
+        }
+      });
+      if (minTs < Infinity && maxTs > -Infinity && maxTs > minTs) {
+        duracionMs = maxTs - minTs;
+      }
+    }
+
+    if (duracionMs <= 0) return '';
+    const totalMin = Math.round(duracionMs / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    if (h > 0) {
+      return `${h}h ${m}m`;
+    }
+    return `${m} min`;
+  }
+
+  obtenerPasosTotalesTexto(): string {
+    const km = this.distanciaTotalKm;
+    if (!km || km <= 0) return '';
+    const pasos = Math.round((km * 1000) / 0.75);
+    return `${pasos.toLocaleString('es-ES')} pasos`;
+  }
+
   toggleFullscreenSinglePage(pagina: PaginaMedia | null, event?: Event): void {
     if (event) {
       event.stopPropagation();
@@ -7707,13 +7787,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     // 3. Escena Final: OUTRO 3D CINEMÁTICA EN MP4 A 60 FPS
     // Cierre del libro de recuerdos y colocación en la Estantería de los Recuerdos
+    const subPartes = [this.obtenerDistanciaTotalTexto(), this.obtenerDuracionTotalTexto(), this.obtenerPasosTotalesTexto()].filter(Boolean);
     secuencia.push({
       id: 'outro-3d-cinematica',
       tipo: 'video',
       url: '/assets/videos/outro-libro-3d.mp4',
       duracion: 11.8,
-      titulo: 'Estantería de los Recuerdos',
-      descripcion: 'Cierre del libro y guardado en la estantería',
+      titulo: this.infoViaje?.nombre || this.infoViaje?.destino || 'Viaje Inolvidable',
+      descripcion: this.obtenerFechaViajeTexto(),
+      fecha: this.obtenerFechaViajeTexto(),
+      subtitulo: subPartes.join('  ·  '),
       esOutro3D: true
     });
 
