@@ -54,11 +54,14 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
 
   // Mallas 3D
   private mesaMesh!: THREE.Mesh;
+  private sombraContactoMesh!: THREE.Mesh;
   private libroGroup!: THREE.Group;
   private tapaPivotGroup!: THREE.Group;
   private tapaMesh!: THREE.Mesh;
   private polvoParticles!: THREE.Points;
   private polvoVelocidades: THREE.Vector3[] = [];
+  private motesParticles!: THREE.Points;
+  private motesVelocidades: THREE.Vector3[] = [];
   private planoRecuerdos!: THREE.Mesh;
   private materialRecuerdos!: THREE.MeshBasicMaterial;
   private texturaRecuerdoActual: THREE.CanvasTexture | null = null;
@@ -70,6 +73,8 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
   private canvasCuero!: HTMLCanvasElement;
   private ctxCuero!: CanvasRenderingContext2D;
   private texturaCuero!: THREE.CanvasTexture;
+  private texturaBumpCuero!: THREE.CanvasTexture;
+  private texturaHojas!: THREE.CanvasTexture;
   private fotoPortadaBitmap: ImageBitmap | null = null;
 
   // Control de animación
@@ -181,37 +186,57 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     });
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.18;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // Iluminación cálida
-    const luzAmbiente = new THREE.AmbientLight(0xffeedd, 0.95);
+    // 💡 Iluminación cinematográfica PBR:
+    // 1. Luz ambiente difusa tenue
+    const luzAmbiente = new THREE.AmbientLight(0xffeedd, 0.45);
     this.scene.add(luzAmbiente);
 
-    const luzDireccional = new THREE.DirectionalLight(0xffdfa0, 2.8);
-    luzDireccional.position.set(3, 7, 3.5);
+    // 2. Luz hemisférica (cielo cálido y rebote de caoba desde la mesa)
+    const luzHemisferio = new THREE.HemisphereLight(0xffeedd, 0x221108, 0.55);
+    this.scene.add(luzHemisferio);
+
+    // 3. Foco directivo principal con sombras suaves de alta definición
+    const luzDireccional = new THREE.DirectionalLight(0xfff0d2, 3.2);
+    luzDireccional.position.set(3.2, 7.5, 3.8);
     luzDireccional.castShadow = true;
     luzDireccional.shadow.mapSize.width = 2048;
     luzDireccional.shadow.mapSize.height = 2048;
-    luzDireccional.shadow.bias = -0.0005;
+    luzDireccional.shadow.camera.near = 1.0;
+    luzDireccional.shadow.camera.far = 16.0;
+    luzDireccional.shadow.camera.left = -3.5;
+    luzDireccional.shadow.camera.right = 3.5;
+    luzDireccional.shadow.camera.top = 3.5;
+    luzDireccional.shadow.camera.bottom = -3.5;
+    luzDireccional.shadow.bias = -0.0003;
+    luzDireccional.shadow.normalBias = 0.025;
+    luzDireccional.shadow.radius = 2.4;
     this.scene.add(luzDireccional);
 
-    const luzCalidaContraluz = new THREE.PointLight(0xff9944, 1.5, 12);
-    luzCalidaContraluz.position.set(-3, 3, -2);
-    this.scene.add(luzCalidaContraluz);
+    // 4. Luz rasante lateral/trasera (Rim light) para siluetas de cuero y esquineras metálicas
+    const luzRim = new THREE.DirectionalLight(0xffaa55, 1.4);
+    luzRim.position.set(-3.5, 4.2, -2.5);
+    this.scene.add(luzRim);
 
-    const luzRellenoFrontal = new THREE.PointLight(0xfff0d8, 1.2, 8);
+    // 5. Relleno suave frontal
+    const luzRellenoFrontal = new THREE.PointLight(0xfff0d8, 0.85, 10);
     luzRellenoFrontal.position.set(0, 2.5, 3.8);
     this.scene.add(luzRellenoFrontal);
 
-    // Luz interior dorada que brota del libro al abrirse
-    this.luzInteriorLibro = new THREE.PointLight(0xffd570, 0, 6);
-    this.luzInteriorLibro.position.set(0.6, 0.6, 0);
+    // 6. Luz interior dorada que brota del libro al abrirse
+    this.luzInteriorLibro = new THREE.PointLight(0xffd570, 0, 7, 1.2);
+    this.luzInteriorLibro.position.set(0.5, 0.55, 0);
     this.scene.add(this.luzInteriorLibro);
 
     this.construirMesaMadera();
+    this.construirSombraContacto();
     this.construirLibroVintage();
     this.construirPolvoVolumetrico();
+    this.construirPolvoAmbiental();
     this.construirPlanoRecuerdos();
 
     this.ngZone.runOutsideAngular(() => {
@@ -273,8 +298,8 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
 
     const matMadera = new THREE.MeshStandardMaterial({
       map: texturaMadera,
-      roughness: 0.65,
-      metalness: 0.12
+      roughness: 0.45,
+      metalness: 0.08
     });
 
     const geoMadera = new THREE.PlaneGeometry(18, 18);
@@ -283,6 +308,160 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     this.mesaMesh.position.y = 0;
     this.mesaMesh.receiveShadow = true;
     this.scene.add(this.mesaMesh);
+  }
+
+  /**
+   * 🌑 Sombra de contacto suave y dinámica que ancla el libro físicamente a la mesa
+   */
+  private construirSombraContacto(): void {
+    const canvasSombra = document.createElement('canvas');
+    canvasSombra.width = 512;
+    canvasSombra.height = 512;
+    const ctx = canvasSombra.getContext('2d')!;
+
+    const grad = ctx.createRadialGradient(256, 256, 35, 256, 256, 250);
+    grad.addColorStop(0, 'rgba(0, 0, 0, 0.92)');
+    grad.addColorStop(0.35, 'rgba(10, 5, 2, 0.65)');
+    grad.addColorStop(0.70, 'rgba(15, 8, 4, 0.22)');
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 512);
+
+    const tex = new THREE.CanvasTexture(canvasSombra);
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false
+    });
+
+    this.sombraContactoMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 4.3), mat);
+    this.sombraContactoMesh.rotation.x = -Math.PI / 2;
+    this.sombraContactoMesh.position.set(0, 0.003, 0);
+    this.scene.add(this.sombraContactoMesh);
+  }
+
+  /**
+   * ✨ Partículas doradas ambientales que flotan serenamente en el haz del foco
+   */
+  private construirPolvoAmbiental(): void {
+    const total = 90;
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(total * 3);
+    this.motesVelocidades = [];
+
+    for (let i = 0; i < total; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 4.5;
+      pos[i * 3 + 1] = 0.2 + Math.random() * 3.6;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 4.5;
+
+      this.motesVelocidades.push(new THREE.Vector3(
+        (Math.random() - 0.5) * 0.003,
+        0.001 + Math.random() * 0.003,
+        (Math.random() - 0.5) * 0.003
+      ));
+    }
+
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({
+      color: 0xffe2a4,
+      size: 0.045,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    this.motesParticles = new THREE.Points(geo, mat);
+    this.scene.add(this.motesParticles);
+  }
+
+  private actualizarPolvoAmbiental(): void {
+    if (!this.motesParticles) return;
+    const geo = this.motesParticles.geometry as THREE.BufferGeometry;
+    const pos = geo.attributes['position'].array as Float32Array;
+    for (let i = 0; i < this.motesVelocidades.length; i++) {
+      const vel = this.motesVelocidades[i];
+      pos[i * 3] += vel.x + Math.sin(this.tiempoActual * 0.8 + i) * 0.001;
+      pos[i * 3 + 1] += vel.y;
+      pos[i * 3 + 2] += vel.z + Math.cos(this.tiempoActual * 0.8 + i) * 0.001;
+
+      if (pos[i * 3 + 1] > 3.8) {
+        pos[i * 3 + 1] = 0.2;
+      }
+    }
+    geo.attributes['position'].needsUpdate = true;
+  }
+
+  /**
+   * 🔬 Genera un mapa de relieve (bump map) procedimental para poro de cuero y bajorrelieves
+   */
+  private generarTexturaBumpCuero(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 1024;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, 1024, 1024);
+
+    const imgData = ctx.getImageData(0, 0, 1024, 1024);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const n = (Math.random() - 0.5) * 32;
+      const v = Math.min(255, Math.max(0, 128 + n));
+      d[i] = v;
+      d[i + 1] = v;
+      d[i + 2] = v;
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Hendiduras de grabado por estampación en caliente de los marcos dorados
+    ctx.strokeStyle = '#484848';
+    ctx.lineWidth = 10;
+    ctx.strokeRect(50, 50, 924, 924);
+    ctx.lineWidth = 4;
+    ctx.strokeRect(65, 65, 894, 894);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  /**
+   * 📜 Genera textura realista con microestratificación de páginas y pan de oro en los cantos
+   */
+  private generarTexturaCantosHojas(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    // Fondo dorado envejecido con degradado
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, '#f2dc98');
+    grad.addColorStop(0.3, '#d4af37');
+    grad.addColorStop(0.7, '#a98024');
+    grad.addColorStop(1, '#edd692');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1024, 256);
+
+    // Microestratificación horizontal: simula miles de hojas de papel prensadas
+    for (let y = 0; y < 256; y += 2) {
+      const alpha = 0.12 + Math.random() * 0.32;
+      const esOscuro = Math.random() > 0.45;
+      ctx.strokeStyle = esOscuro ? `rgba(60, 38, 12, ${alpha})` : `rgba(255, 248, 215, ${alpha * 0.9})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(1024, y);
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    return tex;
   }
 
   /**
@@ -301,20 +480,25 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     this.texturaCuero.colorSpace = THREE.SRGBColorSpace;
     this.texturaCuero.anisotropy = 8;
 
+    this.texturaBumpCuero = this.generarTexturaBumpCuero();
+    this.texturaHojas = this.generarTexturaCantosHojas();
+
     this.repintarCubiertaLibro();
 
     const anchoLibro = 2.4;
     const altoLibro = 0.35;
     const profLibro = 3.2;
 
-    // 1. Material exterior de la cubierta (cara superior +Y)
+    // 1. Material exterior de la cubierta (cara superior +Y) con microrelieve de piel
     const matCueroFrontal = new THREE.MeshStandardMaterial({
       map: this.texturaCuero,
-      roughness: 0.45,
-      metalness: 0.25
+      bumpMap: this.texturaBumpCuero,
+      bumpScale: 0.042,
+      roughness: 0.38,
+      metalness: 0.22
     });
 
-    // 2. Material interior de la tapa (cara -Y): CUERO MARRÓN LIMPIO Y ELEGANTE (sin textos al revés)
+    // 2. Material interior de la tapa (cara -Y): CUERO MARRÓN LIMPIO Y ELEGANTE
     const canvasInteriorTapa = document.createElement('canvas');
     canvasInteriorTapa.width = 512;
     canvasInteriorTapa.height = 512;
@@ -337,12 +521,12 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
       roughness: 0.55
     });
 
-    // Hojas doradas del libro
+    // Hojas doradas del libro con microestratificación fotorrealista
     const geoHojas = new THREE.BoxGeometry(anchoLibro * 0.96, altoLibro * 0.85, profLibro * 0.96);
     const matHojas = new THREE.MeshStandardMaterial({
-      color: 0xdfbe65,
-      roughness: 0.72,
-      metalness: 0.35
+      map: this.texturaHojas,
+      roughness: 0.52,
+      metalness: 0.42
     });
     const hojasMesh = new THREE.Mesh(geoHojas, matHojas);
     hojasMesh.position.set(0.04, altoLibro * 0.45, 0);
@@ -394,8 +578,23 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     ]);
     this.tapaMesh.position.set(anchoLibro / 2, 0, 0);
     this.tapaMesh.castShadow = true;
-    this.tapaPivotGroup.add(this.tapaMesh);
 
+    // Esquineras metálicas (cantoneras de latón dorado) en las esquinas exteriores
+    const matEsqMetal = new THREE.MeshStandardMaterial({
+      color: 0xdfbe65,
+      roughness: 0.28,
+      metalness: 0.88
+    });
+    const cantoneraGeo = new THREE.BoxGeometry(0.18, 0.075, 0.18);
+    const esq1 = new THREE.Mesh(cantoneraGeo, matEsqMetal);
+    esq1.position.set(anchoLibro - 0.08, 0.002, profLibro / 2 - 0.08);
+    this.tapaMesh.add(esq1);
+
+    const esq2 = new THREE.Mesh(cantoneraGeo, matEsqMetal);
+    esq2.position.set(anchoLibro - 0.08, 0.002, -profLibro / 2 + 0.08);
+    this.tapaMesh.add(esq2);
+
+    this.tapaPivotGroup.add(this.tapaMesh);
     this.libroGroup.add(this.tapaPivotGroup);
 
     // Lomo cilíndrico curvo a la izquierda
@@ -411,6 +610,18 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     lomoMesh.position.set(-anchoLibro / 2, altoLibro * 0.5, 0);
     lomoMesh.castShadow = true;
     this.libroGroup.add(lomoMesh);
+
+    // 4 nervios en relieve típicos de encuadernación artesanal clásica en el lomo
+    const posicionesNerviosZ = [-1.05, -0.35, 0.35, 1.05];
+    posicionesNerviosZ.forEach(posZ => {
+      const geoNervio = new THREE.CylinderGeometry(altoLibro * 0.53, altoLibro * 0.53, 0.09, 24, 1, false, 0, Math.PI);
+      const nervioMesh = new THREE.Mesh(geoNervio, matLomo);
+      nervioMesh.rotation.z = Math.PI / 2;
+      nervioMesh.rotation.y = Math.PI / 2;
+      nervioMesh.position.set(-anchoLibro / 2, altoLibro * 0.5, posZ);
+      nervioMesh.castShadow = true;
+      this.libroGroup.add(nervioMesh);
+    });
 
     // Posición inicial: suspendido en el aire antes de caer
     this.libroGroup.position.set(0, 4.0, 0);
@@ -790,11 +1001,13 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
 
       if (t < tImpacto) {
         const p = t / tImpacto;
-        const progresoCaida = Math.pow(p, 2.2); // Caída con aceleración realista y visible
+        // Caída con aceleración realista cuadrática y sutil cabeceo aerodinámico
+        const progresoCaida = Math.pow(p, 2.3);
+        const wobble = Math.sin(p * Math.PI) * 0.04;
         this.libroGroup.position.y = 4.8 * (1 - progresoCaida);
-        this.libroGroup.rotation.x = -0.32 * (1 - progresoCaida) - 0.15;
+        this.libroGroup.rotation.x = -0.32 * (1 - progresoCaida) - 0.15 + wobble;
         this.libroGroup.rotation.y = 0.08 * (1 - progresoCaida);
-        this.libroGroup.rotation.z = 0.10 * (1 - progresoCaida);
+        this.libroGroup.rotation.z = 0.10 * (1 - progresoCaida) - wobble * 0.5;
         this.polvoParticles.visible = false;
         this.tapaPivotGroup.rotation.z = 0;
       } else {
@@ -804,11 +1017,14 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
         }
 
         const deltaImpacto = t - tImpacto;
-        const amplitud = 0.22 * Math.exp(-deltaImpacto * 14);
-        const rebote = Math.sin(deltaImpacto * 36) * amplitud;
+        // Doble armónico amortiguado que simula la masa pesada y cuerpo elástico del tomo
+        const env = Math.exp(-deltaImpacto * 14);
+        const rebote = Math.sin(deltaImpacto * 34) * 0.18 * env;
+        const microTiltX = Math.sin(deltaImpacto * 28) * 0.035 * env;
+        const microTiltZ = Math.cos(deltaImpacto * 32) * 0.025 * env;
 
         this.libroGroup.position.y = Math.max(0, rebote);
-        this.libroGroup.rotation.set(-0.15, 0, 0);
+        this.libroGroup.rotation.set(-0.15 + microTiltX, 0, microTiltZ);
         this.tapaPivotGroup.rotation.z = 0;
 
         this.actualizarParticulasPolvo(deltaImpacto);
@@ -927,6 +1143,20 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
 
       this.libroGroup.rotation.set(-0.15, 0, 0);
     }
+
+    // 🌑 Sombra de contacto suave y dinámica que ancla físicamente el libro a la mesa
+    if (this.sombraContactoMesh) {
+      const h = Math.max(0, this.libroGroup.position.y);
+      const matS = this.sombraContactoMesh.material as THREE.MeshBasicMaterial;
+      matS.opacity = Math.max(0, Math.min(0.88, (1 - h / 3.2) * 0.88));
+      const esc = 1 + h * 0.18;
+      this.sombraContactoMesh.scale.set(esc, esc, 1);
+      this.sombraContactoMesh.position.x = this.libroGroup.position.x;
+      this.sombraContactoMesh.position.z = this.libroGroup.position.z;
+    }
+
+    // ✨ Partículas ambientales de polvo suspendido en el haz del foco
+    this.actualizarPolvoAmbiental();
   }
 
   /**
@@ -1152,6 +1382,15 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
         break;
       }
     }
+
+    // Brillo sutil de papel fotográfico satinado de alta gama
+    const gradGloss = ctx.createLinearGradient(rx, ry, rx + w, ry + h);
+    gradGloss.addColorStop(0, 'rgba(255, 255, 255, 0.22)');
+    gradGloss.addColorStop(0.35, 'rgba(255, 255, 255, 0.0)');
+    gradGloss.addColorStop(0.70, 'rgba(255, 255, 255, 0.0)');
+    gradGloss.addColorStop(1, 'rgba(255, 255, 255, 0.10)');
+    ctx.fillStyle = gradGloss;
+    ctx.fillRect(rx, ry, w, h);
   }
 
   private actualizarParticulasPolvo(delta: number): void {
@@ -1184,21 +1423,33 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
       if (!this.audioContext) this.audioContext = new AudioContextClass();
       if (this.audioContext.state === 'suspended') this.audioContext.resume();
 
-      const osc = this.audioContext.createOscillator();
-      const gain = this.audioContext.createGain();
+      const t0 = this.audioContext.currentTime;
 
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(140, this.audioContext.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(32, this.audioContext.currentTime + 0.25);
+      // 1. Golpe profundo de baja frecuencia (resonancia de mesa de madera maciza)
+      const oscLow = this.audioContext.createOscillator();
+      const gainLow = this.audioContext.createGain();
+      oscLow.type = 'triangle';
+      oscLow.frequency.setValueAtTime(120, t0);
+      oscLow.frequency.exponentialRampToValueAtTime(28, t0 + 0.32);
+      gainLow.gain.setValueAtTime(0.85, t0);
+      gainLow.gain.exponentialRampToValueAtTime(0.001, t0 + 0.38);
+      oscLow.connect(gainLow);
+      gainLow.connect(this.audioContext.destination);
+      oscLow.start(t0);
+      oscLow.stop(t0 + 0.40);
 
-      gain.gain.setValueAtTime(0.7, this.audioContext.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.35);
-
-      osc.connect(gain);
-      gain.connect(this.audioContext.destination);
-
-      osc.start();
-      osc.stop(this.audioContext.currentTime + 0.36);
+      // 2. Chasquido nítido de impacto de cuero tenso
+      const oscMid = this.audioContext.createOscillator();
+      const gainMid = this.audioContext.createGain();
+      oscMid.type = 'sine';
+      oscMid.frequency.setValueAtTime(260, t0);
+      oscMid.frequency.exponentialRampToValueAtTime(45, t0 + 0.12);
+      gainMid.gain.setValueAtTime(0.40, t0);
+      gainMid.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+      oscMid.connect(gainMid);
+      gainMid.connect(this.audioContext.destination);
+      oscMid.start(t0);
+      oscMid.stop(t0 + 0.18);
     } catch {}
   }
 

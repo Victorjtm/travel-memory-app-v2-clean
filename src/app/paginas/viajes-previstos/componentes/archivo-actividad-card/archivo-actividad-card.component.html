@@ -1,6 +1,16 @@
-<div class="card-container" [class.gallery-mode]="modoGaleria">
+<div class="card-container" [class.gallery-mode]="modoGaleria" [class.seleccionado-video]="estaSeleccionadoVideo()">
   
   <div class="preview-section">
+    <!-- Tick flotante de selección para vídeo (visible en Galería y sobre la foto en Lista) -->
+    <button type="button" 
+            class="btn-tick-video" 
+            [class.seleccionado]="estaSeleccionadoVideo()" 
+            (click)="onToggleSeleccionVideo($event)"
+            [title]="estaSeleccionadoVideo() ? 'Foto seleccionada para el vídeo MP4 y recorrido (Click para desmarcar)' : 'Marcar foto para el vídeo MP4 y recorrido'">
+      <i class="fa" [class.fa-check-circle]="estaSeleccionadoVideo()" [class.fa-circle]="!estaSeleccionadoVideo()"></i>
+      <span class="lbl-tick-video">{{ estaSeleccionadoVideo() ? 'Vídeo' : 'Vídeo' }}</span>
+    </button>
+
     <app-archivo-thumbnail 
       [archivo]="archivo" 
       [fileUrl]="fileUrl" 
@@ -11,7 +21,12 @@
 
   <!-- MODO LISTA: Información completa -->
   <div class="info-section" *ngIf="!modoGaleria">
-    <h3>{{ archivo.nombreArchivo }}</h3>
+    <div class="info-header-row">
+      <h3>{{ archivo.nombreArchivo }}</h3>
+      <span class="badge-en-video" *ngIf="estaSeleccionadoVideo()">
+        <i class="fa fa-film"></i> Seleccionada para vídeo
+      </span>
+    </div>
     <div class="meta-data">
       <p><strong>Tipo:</strong> {{ archivo.tipo }}</p>
       <p><strong>Descripción:</strong> {{ archivo.descripcion || 'Sin descripción' }}</p>
@@ -30,7 +45,10 @@
       <i class="fa fa-map-marker-alt"></i> {{ direccionDisplay }}
     </div>
     <div class="gallery-meta">
-      {{ archivo.fechaCreacion | date:'dd/MM/yyyy' }} · {{ archivo.horaCaptura || '--:--' }}
+      <span>{{ archivo.fechaCreacion | date:'dd/MM/yyyy' }} · {{ archivo.horaCaptura || '--:--' }}</span>
+      <span class="gallery-badge-video" *ngIf="estaSeleccionadoVideo()">
+        <i class="fa fa-film"></i>
+      </span>
     </div>
   </div>
 
@@ -38,6 +56,15 @@
   <div class="actions-section" *ngIf="!modoGaleria">
     <!-- Botones asociados -->
     <div class="associated-actions">
+      <!-- Botón de selección para vídeo/recorrido en modo lista -->
+      <button type="button" class="btn-asociado btn-toggle-video"
+              [class.seleccionado]="estaSeleccionadoVideo()"
+              (click)="onToggleSeleccionVideo($event)"
+              [title]="estaSeleccionadoVideo() ? 'Foto seleccionada para vídeo y recorrido (Click para desmarcar)' : 'Incluir foto en vídeo y recorrido'">
+        <i class="fa" [class.fa-check-circle]="estaSeleccionadoVideo()" [class.fa-film]="!estaSeleccionadoVideo()"></i>
+        <span>{{ estaSeleccionadoVideo() ? 'En vídeo' : '+ Vídeo' }}</span>
+      </button>
+
       <button class="btn-asociado btn-audio" *ngIf="archivo.tipo === 'audio'"
               (click)="onPlayAudioPrincipal()" title="Reproducir audio">
         <i class="fa fa-volume-up"></i>

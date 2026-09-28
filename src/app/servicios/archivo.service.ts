@@ -397,4 +397,18 @@ export class ArchivoService extends BaseHttpService {
     return this.post<{ actualizados: number }>(`${this.apiUrl}/actualizar-descripciones-masivas`, { items });
   }
 
-}
+  /**
+   * Alterna la selección de un archivo para el vídeo MP4 y recorrido
+   */
+  toggleSeleccionVideo(id: number): Observable<{ id: number; seleccionado_video: number }> {
+    return this.patch<{ id: number; seleccionado_video: number }>(`${this.apiUrl}/${id}/toggle-seleccion-video`, {});
+  }
+
+  /**
+   * Actualiza en lote la selección de vídeo para múltiples archivos
+   */
+  batchSeleccionVideo(ids: number[], estado: 0 | 1): Observable<{ actualizados: number; estado: number }> {
+    return this.post<{ actualizados: number; estado: number }>(`${this.apiUrl}/batch-seleccion-video`, { ids, estado });
+  }
+
+}

@@ -653,6 +653,18 @@ db.run(
         }
       });
 
+      // ✅ MIGRACIÓN 2026: Añadir seleccionado_video si no existe
+      db.all("PRAGMA table_info(archivos)", (err, columns) => {
+        if (err) return;
+        if (!columns.some(c => c.name === 'seleccionado_video')) {
+          console.log("🔄 [MIGRACIÓN] Añadiendo columna seleccionado_video a la tabla archivos...");
+          db.run("ALTER TABLE archivos ADD COLUMN seleccionado_video INTEGER DEFAULT 0", (err) => {
+            if (err) console.error("❌ Error añadiendo seleccionado_video:", err.message);
+            else console.log("✅ Columna seleccionado_video añadida con éxito.");
+          });
+        }
+      });
+
       // ✅ TABLA 1:N VÍDEOS DE SUBTRAMOS (Travel Memory)
       db.run(`
         CREATE TABLE IF NOT EXISTS actividades_videos_subtramos (
@@ -5618,6 +5630,7 @@ app.put('/archivos/:id', async (req, res) => {
   if (geolocalizacion !== undefined) { campos.push('geolocalizacion = ?'); valores.push(geolocalizacion); }
   if (metadatos !== undefined) { campos.push('metadatos = ?'); valores.push(metadatos); }
   if (fechaCreacion !== undefined) { campos.push('fechaCreacion = ?'); valores.push(fechaCreacion); }
+  if (req.body.seleccionado_video !== undefined) { campos.push('seleccionado_video = ?'); valores.push(req.body.seleccionado_video ? 1 : 0); }
 
   campos.push("fechaActualizacion = datetime('now')");
   campos.push("transcripcion_raw = NULL"); // Invalidad transcripción en actualización de metadatos
@@ -5643,6 +5656,41 @@ app.put('/archivos/:id', async (req, res) => {
   } catch (err) {
     console.error('❌ Error en UPDATE:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SELECCIÓN DE FOTOS PARA VÍDEO Y RECORRIDO
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.patch('/archivos/:id/toggle-seleccion-video', cors(), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const row = await dbQuery.get('SELECT seleccionado_video FROM archivos WHERE id = ?', [id]);
+    if (!row) {
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
+    const nuevoEstado = row.seleccionado_video === 1 ? 0 : 1;
+    await dbQuery.run('UPDATE archivos SET seleccionado_video = ? WHERE id = ?', [nuevoEstado, id]);
+    res.json({ id: parseInt(id, 10), seleccionado_video: nuevoEstado });
+  } catch (error) {
+    console.error('Error al alternar selección para vídeo:', error);
+    res.status(500).json({ error: 'Error en base de datos' });
+  }
+});
+
+app.post('/archivos/batch-seleccion-video', cors(), async (req, res) => {
+  const { ids, estado } = req.body; // ids: number[], estado: 0 | 1
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids debe ser un array no vacío' });
+  }
+  try {
+    const valEstado = estado ? 1 : 0;
+    const placeholders = ids.map(() => '?').join(',');
+    await dbQuery.run(`UPDATE archivos SET seleccionado_video = ? WHERE id IN (${placeholders})`, [valEstado, ...ids]);
+    res.json({ ok: true, count: ids.length, estado: valEstado });
+  } catch (error) {
+    console.error('Error en batch selección para vídeo:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

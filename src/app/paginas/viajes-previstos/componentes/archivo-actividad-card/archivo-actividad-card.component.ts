@@ -29,6 +29,24 @@ export class ArchivoActividadCardComponent {
   @Output() openAssociated = new EventEmitter<{archivo: Archivo, tipo: 'audio' | 'texto' | 'mapa_ubicacion' | 'gpx' | 'manifest' | 'estadisticas'}>();
   @Output() playAudioPrincipal = new EventEmitter<Archivo>();
   @Output() transcribe = new EventEmitter<Archivo>();
+  @Output() toggleSeleccionVideo = new EventEmitter<Archivo>();
+
+  onToggleSeleccionVideo(event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    this.toggleSeleccionVideo.emit(this.archivo);
+  }
+
+  estaSeleccionadoVideo(): boolean {
+    return Number(this.archivo?.seleccionado_video) === 1 || (this.archivo as any)?.seleccionado_video === true;
+  }
+
+  esFoto(): boolean {
+    const t = (this.archivo?.tipo || '').toLowerCase();
+    return t === 'foto' || t === 'imagen';
+  }
 
   onPreview(): void {
     this.preview.emit(this.archivo);

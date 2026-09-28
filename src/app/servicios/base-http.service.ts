@@ -80,6 +80,10 @@ export class BaseHttpService {
     return this.http.put<T>(url, body, this.getJsonOptions());
   }
 
+  protected patch<T>(url: string, body: any): Observable<T> {
+    return this.http.patch<T>(url, body, this.getJsonOptions());
+  }
+
   protected delete<T>(url: string): Observable<T> {
     return this.http.delete<T>(url, this.getBasicOptions());
   }

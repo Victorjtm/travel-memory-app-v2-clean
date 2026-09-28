@@ -21,4 +21,5 @@ export interface Archivo {
     transcripcion_raw?: string; // ⬅️ NUEVO: Texto original de la IA
     archivosAsociados?: ArchivoAsociado[];
     numeroSecuencial?: number;
+    seleccionado_video?: number | boolean; // ⬅️ NUEVO: Indicador de foto seleccionada para vídeo y recorrido
   }

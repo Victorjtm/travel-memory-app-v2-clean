@@ -46,6 +46,7 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   estadoCarga: { [key: number]: 'cargando' | 'listo' | 'error' } = {};
   targetScrollId: number | null = null;
   modoGaleria = false; // ✨ NUEVA PROPIEDAD PARA VISTA GALERÍA
+  filtroSoloSeleccionadasVideo = false; // 🎬 Filtro para ver únicamente fotos seleccionadas para vídeo
 
   // 📍 Modo Asignación de Localización por Proximidad Temporal
   modoAsignandoLocalizacion = false;
@@ -206,6 +207,87 @@ export class ArchivosComponent implements OnInit, OnDestroy {
     });
   }
 
+  // ==========================================
+  // 🎬 MÉTODOS DE SELECCIÓN DE FOTOS PARA VÍDEO Y RECORRIDO
+  // ==========================================
+
+  get totalFotos(): number {
+    return (this.archivos || []).filter(a => {
+      const t = (a.tipo || '').toLowerCase();
+      return t === 'foto' || t === 'imagen';
+    }).length;
+  }
+
+  get totalFotosSeleccionadasVideo(): number {
+    return (this.archivos || []).filter(a => {
+      const t = (a.tipo || '').toLowerCase();
+      return (t === 'foto' || t === 'imagen') && (Number(a.seleccionado_video) === 1 || (a as any).seleccionado_video === true);
+    }).length;
+  }
+
+  get archivosMostrados(): Archivo[] {
+    if (!this.filtroSoloSeleccionadasVideo) {
+      return this.archivos;
+    }
+    return (this.archivos || []).filter(a => {
+      const t = (a.tipo || '').toLowerCase();
+      if (t === 'foto' || t === 'imagen') {
+        return Number(a.seleccionado_video) === 1 || (a as any).seleccionado_video === true;
+      }
+      return true;
+    });
+  }
+
+  toggleFiltroSoloVideo(): void {
+    this.filtroSoloSeleccionadasVideo = !this.filtroSoloSeleccionadasVideo;
+    this.cdr.markForCheck();
+  }
+
+  onToggleSeleccionVideo(archivo: Archivo): void {
+    const estadoActual = Number(archivo.seleccionado_video) === 1 || (archivo as any).seleccionado_video === true ? 1 : 0;
+    const nuevoEstado: 0 | 1 = estadoActual === 1 ? 0 : 1;
+
+    // Actualización optimista inmediata en memoria
+    archivo.seleccionado_video = nuevoEstado;
+    this.cdr.markForCheck();
+
+    this.archivoService.toggleSeleccionVideo(archivo.id).subscribe({
+      next: (res) => {
+        archivo.seleccionado_video = res.seleccionado_video;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('❌ Error al alternar selección para vídeo:', err);
+        archivo.seleccionado_video = estadoActual;
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  seleccionarTodasParaVideo(seleccionar: boolean): void {
+    const fotos = (this.archivos || []).filter(a => {
+      const t = (a.tipo || '').toLowerCase();
+      return t === 'foto' || t === 'imagen';
+    });
+    if (fotos.length === 0) return;
+
+    const ids = fotos.map(f => f.id);
+    const estado: 0 | 1 = seleccionar ? 1 : 0;
+
+    // Actualización optimista inmediata
+    fotos.forEach(f => f.seleccionado_video = estado);
+    this.cdr.markForCheck();
+
+    this.archivoService.batchSeleccionVideo(ids, estado).subscribe({
+      next: () => {
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('❌ Error al actualizar en lote la selección de vídeo:', err);
+        this.cargarArchivos();
+      }
+    });
+  }
 
   private preGenerarUrlsAsincrono(): void {
     requestAnimationFrame(() => {

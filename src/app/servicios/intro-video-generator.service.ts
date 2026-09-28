@@ -156,31 +156,46 @@ export class IntroVideoGeneratorService {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = 1.18;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a0502);
 
     const camera = new THREE.PerspectiveCamera(40, this.ANCHO / this.ALTO, 0.1, 50);
 
-    // Iluminación
-    const ambientLight = new THREE.AmbientLight(0xffedd4, 1.25);
+    // 💡 Iluminación cinematográfica PBR
+    const ambientLight = new THREE.AmbientLight(0xffeedd, 0.45);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xfff7e6, 2.8);
-    dirLight.position.set(4.5, 7.5, 5.0);
+    const hemiLight = new THREE.HemisphereLight(0xffeedd, 0x221108, 0.55);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xfff0d2, 3.2);
+    dirLight.position.set(3.2, 7.5, 3.8);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 2048;
     dirLight.shadow.mapSize.height = 2048;
-    dirLight.shadow.bias = -0.0004;
+    dirLight.shadow.camera.near = 1.0;
+    dirLight.shadow.camera.far = 16.0;
+    dirLight.shadow.camera.left = -3.5;
+    dirLight.shadow.camera.right = 3.5;
+    dirLight.shadow.camera.top = 3.5;
+    dirLight.shadow.camera.bottom = -3.5;
+    dirLight.shadow.bias = -0.0003;
+    dirLight.shadow.normalBias = 0.025;
+    dirLight.shadow.radius = 2.4;
     scene.add(dirLight);
 
-    const warmLight = new THREE.PointLight(0xff9d42, 2.2, 10);
-    warmLight.position.set(-2.5, 3.2, 2.0);
-    scene.add(warmLight);
+    const rimLight = new THREE.DirectionalLight(0xffaa55, 1.4);
+    rimLight.position.set(-3.5, 4.2, -2.5);
+    scene.add(rimLight);
 
-    const luzInteriorLibro = new THREE.PointLight(0xffda73, 0, 4);
-    luzInteriorLibro.position.set(0, 0.4, 0);
+    const luzRelleno = new THREE.PointLight(0xfff0d8, 0.85, 10);
+    luzRelleno.position.set(0, 2.5, 3.8);
+    scene.add(luzRelleno);
+
+    const luzInteriorLibro = new THREE.PointLight(0xffd570, 0, 7, 1.2);
+    luzInteriorLibro.position.set(0.5, 0.55, 0);
     scene.add(luzInteriorLibro);
 
     // 3. Mesa de madera noble
@@ -192,12 +207,24 @@ export class IntroVideoGeneratorService {
     texturaMadera.wrapS = THREE.RepeatWrapping;
     texturaMadera.wrapT = THREE.RepeatWrapping;
     texturaMadera.repeat.set(1.5, 1.5);
-    const matMadera = new THREE.MeshStandardMaterial({ map: texturaMadera, roughness: 0.65, metalness: 0.12 });
+    const matMadera = new THREE.MeshStandardMaterial({ map: texturaMadera, roughness: 0.45, metalness: 0.08 });
     const geoMadera = new THREE.PlaneGeometry(18, 18);
     const mesaMesh = new THREE.Mesh(geoMadera, matMadera);
     mesaMesh.rotation.x = -Math.PI / 2;
     mesaMesh.receiveShadow = true;
     scene.add(mesaMesh);
+
+    // 3b. Sombra de contacto suave sobre la mesa
+    const canvasSombra = document.createElement('canvas');
+    canvasSombra.width = 512;
+    canvasSombra.height = 512;
+    this.dibujarSombraContacto(canvasSombra);
+    const texSombra = new THREE.CanvasTexture(canvasSombra);
+    const matSombra = new THREE.MeshBasicMaterial({ map: texSombra, transparent: true, opacity: 0, depthWrite: false });
+    const sombraContactoMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 4.3), matSombra);
+    sombraContactoMesh.rotation.x = -Math.PI / 2;
+    sombraContactoMesh.position.set(0, 0.003, 0);
+    scene.add(sombraContactoMesh);
 
     // 4. Libro vintage con tapa articulada
     const libroGroup = new THREE.Group();
@@ -213,7 +240,21 @@ export class IntroVideoGeneratorService {
     texturaCuero.colorSpace = THREE.SRGBColorSpace;
     texturaCuero.anisotropy = 8;
 
-    const matCueroFrontal = new THREE.MeshStandardMaterial({ map: texturaCuero, roughness: 0.45, metalness: 0.25 });
+    const canvasBump = document.createElement('canvas');
+    canvasBump.width = 1024;
+    canvasBump.height = 1024;
+    this.dibujarBumpCuero(canvasBump);
+    const texturaBumpCuero = new THREE.CanvasTexture(canvasBump);
+    texturaBumpCuero.wrapS = THREE.RepeatWrapping;
+    texturaBumpCuero.wrapT = THREE.RepeatWrapping;
+
+    const matCueroFrontal = new THREE.MeshStandardMaterial({
+      map: texturaCuero,
+      bumpMap: texturaBumpCuero,
+      bumpScale: 0.042,
+      roughness: 0.38,
+      metalness: 0.22
+    });
 
     const canvasInteriorTapa = document.createElement('canvas');
     canvasInteriorTapa.width = 512;
@@ -221,13 +262,29 @@ export class IntroVideoGeneratorService {
     const ctxTapaInt = canvasInteriorTapa.getContext('2d')!;
     ctxTapaInt.fillStyle = '#261309';
     ctxTapaInt.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 2500; i++) {
+      ctxTapaInt.fillStyle = `rgba(15, 7, 3, ${0.05 + Math.random() * 0.14})`;
+      ctxTapaInt.fillRect(Math.random() * 512, Math.random() * 512, 2.5, 2.5);
+    }
     const texCueroInterior = new THREE.CanvasTexture(canvasInteriorTapa);
     const matCueroInterior = new THREE.MeshStandardMaterial({ map: texCueroInterior, roughness: 0.65, metalness: 0.12 });
     const matBorde = new THREE.MeshStandardMaterial({ color: 0x1f0e08, roughness: 0.55 });
 
-    // Hojas doradas
+    // Hojas doradas con microestratificación
+    const canvasHojas = document.createElement('canvas');
+    canvasHojas.width = 1024;
+    canvasHojas.height = 256;
+    this.dibujarCantosHojas(canvasHojas);
+    const texturaHojas = new THREE.CanvasTexture(canvasHojas);
+    texturaHojas.wrapS = THREE.RepeatWrapping;
+    texturaHojas.wrapT = THREE.ClampToEdgeWrapping;
+
     const geoHojas = new THREE.BoxGeometry(anchoLibro * 0.96, altoLibro * 0.85, profLibro * 0.96);
-    const matHojas = new THREE.MeshStandardMaterial({ color: 0xdfbe65, roughness: 0.72, metalness: 0.35 });
+    const matHojas = new THREE.MeshStandardMaterial({
+      map: texturaHojas,
+      roughness: 0.52,
+      metalness: 0.42
+    });
     const hojasMesh = new THREE.Mesh(geoHojas, matHojas);
     hojasMesh.position.set(0.04, altoLibro * 0.45, 0);
     hojasMesh.castShadow = true;
@@ -262,6 +319,17 @@ export class IntroVideoGeneratorService {
     ]);
     tapaMesh.position.set(anchoLibro / 2, 0, 0);
     tapaMesh.castShadow = true;
+
+    // Cantoneras de latón dorado en las esquinas exteriores
+    const matEsqMetal = new THREE.MeshStandardMaterial({ color: 0xdfbe65, roughness: 0.28, metalness: 0.88 });
+    const cantoneraGeo = new THREE.BoxGeometry(0.18, 0.075, 0.18);
+    const esq1 = new THREE.Mesh(cantoneraGeo, matEsqMetal);
+    esq1.position.set(anchoLibro - 0.08, 0.002, profLibro / 2 - 0.08);
+    tapaMesh.add(esq1);
+    const esq2 = new THREE.Mesh(cantoneraGeo, matEsqMetal);
+    esq2.position.set(anchoLibro - 0.08, 0.002, -profLibro / 2 + 0.08);
+    tapaMesh.add(esq2);
+
     tapaPivotGroup.add(tapaMesh);
     libroGroup.add(tapaPivotGroup);
 
@@ -274,6 +342,18 @@ export class IntroVideoGeneratorService {
     lomoMesh.position.set(-anchoLibro / 2, altoLibro * 0.5, 0);
     lomoMesh.castShadow = true;
     libroGroup.add(lomoMesh);
+
+    // 4 nervios en relieve de encuadernación artesanal clásica
+    const posicionesNerviosZ = [-1.05, -0.35, 0.35, 1.05];
+    posicionesNerviosZ.forEach(posZ => {
+      const geoNervio = new THREE.CylinderGeometry(altoLibro * 0.53, altoLibro * 0.53, 0.09, 24, 1, false, 0, Math.PI);
+      const nervioMesh = new THREE.Mesh(geoNervio, matLomo);
+      nervioMesh.rotation.z = Math.PI / 2;
+      nervioMesh.rotation.y = Math.PI / 2;
+      nervioMesh.position.set(-anchoLibro / 2, altoLibro * 0.5, posZ);
+      nervioMesh.castShadow = true;
+      libroGroup.add(nervioMesh);
+    });
 
     libroGroup.position.set(0, 4.8, 0);
     scene.add(libroGroup);
@@ -440,6 +520,16 @@ export class IntroVideoGeneratorService {
         camera.position.set(0, 3.1, 3.1);
         camera.lookAt(0, 0.35, 0.25);
       }
+
+      // Sombra de contacto suave y dinámica que ancla físicamente el libro a la mesa
+      if (sombraContactoMesh) {
+        const h = Math.max(0, libroGroup.position.y);
+        matSombra.opacity = Math.max(0, Math.min(0.88, (1 - h / 3.2) * 0.88));
+        const esc = 1 + h * 0.18;
+        sombraContactoMesh.scale.set(esc, esc, 1);
+        sombraContactoMesh.position.x = libroGroup.position.x;
+        sombraContactoMesh.position.z = libroGroup.position.z;
+      }
     };
 
     // 7. Codificación con WebCodecs / mp4-muxer
@@ -555,6 +645,12 @@ export class IntroVideoGeneratorService {
       matPolvo.dispose();
       texRecuerdos.dispose();
       matRecuerdos.dispose();
+      texSombra.dispose();
+      matSombra.dispose();
+      texturaBumpCuero.dispose();
+      texturaHojas.dispose();
+      matEsqMetal.dispose();
+      cantoneraGeo.dispose();
       document.body.removeChild(canvas);
     } catch {}
 
@@ -606,6 +702,63 @@ export class IntroVideoGeneratorService {
     sombraCentro.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = sombraCentro;
     ctx.fillRect(0, 0, 2048, 2048);
+  }
+
+  private dibujarSombraContacto(canvas: HTMLCanvasElement): void {
+    const ctx = canvas.getContext('2d')!;
+    const grad = ctx.createRadialGradient(256, 256, 35, 256, 256, 250);
+    grad.addColorStop(0, 'rgba(0, 0, 0, 0.92)');
+    grad.addColorStop(0.35, 'rgba(10, 5, 2, 0.65)');
+    grad.addColorStop(0.70, 'rgba(15, 8, 4, 0.22)');
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 512);
+  }
+
+  private dibujarBumpCuero(canvas: HTMLCanvasElement): void {
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, 1024, 1024);
+
+    const imgData = ctx.getImageData(0, 0, 1024, 1024);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const n = (Math.random() - 0.5) * 32;
+      const v = Math.min(255, Math.max(0, 128 + n));
+      d[i] = v;
+      d[i + 1] = v;
+      d[i + 2] = v;
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Hendiduras de grabado por estampación en caliente de los marcos dorados
+    ctx.strokeStyle = '#484848';
+    ctx.lineWidth = 10;
+    ctx.strokeRect(50, 50, 924, 924);
+    ctx.lineWidth = 4;
+    ctx.strokeRect(65, 65, 894, 894);
+  }
+
+  private dibujarCantosHojas(canvas: HTMLCanvasElement): void {
+    const ctx = canvas.getContext('2d')!;
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, '#f2dc98');
+    grad.addColorStop(0.3, '#d4af37');
+    grad.addColorStop(0.7, '#a98024');
+    grad.addColorStop(1, '#edd692');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1024, 256);
+
+    for (let y = 0; y < 256; y += 2) {
+      const alpha = 0.12 + Math.random() * 0.32;
+      const esOscuro = Math.random() > 0.45;
+      ctx.strokeStyle = esOscuro ? `rgba(60, 38, 12, ${alpha})` : `rgba(255, 248, 215, ${alpha * 0.9})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(1024, y);
+      ctx.stroke();
+    }
   }
 
   private dibujarCubiertaCuero(canvas: HTMLCanvasElement, titulo: string, fotoPortada: ImageBitmap | null): void {
@@ -986,6 +1139,15 @@ export class IntroVideoGeneratorService {
         const txt = frame.titulo ? frame.titulo.substring(0, 24) : 'Recuerdo';
         ctx.fillText(txt, 0, ry + h - 16);
       }
+
+      // Brillo sutil de papel fotográfico satinado de alta gama
+      const gradGloss = ctx.createLinearGradient(rx, ry, rx + w, ry + h);
+      gradGloss.addColorStop(0, 'rgba(255, 255, 255, 0.22)');
+      gradGloss.addColorStop(0.35, 'rgba(255, 255, 255, 0.0)');
+      gradGloss.addColorStop(0.70, 'rgba(255, 255, 255, 0.0)');
+      gradGloss.addColorStop(1, 'rgba(255, 255, 255, 0.15)');
+      ctx.fillStyle = gradGloss;
+      ctx.fillRect(rx, ry, w, h);
 
       ctx.restore();
     }

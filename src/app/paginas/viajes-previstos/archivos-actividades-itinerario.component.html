@@ -74,6 +74,42 @@
     </button>
   </div>
 
+  <!-- 🎬 BARRA DE GESTIÓN Y SELECCIÓN PARA VÍDEO Y RECORRIDO -->
+  <div class="barra-seleccion-video" *ngIf="archivos && archivos.length > 0">
+    <div class="info-seleccion-video">
+      <div class="icono-video-wrapper">
+        <i class="fa fa-film"></i>
+      </div>
+      <div class="textos-seleccion-video">
+        <div class="titulo-seleccion-video">
+          <strong>Selección para Vídeo MP4 y Recorrido</strong>
+          <span class="badge-contador-video" [class.destacado]="totalFotosSeleccionadasVideo > 0">
+            {{ totalFotosSeleccionadasVideo }} / {{ totalFotos }} seleccionadas
+          </span>
+        </div>
+        <p class="detalle-seleccion-video" *ngIf="totalFotosSeleccionadasVideo === 0">
+          Ninguna foto seleccionada: se incluirán <strong>todas</strong> las fotos en el vídeo y recorrido.
+        </p>
+        <p class="detalle-seleccion-video con-filtro" *ngIf="totalFotosSeleccionadasVideo > 0">
+          ✨ Se incluirán <strong>únicamente las {{ totalFotosSeleccionadasVideo }} fotos</strong> seleccionadas en la película y el recorrido.
+        </p>
+      </div>
+    </div>
+
+    <div class="botones-seleccion-video">
+      <button type="button" class="btn-sel-video" (click)="seleccionarTodasParaVideo(true)" title="Marcar todas las fotos para el vídeo">
+        <i class="fa fa-check-double"></i> Seleccionar todas
+      </button>
+      <button type="button" class="btn-sel-video btn-desmarcar" (click)="seleccionarTodasParaVideo(false)" [disabled]="totalFotosSeleccionadasVideo === 0" title="Desmarcar todas las fotos">
+        <i class="fa fa-times"></i> Desmarcar todas
+      </button>
+      <button type="button" class="btn-sel-video btn-filtro-ver" [class.activo]="filtroSoloSeleccionadasVideo" (click)="toggleFiltroSoloVideo()" [disabled]="totalFotosSeleccionadasVideo === 0 && !filtroSoloSeleccionadasVideo" title="Filtrar vista para ver sólo las fotos que saldrán en el vídeo">
+        <i class="fa" [class.fa-eye]="!filtroSoloSeleccionadasVideo" [class.fa-layer-group]="filtroSoloSeleccionadasVideo"></i>
+        {{ filtroSoloSeleccionadasVideo ? 'Mostrar todas' : 'Ver solo para vídeo' }}
+      </button>
+    </div>
+  </div>
+
   <router-outlet></router-outlet>
   <hr>
 
@@ -122,7 +158,7 @@
 
     <!-- 🔄 ITERACIÓN: Cada archivo usando el nuevo componente local -->
     <app-archivo-actividad-card
-      *ngFor="let archivo of archivos; trackBy: trackByArchivoId"
+      *ngFor="let archivo of archivosMostrados; trackBy: trackByArchivoId"
       [id]="'archivo-' + archivo.id"
       [archivo]="archivo"
       [modoGaleria]="modoGaleria"
@@ -137,7 +173,8 @@
       (searchAudio)="buscarEnAudioPhotoApp($event)"
       (openAssociated)="abrirArchivoAsociado($event.archivo, $event.tipo)"
       (playAudioPrincipal)="reproducirAudioPrincipal($event)"
-      (transcribe)="onTranscribe($event)">
+      (transcribe)="onTranscribe($event)"
+      (toggleSeleccionVideo)="onToggleSeleccionVideo($event)">
     </app-archivo-actividad-card>
 
   </div>

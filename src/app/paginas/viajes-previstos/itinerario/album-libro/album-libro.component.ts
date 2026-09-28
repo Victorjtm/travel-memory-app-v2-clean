@@ -151,6 +151,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   mostrarIntroDynamics: boolean = false;
   introDynamicsReproducida: boolean = false;
 
+  // 🎬 SELECCIÓN PERSONALIZADA DE FOTOS PARA VÍDEO Y RECORRIDO
+  totalFotosAlbum: number = 0;
+  totalFotosSeleccionadas: number = 0;
+  haySeleccionVideoPersonalizada: boolean = false;
+
   // ==========================================
   // PROPIEDADES PARA AUDIO DEL VIAJE
   // ==========================================
@@ -2500,6 +2505,19 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // 🎬 COMPROBACIÓN DE FOTOS SELECCIONADAS PARA VÍDEO Y RECORRIDO
+    const fotosCandidatas = archivos.filter(a => {
+      const t = (a.tipo || '').toLowerCase();
+      return t === 'foto' || t === 'imagen';
+    });
+    this.totalFotosAlbum = fotosCandidatas.length;
+    this.totalFotosSeleccionadas = fotosCandidatas.filter(a =>
+      Number(a.seleccionado_video) === 1 || (a as any).seleccionado_video === true
+    ).length;
+    this.haySeleccionVideoPersonalizada = this.totalFotosSeleccionadas > 0;
+
+    console.log(`🎬 [Álbum Libro] Selección de fotos: ${this.totalFotosSeleccionadas} de ${this.totalFotosAlbum} marcadas. Filtro personalizado = ${this.haySeleccionVideoPersonalizada}`);
+
     // Filtrar archivos que NO deben generar páginas independientes:
     // 1. Archivos auxiliares del sistema: mapas de ubicación estáticos, gpx, metadata
     // 2. Audios asociados a fotos padre (que ya se reproducen desde el botón de la foto)
@@ -2537,6 +2555,17 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           return false;
         }
       }
+
+      // 🎬 REGLA: Si el usuario seleccionó fotos específicas con tick para el vídeo,
+      // incluir ÚNICAMENTE las fotos seleccionadas en el recorrido y vídeo final.
+      // Si no ha seleccionado ninguna, se muestran todas las fotos (fallback intacto).
+      if (this.haySeleccionVideoPersonalizada && (tipo === 'foto' || tipo === 'imagen')) {
+        const estaSel = Number(archivo.seleccionado_video) === 1 || (archivo as any).seleccionado_video === true;
+        if (!estaSel) {
+          return false;
+        }
+      }
+
       return true;
     });
 
