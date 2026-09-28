@@ -208,20 +208,28 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   }
 
   // ==========================================
-  // 🎬 MÉTODOS DE SELECCIÓN DE FOTOS PARA VÍDEO Y RECORRIDO
+  // 🎬 MÉTODOS DE SELECCIÓN MULTIMEDIA PARA VÍDEO Y RECORRIDO (FOTOS, VÍDEOS Y AUDIOS)
   // ==========================================
 
+  esArchivoMultimedia(a: Archivo): boolean {
+    if (!a) return false;
+    const t = (a.tipo || '').toLowerCase();
+    if (t === 'foto' || t === 'imagen' || t === 'video' || t === 'audio') return true;
+    const ext = (a.nombreArchivo || '').split('.').pop()?.toLowerCase() || '';
+    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'avi', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'aac', 'ogg'].includes(ext);
+  }
+
+  get totalArchivosMultimedia(): number {
+    return (this.archivos || []).filter(a => this.esArchivoMultimedia(a)).length;
+  }
+
   get totalFotos(): number {
-    return (this.archivos || []).filter(a => {
-      const t = (a.tipo || '').toLowerCase();
-      return t === 'foto' || t === 'imagen';
-    }).length;
+    return this.totalArchivosMultimedia;
   }
 
   get totalFotosSeleccionadasVideo(): number {
     return (this.archivos || []).filter(a => {
-      const t = (a.tipo || '').toLowerCase();
-      return (t === 'foto' || t === 'imagen') && (Number(a.seleccionado_video) === 1 || (a as any).seleccionado_video === true);
+      return this.esArchivoMultimedia(a) && (Number(a.seleccionado_video) === 1 || (a as any).seleccionado_video === true);
     }).length;
   }
 
@@ -230,11 +238,7 @@ export class ArchivosComponent implements OnInit, OnDestroy {
       return this.archivos;
     }
     return (this.archivos || []).filter(a => {
-      const t = (a.tipo || '').toLowerCase();
-      if (t === 'foto' || t === 'imagen') {
-        return Number(a.seleccionado_video) === 1 || (a as any).seleccionado_video === true;
-      }
-      return true;
+      return this.esArchivoMultimedia(a) && (Number(a.seleccionado_video) === 1 || (a as any).seleccionado_video === true);
     });
   }
 
@@ -265,17 +269,14 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   }
 
   seleccionarTodasParaVideo(seleccionar: boolean): void {
-    const fotos = (this.archivos || []).filter(a => {
-      const t = (a.tipo || '').toLowerCase();
-      return t === 'foto' || t === 'imagen';
-    });
-    if (fotos.length === 0) return;
+    const multimedia = (this.archivos || []).filter(a => this.esArchivoMultimedia(a));
+    if (multimedia.length === 0) return;
 
-    const ids = fotos.map(f => f.id);
+    const ids = multimedia.map(f => f.id);
     const estado: 0 | 1 = seleccionar ? 1 : 0;
 
     // Actualización optimista inmediata
-    fotos.forEach(f => f.seleccionado_video = estado);
+    multimedia.forEach(f => f.seleccionado_video = estado);
     this.cdr.markForCheck();
 
     this.archivoService.batchSeleccionVideo(ids, estado).subscribe({
@@ -305,11 +306,6 @@ export class ArchivosComponent implements OnInit, OnDestroy {
       });
       this.cdr.detectChanges();
     });
-  }
-
-  private esArchivoMultimedia(archivo: Archivo): boolean {
-    return archivo.tipo === 'foto' || archivo.tipo === 'imagen' ||
-      archivo.tipo === 'video' || archivo.tipo === 'audio';
   }
 
   private async verificarYCargarUrl(archivo: Archivo): Promise<void> {

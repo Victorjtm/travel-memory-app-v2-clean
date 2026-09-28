@@ -151,9 +151,11 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   mostrarIntroDynamics: boolean = false;
   introDynamicsReproducida: boolean = false;
 
-  // 🎬 SELECCIÓN PERSONALIZADA DE FOTOS PARA VÍDEO Y RECORRIDO
+  // 🎬 SELECCIÓN PERSONALIZADA DE ARCHIVOS MULTIMEDIA PARA VÍDEO Y RECORRIDO
   totalFotosAlbum: number = 0;
   totalFotosSeleccionadas: number = 0;
+  totalArchivosAlbum: number = 0;
+  totalArchivosSeleccionados: number = 0;
   haySeleccionVideoPersonalizada: boolean = false;
 
   // ==========================================
@@ -2505,18 +2507,17 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // 🎬 COMPROBACIÓN DE FOTOS SELECCIONADAS PARA VÍDEO Y RECORRIDO
-    const fotosCandidatas = archivos.filter(a => {
-      const t = (a.tipo || '').toLowerCase();
-      return t === 'foto' || t === 'imagen';
-    });
-    this.totalFotosAlbum = fotosCandidatas.length;
-    this.totalFotosSeleccionadas = fotosCandidatas.filter(a =>
+    // 🎬 COMPROBACIÓN DE ARCHIVOS MULTIMEDIA SELECCIONADOS PARA VÍDEO Y RECORRIDO (FOTOS, VÍDEOS Y AUDIOS)
+    const multimediaCandidatos = archivos.filter(a => this.esArchivoMultimedia(a));
+    this.totalArchivosAlbum = multimediaCandidatos.length;
+    this.totalFotosAlbum = multimediaCandidatos.length;
+    this.totalArchivosSeleccionados = multimediaCandidatos.filter(a =>
       Number(a.seleccionado_video) === 1 || (a as any).seleccionado_video === true
     ).length;
-    this.haySeleccionVideoPersonalizada = this.totalFotosSeleccionadas > 0;
+    this.totalFotosSeleccionadas = this.totalArchivosSeleccionados;
+    this.haySeleccionVideoPersonalizada = this.totalArchivosSeleccionados > 0;
 
-    console.log(`🎬 [Álbum Libro] Selección de fotos: ${this.totalFotosSeleccionadas} de ${this.totalFotosAlbum} marcadas. Filtro personalizado = ${this.haySeleccionVideoPersonalizada}`);
+    console.log(`🎬 [Álbum Libro] Selección multimedia: ${this.totalArchivosSeleccionados} de ${this.totalArchivosAlbum} marcados. Filtro personalizado activo = ${this.haySeleccionVideoPersonalizada}`);
 
     // Filtrar archivos que NO deben generar páginas independientes:
     // 1. Archivos auxiliares del sistema: mapas de ubicación estáticos, gpx, metadata
@@ -2556,10 +2557,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         }
       }
 
-      // 🎬 REGLA: Si el usuario seleccionó fotos específicas con tick para el vídeo,
-      // incluir ÚNICAMENTE las fotos seleccionadas en el recorrido y vídeo final.
-      // Si no ha seleccionado ninguna, se muestran todas las fotos (fallback intacto).
-      if (this.haySeleccionVideoPersonalizada && (tipo === 'foto' || tipo === 'imagen')) {
+      // 🎬 REGLA: Si el usuario seleccionó archivos multimedia específicos (fotos, vídeos o audios) con tick para el vídeo/recorrido,
+      // incluir ÚNICAMENTE los archivos seleccionados en el recorrido y vídeo final.
+      // Si no ha seleccionado ninguno (0 seleccionados en total), se muestran todos los archivos multimedia (fallback intacto).
+      if (this.haySeleccionVideoPersonalizada && this.esArchivoMultimedia(archivo)) {
         const estaSel = Number(archivo.seleccionado_video) === 1 || (archivo as any).seleccionado_video === true;
         if (!estaSel) {
           return false;
@@ -4569,6 +4570,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }, 150);
 
     this.cdr.detectChanges();
+  }
+
+  private esArchivoMultimedia(a: Archivo): boolean {
+    if (!a) return false;
+    const t = (a.tipo || '').toLowerCase();
+    if (t === 'foto' || t === 'imagen' || t === 'video' || t === 'audio') return true;
+    const ext = this.obtenerExtension(a.nombreArchivo || '').toLowerCase();
+    return this.EXTENSIONES_IMAGEN.includes(ext) || this.EXTENSIONES_VIDEO.includes(ext) || this.EXTENSIONES_AUDIO.includes(ext);
   }
 
   private determinarTipoMedia(archivo: Archivo): TipoMedia {

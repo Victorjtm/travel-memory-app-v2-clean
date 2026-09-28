@@ -84,28 +84,28 @@
         <div class="titulo-seleccion-video">
           <strong>Selección para Vídeo MP4 y Recorrido</strong>
           <span class="badge-contador-video" [class.destacado]="totalFotosSeleccionadasVideo > 0">
-            {{ totalFotosSeleccionadasVideo }} / {{ totalFotos }} seleccionadas
+            {{ totalFotosSeleccionadasVideo }} / {{ totalArchivosMultimedia }} seleccionados
           </span>
         </div>
         <p class="detalle-seleccion-video" *ngIf="totalFotosSeleccionadasVideo === 0">
-          Ninguna foto seleccionada: se incluirán <strong>todas</strong> las fotos en el vídeo y recorrido.
+          Ningún archivo multimedia seleccionado: se incluirán <strong>todos</strong> (fotos, vídeos y audios) en el vídeo y recorrido.
         </p>
         <p class="detalle-seleccion-video con-filtro" *ngIf="totalFotosSeleccionadasVideo > 0">
-          ✨ Se incluirán <strong>únicamente las {{ totalFotosSeleccionadasVideo }} fotos</strong> seleccionadas en la película y el recorrido.
+          ✨ Se incluirán <strong>únicamente los {{ totalFotosSeleccionadasVideo }} archivos</strong> (fotos, vídeos o audios) seleccionados en la película y el recorrido.
         </p>
       </div>
     </div>
 
     <div class="botones-seleccion-video">
-      <button type="button" class="btn-sel-video" (click)="seleccionarTodasParaVideo(true)" title="Marcar todas las fotos para el vídeo">
-        <i class="fa fa-check-double"></i> Seleccionar todas
+      <button type="button" class="btn-sel-video" (click)="seleccionarTodasParaVideo(true)" title="Marcar todos los archivos multimedia (fotos, vídeos, audios) para el vídeo y recorrido">
+        <i class="fa fa-check-double"></i> Seleccionar todos
       </button>
-      <button type="button" class="btn-sel-video btn-desmarcar" (click)="seleccionarTodasParaVideo(false)" [disabled]="totalFotosSeleccionadasVideo === 0" title="Desmarcar todas las fotos">
-        <i class="fa fa-times"></i> Desmarcar todas
+      <button type="button" class="btn-sel-video btn-desmarcar" (click)="seleccionarTodasParaVideo(false)" [disabled]="totalFotosSeleccionadasVideo === 0" title="Desmarcar todos los archivos multimedia">
+        <i class="fa fa-times"></i> Desmarcar todos
       </button>
-      <button type="button" class="btn-sel-video btn-filtro-ver" [class.activo]="filtroSoloSeleccionadasVideo" (click)="toggleFiltroSoloVideo()" [disabled]="totalFotosSeleccionadasVideo === 0 && !filtroSoloSeleccionadasVideo" title="Filtrar vista para ver sólo las fotos que saldrán en el vídeo">
+      <button type="button" class="btn-sel-video btn-filtro-ver" [class.activo]="filtroSoloSeleccionadasVideo" (click)="toggleFiltroSoloVideo()" [disabled]="totalFotosSeleccionadasVideo === 0 && !filtroSoloSeleccionadasVideo" title="Filtrar vista para ver sólo los archivos multimedia que saldrán en el vídeo y recorrido">
         <i class="fa" [class.fa-eye]="!filtroSoloSeleccionadasVideo" [class.fa-layer-group]="filtroSoloSeleccionadasVideo"></i>
-        {{ filtroSoloSeleccionadasVideo ? 'Mostrar todas' : 'Ver solo para vídeo' }}
+        {{ filtroSoloSeleccionadasVideo ? 'Mostrar todos' : 'Ver solo para vídeo' }}
       </button>
     </div>
   </div>

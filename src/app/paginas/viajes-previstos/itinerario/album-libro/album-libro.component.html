@@ -1288,22 +1288,22 @@
           Se compilará una película cinematográfica fiel al álbum, con la animación 3D inicial, mapas generales, fotografías con marco y vídeos de las rutas a 60 FPS fluidos.
         </p>
 
-        <!-- ESTADO DE LA SELECCIÓN DE FOTOS PARA LA PELÍCULA -->
+        <!-- ESTADO DE LA SELECCIÓN MULTIMEDIA PARA LA PELÍCULA -->
         <div class="alerta-fotos-seleccion" [class.seleccion-activa]="haySeleccionVideoPersonalizada">
           <div class="alerta-header">
-            <i class="fas" [class.fa-check-double]="haySeleccionVideoPersonalizada" [class.fa-images]="!haySeleccionVideoPersonalizada"></i>
+            <i class="fas" [class.fa-check-double]="haySeleccionVideoPersonalizada" [class.fa-photo-video]="!haySeleccionVideoPersonalizada"></i>
             <strong *ngIf="haySeleccionVideoPersonalizada">
-              Fotos seleccionadas para el vídeo: {{ totalFotosSeleccionadas }} de {{ totalFotosAlbum }}
+              Archivos multimedia seleccionados: {{ totalArchivosSeleccionados }} de {{ totalArchivosAlbum }}
             </strong>
             <strong *ngIf="!haySeleccionVideoPersonalizada">
-              Todas las fotos incluidas ({{ totalFotosAlbum }})
+              Todos los archivos multimedia incluidos ({{ totalArchivosAlbum }})
             </strong>
           </div>
           <p class="alerta-desc" *ngIf="haySeleccionVideoPersonalizada">
-            ✨ Se incluirán <strong>únicamente las {{ totalFotosSeleccionadas }} fotos</strong> seleccionadas por ti con el tick de vídeo.
+            ✨ Se incluirán <strong>únicamente los {{ totalArchivosSeleccionados }} archivos multimedia</strong> (fotos, vídeos y audios) seleccionados por ti con el tick.
           </p>
           <p class="alerta-desc" *ngIf="!haySeleccionVideoPersonalizada">
-            Al no haber ninguna foto marcada individualmente, la película incluirá automáticamente todas las fotografías del viaje.
+            Al no haber ningún archivo marcado individualmente, la película incluirá automáticamente todos los archivos multimedia del viaje.
           </p>
         </div>
 

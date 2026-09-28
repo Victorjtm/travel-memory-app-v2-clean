@@ -1,12 +1,12 @@
 <div class="card-container" [class.gallery-mode]="modoGaleria" [class.seleccionado-video]="estaSeleccionadoVideo()">
   
   <div class="preview-section">
-    <!-- Tick flotante de selección para vídeo (visible en Galería y sobre la foto en Lista) -->
+    <!-- Tick flotante de selección para vídeo (visible en Galería y sobre el archivo en Lista) -->
     <button type="button" 
             class="btn-tick-video" 
             [class.seleccionado]="estaSeleccionadoVideo()" 
             (click)="onToggleSeleccionVideo($event)"
-            [title]="estaSeleccionadoVideo() ? 'Foto seleccionada para el vídeo MP4 y recorrido (Click para desmarcar)' : 'Marcar foto para el vídeo MP4 y recorrido'">
+            [title]="estaSeleccionadoVideo() ? 'Archivo seleccionado para el vídeo MP4 y recorrido (Click para desmarcar)' : 'Marcar archivo para el vídeo MP4 y recorrido'">
       <i class="fa" [class.fa-check-circle]="estaSeleccionadoVideo()" [class.fa-circle]="!estaSeleccionadoVideo()"></i>
       <span class="lbl-tick-video">{{ estaSeleccionadoVideo() ? 'Vídeo' : 'Vídeo' }}</span>
     </button>
@@ -24,7 +24,7 @@
     <div class="info-header-row">
       <h3>{{ archivo.nombreArchivo }}</h3>
       <span class="badge-en-video" *ngIf="estaSeleccionadoVideo()">
-        <i class="fa fa-film"></i> Seleccionada para vídeo
+        <i class="fa fa-film"></i> Seleccionado para vídeo
       </span>
     </div>
     <div class="meta-data">
@@ -60,7 +60,7 @@
       <button type="button" class="btn-asociado btn-toggle-video"
               [class.seleccionado]="estaSeleccionadoVideo()"
               (click)="onToggleSeleccionVideo($event)"
-              [title]="estaSeleccionadoVideo() ? 'Foto seleccionada para vídeo y recorrido (Click para desmarcar)' : 'Incluir foto en vídeo y recorrido'">
+              [title]="estaSeleccionadoVideo() ? 'Archivo seleccionado para vídeo y recorrido (Click para desmarcar)' : 'Incluir archivo en vídeo y recorrido'">
         <i class="fa" [class.fa-check-circle]="estaSeleccionadoVideo()" [class.fa-film]="!estaSeleccionadoVideo()"></i>
         <span>{{ estaSeleccionadoVideo() ? 'En vídeo' : '+ Vídeo' }}</span>
       </button>
