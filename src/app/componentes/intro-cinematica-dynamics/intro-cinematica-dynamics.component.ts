@@ -587,11 +587,11 @@ export class IntroCinematicaDynamicsComponent implements OnInit, OnDestroy {
     });
     const cantoneraGeo = new THREE.BoxGeometry(0.18, 0.075, 0.18);
     const esq1 = new THREE.Mesh(cantoneraGeo, matEsqMetal);
-    esq1.position.set(anchoLibro - 0.08, 0.002, profLibro / 2 - 0.08);
+    esq1.position.set(anchoLibro / 2 - 0.09, 0.002, profLibro / 2 - 0.09);
     this.tapaMesh.add(esq1);
 
     const esq2 = new THREE.Mesh(cantoneraGeo, matEsqMetal);
-    esq2.position.set(anchoLibro - 0.08, 0.002, -profLibro / 2 + 0.08);
+    esq2.position.set(anchoLibro / 2 - 0.09, 0.002, -profLibro / 2 + 0.09);
     this.tapaMesh.add(esq2);
 
     this.tapaPivotGroup.add(this.tapaMesh);

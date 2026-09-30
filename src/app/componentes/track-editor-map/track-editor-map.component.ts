@@ -892,13 +892,13 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       if (startPt && startPt.time) {
         const dt = new Date(startPt.time as any);
         if (!isNaN(dt.getTime())) {
-          horaInicio = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          horaInicio = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
         }
       }
       if (endPt && endPt.time) {
         const dt = new Date(endPt.time as any);
         if (!isNaN(dt.getTime())) {
-          horaFin = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          horaFin = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
         }
       }
 
@@ -1419,9 +1419,9 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       const dtA = new Date(ptA.time as any);
       if (!isNaN(dtA.getTime())) {
         this.customStartDate = dtA.toISOString().split('T')[0];
-        const hh = dtA.getHours().toString().padStart(2, '0');
-        const mm = dtA.getMinutes().toString().padStart(2, '0');
-        const ss = dtA.getSeconds().toString().padStart(2, '0');
+        const hh = dtA.getUTCHours().toString().padStart(2, '0');
+        const mm = dtA.getUTCMinutes().toString().padStart(2, '0');
+        const ss = dtA.getUTCSeconds().toString().padStart(2, '0');
         this.customStartTime = `${hh}:${mm}:${ss}`;
       }
     }
@@ -1433,9 +1433,9 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       const dtB = new Date(ptB.time as any);
       if (!isNaN(dtB.getTime())) {
         this.customEndDate = dtB.toISOString().split('T')[0];
-        const hh = dtB.getHours().toString().padStart(2, '0');
-        const mm = dtB.getMinutes().toString().padStart(2, '0');
-        const ss = dtB.getSeconds().toString().padStart(2, '0');
+        const hh = dtB.getUTCHours().toString().padStart(2, '0');
+        const mm = dtB.getUTCMinutes().toString().padStart(2, '0');
+        const ss = dtB.getUTCSeconds().toString().padStart(2, '0');
         this.customEndTime = `${hh}:${mm}:${ss}`;
       }
     }
@@ -1614,7 +1614,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     const endMs = startMs + (durSec * 1000);
 
     const dtEnd = new Date(endMs);
-    return dtEnd.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return dtEnd.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC' });
   }
 
   public onAssignDistance(mode: 'auto' | 'manual' = 'auto'): void {
@@ -3129,11 +3129,11 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       let fechaFull = '';
       if (pt.time) {
         const dateObj = new Date(pt.time);
-        const hh = dateObj.getHours().toString().padStart(2, '0');
-        const mm = dateObj.getMinutes().toString().padStart(2, '0');
-        const ss = dateObj.getSeconds().toString().padStart(2, '0');
+        const hh = dateObj.getUTCHours().toString().padStart(2, '0');
+        const mm = dateObj.getUTCMinutes().toString().padStart(2, '0');
+        const ss = dateObj.getUTCSeconds().toString().padStart(2, '0');
         horaText = `${hh}:${mm}:${ss}`;
-        fechaFull = dateObj.toLocaleString();
+        fechaFull = dateObj.toLocaleString('es-ES', { timeZone: 'UTC' });
       } else if (pt.timeAcum !== undefined) {
         const totalSec = Math.floor(pt.timeAcum);
         const hh = Math.floor(totalSec / 3600).toString().padStart(2, '0');
@@ -3257,7 +3257,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
       let horaFull = 'N/A';
       if (pt.time) {
-        horaFull = new Date(pt.time).toLocaleString();
+        horaFull = new Date(pt.time).toLocaleString('es-ES', { timeZone: 'UTC' });
       } else if (pt.timeAcum !== undefined) {
         const totalSec = Math.floor(pt.timeAcum);
         const hh = Math.floor(totalSec / 3600).toString().padStart(2, '0');

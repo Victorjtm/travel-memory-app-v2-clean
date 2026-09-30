@@ -41,6 +41,15 @@
         <i class="fas fa-book-open" aria-hidden="true"></i>
       </button>
 
+      <!-- 3b. Selector de Intro 3D: Cinemática MP4 vs Three.js Dynamics -->
+      <button class="toolbar-icon toolbar-action-btn btn-toolbar-tipo-intro"
+        (click)="toggleTipoIntro(undefined, $event)"
+        [class.intro-mp4]="tipoIntro === 'video-mp4'"
+        [class.intro-dynamics]="tipoIntro === '3d-interactiva'"
+        [title]="tipoIntro === 'video-mp4' ? 'Intro activa: Vídeo Cinemático MP4 (Estantería y Mesa con Velas). Click para cambiar a 3D Dinámica' : 'Intro activa: 3D Dinámica Three.js (Libro flotante y fotos). Click para cambiar a Vídeo MP4'">
+        <i class="fas" [class.fa-clapperboard]="tipoIntro === 'video-mp4'" [class.fa-cubes]="tipoIntro === '3d-interactiva'"></i>
+      </button>
+
       <!-- 4. Botón Conmutable Pantalla Completa vs Reducida -->
       <button class="toolbar-icon toolbar-action-btn btn-toolbar-fullscreen-toggle"
         [class.active]="reproducirEnFullscreen" (click)="toggleReproducirEnFullscreen($event)"
@@ -173,18 +182,7 @@
     <span class="subtexto-cargando-vintage">Sincronizando mapas y fotografías</span>
   </div>
 
-  <!-- ============================================================ -->
-  <!-- 🎬 INTRODUCCIÓN CINEMÁTICA 3D DYNAMICS (0.0s - 5.0s)        -->
-  <!-- ============================================================ -->
-  <app-intro-cinematica-dynamics
-    *ngIf="mostrarIntroDynamics"
-    [tituloViaje]="infoViaje?.nombre || getTituloContextual() || 'ÁLBUM DE VIAJES'"
-    [imagenPortada]="getImagenViajeUrl()"
-    [archivosViaje]="paginas"
-    [sonidoActivado]="musicaActivada || !videoMuted"
-    [permitirSaltar]="true"
-    (completado)="onIntroDynamicsCompletada()">
-  </app-intro-cinematica-dynamics>
+
 
   <!-- ============================================================ -->
   <!-- BLOQUE: PORTADA DEL LIBRO 3D REALISTA (sólo modo vintage)  -->
@@ -208,9 +206,7 @@
           <span class="adorno-esquina inf-der"></span>
 
           <!-- Resumen principal solicitado -->
-          <h2 class="titulo-intro-vintage">{{ (infoViaje?.nombre || 'ESPAÑA').toUpperCase() }} - {{
-            (infoViaje?.fechaInicio | date:'dd/MM/yyyy') || '01/07/2026' }} - {{ distanciaTotalKm | number:'1.1-1' }} KM
-          </h2>
+          <h2 class="titulo-intro-vintage">{{ obtenerTituloIntroLimpio() }}</h2>
           <div class="linea-divisoria-oro"></div>
 
           <div class="estadisticas-intro-vintage">
@@ -223,7 +219,7 @@
               <span>Itinerarios</span>
             </div>
             <div class="stat-item-vintage">
-              <strong>{{ distanciaTotalKm | number:'1.1-1' }} km</strong>
+              <strong>{{ distanciaTotalKm | number:'1.2-2' }} km</strong>
               <span>Recorrido</span>
             </div>
           </div>
@@ -368,6 +364,21 @@
             <i class="fas fa-book-open"></i>
             <span>Abrir Diario</span>
           </button>
+        </div>
+
+        <!-- Selector Conmutable de Intro: Cinemática MP4 vs 3D Dinámica -->
+        <div class="portada-intro-selector-wrapper" (click)="$event.stopPropagation()">
+          <span class="intro-selector-label"><i class="fas fa-film"></i> Intro:</span>
+          <div class="intro-segmented-control">
+            <button type="button" class="btn-intro-seg" [class.active]="tipoIntro === 'video-mp4'"
+              (click)="toggleTipoIntro('video-mp4', $event)" title="Intro Cinemática MP4 (Estantería de recuerdos, mesa con velas y apertura de páginas)">
+              <i class="fas fa-clapperboard"></i> Cinemática MP4
+            </button>
+            <button type="button" class="btn-intro-seg" [class.active]="tipoIntro === '3d-interactiva'"
+              (click)="toggleTipoIntro('3d-interactiva', $event)" title="Intro 3D Dinámica (Libro flotante y fotografías interactivas en Three.js)">
+              <i class="fas fa-cubes"></i> 3D Dinámica
+            </button>
+          </div>
         </div>
 
       </div>
@@ -1328,8 +1339,34 @@
           <span>Todas las animaciones de ruta ({{ animacionesRutaTotales.length }}) están listas en MP4 fluido a 60 FPS.</span>
         </div>
 
-        <!-- ESTADO DE LA PORTADA 3D PERSONALIZADA -->
-        <div class="alerta-intro-3d" [class.intro-lista]="introVideoLista" [class.intro-pendiente]="!introVideoLista">
+        <!-- SELECTOR DE TIPO DE INTRODUCCIÓN PARA LA PELÍCULA -->
+        <div class="config-intro-selector-box">
+          <div class="alerta-header">
+            <i class="fas fa-clapperboard"></i>
+            <strong>Estilo de Introducción para la Película</strong>
+          </div>
+          <div class="intro-segmented-control-modal">
+            <button type="button" class="btn-intro-modal-opt" [class.active]="configuracionExportacion.tipoIntro === 'video-mp4'"
+              (click)="configuracionExportacion.tipoIntro = 'video-mp4'; tipoIntro = 'video-mp4'">
+              <i class="fas fa-film"></i>
+              <div class="opt-text">
+                <strong>Vídeo Cinemático MP4</strong>
+                <span>Estantería de recuerdos, mesa con velas y apertura</span>
+              </div>
+            </button>
+            <button type="button" class="btn-intro-modal-opt" [class.active]="configuracionExportacion.tipoIntro === '3d-interactiva'"
+              (click)="configuracionExportacion.tipoIntro = '3d-interactiva'; tipoIntro = '3d-interactiva'">
+              <i class="fas fa-cubes"></i>
+              <div class="opt-text">
+                <strong>3D Dinámica Three.js</strong>
+                <span>Libro flotante y fotografías interactivas</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- ESTADO DE LA PORTADA 3D PERSONALIZADA (Solo si se elige 3D Dinámica) -->
+        <div class="alerta-intro-3d" *ngIf="configuracionExportacion.tipoIntro === '3d-interactiva'" [class.intro-lista]="introVideoLista" [class.intro-pendiente]="!introVideoLista">
           <div class="alerta-header">
             <i class="fas" [class.fa-check-circle]="introVideoLista" [class.fa-book-open]="!introVideoLista"></i>
             <strong>Portada 3D cinematográfica: {{ introVideoLista ? 'Personalizada para este viaje' : 'Pendiente de renderizar' }}</strong>
@@ -1354,6 +1391,15 @@
 
         <!-- Opciones Principales -->
         <div class="opciones-principales">
+
+          <!-- Modo Vintage 3D en la película -->
+          <div class="config-checkbox">
+            <input type="checkbox" id="mantener-estilo" [(ngModel)]="configuracionExportacion.mantenerEstiloAlbum"
+              (ngModelChange)="configuracionExportacion.esModoVintage = configuracionExportacion.mantenerEstiloAlbum">
+            <label for="mantener-estilo">
+              <i class="fas fa-book-open"></i> Modo Álbum Vintage 3D (marcos de oro y fondo ambiental desenfocado)
+            </label>
+          </div>
 
           <div class="config-checkbox" *ngIf="audioViaje">
             <input type="checkbox" id="incluir-audio" [(ngModel)]="configuracionExportacion.incluirAudio">
@@ -1395,11 +1441,10 @@
           </button>
 
           <div class="opciones-avanzadas-contenido" *ngIf="mostrarOpcionesAvanzadas">
-            <div class="config-checkbox">
-              <input type="checkbox" id="mantener-estilo" [(ngModel)]="configuracionExportacion.mantenerEstiloAlbum">
-              <label for="mantener-estilo">Mantener marcos físicos y encuadre luxury</label>
+            <div class="aviso-tecnico">
+              <i class="fas fa-route"></i>
+              Filtro de distancia en mapas animadas: tramos &gt; {{ distanciaMinimaAnimacionMetros }} metros (fiel al ajuste actual de la barra).
             </div>
-
             <div class="aviso-tecnico">
               <i class="fas fa-info-circle"></i>
               El formato final será MP4 (H.264 Main Profile + AAC) con streaming faststart, compatible con cualquier dispositivo y WhatsApp.
@@ -1614,6 +1659,68 @@
 
 </div>
 
+<!-- ============================================================ -->
+<!-- 🎬 INTRODUCCIÓN CINEMÁTICA 3D DYNAMICS (0.0s - 5.0s)        -->
+<!-- ============================================================ -->
+<app-intro-cinematica-dynamics
+  *ngIf="mostrarIntroDynamics"
+  [tituloViaje]="obtenerTituloIntroLimpio() || infoViaje?.nombre || getTituloContextual() || 'ÁLBUM DE VIAJES'"
+  [imagenPortada]="getImagenViajeUrl()"
+  [archivosViaje]="paginas"
+  [sonidoActivado]="musicaActivada || !videoMuted"
+  [permitirSaltar]="true"
+  (completado)="onIntroDynamicsCompletada()">
+</app-intro-cinematica-dynamics>
+
+<!-- ============================================================ -->
+<!-- 🎬 INTRODUCCIÓN CINEMÁTICA EN VÍDEO MP4 (ESTANTERÍA Y MESA)  -->
+<!-- ============================================================ -->
+<div class="modal-outro-cinematico-overlay modal-intro-overlay"
+  *ngIf="mostrarModalIntro"
+  (click)="onIntroOverlayClick($event)"
+  role="dialog"
+  aria-modal="true">
+
+  <!-- Botón X de Cierre -->
+  <button type="button" class="btn-cerrar-fullscreen-media" (click)="cerrarIntroModal(); $event.stopPropagation()"
+    title="Cerrar y abrir libro directamente (Esc)" aria-label="Cerrar">
+    <i class="fas fa-times"></i>
+  </button>
+
+  <div class="modal-outro-container modal-intro-container" (click)="$event.stopPropagation()">
+    <div class="video-outro-wrapper">
+      <video id="video-intro-modal"
+        src="/assets/videos/intro-libro-3d.mp4"
+        class="video-outro-player"
+        autoplay
+        playsinline
+        controls
+        (ended)="onIntroVideoEnded()"></video>
+    </div>
+
+    <!-- Botonera, dedicatoria y acciones bajo el vídeo de intro -->
+    <div class="outro-modal-footer">
+      <div class="outro-footer-text">
+        <div class="outro-header-badges">
+          <span class="outro-badge-oro"><i class="fas fa-book-open"></i> Cuaderno de Recuerdos</span>
+          <span class="outro-badge-destino" *ngIf="obtenerDestinoViajeTexto()">
+            <i class="fas fa-map-marker-alt"></i> {{ obtenerDestinoViajeTexto() }}
+          </span>
+        </div>
+
+        <h3 class="outro-titulo-viaje">{{ infoViaje?.nombre || infoViaje?.destino || 'Mi Viaje Inolvidable' }}</h3>
+        <p class="outro-dedicatoria">Descolgando el cuaderno de la estantería de los recuerdos para revivir cada paso del viaje.</p>
+      </div>
+
+      <div class="outro-footer-actions">
+        <button type="button" class="btn-outro-action primary" (click)="abrirLibroDesdeIntroVideo()">
+          <i class="fas fa-book-open"></i> Abrir Cuaderno y Comenzar Tour
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ======================================================== -->
 <!-- MODAL OUTRO CINEMÁTICO: CIERRE Y ESTANTERÍA DE RECUERDOS -->
 <!-- ======================================================== -->
@@ -1638,40 +1745,37 @@
         playsinline
         controls
         (ended)="onOutroVideoEnded()"></video>
-
-      <!-- Placa / Sello Cinemático Grabado sobre el vídeo -->
-      <div class="placa-recuerdo-cinematica" *ngIf="mostrarModalOutro">
-        <div class="placa-recuerdo-inner">
-          <div class="placa-adorno-top">
-            <span class="adorno-estrella">✦</span> ESTANTERÍA DE LOS RECUERDOS <span class="adorno-estrella">✦</span>
-          </div>
-          <h2 class="placa-titulo">{{ infoViaje?.nombre || infoViaje?.destino || 'Viaje Inolvidable' }}</h2>
-          <div class="placa-fecha" *ngIf="obtenerFechaViajeTexto()">
-            <i class="far fa-calendar-alt"></i> {{ obtenerFechaViajeTexto() }}
-          </div>
-          <div class="placa-metricas" *ngIf="obtenerDistanciaTotalTexto() || obtenerDuracionTotalTexto() || obtenerPasosTotalesTexto()">
-            <span class="placa-metrica" *ngIf="obtenerDistanciaTotalTexto()">
-              <i class="fas fa-route"></i> {{ obtenerDistanciaTotalTexto() }}
-            </span>
-            <span class="placa-separador" *ngIf="obtenerDistanciaTotalTexto() && (obtenerDuracionTotalTexto() || obtenerPasosTotalesTexto())">·</span>
-            <span class="placa-metrica" *ngIf="obtenerDuracionTotalTexto()">
-              <i class="fas fa-stopwatch"></i> {{ obtenerDuracionTotalTexto() }}
-            </span>
-            <span class="placa-separador" *ngIf="obtenerDuracionTotalTexto() && obtenerPasosTotalesTexto()">·</span>
-            <span class="placa-metrica" *ngIf="obtenerPasosTotalesTexto()">
-              <i class="fas fa-shoe-prints"></i> {{ obtenerPasosTotalesTexto() }}
-            </span>
-          </div>
-        </div>
-      </div>
     </div>
 
-    <!-- Botonera y dedicatoria final bajo el vídeo -->
+    <!-- Botonera, dedicatoria y datos completos del viaje bajo el vídeo -->
     <div class="outro-modal-footer">
       <div class="outro-footer-text">
-        <span class="outro-badge-oro"><i class="fas fa-bookmark"></i> Estantería de los Recuerdos</span>
-        <h3>{{ infoViaje?.nombre || 'Mi Viaje Inolvidable' }}</h3>
-        <p>Los recuerdos de este viaje quedan guardados para siempre en la estantería de tu memoria.</p>
+        <div class="outro-header-badges">
+          <span class="outro-badge-oro"><i class="fas fa-bookmark"></i> Estantería de los Recuerdos</span>
+          <span class="outro-badge-destino" *ngIf="obtenerDestinoViajeTexto()">
+            <i class="fas fa-map-marker-alt"></i> {{ obtenerDestinoViajeTexto() }}
+          </span>
+        </div>
+
+        <h3 class="outro-titulo-viaje">{{ infoViaje?.nombre || infoViaje?.destino || 'Mi Viaje Inolvidable' }}</h3>
+
+        <!-- Fila con todas las métricas y datos del viaje -->
+        <div class="outro-metricas-fila" *ngIf="obtenerFechaViajeTexto() || obtenerDistanciaTotalTexto() || obtenerDuracionTotalTexto() || obtenerPasosTotalesTexto()">
+          <span class="outro-metrica-pill fecha" *ngIf="obtenerFechaViajeTexto()">
+            <i class="far fa-calendar-alt"></i> {{ obtenerFechaViajeTexto() }}
+          </span>
+          <span class="outro-metrica-pill" *ngIf="obtenerDistanciaTotalTexto()">
+            <i class="fas fa-route"></i> {{ obtenerDistanciaTotalTexto() }}
+          </span>
+          <span class="outro-metrica-pill" *ngIf="obtenerDuracionTotalTexto()">
+            <i class="fas fa-stopwatch"></i> {{ obtenerDuracionTotalTexto() }}
+          </span>
+          <span class="outro-metrica-pill" *ngIf="obtenerPasosTotalesTexto()">
+            <i class="fas fa-shoe-prints"></i> {{ obtenerPasosTotalesTexto() }}
+          </span>
+        </div>
+
+        <p class="outro-dedicatoria">Los recuerdos de este viaje quedan guardados para siempre en la estantería de tu memoria.</p>
       </div>
 
       <div class="outro-footer-actions">
@@ -2280,9 +2384,7 @@
                 <span class="adorno-esquina inf-der"></span>
 
                 <!-- Resumen principal solicitado -->
-                <h2 class="titulo-intro-vintage">{{ (infoViaje?.nombre || 'ESPAÑA').toUpperCase() }} - {{
-                  (infoViaje?.fechaInicio | date:'dd/MM/yyyy') || '01/07/2026' }} - {{ distanciaTotalKm | number:'1.1-1'
-                  }} KM</h2>
+                <h2 class="titulo-intro-vintage">{{ obtenerTituloIntroLimpio() }}</h2>
                 <div class="linea-divisoria-oro"></div>
 
                 <div class="estadisticas-intro-vintage">
@@ -2295,7 +2397,7 @@
                     <span>Itinerarios</span>
                   </div>
                   <div class="stat-item-vintage">
-                    <strong>{{ distanciaTotalKm | number:'1.1-1' }} km</strong>
+                    <strong>{{ distanciaTotalKm | number:'1.2-2' }} km</strong>
                     <span>Recorrido</span>
                   </div>
                 </div>

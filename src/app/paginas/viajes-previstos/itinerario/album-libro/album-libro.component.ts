@@ -147,7 +147,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   paginaActual = 0;
   estado: 'portada' | 'abierto' | 'contraportada' = 'portada';
 
-  // 🎬 INTRODUCCIÓN CINEMÁTICA 3D DYNAMICS
+  // 🎬 INTRODUCCIÓN DEL ÁLBUM: VÍDEO CINEMÁTICO MP4 O 3D DYNAMICS
+  tipoIntro: 'video-mp4' | '3d-interactiva' = 'video-mp4';
+  mostrarModalIntro: boolean = false;
   mostrarIntroDynamics: boolean = false;
   introDynamicsReproducida: boolean = false;
 
@@ -339,8 +341,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   get distanciaTotalKm(): number {
     if (!this.paginas || this.paginas.length === 0) return 29.8;
-    const suma = this.paginas
-      .filter(p => p.distanciaTramoKm && p.distanciaTramoKm > 0)
+    const mapaGeneral = this.paginas.find(p => p.esMapaGeneral && p.distanciaTramoKm && p.distanciaTramoKm > 0);
+    if (mapaGeneral && mapaGeneral.distanciaTramoKm) {
+      return parseFloat(mapaGeneral.distanciaTramoKm.toFixed(2));
+    }
+    const sumaSubtramos = this.paginas
+      .filter(p => !p.esMapaGeneral && !p.esMapaItinerario && p.distanciaTramoKm && p.distanciaTramoKm > 0)
       .reduce((acc, p) => acc + (p.distanciaTramoKm || 0), 0);
 
     let gpxSumKm = 0;
@@ -353,8 +359,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       });
     }
 
-    const total = Math.max(suma, gpxSumKm);
-    return total > 0 ? parseFloat(total.toFixed(1)) : 29.8;
+    const total = Math.max(sumaSubtramos, gpxSumKm);
+    return total > 0 ? parseFloat(total.toFixed(2)) : 29.8;
   }
 
   /**
@@ -509,6 +515,35 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
     } catch (e) { }
     return fechaStr;
+  }
+
+  obtenerTituloIntroLimpio(): string {
+    const rawNombre = this.infoViaje?.nombre || this.infoViaje?.destino || 'ESPAÑA';
+    const destinoLimpio = rawNombre
+      .replace(/\s*-\s*\d{2}\/\d{2}\/\d{4}.*$/i, '')
+      .replace(/\s*-\s*[\d.,]+\s*km$/i, '')
+      .trim()
+      .toUpperCase();
+
+    let fecha = '';
+    if (this.infoViaje?.fechaInicio) {
+      try {
+        const d = new Date(this.infoViaje.fechaInicio);
+        if (!isNaN(d.getTime())) {
+          const dia = String(d.getDate()).padStart(2, '0');
+          const mes = String(d.getMonth() + 1).padStart(2, '0');
+          const anio = d.getFullYear();
+          fecha = `${dia}/${mes}/${anio}`;
+        }
+      } catch (e) {}
+    }
+    const dist = this.distanciaTotalKm > 0 ? `${this.distanciaTotalKm.toFixed(2)} KM` : '';
+
+    const partes = [destinoLimpio];
+    if (fecha) partes.push(fecha);
+    if (dist) partes.push(dist);
+
+    return partes.join(' - ');
   }
 
   esTextoDuplicado(titulo?: string, desc?: string): boolean {
@@ -855,7 +890,12 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     // 5. Asignar distancias acumuladas a los mapas por tramos
     let runningTramoKm = 0.0;
     this.paginas.forEach(p => {
-      if (p.esMapaAnimado) {
+      if (p.esMapaGeneral) {
+        // El mapa general muestra la visión panorámica del viaje completo desde el inicio
+        p.distanciaInicioTramo = 0.0;
+        p.distanciaFinTramo = parseFloat((p.distanciaTramoKm || totalKm).toFixed(1));
+        p.distanciaAcumuladaKm = 0.0;
+      } else if (p.esMapaAnimado) {
         const d = p.distanciaTramoKm || 0;
         p.distanciaInicioTramo = parseFloat(runningTramoKm.toFixed(1));
         runningTramoKm += d;
@@ -885,6 +925,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           distKm: info.distKm,
           ts: info.timestamp || this.obtenerTimestampReal(p),
           hora: info.horaStr || (p.archivo?.horaCaptura ? p.archivo.horaCaptura.substring(0, 5) : '')
+        });
+      } else if (p.esMapaGeneral) {
+        anclas.push({
+          index: i,
+          distKm: 0.0,
+          ts: minTimestamp < Infinity ? minTimestamp : 0,
+          hora: this.itinerarioHoraInicio
         });
       } else if (p.esMapaAnimado) {
         anclas.push({
@@ -1125,6 +1172,18 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
+  toggleTipoIntro(tipo?: 'video-mp4' | '3d-interactiva', event?: Event): void {
+    event?.stopPropagation();
+    if (tipo) {
+      this.tipoIntro = tipo;
+    } else {
+      this.tipoIntro = this.tipoIntro === 'video-mp4' ? '3d-interactiva' : 'video-mp4';
+    }
+    localStorage.setItem('album_tipo_intro', this.tipoIntro);
+    console.log('🎬 Tipo de Intro seleccionado:', this.tipoIntro);
+    this.cdr.detectChanges();
+  }
+
   toggleReproducirEnFullscreen(event?: Event): void {
     event?.stopPropagation();
     this.reproducirEnFullscreen = !this.reproducirEnFullscreen;
@@ -1223,6 +1282,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     console.log('🔄 ngOnInit() ejecutado');
+    const introGuardada = localStorage.getItem('album_tipo_intro');
+    if (introGuardada === '3d-interactiva' || introGuardada === 'video-mp4') {
+      this.tipoIntro = introGuardada;
+    }
     await this.inicializarComponente();
     this.inicializarAudioViaje();
 
@@ -2344,8 +2407,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.infoViaje = {
         id: viajeId,
         nombre: viaje.nombre || `Viaje #${viajeId}`,
-        fechaInicio: viaje.fechaInicio || '',
-        fechaFin: viaje.fechaFin || '',
+        destino: viaje.destino || '',
+        descripcion: viaje.descripcion || '',
+        fechaInicio: viaje.fecha_inicio || viaje.fechaInicio || '',
+        fechaFin: viaje.fecha_fin || viaje.fechaFin || '',
         imagen: viaje.imagen || '',
         audio: viaje.audio || '' // 👈 AÑADIR ESTA LÍNEA
       };
@@ -2356,6 +2421,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       this.infoViaje = {
         id: viajeId,
         nombre: `Viaje #${viajeId}`,
+        destino: '',
+        descripcion: '',
         fechaInicio: '',
         fechaFin: '',
         imagen: '',
@@ -3718,12 +3785,22 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         let horaInicioTramo = '';
         let horaFinTramo = '';
 
+        const dp2 = pagRef?.fecha ? pagRef.fecha.split('T')[0] : (pagRef?.archivo?.fechaCreacion ? pagRef.archivo.fechaCreacion.split('T')[0] : '1970-01-01');
+
         if (lastFileEnBuffer) {
           timestampInicio = this.obtenerTimestampReal(lastFileEnBuffer) + 1;
           horaInicioTramo = lastFileEnBuffer.horaCaptura || '';
         }
         if (!timestampInicio && ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime())) {
-          timestampInicio = ptInicio.time.getTime();
+          const h = String(ptInicio.time.getUTCHours()).padStart(2, '0');
+          const m = String(ptInicio.time.getUTCMinutes()).padStart(2, '0');
+          const s = String(ptInicio.time.getUTCSeconds()).padStart(2, '0');
+          const dtLocal = new Date(`${dp2}T${h}:${m}:${s}`);
+          if (!isNaN(dtLocal.getTime())) {
+            timestampInicio = dtLocal.getTime();
+          } else {
+            timestampInicio = ptInicio.time.getTime();
+          }
         }
         if (ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime()) && !horaInicioTramo) {
           horaInicioTramo = ptInicio.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
@@ -3732,19 +3809,27 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           horaFinTramo = ptFin.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
         }
         if (!timestampInicio) {
-          const dp2 = pagRef?.fecha ? pagRef.fecha.split('T')[0] : (pagRef?.archivo?.fechaCreacion ? pagRef.archivo.fechaCreacion.split('T')[0] : '1970-01-01');
           let tp = horaInicioTramo || '00:00:00';
           if (tp.length === 5 && tp.includes(':')) tp = `${tp}:00`;
-          const dt = new Date(`${dp2}T${tp}Z`);
+          const dt = new Date(`${dp2}T${tp}`);
           timestampInicio = !isNaN(dt.getTime()) ? dt.getTime() : 0;
         }
 
-        const datePart = pagRef?.fecha ? pagRef.fecha.split('T')[0] : (pagRef?.archivo?.fechaCreacion ? pagRef.archivo.fechaCreacion.split('T')[0] : '1970-01-01');
+        const datePart = dp2;
         const tiposUnicos = Array.from(new Set(subTransportSegments.map((t: any) => t.tipo || t.nombre).filter(Boolean)));
         const tipoTransporteTramo = tiposUnicos.length > 0 ? tiposUnicos.join(', ') : modoBaseNorm;
 
         const originPI = gruposPIs.find((g: any) => g.trackIdx === bufStartIdx);
         const destPI   = gruposPIs.find((g: any) => g.trackIdx === bufEndIdx);
+
+        // Si es el primer tramo sin archivos previos en el buffer, asegurar que va justo antes de las fotos del destino
+        if (!lastFileEnBuffer && destPI && destPI.archivos && destPI.archivos.length > 0) {
+          const firstFileDest = destPI.archivos[0];
+          const tsDest = this.obtenerTimestampReal(firstFileDest);
+          if (tsDest > 0) {
+            timestampInicio = Math.min(timestampInicio || (tsDest - 1), tsDest - 1);
+          }
+        }
 
         let idParadaOrigen = originPI?.numeroSecuencial;
         if (idParadaOrigen === undefined) { idParadaOrigen = bufSInicio === 0 ? 0 : bufSInicio; }
@@ -4248,6 +4333,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           } catch {}
         }
 
+        let distActRawKm = 0;
         if (gpxXml && gpxXml.trim().length > 0) {
           const pts = this.gpxAnimationService.parseGpx(gpxXml);
           if (pts && pts.length > 0) {
@@ -4256,10 +4342,17 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             }
             puntosItin.push(...pts);
             for (let i = 1; i < pts.length; i++) {
-              distanciaTotalKm += this.getDistanceMetros(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng) / 1000;
+              distActRawKm += this.getDistanceMetros(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng) / 1000;
             }
           }
         }
+
+        // Si la actividad tiene distancia oficial calibrada (por ejemplo los 11.34 km del podómetro/reloj):
+        const distOficialAct = (act && act.distanciaKm && Number(act.distanciaKm) > 0)
+          ? Number(act.distanciaKm)
+          : distActRawKm;
+
+        distanciaTotalKm += distOficialAct;
       } catch (err) {
         console.warn(`⚠️ Error al resolver GPX de actividad ${act.id}: ${err}`);
       }
@@ -4287,8 +4380,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     const paginasFinales: PaginaMedia[] = [];
 
     // Página 1 inicial: Carta manuscrita de Introducción del Viaje ("ITINERARIO: ESPAÑA")
-    const nombreViaje = (this.infoViaje?.nombre || 'ESPAÑA').toUpperCase();
-    const tituloIntroViaje = nombreViaje.startsWith('ITINERARIO') ? nombreViaje : `ITINERARIO: ${nombreViaje}`;
+    const tituloIntroViaje = `ITINERARIO: ${this.obtenerTituloIntroLimpio()}`;
     const descIntroViaje = this.infoViaje?.descripcion || 'Diario de viaje, memorias fotográficas y recorrido detallado del itinerario.';
     const paginaIntroViaje: PaginaMedia = {
       archivo: {} as Archivo,
@@ -4446,11 +4538,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     const diasTotalesViaje = this.calcularDiasEntreFechas(this.infoViaje?.fechaInicio, this.infoViaje?.fechaFin);
 
+    const tituloMapaGeneral = `MAPA GENERAL: ${this.obtenerTituloIntroLimpio()}`;
+    const descMapaGeneral = `Recorrido unificado y vista panorámica de ${this.obtenerTituloIntroLimpio()}`;
+
     const paginaMapaGeneralViaje: PaginaMedia = {
       archivo: {} as Archivo,
       url: '',
-      titulo: `MAPA GENERAL: ${nombreViaje}`,
-      descripcion: `Recorrido unificado y vista panorámica de ${nombreViaje}`,
+      titulo: tituloMapaGeneral,
+      descripcion: descMapaGeneral,
       fecha: this.infoViaje?.fechaInicio || '',
       tipoMedia: 'mapa-animado',
       mimeType: '',
@@ -4829,16 +4924,86 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   iniciarGenerarRecorridoAnimado(event?: Event): void {
     event?.stopPropagation();
-    console.log('📖 [Generar Recorrido] Disparado por el usuario.');
+    console.log('📖 [Generar Recorrido] Disparado por el usuario. Tipo de intro activa:', this.tipoIntro);
     if (this.estado === 'portada') {
-      this.iniciarCinematicaYApertura(true, true);
+      if (this.tipoIntro === 'video-mp4') {
+        this.abrirIntroModal();
+      } else {
+        this.iniciarCinematicaYApertura(true, true);
+      }
     } else {
       this.iniciarModoGuiado(event);
     }
   }
 
+  private introModalTimestampApertura = 0;
+
+  abrirIntroModal(): void {
+    console.log('🎬 [Intro] Abriendo cinemática MP4 (Estantería -> Mesa con velas -> Apertura de páginas)...');
+    this.introModalTimestampApertura = Date.now();
+    this.pausarMediosPliego();
+    this.detenerSlideshow();
+    this.cancelarSecuenciaCinematica();
+    this.mostrarModalIntro = true;
+    this.cdr.detectChanges();
+
+    setTimeout(() => {
+      const vIntro = document.getElementById('video-intro-modal') as HTMLVideoElement;
+      console.log('🎬 [Intro] Elemento video-intro-modal en DOM:', vIntro ? 'ENCONTRADO' : 'NO ENCONTRADO');
+      if (vIntro) {
+        vIntro.currentTime = 0;
+        vIntro.muted = this.videoMuted;
+        const playPromise = vIntro.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              console.log('▶️ [Intro] Vídeo MP4 reproduciéndose con éxito');
+            })
+            .catch(e => {
+              console.warn('⚠️ [Intro] Auto-play vídeo intro bloqueado con sonido, reintentando silenciado:', e);
+              vIntro.muted = true;
+              vIntro.play().catch(err => console.error('❌ [Intro] No se pudo reproducir intro:', err));
+            });
+        }
+      }
+    }, 100);
+  }
+
+  onIntroOverlayClick(event: MouseEvent): void {
+    if (Date.now() - this.introModalTimestampApertura < 450) {
+      console.log('🛡️ [Intro] Click residual ignorado');
+      return;
+    }
+    const target = event.target as HTMLElement;
+    if (target?.classList?.contains('modal-intro-overlay')) {
+      console.log('👆 [Intro] Click en fondo oscuro overlay: cerrando');
+      this.cerrarIntroModal();
+    }
+  }
+
+  cerrarIntroModal(): void {
+    console.log('❌ [Intro] Cerrando modal de intro');
+    const vIntro = document.getElementById('video-intro-modal') as HTMLVideoElement;
+    if (vIntro) {
+      try { vIntro.pause(); } catch (e) {}
+    }
+    this.mostrarModalIntro = false;
+    this.cdr.detectChanges();
+  }
+
+  onIntroVideoEnded(): void {
+    console.log('🎬 [Intro] Vídeo de intro completado. Apertura fluida al libro...');
+    this.abrirLibroDesdeIntroVideo();
+  }
+
+  abrirLibroDesdeIntroVideo(): void {
+    this.cerrarIntroModal();
+    // Apertura del libro exactamente igual que al finalizar IntroDynamics
+    this.onIntroDynamicsCompletada();
+  }
+
   iniciarCinematicaYApertura(activarModoRecuerdo: boolean = true, modoGuiado: boolean = true): void {
-    console.log('🎬 [AlbumLibro] Iniciando cinemática 3D (libro cae a la mesa, se abre, fotos vuelan y vuelven)...');
+    console.log('🎬 [AlbumLibro] Iniciando cinemática 3D Dynamics (libro cae a la mesa, se abre, fotos vuelan y vuelven)...');
     this.mostrarIntroDynamics = true;
     this.cdr.detectChanges();
   }
@@ -4865,7 +5030,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     event?.stopPropagation();
 
     if (this.estado === 'portada') {
-      this.abrirLibro(true, false);
+      this.iniciarGenerarRecorridoAnimado(event);
       return;
     }
 
@@ -5949,7 +6114,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
 
     if (datePart && !datePart.startsWith('1970') && !datePart.startsWith('1792') && timePart) {
-      const dt = new Date(`${datePart}T${timePart}Z`);
+      const dt = new Date(`${datePart}T${timePart}`);
       if (!isNaN(dt.getTime()) && dt.getFullYear() >= 2000 && dt.getFullYear() <= 2100) return dt.getTime();
     }
 
@@ -6265,6 +6430,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     if (this.elementoMaximizado) {
       this.cerrarElementoMaximizado();
     }
+    if (this.mostrarModalIntro) {
+      this.cerrarIntroModal();
+    }
     if (this.mostrarModalOutro) {
       this.cerrarOutroModal();
     }
@@ -6519,6 +6687,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   volverAlInicio(): void {
     this.cerrarOutroModal();
     this.irAPagina(0);
+  }
+
+  obtenerDestinoViajeTexto(): string {
+    return this.infoViaje?.destino?.trim() || '';
   }
 
   obtenerFechaViajeTexto(): string {
@@ -7457,6 +7629,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   progresoIntro3D: string = '';
 
   mostrarDialogoVideo(): void {
+    // Sincronizar parámetros activos de las herramientas con la exportación
+    this.configuracionExportacion.mantenerEstiloAlbum = this.modoAlbumVintage;
+    this.configuracionExportacion.esModoVintage = this.modoAlbumVintage;
+    this.configuracionExportacion.tipoIntro = this.tipoIntro;
+    this.configuracionExportacion.distanciaMinimaAnimacionKm = this.distanciaMinimaAnimacionKm;
+    this.configuracionExportacion.incluirAudio = !this.videoMuted && (this.audioViaje != null);
+
     this.actualizarEstadoAnimacionesRuta();
     this.verificarEstadoIntroVideo();
     this.mostrarConfiguracionVideo = true;
@@ -7569,15 +7748,50 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     try {
       this.generandoVideo = true;
 
-      // Comprobar y generar la intro 3D personalizada si aún no existe
-      if (!this.introVideoLista || !this.urlIntroVideoViaje) {
-        this.progresoVideo = {
-          fase: 'generando',
-          porcentaje: 2,
-          mensaje: 'Generando animación 3D de portada con los datos del viaje...'
-        };
-        this.cdr.detectChanges();
-        await this.generarIntro3DManual();
+      // Comprobar y generar la portada 3D interactiva personalizada solo si se eligió dicho modo y aún no existe
+      if (this.configuracionExportacion.tipoIntro === '3d-interactiva') {
+        if (!this.introVideoLista || !this.urlIntroVideoViaje) {
+          this.progresoVideo = {
+            fase: 'generando',
+            porcentaje: 2,
+            mensaje: 'Generando animación 3D de portada interactiva...'
+          };
+          this.cdr.detectChanges();
+          await this.generarIntro3DManual();
+        }
+      }
+
+      // Comprobar y generar snapshots de mapa para el Mapa General y Mapas de Itinerario si aún no están listos
+      const viajeId = this.infoViaje?.id || this.contextoViaje?.viajeId || 0;
+      for (const p of this.paginas) {
+        if ((p.esMapaGeneral || p.esMapaItinerario) && (!p.urlMapaRenderizado || p.urlMapaRenderizado.trim() === '')) {
+          this.progresoVideo = {
+            fase: 'generando',
+            porcentaje: 3,
+            mensaje: p.esMapaGeneral ? 'Generando mapa panorámico del viaje completo...' : `Generando mapa panorámico de ${p.titulo || 'itinerario'}...`
+          };
+          this.cdr.detectChanges();
+          try {
+            const tipo = p.esMapaGeneral ? 'general' : 'itinerario';
+            const tituloMapa = p.titulo || (p.esMapaGeneral ? `MAPA GENERAL: ${this.infoViaje?.nombre || 'Mi Viaje'}` : 'MAPA DEL ITINERARIO');
+            const subTexto = p.descripcion || (p.distanciaTramoKm ? `Recorrido total: ${p.distanciaTramoKm.toFixed(1)} km` : '');
+            const urlSnapshot = await this.routeVideoGeneratorService.generarYSubirSnapshotMapa(
+              viajeId,
+              p.trackGpx || '',
+              tituloMapa,
+              subTexto,
+              p.distanciaTramoKm,
+              tipo,
+              p.itinerarioId
+            );
+            const urlCompleta = urlSnapshot.startsWith('http') ? urlSnapshot : `${environment.apiUrl || 'http://localhost:3000'}${urlSnapshot.startsWith('/') ? '' : '/'}${urlSnapshot}`;
+            p.urlMapaRenderizado = urlCompleta;
+            p.url = urlCompleta;
+            console.log(`🗺️ [VideoViaje] Mapa estructural incorporado a la película: ${p.url}`);
+          } catch (mapErr) {
+            console.warn('⚠️ No se pudo generar snapshot de mapa para el vídeo:', mapErr);
+          }
+        }
       }
 
       this.progresoVideo = {
@@ -7683,10 +7897,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   private construirSecuenciaEscenas(): EscenaMultimedia[] {
     const secuencia: EscenaMultimedia[] = [];
 
-    // 1. Escena 1: INTRO 3D CINEMÁTICA EN MP4 (Personalizada con título y foto del viaje)
+    // 1. Escena 1: INTRO SEGÚN SELECCIÓN DEL USUARIO (Vídeo MP4 cinemático o 3D interactiva)
     const viajeId = this.infoViaje?.id || this.contextoViaje?.viajeId;
     const backendUrl = environment.apiUrl || 'http://localhost:3000';
-    const introUrl = this.urlIntroVideoViaje || (viajeId ? `${backendUrl}/uploads/${viajeId}/intro_3d_${viajeId}.mp4` : '/assets/videos/intro-libro-3d.mp4');
+    let introUrl = '/assets/videos/intro-libro-3d.mp4';
+
+    if (this.configuracionExportacion.tipoIntro === '3d-interactiva') {
+      introUrl = this.urlIntroVideoViaje || (viajeId ? `${backendUrl}/uploads/${viajeId}/intro_3d_${viajeId}.mp4` : '/assets/videos/intro-libro-3d.mp4');
+    } else {
+      introUrl = '/assets/videos/intro-libro-3d.mp4';
+    }
 
     secuencia.push({
       id: 'intro-3d-cinematica',
@@ -7832,6 +8052,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       url: '/assets/videos/outro-libro-3d.mp4',
       duracion: 11.8,
       titulo: this.infoViaje?.nombre || this.infoViaje?.destino || 'Viaje Inolvidable',
+      destino: this.obtenerDestinoViajeTexto(),
       descripcion: this.obtenerFechaViajeTexto(),
       fecha: this.obtenerFechaViajeTexto(),
       subtitulo: subPartes.join('  ·  '),

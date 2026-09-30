@@ -1,9 +1,11 @@
 import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { GpxAnimationService, GpxPoint } from './gpx-animation.service';
 import { ActividadesItinerariosService } from './actividades-itinerarios.service';
 import { GeocodificacionService, InfoUbicacionRuta } from './geocodificacion.service';
 import { firstValueFrom } from 'rxjs';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
+import { environment } from '../../environments/environment';
 
 export interface RouteVideoOptions {
   trackGpx: string;
@@ -44,6 +46,7 @@ export class RouteVideoGeneratorService {
   private tileCache = new Map<string, HTMLImageElement>();
 
   constructor(
+    private http: HttpClient,
     private gpxService: GpxAnimationService,
     private actividadesService: ActividadesItinerariosService,
     private geocodificacionService: GeocodificacionService
@@ -274,11 +277,11 @@ export class RouteVideoGeneratorService {
     const centerLat = (minLat + maxLat) / 2;
     const centerLng = (minLng + maxLng) / 2;
 
-    // Márgenes optimizados para que las tarjetas flotantes sobre Punto A y B
-    // queden perfectamente encuadradas dentro del fotograma sin cortes
-    const padX = 90;       // Espacio horizontal para callouts laterales
-    const padTop = 110;    // Espacio vertical superior para tarjeta de Salida/Llegada y HUD
-    const padBottom = 80;  // Espacio vertical inferior
+    // Márgenes optimizados para móvil: reducimos el margen cartográfico vacío
+    // para que la ruta y los puntos se vean más cercanos y destacados.
+    const padX = 65;       // Espacio lateral compacto
+    const padTop = 100;    // Espacio vertical superior para tarjeta de Salida/Llegada y HUD
+    const padBottom = 65;  // Espacio vertical inferior
     const availW = width - 2 * padX;
     const availH = height - (padTop + padBottom);
 
@@ -292,9 +295,9 @@ export class RouteVideoGeneratorService {
       return { x, y };
     };
 
-    // Determinar nivel de zoom óptimo (tope máximo de zoom 16 para evitar calles gigantes o zoom excesivo)
-    let bestZoom = 16;
-    for (let z = 16; z >= 4; z--) {
+    // Determinar nivel de zoom óptimo con mayor proximidad (zoom hasta 17 para máxima visibilidad en móvil)
+    let bestZoom = 17;
+    for (let z = 17; z >= 4; z--) {
       const pMin = latLngToWorld(minLat, minLng, z);
       const pMax = latLngToWorld(maxLat, maxLng, z);
       const spanW = Math.abs(pMax.x - pMin.x);
@@ -308,7 +311,7 @@ export class RouteVideoGeneratorService {
     const centerWorld = latLngToWorld(centerLat, centerLng, bestZoom);
 
     // Proyección de puntos GPS a coordenadas de píxeles del Canvas con compensación vertical
-    const offsetYCentro = (padTop - padBottom) / 2; // ~15px de margen adicional hacia abajo
+    const offsetYCentro = (padTop - padBottom) / 2;
     const proyectar = (lat: number, lng: number) => {
       const w = latLngToWorld(lat, lng, bestZoom);
       return {
@@ -588,9 +591,9 @@ export class RouteVideoGeneratorService {
 
     // 2. Ruta completa punteada sutil (estilo mapa de ruta antiguo)
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(74, 55, 35, 0.35)';
-    ctx.lineWidth = 5;
-    ctx.setLineDash([8, 10]);
+    ctx.strokeStyle = 'rgba(74, 55, 35, 0.40)';
+    ctx.lineWidth = 7;
+    ctx.setLineDash([10, 12]);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     points.forEach((p, idx) => {
@@ -654,10 +657,10 @@ export class RouteVideoGeneratorService {
     const activeColor = this.obtenerColorTransporte(activeMode);
 
     if (currentPoints.length > 1) {
-      // Halo exterior brillante de contraste (más grueso para máxima legibilidad en pliego completo)
+      // Halo exterior brillante de contraste (más grueso para máxima legibilidad en pantallas de móvil)
       ctx.beginPath();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.96)';
-      ctx.lineWidth = 16;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.98)';
+      ctx.lineWidth = 22;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       currentPoints.forEach((p, idx) => {
@@ -666,7 +669,7 @@ export class RouteVideoGeneratorService {
       });
       ctx.stroke();
 
-      // Línea viva de color de la ruta segmentada por modo de transporte
+      // Línea viva de color de la ruta segmentada por modo de transporte (grosor 15px de alto impacto)
       let segStartIdx = 0;
       let segMode = currentPoints[0].mode || activeMode;
       for (let i = 1; i < currentPoints.length; i++) {
@@ -674,7 +677,7 @@ export class RouteVideoGeneratorService {
         if (ptMode !== segMode) {
           ctx.beginPath();
           ctx.strokeStyle = this.obtenerColorTransporte(segMode);
-          ctx.lineWidth = 10;
+          ctx.lineWidth = 15;
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
           for (let j = segStartIdx; j <= i; j++) {
@@ -689,7 +692,7 @@ export class RouteVideoGeneratorService {
       }
       ctx.beginPath();
       ctx.strokeStyle = this.obtenerColorTransporte(segMode);
-      ctx.lineWidth = 10;
+      ctx.lineWidth = 15;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       for (let j = segStartIdx; j < currentPoints.length; j++) {
@@ -706,7 +709,7 @@ export class RouteVideoGeneratorService {
       info?: InfoUbicacionRuta | null,
       direccionPlana?: string,
       colorTema: string = '#15803d',
-      radioMarcador: number = 24,
+      radioMarcador: number = 32,
       forzarAbajo: boolean = false
     ) => {
       const datos: InfoUbicacionRuta = info && (info.linea1 || info.nombreCompleto)
@@ -729,28 +732,28 @@ export class RouteVideoGeneratorService {
         : `🏁 PUNTO B · LLEGADA${horaStr}`;
 
       ctx.save();
-      // Medir ancho de texto para dimensionar el contenedor con tipografía grande y muy clara
-      ctx.font = 'bold 12.5px sans-serif';
-      const badgeW = ctx.measureText(badgeTexto).width + 22;
+      // Tipografía de alta escala optimizada para pantallas pequeñas de smartphones
+      ctx.font = 'bold 15px sans-serif';
+      const badgeW = ctx.measureText(badgeTexto).width + 28;
 
-      ctx.font = 'bold 19px sans-serif';
+      ctx.font = 'bold 24px sans-serif';
       const l1W = ctx.measureText(linea1).width;
 
-      ctx.font = '600 15.5px sans-serif';
+      ctx.font = '600 18.5px sans-serif';
       const l2W = linea2 ? ctx.measureText(linea2).width : 0;
 
       const contentW = Math.max(badgeW, l1W, l2W);
-      const cardW = Math.max(280, Math.min(460, contentW + 40));
-      const cardH = linea2 ? 96 : 72;
+      const cardW = Math.max(340, Math.min(540, contentW + 48));
+      const cardH = linea2 ? 112 : 84;
 
       // Determinación de posición vertical:
       let colocarArriba = !forzarAbajo;
-      let by = cy - radioMarcador - 14 - cardH;
+      let by = cy - radioMarcador - 16 - cardH;
 
       // Si se saldría por arriba del marco o colisionaría con el HUD superior izquierdo:
-      const solapaHUD = cx < 460 && by < 125;
-      if (forzarAbajo || by < 14 || solapaHUD) {
-        by = cy + radioMarcador + 14;
+      const solapaHUD = cx < 490 && by < 135;
+      if (forzarAbajo || by < 16 || solapaHUD) {
+        by = cy + radioMarcador + 16;
         colocarArriba = false;
       }
 
@@ -764,25 +767,25 @@ export class RouteVideoGeneratorService {
       bx = Math.max(16, Math.min(width - cardW - 16, bx));
 
       // Sombra flotante tipo tarjeta moderna de alto contraste
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.40)';
-      ctx.shadowBlur = 14;
-      ctx.shadowOffsetY = 6;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetY = 8;
 
       // Fondo de la tarjeta (blanco cálido satinado)
       ctx.beginPath();
-      ctx.roundRect(bx, by, cardW, cardH, 10);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+      ctx.roundRect(bx, by, cardW, cardH, 12);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.99)';
       ctx.fill();
 
       // Borde temático distintivo grueso (verde salida / rojo llegada)
-      ctx.lineWidth = 3.5;
+      ctx.lineWidth = 4;
       ctx.strokeStyle = colorTema;
       ctx.stroke();
 
       // Triángulo puntero hacia el centro del marcador
       ctx.beginPath();
-      const tSize = 10;
-      const tApexX = Math.max(bx + 24, Math.min(bx + cardW - 24, cx));
+      const tSize = 12;
+      const tApexX = Math.max(bx + 28, Math.min(bx + cardW - 28, cx));
 
       if (colocarArriba) {
         ctx.moveTo(tApexX - tSize, by + cardH);
@@ -793,51 +796,51 @@ export class RouteVideoGeneratorService {
         ctx.lineTo(tApexX + tSize, by);
         ctx.lineTo(tApexX, by - tSize);
       }
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.99)';
       ctx.fill();
       ctx.stroke();
 
       ctx.restore();
       ctx.save();
 
-      // 1. Badge cabecera (Pill coloreado)
-      const badgeX = bx + 14;
-      const badgeY = by + 9;
-      const badgeH = 22;
+      // 1. Badge cabecera (Pill coloreado grande)
+      const badgeX = bx + 16;
+      const badgeY = by + 10;
+      const badgeH = 26;
       ctx.beginPath();
-      ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+      ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 7);
       ctx.fillStyle = colorTema;
       ctx.fill();
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 12px sans-serif';
+      ctx.font = 'bold 13.5px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(badgeTexto, badgeX + badgeW / 2, badgeY + badgeH / 2 + 0.5);
 
-      // 2. Línea 1: Dirección / Calle o PDI (negrita, alto contraste, 19px)
-      const textX = bx + 14;
-      const maxTextW = cardW - 28;
+      // 2. Línea 1: Dirección / Calle o PDI (negrita, alto contraste, 23px)
+      const textX = bx + 16;
+      const maxTextW = cardW - 32;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#0f172a';
-      ctx.font = 'bold 19px sans-serif';
+      ctx.font = 'bold 23px sans-serif';
 
       let l1Cortada = linea1;
       while (ctx.measureText(l1Cortada).width > maxTextW && l1Cortada.length > 4) {
         l1Cortada = l1Cortada.slice(0, -2) + '…';
       }
-      ctx.fillText(l1Cortada, textX, by + 46);
+      ctx.fillText(l1Cortada, textX, by + 52);
 
-      // 3. Línea 2: Pueblo y Provincia (gris pizarra semi-bold, 15.5px)
+      // 3. Línea 2: Pueblo y Provincia (gris pizarra semi-bold, 18px)
       if (linea2) {
         ctx.fillStyle = '#475569';
-        ctx.font = '600 15.5px sans-serif';
+        ctx.font = '600 18px sans-serif';
         let l2Cortada = linea2;
         while (ctx.measureText(l2Cortada).width > maxTextW && l2Cortada.length > 4) {
           l2Cortada = l2Cortada.slice(0, -2) + '…';
         }
-        ctx.fillText(l2Cortada, textX, by + 74);
+        ctx.fillText(l2Cortada, textX, by + 86);
       }
 
       ctx.restore();
@@ -847,26 +850,26 @@ export class RouteVideoGeneratorService {
     const pInicio = points[0];
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 4;
-    // Disco blanco exterior
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 5;
+    // Disco blanco exterior (32px radio)
     ctx.beginPath();
-    ctx.arc(pInicio.x, pInicio.y, 24, 0, Math.PI * 2);
+    ctx.arc(pInicio.x, pInicio.y, 32, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.22)';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
     ctx.stroke();
     // Círculo interior verde
     ctx.beginPath();
-    ctx.arc(pInicio.x, pInicio.y, 18, 0, Math.PI * 2);
+    ctx.arc(pInicio.x, pInicio.y, 24, 0, Math.PI * 2);
     ctx.fillStyle = '#15803d';
     ctx.fill();
     ctx.restore();
-    // Letra A identificadora
+    // Letra A identificadora grande
     ctx.save();
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 20px sans-serif';
+    ctx.font = 'bold 26px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('A', pInicio.x, pInicio.y + 0.5);
@@ -876,33 +879,33 @@ export class RouteVideoGeneratorService {
     const pFin = points[points.length - 1];
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 4;
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 5;
     // Disco blanco exterior
     ctx.beginPath();
-    ctx.arc(pFin.x, pFin.y, 24, 0, Math.PI * 2);
+    ctx.arc(pFin.x, pFin.y, 32, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.22)';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
     ctx.stroke();
     // Círculo interior rojo
     ctx.beginPath();
-    ctx.arc(pFin.x, pFin.y, 18, 0, Math.PI * 2);
+    ctx.arc(pFin.x, pFin.y, 24, 0, Math.PI * 2);
     ctx.fillStyle = '#dc2626';
     ctx.fill();
     ctx.restore();
-    // Letra B identificadora
+    // Letra B identificadora grande
     ctx.save();
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 20px sans-serif';
+    ctx.font = 'bold 26px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('B', pFin.x, pFin.y + 0.5);
     ctx.restore();
 
     // Proximidad geométrica entre Punto A y Punto B
-    const puntosMuyCercanos = Math.abs(pInicio.x - pFin.x) < 240 && Math.abs(pInicio.y - pFin.y) < 140;
+    const puntosMuyCercanos = Math.abs(pInicio.x - pFin.x) < 320 && Math.abs(pInicio.y - pFin.y) < 180;
 
     // Renderizado de las tarjetas destacadas sobre el Punto A y el Punto B
     dibujarTarjetaPunto(
@@ -911,7 +914,7 @@ export class RouteVideoGeneratorService {
       infoOrigen,
       options.origenDireccion,
       '#15803d',
-      24,
+      32,
       false
     );
 
@@ -921,38 +924,38 @@ export class RouteVideoGeneratorService {
       infoDestino,
       options.destinoDireccion,
       '#dc2626',
-      24,
+      32,
       puntosMuyCercanos
     );
 
-    // 6. Vehículo móvil con pulso y sombra 3D (escala aumentada para pliego abierto)
+    // 6. Vehículo móvil con pulso y sombra 3D (escala aumentada para pantallas de móvil)
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-    ctx.shadowBlur = 14;
-    ctx.shadowOffsetY = 6;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.50)';
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 7;
 
     // Pulso exterior animado
     const pulsePct = (progress * 12) % 1;
-    const pulseR = 34 + pulsePct * 16;
+    const pulseR = 44 + pulsePct * 20;
     ctx.beginPath();
     ctx.arc(currentPos.x, currentPos.y, pulseR, 0, Math.PI * 2);
     ctx.strokeStyle = `rgba(${activeColor.startsWith('#') ? this.hexToRgb(activeColor) : '220,38,38'}, ${0.5 * (1 - pulsePct)})`;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.stroke();
 
     // Disco circular blanco con borde de color dinámico del modo actual
     ctx.beginPath();
-    ctx.arc(currentPos.x, currentPos.y, 34, 0, Math.PI * 2);
+    ctx.arc(currentPos.x, currentPos.y, 42, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
-    ctx.lineWidth = 4.5;
+    ctx.lineWidth = 5;
     ctx.strokeStyle = activeColor;
     ctx.stroke();
     ctx.restore();
 
-    // Icono emoji del medio de transporte centrado (34px nítido)
+    // Emoji o icono vectorial de transporte aumentado
     ctx.save();
-    ctx.font = '34px sans-serif';
+    ctx.font = '40px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(activeIcon, currentPos.x, currentPos.y + 1);
@@ -1119,9 +1122,9 @@ export class RouteVideoGeneratorService {
           const wrappedX = ((tx % numTiles) + numTiles) % numTiles;
           const sub = subdomains[Math.abs(wrappedX + ty) % subdomains.length];
 
-          // OpenStreetMap oficial (CORS abierto, nítido a 256x256, sin marcas de agua de CartoDB)
-          const primaryUrl = `https://${sub}.tile.openstreetmap.org/${zoom}/${wrappedX}/${ty}.png`;
-          const fallbackUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${zoom}/${ty}/${wrappedX}`;
+          // Satélite Esri (CORS abierto, nítido y de alta definición) con fallback a OpenStreetMap
+          const primaryUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ty}/${wrappedX}`;
+          const fallbackUrl = `https://${sub}.tile.openstreetmap.org/${zoom}/${wrappedX}/${ty}.png`;
 
           const tileScreenX = Math.round(width / 2 + (tx * 256 - centerWorld.x));
           const tileScreenY = Math.round(height / 2 + (ty * 256 - centerWorld.y));
@@ -1230,12 +1233,70 @@ export class RouteVideoGeneratorService {
     canvas.height = height;
     const ctx = canvas.getContext('2d')!;
 
+    await this.renderizarSnapshotMapaEnCanvas(canvas, ctx, trackGpx, titulo, subtitulo, distanciaKm, width, height);
+    return await this.canvasAImagen(canvas);
+  }
+
+  /**
+   * Genera el snapshot visual panorámico en 1080p del mapa (general o de itinerario)
+   * y lo sube al backend para que forme parte de la película completa y del álbum.
+   */
+  public async generarYSubirSnapshotMapa(
+    viajeId: number,
+    trackGpx: string,
+    titulo: string,
+    subtitulo: string = '',
+    distanciaKm?: number,
+    tipo: 'general' | 'itinerario' = 'general',
+    itinerarioId?: number
+  ): Promise<string> {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1920;
+    canvas.height = 1080;
+    const ctx = canvas.getContext('2d')!;
+
+    await this.renderizarSnapshotMapaEnCanvas(canvas, ctx, trackGpx, titulo, subtitulo, distanciaKm, 1920, 1080);
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => {
+        if (b) resolve(b);
+        else reject(new Error('Error generando blob del snapshot de mapa'));
+      }, 'image/jpeg', 0.92);
+    });
+
+    const fileName = tipo === 'itinerario' && itinerarioId
+      ? `mapa_itinerario_${itinerarioId}.jpg`
+      : `mapa_general_${viajeId}.jpg`;
+
+    const formData = new FormData();
+    formData.append('imagen', blob, fileName);
+    formData.append('tipo', tipo);
+    if (itinerarioId) formData.append('itinerarioId', String(itinerarioId));
+
+    const backendUrl = environment.apiUrl || 'http://localhost:3000';
+    const resp = await firstValueFrom(
+      this.http.post<{ success: boolean; url: string }>(`${backendUrl}/api/viajes/${viajeId}/mapa-snapshot`, formData)
+    );
+
+    return resp.url;
+  }
+
+  public async renderizarSnapshotMapaEnCanvas(
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+    trackGpx: string,
+    titulo: string,
+    subtitulo: string = '',
+    distanciaKm?: number,
+    width: number = 1920,
+    height: number = 1080
+  ): Promise<void> {
     // Fondo pergamino inicial
-    ctx.fillStyle = '#1a100a';
+    ctx.fillStyle = '#0a1128';
     ctx.fillRect(0, 0, width, height);
 
     if (!trackGpx || trackGpx.trim() === '') {
-      ctx.fillStyle = '#2d180f';
+      ctx.fillStyle = '#1c120c';
       ctx.fillRect(80, 80, width - 160, height - 160);
       ctx.strokeStyle = '#d4af37';
       ctx.lineWidth = 4;
@@ -1248,13 +1309,13 @@ export class RouteVideoGeneratorService {
         ctx.font = 'italic 32px "Cinzel", Georgia, serif';
         ctx.fillText(subtitulo, width / 2, height / 2 + 50);
       }
-      return this.canvasAImagen(canvas);
+      return;
     }
 
     try {
       const rawPoints = this.gpxService.parseGpx(trackGpx);
       if (!rawPoints || rawPoints.length === 0) {
-        return this.canvasAImagen(canvas);
+        return;
       }
 
       let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
@@ -1268,8 +1329,8 @@ export class RouteVideoGeneratorService {
       const centerLat = (minLat + maxLat) / 2;
       const centerLng = (minLng + maxLng) / 2;
 
-      const padX = 140;
-      const padY = 140;
+      const padX = 160;
+      const padY = 160;
       const availW = width - 2 * padX;
       const availH = height - 2 * padY;
 
@@ -1315,18 +1376,16 @@ export class RouteVideoGeneratorService {
           ctx.lineTo(pt.x, pt.y);
         }
 
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-        ctx.lineWidth = 12;
+        // Trazo exterior blanco de contraste
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 9;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.stroke();
 
-        ctx.strokeStyle = '#e63946';
-        ctx.lineWidth = 6;
-        ctx.stroke();
-
-        ctx.strokeStyle = '#ffd166';
-        ctx.lineWidth = 2.5;
+        // Trazo interior azul eléctrico / cian vibrante (estilo satélite de la aplicación)
+        ctx.strokeStyle = '#00D2FF';
+        ctx.lineWidth = 5;
         ctx.stroke();
         ctx.restore();
 
@@ -1337,54 +1396,51 @@ export class RouteVideoGeneratorService {
           ctx.save();
           ctx.fillStyle = color;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
           ctx.fill();
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 3;
           ctx.stroke();
           ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 12px sans-serif';
+          ctx.font = 'bold 13px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(label, p.x, p.y);
           ctx.restore();
         };
 
-        dibujarPin(pInicio, '#2a9d8f', 'A');
-        dibujarPin(pFin, '#e76f51', 'B');
+        dibujarPin(pInicio, '#10b981', 'A');
+        dibujarPin(pFin, '#ef4444', 'B');
       }
 
+      // Placa / Cabecera superior elegante del mapa
       ctx.save();
-      ctx.strokeStyle = 'rgba(212, 175, 55, 0.85)';
-      ctx.lineWidth = 8;
-      ctx.strokeRect(30, 30, width - 60, height - 60);
-      ctx.strokeStyle = 'rgba(212, 175, 55, 0.4)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(42, 42, width - 84, height - 84);
+      const bannerW = width * 0.82;
+      const bannerH = 110;
+      const bannerX = (width - bannerW) / 2;
+      const bannerY = 40;
 
-      ctx.fillStyle = 'rgba(26, 16, 10, 0.88)';
-      ctx.fillRect(width * 0.15, 45, width * 0.7, 95);
-      ctx.strokeStyle = '#d4af37';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(width * 0.15, 45, width * 0.7, 95);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.fillRect(bannerX, bannerY, bannerW, bannerH);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(bannerX, bannerY, bannerW, bannerH);
 
-      ctx.fillStyle = '#f3e5ab';
-      ctx.font = 'bold 36px "Cinzel", Georgia, serif';
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 34px "Cinzel", Georgia, serif';
       ctx.textAlign = 'center';
-      ctx.fillText(titulo.toUpperCase(), width / 2, 90);
+      ctx.fillText(titulo.toUpperCase(), width / 2, bannerY + 45);
 
-      const subTexto = subtitulo || (distanciaKm ? `Recorrido total: ${distanciaKm.toFixed(1)} km` : '');
+      const subTexto = subtitulo || (distanciaKm ? `Distancia total del recorrido: ${distanciaKm.toFixed(1)} km` : '');
       if (subTexto) {
-        ctx.fillStyle = '#d4af37';
-        ctx.font = 'italic 20px "Cinzel", Georgia, serif';
-        ctx.fillText(subTexto, width / 2, 124);
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = '600 20px "Cinzel", Georgia, serif';
+        ctx.fillText(subTexto, width / 2, bannerY + 85);
       }
       ctx.restore();
 
-      return await this.canvasAImagen(canvas);
     } catch (err) {
       console.warn('⚠️ Error generando snapshot mapa:', err);
-      return this.canvasAImagen(canvas);
     }
   }
 

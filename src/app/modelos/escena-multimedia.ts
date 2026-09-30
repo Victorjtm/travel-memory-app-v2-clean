@@ -23,6 +23,7 @@ export interface EscenaMultimedia {
   trackGpx?: string;
   distanciaKm?: number;
   subtitulo?: string;
+  destino?: string;
 }
 
 export interface ConfiguracionExportacion {
@@ -31,4 +32,8 @@ export interface ConfiguracionExportacion {
   incluirDescripcion: boolean;
   calidad: 'whatsapp' | 'alta';
   mantenerEstiloAlbum: boolean;
+  esModoVintage?: boolean;
+  tipoIntro?: 'video-mp4' | '3d-interactiva';
+  distanciaMinimaAnimacionKm?: number;
 }
+

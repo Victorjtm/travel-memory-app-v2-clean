@@ -342,6 +342,48 @@ const dbQuery = {
   run: (sql, params) => new Promise((resolve, reject) => db.run(sql, params, function (err) { err ? reject(err) : resolve(this) }))
 };
 
+/**
+ * Extrae la hora local formateada (HH:mm:ss) respetando la zona horaria del cliente (Europe/Madrid)
+ * a partir de una fecha ISO / timestamp / Date o directamente del nombre de archivo.
+ */
+function extraerHoraCapturaLocal(fechaVal, nombreArchivo = '', fallbackDisplay = null) {
+  // 1. Si el nombre del archivo contiene explícitamente YYYYMMDD_HHMMSS (hora local de la cámara)
+  if (nombreArchivo) {
+    const matchFmt = nombreArchivo.match(/(?:IMG_|VID_|VIDEO_|JPEG_)?(?:\d{4})[-_]?(\d{2})[-_]?(\d{2})[T_](\d{2})[-_]?(\d{2})[-_]?(\d{2})/i);
+    if (matchFmt) {
+      const [_, m, d, h, min, s] = matchFmt;
+      const numH = parseInt(h, 10), numMin = parseInt(min, 10), numS = parseInt(s, 10);
+      if (numH >= 0 && numH <= 23 && numMin >= 0 && numMin <= 59 && numS >= 0 && numS <= 59) {
+        return `${String(numH).padStart(2, '0')}:${String(numMin).padStart(2, '0')}:${String(numS).padStart(2, '0')}`;
+      }
+    }
+  }
+
+  // 2. Si fechaVal es un Date o string ISO / timestamp convertible, convertir a hora local en Europe/Madrid
+  if (fechaVal) {
+    const d = new Date(fechaVal);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString('es-ES', {
+        timeZone: 'Europe/Madrid',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+    }
+  }
+
+  // 3. Si viene un fallbackDisplay válido (ej. HH:mm o HH:mm:ss)
+  if (fallbackDisplay && typeof fallbackDisplay === 'string') {
+    const trimmed = fallbackDisplay.trim();
+    if (/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(trimmed)) {
+      return trimmed.length === 5 ? `${trimmed}:00` : trimmed;
+    }
+  }
+
+  return '12:00:00';
+}
+
 // Configuración multer para subir archivos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -4971,6 +5013,46 @@ app.delete(['/viajes/:id/intro-video', '/api/viajes/:id/intro-video'], async (re
   }
 });
 
+app.post(['/viajes/:id/mapa-snapshot', '/api/viajes/:id/mapa-snapshot'], upload.single('imagen'), async (req, res) => {
+  const viajeId = req.params.id;
+  const tipo = req.body.tipo || 'general';
+  const itinerarioId = req.body.itinerarioId || '';
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'No se ha subido ningún archivo de imagen para el mapa' });
+  }
+
+  const targetDir = path.join(uploadsPath, String(viajeId));
+  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+  const fileName = tipo === 'itinerario' && itinerarioId
+    ? `mapa_itinerario_${itinerarioId}.jpg`
+    : `mapa_general_${viajeId}.jpg`;
+
+  const finalFilePath = path.join(targetDir, fileName);
+  fs.copyFileSync(req.file.path, finalFilePath);
+  try { fs.unlinkSync(req.file.path); } catch (e) {}
+
+  const relUrl = `/uploads/${viajeId}/${fileName}`;
+  console.log(`🗺️ [MapaSnapshot] Guardado snapshot de mapa para Viaje #${viajeId} (${tipo}): ${relUrl}`);
+  res.json({ success: true, url: relUrl });
+});
+
+app.get(['/viajes/:id/mapa-snapshot', '/api/viajes/:id/mapa-snapshot'], async (req, res) => {
+  const viajeId = req.params.id;
+  const tipo = req.query.tipo || 'general';
+  const itinerarioId = req.query.itinerarioId || '';
+  const fileName = tipo === 'itinerario' && itinerarioId
+    ? `mapa_itinerario_${itinerarioId}.jpg`
+    : `mapa_general_${viajeId}.jpg`;
+  const finalFilePath = path.join(uploadsPath, String(viajeId), fileName);
+  if (fs.existsSync(finalFilePath)) {
+    res.json({ exists: true, url: `/uploads/${viajeId}/${fileName}` });
+  } else {
+    res.json({ exists: false, url: null });
+  }
+});
+
 // 3.d POST Generar película completa de viaje en el servidor con FFmpeg (Ultrarrápido y fluido 30 FPS)
 let generadorPeliculaFFmpegService;
 try {
@@ -4984,9 +5066,10 @@ app.post(['/viajes/:id/generar-pelicula-servidor', '/api/viajes/:id/generar-peli
   const { secuencia, configuracion, infoViaje, audioViajeUrl } = req.body;
 
   try {
-    if (!generadorPeliculaFFmpegService) {
-      generadorPeliculaFFmpegService = require('./backend-services/generador-pelicula-ffmpeg.service');
-    }
+    try {
+      delete require.cache[require.resolve('./backend-services/generador-pelicula-ffmpeg.service')];
+    } catch (e) {}
+    generadorPeliculaFFmpegService = require('./backend-services/generador-pelicula-ffmpeg.service');
     const resultado = await generadorPeliculaFFmpegService.generarPeliculaViaje(
       viajeId,
       secuencia,
@@ -5976,7 +6059,7 @@ app.post('/archivos/subir', upload.array('archivos'), async (req, res) => {
           archivo.originalname,
           archivo.filename,
           descripcion || '',
-          horaCaptura || horaExif || new Date().toISOString(),
+          horaCaptura || horaExif || extraerHoraCapturaLocal(fechaCreacionFinal, archivo.originalname),
           geolocalizacionFinal,
           JSON.stringify(metadatos),
           fechaCreacionFinal
@@ -8571,7 +8654,7 @@ app.post('/import-tracking', (req, res, next) => {
             dbTipo,
             nombreBaseMedia,
             rutaRelativa,
-            (fechaCreacionMedia ? fechaCreacionMedia.split('T')[1].substring(0, 8) : media.timestamp_display),
+            extraerHoraCapturaLocal(fechaCreacionMedia, nombreBaseMedia, media.timestamp_display),
             JSON.stringify({
               latitud: media.gps?.lat ?? media.lat ?? media.coordenadas?.lat ?? null,
               longitud: media.gps?.lng ?? media.lng ?? media.coordenadas?.lon ?? media.coordenadas?.lng ?? null,
@@ -8795,7 +8878,7 @@ app.post('/import-tracking', (req, res, next) => {
           fechaCreacionVideo = fechaRecorridoReal ? `${fechaRecorridoReal}T12:00:00Z` : new Date().toISOString();
         }
 
-        const horaCaptura = fechaCreacionVideo.includes('T') ? fechaCreacionVideo.split('T')[1].substring(0, 8) : '12:00:00';
+        const horaCaptura = extraerHoraCapturaLocal(fechaCreacionVideo, extraName);
 
         const metadatosVideo = {
           timestamp: fechaCreacionVideo,

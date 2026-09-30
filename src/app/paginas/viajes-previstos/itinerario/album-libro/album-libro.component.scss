@@ -9151,110 +9151,6 @@
       outline: none;
     }
 
-    .placa-recuerdo-cinematica {
-      position: absolute;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      pointer-events: none;
-      z-index: 10;
-      animation: fadeInPlaca 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.8s both;
-
-      .placa-recuerdo-inner {
-        background: linear-gradient(145deg, rgba(17, 20, 30, 0.90) 0%, rgba(8, 9, 14, 0.95) 100%);
-        border: 1.5px solid rgba(212, 175, 55, 0.75);
-        box-shadow: 0 12px 35px rgba(0, 0, 0, 0.85), 0 0 25px rgba(212, 175, 55, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        padding: 14px 26px 16px;
-        border-radius: 14px;
-        text-align: center;
-        max-width: 90vw;
-        width: max-content;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 5px;
-      }
-
-      .placa-adorno-top {
-        font-family: 'Cinzel', serif, Georgia;
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 2.5px;
-        color: #d4af37;
-        text-transform: uppercase;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-
-        .adorno-estrella {
-          color: #facc15;
-          font-size: 0.65rem;
-        }
-      }
-
-      .placa-titulo {
-        margin: 0;
-        font-family: 'Cinzel', serif, Georgia;
-        font-size: 1.35rem;
-        font-weight: 700;
-        color: #fef3c7;
-        letter-spacing: 0.8px;
-        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
-        line-height: 1.25;
-
-        @media (max-width: 600px) {
-          font-size: 1.05rem;
-        }
-      }
-
-      .placa-fecha {
-        font-size: 0.88rem;
-        color: #cbd5e1;
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-
-        i {
-          color: #d4af37;
-          font-size: 0.82rem;
-        }
-      }
-
-      .placa-metricas {
-        margin-top: 3px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        flex-wrap: wrap;
-        background: rgba(212, 175, 55, 0.12);
-        border: 1px solid rgba(212, 175, 55, 0.35);
-        padding: 4px 14px;
-        border-radius: 20px;
-
-        .placa-metrica {
-          font-size: 0.82rem;
-          font-weight: 600;
-          color: #fcd34d;
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-
-          i {
-            color: #d4af37;
-            font-size: 0.78rem;
-          }
-        }
-
-        .placa-separador {
-          color: rgba(212, 175, 55, 0.5);
-          font-weight: 700;
-        }
-      }
-    }
   }
 
   .outro-modal-footer {
@@ -9277,33 +9173,107 @@
     .outro-footer-text {
       flex: 1;
 
-      .outro-badge-oro {
-        display: inline-flex;
+      .outro-header-badges {
+        display: flex;
         align-items: center;
-        gap: 6px;
-        font-size: 0.8rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        color: #d4af37;
-        margin-bottom: 6px;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
 
-        i {
-          color: #facc15;
+        @media (max-width: 768px) {
+          justify-content: center;
+        }
+
+        .outro-badge-oro {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.78rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 1.5px;
+          color: #d4af37;
+          background: rgba(212, 175, 55, 0.12);
+          border: 1px solid rgba(212, 175, 55, 0.35);
+          padding: 3px 12px;
+          border-radius: 14px;
+
+          i {
+            color: #facc15;
+          }
+        }
+
+        .outro-badge-destino {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.82rem;
+          font-weight: 600;
+          color: #38bdf8;
+          background: rgba(56, 189, 248, 0.12);
+          border: 1px solid rgba(56, 189, 248, 0.35);
+          padding: 3px 12px;
+          border-radius: 14px;
+          letter-spacing: 0.3px;
+
+          i {
+            color: #38bdf8;
+          }
         }
       }
 
-      h3 {
-        margin: 0 0 6px 0;
+      .outro-titulo-viaje {
+        margin: 0 0 10px 0;
         font-family: 'Cinzel', serif, Georgia;
-        font-size: 1.5rem;
+        font-size: 1.45rem;
         color: #f8fafc;
         letter-spacing: 0.5px;
+        line-height: 1.3;
       }
 
-      p {
+      .outro-metricas-fila {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+
+        @media (max-width: 768px) {
+          justify-content: center;
+        }
+
+        .outro-metrica-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.84rem;
+          font-weight: 600;
+          color: #fcd34d;
+          background: rgba(212, 175, 55, 0.1);
+          border: 1px solid rgba(212, 175, 55, 0.25);
+          padding: 4px 12px;
+          border-radius: 16px;
+
+          i {
+            color: #d4af37;
+            font-size: 0.8rem;
+          }
+
+          &.fecha {
+            color: #e2e8f0;
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.18);
+
+            i {
+              color: #94a3b8;
+            }
+          }
+        }
+      }
+
+      .outro-dedicatoria {
         margin: 0;
-        font-size: 0.95rem;
+        font-size: 0.92rem;
         color: #94a3b8;
         line-height: 1.4;
       }
@@ -9441,6 +9411,189 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ======================================================== */
+/* 🎬 ESTILOS: SELECTOR DE INTRO (TOOLBAR, PORTADA Y MODAL) */
+/* ======================================================== */
+
+.btn-toolbar-tipo-intro {
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  &.intro-mp4 {
+    color: #eab308 !important;
+    border-color: rgba(234, 179, 8, 0.45) !important;
+    background: rgba(234, 179, 8, 0.12) !important;
+    box-shadow: 0 0 10px rgba(234, 179, 8, 0.25);
+  }
+
+  &.intro-dynamics {
+    color: #38bdf8 !important;
+    border-color: rgba(56, 189, 248, 0.45) !important;
+    background: rgba(56, 189, 248, 0.12) !important;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+  }
+}
+
+.portada-intro-selector-wrapper {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  z-index: 10;
+
+  .intro-selector-label {
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #d4af37;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .intro-segmented-control {
+    display: inline-flex;
+    background: rgba(18, 14, 10, 0.75);
+    border: 1px solid rgba(212, 175, 55, 0.35);
+    border-radius: 20px;
+    padding: 3px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5), inset 0 1px 3px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(6px);
+
+    .btn-intro-seg {
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.65);
+      font-size: 0.74rem;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 16px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.22s ease;
+
+      i {
+        font-size: 0.8rem;
+      }
+
+      &:hover:not(.active) {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      &.active {
+        background: linear-gradient(135deg, #d4af37 0%, #b8860b 100%);
+        color: #1a1409;
+        font-weight: 700;
+        box-shadow: 0 2px 8px rgba(212, 175, 55, 0.4);
+      }
+    }
+  }
+}
+
+.config-intro-selector-box {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+
+  .alerta-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: #d4af37;
+    font-size: 0.92rem;
+  }
+
+  .intro-segmented-control-modal {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+
+    @media (max-width: 600px) {
+      grid-template-columns: 1fr;
+    }
+
+    .btn-intro-modal-opt {
+      border: 1.5px solid rgba(255, 255, 255, 0.12);
+      background: rgba(20, 22, 30, 0.6);
+      border-radius: 10px;
+      padding: 12px 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      text-align: left;
+      transition: all 0.25s ease;
+
+      i {
+        font-size: 1.3rem;
+        margin-top: 2px;
+        color: rgba(255, 255, 255, 0.5);
+        transition: color 0.25s ease;
+      }
+
+      .opt-text {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+
+        strong {
+          font-size: 0.88rem;
+          color: #e2e8f0;
+        }
+
+        span {
+          font-size: 0.74rem;
+          color: #94a3b8;
+          line-height: 1.3;
+        }
+      }
+
+      &:hover:not(.active) {
+        border-color: rgba(212, 175, 55, 0.4);
+        background: rgba(30, 34, 45, 0.75);
+      }
+
+      &.active {
+        border-color: #d4af37;
+        background: linear-gradient(135deg, rgba(212, 175, 55, 0.16) 0%, rgba(184, 134, 11, 0.08) 100%);
+        box-shadow: 0 0 16px rgba(212, 175, 55, 0.22);
+
+        i {
+          color: #facc15;
+        }
+
+        strong {
+          color: #fef08a;
+        }
+      }
+    }
+  }
+}
+
+.modal-intro-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999999 !important;
+  background: rgba(3, 3, 6, 0.97) !important;
+  backdrop-filter: blur(25px) !important;
+  -webkit-backdrop-filter: blur(25px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 

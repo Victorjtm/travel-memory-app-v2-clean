@@ -40,6 +40,15 @@ function resolverRutaLocal(url) {
   return null;
 }
 
+/**
+ * Convierte una ruta absoluta a ruta relativa con barras inclinadas '/'
+ * para evitar que los dos puntos de unidad en Windows (C:) rompan los filtros drawtext de FFmpeg
+ */
+function rutaRelativaFFmpeg(filePath) {
+  if (!filePath) return '';
+  return path.relative(process.cwd(), filePath).replace(/\\/g, '/');
+}
+
 function runFFmpeg(args) {
   return new Promise((resolve, reject) => {
     execFile(FFMPEG_BIN, args, (error, stdout, stderr) => {
@@ -151,24 +160,6 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
             vf = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
           }
 
-          // Placa cinemática en el Outro 3D (Destino, Fecha, Kilómetros, Tiempo y Pasos)
-          if (esc.esOutro3D && configuracion.incluirTexto !== false && fontPath) {
-            const txtOutroTitle = path.join(tmpDir, `txt_outro_t_${globalIdx}.txt`);
-            const txtOutroSub = path.join(tmpDir, `txt_outro_s_${globalIdx}.txt`);
-            const t1 = (esc.titulo || 'Estantería de los Recuerdos').toUpperCase();
-            const metrics = esc.subtitulo ? `${esc.fecha ? esc.fecha + '   ·   ' : ''}${esc.subtitulo}` : (esc.fecha || '');
-            fs.writeFileSync(txtOutroTitle, `✦  ${t1}  ✦`, 'utf-8');
-            fs.writeFileSync(txtOutroSub, metrics, 'utf-8');
-
-            const pTitle = txtOutroTitle.replace(/\\/g, '/');
-            const pSub = txtOutroSub.replace(/\\/g, '/');
-
-            vf += `,drawtext=textfile='${pTitle}':fontfile='${fontPath}':fontsize=38:fontcolor=0xfef3c7:x=(w-text_w)/2:y=65:box=1:boxcolor=0x0f172a@0.85:boxborderw=20:enable='between(t,0.8,5.8)'`;
-            if (metrics) {
-              vf += `,drawtext=textfile='${pSub}':fontfile='${fontPath}':fontsize=24:fontcolor=0xfcd34d:x=(w-text_w)/2:y=125:enable='between(t,0.8,5.8)'`;
-            }
-          }
-
           const args = ['-y', '-i', localMedia];
 
           if (tieneAudio) {
@@ -205,7 +196,8 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
 
           let drawTextFilter = '';
           if (configuracion.incluirTexto !== false && fontPath) {
-            drawTextFilter = `,drawtext=textfile='${txtFile.replace(/\\/g, '/')}':fontcolor=white:fontsize=46:x=(w-text_w)/2:y=(h-text_h)/2-90:box=1:boxcolor=black@0.7:boxborderw=24:fontfile='${fontPath}'`;
+            const relTxt = rutaRelativaFFmpeg(txtFile);
+            drawTextFilter = `,drawtext=textfile='${relTxt}':fontcolor=white:fontsize=46:x=(w-text_w)/2:y=(h-text_h)/2-90:box=1:boxcolor=black@0.7:boxborderw=24:fontfile='${fontPath}'`;
           }
 
           await runFFmpeg([
@@ -254,10 +246,17 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
         }
 
         const dur = Number(esc.duracion) > 0 ? Number(esc.duracion) : 3.5;
-        let vf = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
+        const esVintage = configuracion.esModoVintage !== false && configuracion.mantenerEstiloAlbum !== false;
+        let vf;
+        if (esVintage && esc.tipo !== 'mapa_resumen') {
+          // Encuadre fotográfico vintage con marco de lujo dorado sobre fondo desenfocado cálido (estilo pliego de álbum)
+          vf = 'split[main][bg];[bg]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=30:5,colorchannelmixer=rr=0.8:gg=0.75:bb=0.7[bgblur];[main]scale=1540:870:force_original_aspect_ratio=decrease,pad=iw+24:ih+24:12:12:color=0xd4af37,pad=iw+10:ih+10:5:5:color=0x261d15,pad=iw+12:ih+12:6:6:color=0xb8860b[fgframed];[bgblur][fgframed]overlay=(W-w)/2:(H-h)/2';
+        } else {
+          vf = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
+        }
 
-        // Superponer subtítulo inferior limpio si está activado
-        if (configuracion.incluirTexto !== false && fontPath) {
+        // Superponer subtítulo inferior limpio si está activado (excepto en mapas que ya traen su cabecera integrada)
+        if (configuracion.incluirTexto !== false && fontPath && esc.tipo !== 'mapa_resumen') {
           const esNombreArchivoCrudo = (t) => {
             if (!t) return false;
             const lower = t.toLowerCase();
@@ -283,7 +282,8 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
           if (textoFinal) {
             const txtFile = path.join(tmpDir, `txt_img_${globalIdx}.txt`);
             fs.writeFileSync(txtFile, textoFinal, 'utf-8');
-            vf += `,drawtext=textfile='${txtFile.replace(/\\/g, '/')}':fontcolor=white:fontsize=36:x=80:y=h-110:box=1:boxcolor=black@0.65:boxborderw=16:fontfile='${fontPath}'`;
+            const relTxt = rutaRelativaFFmpeg(txtFile);
+            vf += `,drawtext=textfile='${relTxt}':fontcolor=white:fontsize=36:x=80:y=h-110:box=1:boxcolor=black@0.65:boxborderw=16:fontfile='${fontPath}'`;
           }
         }
 

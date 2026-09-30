@@ -324,10 +324,10 @@ export class IntroVideoGeneratorService {
     const matEsqMetal = new THREE.MeshStandardMaterial({ color: 0xdfbe65, roughness: 0.28, metalness: 0.88 });
     const cantoneraGeo = new THREE.BoxGeometry(0.18, 0.075, 0.18);
     const esq1 = new THREE.Mesh(cantoneraGeo, matEsqMetal);
-    esq1.position.set(anchoLibro - 0.08, 0.002, profLibro / 2 - 0.08);
+    esq1.position.set(anchoLibro / 2 - 0.09, 0.002, profLibro / 2 - 0.09);
     tapaMesh.add(esq1);
     const esq2 = new THREE.Mesh(cantoneraGeo, matEsqMetal);
-    esq2.position.set(anchoLibro - 0.08, 0.002, -profLibro / 2 + 0.08);
+    esq2.position.set(anchoLibro / 2 - 0.09, 0.002, -profLibro / 2 + 0.09);
     tapaMesh.add(esq2);
 
     tapaPivotGroup.add(tapaMesh);
@@ -538,60 +538,126 @@ export class IntroVideoGeneratorService {
 
     onProgress?.({ fase: 'codificando', porcentaje: 20, mensaje: 'Codificando animación 3D de portada...' });
 
-    let resultadoBlob: Blob;
+    let resultadoBlob: Blob | null = null;
 
     if (typeof (window as any).VideoEncoder !== 'undefined') {
-      const muxer = new Muxer({
-        target: new ArrayBufferTarget(),
-        video: {
-          codec: 'avc',
-          width: this.ANCHO,
-          height: this.ALTO
-        },
-        fastStart: 'in-memory'
-      });
+      try {
+        const candidatosCodec = [
+          'avc1.4d002a', // Main Profile Level 4.2 (óptimo para 1080p@30/60)
+          'avc1.640028', // High Profile Level 4.0
+          'avc1.420028', // Baseline Profile Level 4.0
+          'avc1.4d0028'  // Main Profile Level 4.0
+        ];
 
-      const encoder = new (window as any).VideoEncoder({
-        output: (chunk: any, meta: any) => muxer.addVideoChunk(chunk, meta),
-        error: (e: any) => console.error('❌ [IntroVideoGenerator] Error WebCodecs:', e)
-      });
-
-      encoder.configure({
-        codec: 'avc1.42001f', // Baseline Profile level 3.1 universal
-        width: this.ANCHO,
-        height: this.ALTO,
-        bitrate: 4_000_000,
-        bitrateMode: 'variable',
-        framerate: this.FPS
-      });
-
-      for (let frame = 0; frame < totalFrames; frame++) {
-        const t = frame / this.FPS;
-        actualizarEstadoCinematico(t);
-        renderer.render(scene, camera);
-
-        const videoFrame = new (window as any).VideoFrame(canvas, {
-          timestamp: frame * frameDurationMicros
-        });
-        encoder.encode(videoFrame, { keyFrame: frame % (this.FPS * 2) === 0 });
-        videoFrame.close();
-
-        if (frame % 15 === 0) {
-          const pct = 20 + Math.round((frame / totalFrames) * 70);
-          onProgress?.({
-            fase: 'renderizando',
-            porcentaje: pct,
-            mensaje: `Renderizando fotograma 3D ${frame + 1} de ${totalFrames}...`
-          });
-          await new Promise(r => setTimeout(r, 0));
+        let codecElegido = 'avc1.4d002a';
+        for (const c of candidatosCodec) {
+          try {
+            const check = await (window as any).VideoEncoder.isConfigSupported({
+              codec: c,
+              width: this.ANCHO,
+              height: this.ALTO,
+              bitrate: 5_000_000,
+              framerate: this.FPS
+            });
+            if (check && check.supported) {
+              codecElegido = c;
+              console.log(`🎬 [IntroVideoGenerator] Codec WebCodecs 1080p soportado: ${c}`);
+              break;
+            }
+          } catch {}
         }
+
+        const muxer = new Muxer({
+          target: new ArrayBufferTarget(),
+          video: {
+            codec: 'avc',
+            width: this.ANCHO,
+            height: this.ALTO
+          },
+          fastStart: 'in-memory'
+        });
+
+        let encoderHuboError = false;
+        let chunksContados = 0;
+
+        const encoder = new (window as any).VideoEncoder({
+          output: (chunk: any, meta: any) => {
+            chunksContados++;
+            muxer.addVideoChunk(chunk, meta);
+          },
+          error: (e: any) => {
+            console.error('❌ [IntroVideoGenerator] Error WebCodecs:', e);
+            encoderHuboError = true;
+          }
+        });
+
+        encoder.configure({
+          codec: codecElegido,
+          width: this.ANCHO,
+          height: this.ALTO,
+          bitrate: 5_000_000,
+          bitrateMode: 'variable',
+          framerate: this.FPS
+        });
+
+        for (let frame = 0; frame < totalFrames; frame++) {
+          if (encoderHuboError || encoder.state === 'closed') {
+            throw new Error(`WebCodecs encoder cerrado o fallido en frame ${frame}`);
+          }
+
+          const t = frame / this.FPS;
+          actualizarEstadoCinematico(t);
+          renderer.render(scene, camera);
+
+          const videoFrame = new (window as any).VideoFrame(canvas, {
+            timestamp: frame * frameDurationMicros
+          });
+          encoder.encode(videoFrame, { keyFrame: frame % (this.FPS * 2) === 0 });
+          videoFrame.close();
+
+          // Control de contrapresión (backpressure) para no saturar memoria/encoder
+          if (encoder.encodeQueueSize > 4) {
+            await new Promise<void>((resQueue) => {
+              const checkDrain = () => {
+                if (encoder.encodeQueueSize <= 2 || encoder.state === 'closed') {
+                  encoder.ondequeue = null;
+                  resQueue();
+                }
+              };
+              encoder.ondequeue = checkDrain;
+              setTimeout(() => {
+                encoder.ondequeue = null;
+                resQueue();
+              }, 100);
+            });
+          }
+
+          if (frame % 15 === 0) {
+            const pct = 20 + Math.round((frame / totalFrames) * 70);
+            onProgress?.({
+              fase: 'renderizando',
+              porcentaje: pct,
+              mensaje: `Renderizando fotograma 3D ${frame + 1} de ${totalFrames}...`
+            });
+            await new Promise(r => setTimeout(r, 0));
+          }
+        }
+
+        await encoder.flush();
+        if (chunksContados < totalFrames * 0.9 || encoderHuboError) {
+          throw new Error(`WebCodecs produjo solo ${chunksContados} de ${totalFrames} frames`);
+        }
+
+        muxer.finalize();
+        resultadoBlob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+        console.log(`✅ [IntroVideoGenerator] Intro codificada completa vía WebCodecs (${chunksContados} frames).`);
+      } catch (errWebCodecs) {
+        console.warn('⚠️ [IntroVideoGenerator] Falló WebCodecs, cambiando a MediaRecorder fallback:', errWebCodecs);
+        resultadoBlob = null;
       }
+    }
 
-      await encoder.flush();
-      muxer.finalize();
-      resultadoBlob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
-
-    } else {
+    if (!resultadoBlob) {
       // Fallback con MediaRecorder
       onProgress?.({ fase: 'renderizando', porcentaje: 30, mensaje: 'Renderizando con MediaRecorder...' });
       const stream = (canvas as any).captureStream ? (canvas as any).captureStream(0) : canvas.captureStream(this.FPS);
