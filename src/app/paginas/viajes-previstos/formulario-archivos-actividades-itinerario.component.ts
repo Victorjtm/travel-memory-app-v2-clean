@@ -923,7 +923,7 @@ export class FormularioArchivosComponent implements OnInit, OnDestroy {
 
       if (this.validarFechaHora(año, mes, dia, hora, minuto, segundo)) {
         const fechaLocal = new Date(año, mes - 1, dia, hora, minuto, segundo);
-        const fechaISO = `${fechaLocal.getFullYear()}-${String(fechaLocal.getMonth() + 1).padStart(2, '0')}-${String(fechaLocal.getDate()).padStart(2, '0')}T${String(fechaLocal.getHours()).padStart(2, '0')}:${String(fechaLocal.getMinutes()).padStart(2, '0')}:${String(fechaLocal.getSeconds()).padStart(2, '0')}.000Z`;
+        const fechaISO = `${fechaLocal.getFullYear()}-${String(fechaLocal.getMonth() + 1).padStart(2, '0')}-${String(fechaLocal.getDate()).padStart(2, '0')}T${String(fechaLocal.getHours()).padStart(2, '0')}:${String(fechaLocal.getMinutes()).padStart(2, '0')}:${String(fechaLocal.getSeconds()).padStart(2, '0')}`;
 
         metadatos.fechaCreacion = fechaISO;
         metadatos.horaCaptura = `${String(hora).padStart(2, '0')}:${String(minuto).padStart(2, '0')}:${String(segundo).padStart(2, '0')}`;
@@ -999,7 +999,7 @@ export class FormularioArchivosComponent implements OnInit, OnDestroy {
 
                   if (partiesFecha.length === 3) {
                     const [año, mes, dia] = partiesFecha;
-                    const fechaISO = `${año}-${mes}-${dia}T${hora}.000Z`;
+                    const fechaISO = `${año}-${mes}-${dia}T${hora}`;
 
                     metadatos.fechaCreacion = fechaISO;
                     metadatos.horaCaptura = hora;

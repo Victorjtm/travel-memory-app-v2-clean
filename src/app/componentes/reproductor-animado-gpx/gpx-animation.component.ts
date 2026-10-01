@@ -713,6 +713,28 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     if (!item) return 0;
 
     // 🌟 Prioridad 1: fechaCreacion y horaCaptura válidas de base de datos / manifest
+    if (item.fechaCreacion) {
+      let fecha: Date | null = null;
+      if (typeof item.fechaCreacion === 'string') {
+        const m = item.fechaCreacion.match(/^(\d{4})[-/](\d{2})[-/](\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+        if (m) {
+          fecha = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0));
+        }
+      }
+      if (!fecha || isNaN(fecha.getTime())) {
+        fecha = new Date(item.fechaCreacion);
+      }
+      const hc = item.horaCaptura;
+      if (hc && typeof hc === 'string' && hc !== '00:00:00' && hc.toLowerCase() !== 'desconocido' && hc.trim() !== '') {
+        const [horas, minutos, segs] = hc.split(':').map(Number);
+        if (!isNaN(horas) && !isNaN(minutos)) {
+          fecha.setHours(horas, minutos, segs || 0, 0);
+        }
+      }
+      const t = fecha.getTime();
+      if (!isNaN(t) && fecha.getFullYear() >= 2000 && fecha.getFullYear() <= 2100) return t;
+    }
+
     const hc = item.horaCaptura;
     let timePart = '';
     if (hc && typeof hc === 'string' && hc !== '00:00:00' && hc.toLowerCase() !== 'desconocido' && hc.trim() !== '') {
@@ -729,7 +751,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       if (matchIso && matchIso[1] !== '00:00:00') timePart = matchIso[1];
     }
     if (datePart && timePart) {
-      const dt = new Date(`${datePart}T${timePart}Z`);
+      const dt = new Date(`${datePart}T${timePart}`);
       if (!isNaN(dt.getTime()) && dt.getFullYear() >= 2000 && dt.getFullYear() <= 2100) return dt.getTime();
     }
     if (item.fechaCreacion) {
@@ -768,7 +790,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
       if (mDate) {
         const numY = Number(mDate[1]), numM = Number(mDate[2]), numD = Number(mDate[3]);
         if (numY >= 2000 && numY <= 2100 && numM >= 1 && numM <= 12 && numD >= 1 && numD <= 31) {
-          const dt = new Date(`${mDate[1]}-${mDate[2]}-${mDate[3]}T${mDate[4]}:${mDate[5]}:${mDate[6]}Z`);
+          const dt = new Date(`${mDate[1]}-${mDate[2]}-${mDate[3]}T${mDate[4]}:${mDate[5]}:${mDate[6]}`);
           if (!isNaN(dt.getTime())) return dt.getTime();
         }
       }
@@ -829,10 +851,10 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
    * 3. Sin clustering espacial ni temporal.
    */
   private obtenerGruposPIsDynamics(): { lat: number; lng: number; trackIdx?: number; timestamp?: number; numeroSecuencial?: number; archivos: any[] }[] {
-    const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; trackIdx: number }[] = [];
+    const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; trackIdx: number; originalOrder: number }[] = [];
 
     if (this.multimedia && this.multimedia.length > 0) {
-      this.multimedia.forEach((archivo: any) => {
+      this.multimedia.forEach((archivo: any, fileIndex: number) => {
         const tipo = (archivo.tipo || '').toLowerCase();
         if (tipo !== 'foto' && tipo !== 'video' && tipo !== 'imagen' && tipo !== 'audio') return;
 
@@ -860,85 +882,97 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
           if (ts > 0) {
             archivo.fechaCalculada = new Date(ts);
           }
-          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts, trackIdx: 0 });
+          const originalOrder = archivo.numeroSecuencial ?? archivo.numeroVisual ?? archivo.orden ?? (fileIndex + 1);
+          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts, trackIdx: 0, originalOrder });
         }
       });
     }
 
-    // Ordenar estrictamente por timestamp cronológico real (Fecha + Hora + Segundo)
-    archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
+    // Ordenar respetando la secuencia: si tienen numeroSecuencial/numeroVisual previo, o cronológico estricto
+    archivosConCoordenadas.sort((a, b) => {
+      const seqA = a.archivo.numeroSecuencial ?? a.archivo.numeroVisual;
+      const seqB = b.archivo.numeroSecuencial ?? b.archivo.numeroVisual;
+      if (seqA !== undefined && seqB !== undefined && seqA !== seqB) {
+        return seqA - seqB;
+      }
+      if (a.timestamp > 0 && b.timestamp > 0 && Math.abs(a.timestamp - b.timestamp) >= 1000) {
+        return a.timestamp - b.timestamp;
+      }
+      return a.originalOrder - b.originalOrder;
+    });
 
-    // Emparejar al track GPX de forma monótona ascendente con validación espacio-temporal
+    // Emparejar al track GPX de forma monótona ascendente con validación espacial prioritaria
     let lastTrackIdx = 0;
     archivosConCoordenadas.forEach(item => {
       let bestIdx = -1;
 
       if (this.points && this.points.length > 0) {
-        // 1. Si tenemos timestamp válido, buscar candidato cronológico a partir de lastTrackIdx
-        let candidateTimeIdx = -1;
-        let minTimeDiff = Infinity;
-
-        if (item.timestamp > 0) {
-          for (let i = lastTrackIdx; i < this.points.length; i++) {
-            const pt = this.points[i];
-            const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
-            if (ptTime > 0) {
-              const diff = Math.abs(ptTime - item.timestamp);
-              if (diff < minTimeDiff) {
-                minTimeDiff = diff;
-                candidateTimeIdx = i;
-              }
+        // 1. Prioridad Física Directa: Si la traza pasa a <= 80m del archivo desde lastTrackIdx,
+        // asignar al punto de la calzada físicamente más cercano
+        let minSpatialDist = Infinity;
+        let bestSpatialIdx = -1;
+        for (let i = lastTrackIdx; i < this.points.length; i++) {
+          const pt = this.points[i];
+          if (pt) {
+            const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
+            if (d < minSpatialDist) {
+              minSpatialDist = d;
+              bestSpatialIdx = i;
+              if (d < 8) break; // Coincidencia óptima sobre el asfalto
             }
           }
         }
 
-        // 2. Comprobar si el candidato temporal tiene coherencia física en el espacio (< 150m)
-        let timeCandidateIsPhysicallyClose = false;
-        if (candidateTimeIdx !== -1 && item.lat && item.lng) {
-          const ptCandidate = this.points[candidateTimeIdx];
-          const distToCandidate = this.getDistance(item.lat, item.lng, ptCandidate.lat, ptCandidate.lng);
-          // Si el punto temporal está a menos de 150 metros, es verosímil y se acepta
-          if (distToCandidate <= 150) {
-            timeCandidateIsPhysicallyClose = true;
-            bestIdx = candidateTimeIdx;
-          }
-        }
+        if (bestSpatialIdx !== -1 && minSpatialDist <= 80) {
+          bestIdx = bestSpatialIdx;
+        } else {
+          // 2. Si no está en el tramo inmediato a <= 80m, comprobar candidato cronológico
+          let candidateTimeIdx = -1;
+          let minTimeDiff = Infinity;
 
-        // 3. Si no hay candidato temporal coherente (ej. corte de señal GPS o tramo prolongado/editado),
-        // encontrar el punto físicamente más cercano en la traza a partir de lastTrackIdx
-        if (!timeCandidateIsPhysicallyClose && item.lat && item.lng) {
-          let minSpatialDist = Infinity;
-          for (let i = lastTrackIdx; i < this.points.length; i++) {
-            const pt = this.points[i];
-            if (pt) {
-              const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
-              if (d < minSpatialDist) {
-                minSpatialDist = d;
-                bestIdx = i;
-                if (d < 10) break; // Coincidencia óptima sobre la calzada
-              }
-            }
-          }
-
-          // Fallback de seguridad: si buscando hacia adelante no hay nada a menos de 300m,
-          // evaluar toda la traza para no perder la posición
-          if (bestIdx === -1 || minSpatialDist > 300) {
-            for (let i = 0; i < this.points.length; i++) {
+          if (item.timestamp > 0) {
+            for (let i = lastTrackIdx; i < this.points.length; i++) {
               const pt = this.points[i];
-              if (pt) {
-                const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
-                if (d < minSpatialDist) {
-                  minSpatialDist = d;
-                  bestIdx = i;
+              const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
+              if (ptTime > 0) {
+                const diff = Math.abs(ptTime - item.timestamp);
+                if (diff < minTimeDiff) {
+                  minTimeDiff = diff;
+                  candidateTimeIdx = i;
                 }
               }
             }
           }
-        }
 
-        // Fallback final si no se encontró por distancia ni tiempo
-        if (bestIdx === -1) {
-          bestIdx = candidateTimeIdx !== -1 ? candidateTimeIdx : lastTrackIdx;
+          if (candidateTimeIdx !== -1 && item.lat && item.lng) {
+            const ptCandidate = this.points[candidateTimeIdx];
+            const distToCandidate = this.getDistance(item.lat, item.lng, ptCandidate.lat, ptCandidate.lng);
+            if (distToCandidate <= 150) {
+              bestIdx = candidateTimeIdx;
+            }
+          }
+
+          // 3. Fallback a la distancia espacial mínima encontrada hacia adelante
+          if (bestIdx === -1 && bestSpatialIdx !== -1 && minSpatialDist <= 300) {
+            bestIdx = bestSpatialIdx;
+          }
+
+          // 4. Fallback global en toda la traza si no se encontró nada hacia adelante
+          if (bestIdx === -1) {
+            let globalMinDist = Infinity;
+            let globalBestIdx = -1;
+            for (let i = 0; i < this.points.length; i++) {
+              const pt = this.points[i];
+              if (pt) {
+                const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
+                if (d < globalMinDist) {
+                  globalMinDist = d;
+                  globalBestIdx = i;
+                }
+              }
+            }
+            bestIdx = globalBestIdx !== -1 ? globalBestIdx : (candidateTimeIdx !== -1 ? candidateTimeIdx : lastTrackIdx);
+          }
         }
       }
 
@@ -1064,7 +1098,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     }
 
     // --- MODO TRADICIONAL (ORDEN LINEAL ABSOLUTO CON ARCHIVOS ASOCIADOS) ---
-    const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; trackIdx: number }[] = [];
+    const archivosConCoordenadas: { lat: number; lng: number; archivo: any; timestamp: number; trackIdx: number; originalOrder?: number }[] = [];
 
     if (this.multimedia && this.multimedia.length > 0) {
       // 1. Identificar nombres base de fotos y audios asociados a fotos padre para no duplicar marcadores
@@ -1138,13 +1172,24 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
         if (lat && lng && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01) {
           const ts = this.getDynamicsTimestamp(archivo);
-          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts, trackIdx: 0 });
+          const originalOrder = archivo.numeroSecuencial ?? archivo.numeroVisual ?? archivo.orden ?? (archivosConCoordenadas.length + 1);
+          archivosConCoordenadas.push({ lat, lng, archivo, timestamp: ts, trackIdx: 0, originalOrder });
         }
       });
     }
 
-    // Ordenamiento Lineal Absoluto: por timestamp cronológico ascendente (Día + Hora + Segundo)
-    archivosConCoordenadas.sort((a, b) => a.timestamp - b.timestamp);
+    // Ordenamiento Lineal Absoluto: por número secuencial previo o timestamp cronológico
+    archivosConCoordenadas.sort((a, b) => {
+      const seqA = a.archivo.numeroSecuencial ?? a.archivo.numeroVisual;
+      const seqB = b.archivo.numeroSecuencial ?? b.archivo.numeroVisual;
+      if (seqA !== undefined && seqB !== undefined && seqA !== seqB) {
+        return seqA - seqB;
+      }
+      if (a.timestamp > 0 && b.timestamp > 0 && Math.abs(a.timestamp - b.timestamp) >= 1000) {
+        return a.timestamp - b.timestamp;
+      }
+      return (a.originalOrder ?? 0) - (b.originalOrder ?? 0);
+    });
 
     // Mapear cada elemento al track GPX de forma monótona con restricción estricta de ventana temporal
     const hasGpxTimes = this.points && this.points.some(p => p.time && !isNaN(new Date(p.time).getTime()));
@@ -1153,55 +1198,64 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     archivosConCoordenadas.forEach(item => {
       let bestIdx = -1;
 
-      if (hasGpxTimes && item.timestamp > 0 && this.points && this.points.length > 0) {
-        const WINDOWS_MS = [5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 1000];
-        for (const winMs of WINDOWS_MS) {
-          let minDist = Infinity;
-          let chosenIdx = -1;
-          for (let i = lastTrackIdx; i < this.points.length; i++) {
-            const pt = this.points[i];
-            const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
-            if (ptTime > 0 && Math.abs(ptTime - item.timestamp) <= winMs) {
-              const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
-              if (d < minDist) {
-                minDist = d;
-                chosenIdx = i;
-              }
-            }
-          }
-          if (chosenIdx !== -1) {
-            bestIdx = chosenIdx;
-            break;
-          }
-        }
-
-        if (bestIdx === -1) {
-          let minDist = Infinity;
-          for (let i = 0; i < this.points.length; i++) {
-            const pt = this.points[i];
-            const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
-            if (ptTime > 0 && Math.abs(ptTime - item.timestamp) <= 15 * 60 * 1000) {
-              const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
-              if (d < minDist) {
-                minDist = d;
-                bestIdx = i;
-              }
-            }
-          }
-        }
-      }
-
-      // Fallback espacial si no hay tiempos GPX o fuera de ventana
-      if (bestIdx === -1 && this.points && this.points.length > 0) {
-        let minDist = Infinity;
+      if (this.points && this.points.length > 0) {
+        // 1. Prioridad Física Directa: Si la traza pasa a <= 80m del archivo desde lastTrackIdx
+        let minSpatialDist = Infinity;
+        let bestSpatialIdx = -1;
         for (let i = lastTrackIdx; i < this.points.length; i++) {
           const pt = this.points[i];
-          const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
-          if (d < minDist) {
-            minDist = d;
-            bestIdx = i;
-            if (d < 10) break;
+          if (pt) {
+            const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
+            if (d < minSpatialDist) {
+              minSpatialDist = d;
+              bestSpatialIdx = i;
+              if (d < 8) break;
+            }
           }
+        }
+
+        if (bestSpatialIdx !== -1 && minSpatialDist <= 80) {
+          bestIdx = bestSpatialIdx;
+        } else if (hasGpxTimes && item.timestamp > 0) {
+          const WINDOWS_MS = [5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 1000];
+          for (const winMs of WINDOWS_MS) {
+            let minDist = Infinity;
+            let chosenIdx = -1;
+            for (let i = lastTrackIdx; i < this.points.length; i++) {
+              const pt = this.points[i];
+              const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
+              if (ptTime > 0 && Math.abs(ptTime - item.timestamp) <= winMs) {
+                const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
+                if (d < minDist) {
+                  minDist = d;
+                  chosenIdx = i;
+                }
+              }
+            }
+            if (chosenIdx !== -1) {
+              bestIdx = chosenIdx;
+              break;
+            }
+          }
+
+          if (bestIdx === -1) {
+            let minDist = Infinity;
+            for (let i = 0; i < this.points.length; i++) {
+              const pt = this.points[i];
+              const ptTime = pt?.time ? new Date(pt.time).getTime() : 0;
+              if (ptTime > 0 && Math.abs(ptTime - item.timestamp) <= 15 * 60 * 1000) {
+                const d = this.getDistance(item.lat, item.lng, pt.lat, pt.lng);
+                if (d < minDist) {
+                  minDist = d;
+                  bestIdx = i;
+                }
+              }
+            }
+          }
+        }
+
+        if (bestIdx === -1 && bestSpatialIdx !== -1) {
+          bestIdx = bestSpatialIdx;
         }
       }
 
@@ -1552,11 +1606,13 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
 
     this.isPlaying = !this.isPlaying;
     if (this.isPlaying) {
-      // 📍 Si estamos al inicio y el punto 0 tiene evento (Parada #1), detenerse en él antes de avanzar
-      if (Math.floor(this.currentIndex) === 0 && this.points && this.points[0]?.event && !(this.points[0].event as any)._mostrado && this.interactiveMode !== false) {
-        console.log('📍 [Parada Inicial] Deteniendo en Parada #1 (índice 0)');
-        (this.points[0].event as any)._mostrado = true;
-        const ev = this.points[0].event;
+      // 📍 Si estamos al inicio y hay una primera parada (Parada #1), detenerse en ella inmediatamente antes de animar cualquier tramo
+      const firstEventIdx = this.points ? this.points.findIndex(p => p && p.event) : -1;
+      if (firstEventIdx !== -1 && Math.floor(this.currentIndex) <= firstEventIdx && !(this.points[firstEventIdx].event as any)._mostrado && this.interactiveMode !== false) {
+        console.log(`📍 [Parada Inicial] Deteniendo en Parada #1 (índice ${firstEventIdx})`);
+        this.currentIndex = firstEventIdx;
+        (this.points[firstEventIdx].event as any)._mostrado = true;
+        const ev = this.points[firstEventIdx].event;
         const targetCoords: [number, number] | undefined = (ev.lat !== undefined && ev.lng !== undefined) ? [ev.lat, ev.lng] : undefined;
         this.pauseForEvent(ev, targetCoords);
         return;

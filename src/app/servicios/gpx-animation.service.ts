@@ -160,7 +160,7 @@ export class GpxAnimationService {
       }
       if (!timePart) timePart = '12:00:00';
 
-      const fullIso = `${datePart}T${timePart}Z`;
+      const fullIso = `${datePart}T${timePart}`;
       const dt = new Date(fullIso);
       return !isNaN(dt.getTime()) ? dt.getTime() : 0;
     };

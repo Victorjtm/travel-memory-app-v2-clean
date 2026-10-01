@@ -1119,7 +1119,16 @@ export class ActividadesItinerariosComponent implements OnInit {
 
     // 🌟 PRIORIDAD 1: fechaCreacion y horaCaptura de la base de datos (Timestamp canónico del evento)
     if (archivo.fechaCreacion) {
-      const fecha = new Date(archivo.fechaCreacion);
+      let fecha: Date | null = null;
+      if (typeof archivo.fechaCreacion === 'string') {
+        const m = archivo.fechaCreacion.match(/^(\d{4})[-/](\d{2})[-/](\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+        if (m) {
+          fecha = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0));
+        }
+      }
+      if (!fecha || isNaN(fecha.getTime())) {
+        fecha = new Date(archivo.fechaCreacion);
+      }
       if (archivo.horaCaptura && typeof archivo.horaCaptura === 'string' && archivo.horaCaptura !== '00:00:00') {
         const [horas, minutos, segs] = archivo.horaCaptura.split(':').map(Number);
         if (!isNaN(horas) && !isNaN(minutos)) {
@@ -1158,7 +1167,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       }
       const mDate = name.match(/(\d{4})[-_]?(\d{2})[-_]?(\d{2})[T_](\d{2})[-_]?(\d{2})[-_]?(\d{2})/);
       if (mDate) {
-        const dt = new Date(`${mDate[1]}-${mDate[2]}-${mDate[3]}T${mDate[4]}:${mDate[5]}:${mDate[6]}Z`);
+        const dt = new Date(`${mDate[1]}-${mDate[2]}-${mDate[3]}T${mDate[4]}:${mDate[5]}:${mDate[6]}`);
         if (!isNaN(dt.getTime())) return dt.getTime();
       }
     }
@@ -2479,7 +2488,9 @@ export class ActividadesItinerariosComponent implements OnInit {
           await firstValueFrom(this.trackEditorService.createSegment(
             this.actividadEditorId,
             points,
-            'user-delete'
+            'user-delete',
+            edit.data.startAnchor,
+            edit.data.endAnchor
           ));
         } else if (edit.type === 'prepend_segment') {
           // Evitamos duplicar el punto de anclaje B con slice(0, -1)
@@ -2493,7 +2504,9 @@ export class ActividadesItinerariosComponent implements OnInit {
           await firstValueFrom(this.trackEditorService.createSegment(
             this.actividadEditorId,
             points,
-            'user-prepend'
+            'user-prepend',
+            edit.data.startAnchor,
+            edit.data.endAnchor
           ));
         } else if (edit.type === 'append_segment') {
           // Si hay más de 1 punto, evitamos duplicar el punto de anclaje A con slice(1)
@@ -2509,7 +2522,9 @@ export class ActividadesItinerariosComponent implements OnInit {
           await firstValueFrom(this.trackEditorService.createSegment(
             this.actividadEditorId,
             points,
-            'user-append'
+            'user-append',
+            edit.data.startAnchor,
+            edit.data.endAnchor
           ));
         } else if ((edit.type === 'insert_segment' || edit.type === 'create_route') && edit.data?.points) {
           const points = edit.data.points.map((p: any) => ({
@@ -2523,7 +2538,9 @@ export class ActividadesItinerariosComponent implements OnInit {
           await firstValueFrom(this.trackEditorService.createSegment(
             this.actividadEditorId,
             points,
-            source
+            source,
+            edit.data.startAnchor,
+            edit.data.endAnchor
           ));
         } else if (edit.type === 'override_mode') {
           const startIdx = this.trackEditorService.resolveAnchor(edit.data.startAnchor, this.gpxPointsEditor);
@@ -2543,7 +2560,9 @@ export class ActividadesItinerariosComponent implements OnInit {
             await firstValueFrom(this.trackEditorService.createSegment(
               this.actividadEditorId,
               points,
-              'user-override'
+              'user-override',
+              edit.data.startAnchor,
+              edit.data.endAnchor
             ));
           }
         } else if ((edit.type === 'assign_timestamps' || edit.type === 'assign_distance') && edit.data?.points) {
@@ -2557,7 +2576,9 @@ export class ActividadesItinerariosComponent implements OnInit {
           await firstValueFrom(this.trackEditorService.createSegment(
             this.actividadEditorId,
             points,
-            'user-override'
+            'user-override',
+            edit.data.startAnchor,
+            edit.data.endAnchor
           ));
         } else if (edit.type === 'recalculate_route' && edit.data?.points) {
           const points = edit.data.points.map((p: any) => ({
@@ -2570,7 +2591,9 @@ export class ActividadesItinerariosComponent implements OnInit {
           await firstValueFrom(this.trackEditorService.createSegment(
             this.actividadEditorId,
             points,
-            'user-override'
+            'user-override',
+            edit.data.startAnchor,
+            edit.data.endAnchor
           ));
         }
       }

@@ -892,13 +892,17 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       if (startPt && startPt.time) {
         const dt = new Date(startPt.time as any);
         if (!isNaN(dt.getTime())) {
-          horaInicio = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+          const hh = dt.getHours().toString().padStart(2, '0');
+          const mm = dt.getMinutes().toString().padStart(2, '0');
+          horaInicio = `${hh}:${mm}`;
         }
       }
       if (endPt && endPt.time) {
         const dt = new Date(endPt.time as any);
         if (!isNaN(dt.getTime())) {
-          horaFin = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+          const hh = dt.getHours().toString().padStart(2, '0');
+          const mm = dt.getMinutes().toString().padStart(2, '0');
+          horaFin = `${hh}:${mm}`;
         }
       }
 
@@ -1230,6 +1234,77 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
   }
 
+  private getPhotoTimeForAnchorOrIdx(anchor: TrackAnchor | null, gpxIdx: number): number | undefined {
+    const targetPt = (this.gpxPoints && this.gpxPoints[gpxIdx]) ? this.gpxPoints[gpxIdx] : null;
+    const lat = anchor?.lat ?? targetPt?.lat;
+    const lng = anchor?.lng ?? targetPt?.lng;
+
+    if (lat !== undefined && lng !== undefined) {
+      if (this.mediaGroups && this.mediaGroups.length > 0) {
+        let bestGroupDist = 350;
+        let bestGroupTime: number | undefined;
+
+        for (const group of this.mediaGroups) {
+          const d = this.trackEditorService.getDistance(lat, lng, group.lat, group.lng);
+          if (d < bestGroupDist) {
+            const primerArchivo = (group.archivos && group.archivos.length > 0) ? (group.archivos[0].archivo || group.archivos[0]) : null;
+            if (primerArchivo) {
+              const raw = primerArchivo.timestampReal || primerArchivo.fechaCreacion || primerArchivo.horaCaptura || primerArchivo.fecha || primerArchivo.time;
+              const parsed = (this.trackEditorService as any)['parseFlexibleDate']?.(raw, primerArchivo.nombreArchivo);
+              if (parsed && !isNaN(parsed)) {
+                bestGroupDist = d;
+                bestGroupTime = parsed;
+              }
+            }
+          }
+        }
+        if (bestGroupTime) return bestGroupTime;
+      }
+
+      if (this.archivosMedia && this.archivosMedia.length > 0) {
+        let bestMediaDist = 350;
+        let bestMediaTime: number | undefined;
+
+        for (const item of this.archivosMedia) {
+          let itemLat: number | null = item.latitud || item.lat || null;
+          let itemLng: number | null = item.longitud || item.lng || item.lon || null;
+          let horaRaw = item.timestampReal || item.fechaCreacion || item.horaCaptura || item.fecha || item.time || item.timestamp;
+
+          if ((!itemLat || !itemLng || !horaRaw) && item.geolocalizacion) {
+            try {
+              const geo = typeof item.geolocalizacion === 'string' ? JSON.parse(item.geolocalizacion) : item.geolocalizacion;
+              itemLat = itemLat ?? (geo?.latitud ?? geo?.latitude ?? geo?.lat ?? null);
+              itemLng = itemLng ?? (geo?.longitud ?? geo?.longitude ?? geo?.lng ?? null);
+              horaRaw = horaRaw || geo?.timestampReal || geo?.timestamp || geo?.time || geo?.fecha;
+            } catch (e) {}
+          }
+
+          const timeMs = (this.trackEditorService as any)['parseFlexibleDate']?.(horaRaw, item.nombreArchivo || item.rutaArchivo);
+          if (itemLat !== null && itemLng !== null && timeMs && !isNaN(itemLat) && !isNaN(itemLng)) {
+            const d = this.trackEditorService.getDistance(lat, lng, Number(itemLat), Number(itemLng));
+            if (d < bestMediaDist) {
+              bestMediaDist = d;
+              bestMediaTime = timeMs;
+            }
+          }
+        }
+        if (bestMediaTime) return bestMediaTime;
+      }
+    }
+
+    if (anchor?.time) {
+      const tA = new Date(anchor.time).getTime();
+      if (!isNaN(tA)) return tA;
+    }
+
+    if (targetPt?.time) {
+      const tPt = targetPt.time instanceof Date ? targetPt.time.getTime() : new Date(targetPt.time as any).getTime();
+      if (!isNaN(tPt)) return tPt;
+    }
+
+    return undefined;
+  }
+
   onAssignTimestamps(mode: 'auto' | 'manual'): void {
     if (!this.anchorA || !this.anchorB || !this.gpxPoints || this.gpxPoints.length === 0) return;
 
@@ -1255,14 +1330,64 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     let rawSegment = this.gpxPoints.slice(min, max + 1).map(p => ({ ...p }));
     let targetSegment = this.trackEditorService.densifyPoints(rawSegment, 300);
 
+    // Asegurar que targetSegment llegue exactamente a las coordenadas de anchorA y anchorB si el trazado se quedaba corto
+    if (this.anchorA) {
+      const firstPt = targetSegment[0];
+      const distToA = this.trackEditorService.getDistance(firstPt.lat, firstPt.lng, this.anchorA.lat, this.anchorA.lng);
+      if (distToA > 15 && distToA < 5000) {
+        targetSegment.unshift({
+          lat: this.anchorA.lat,
+          lng: this.anchorA.lng,
+          mode: firstPt.mode || firstPt.hfMode,
+          distAcum: 0,
+          timeAcum: 0
+        });
+      }
+    }
+    if (this.anchorB) {
+      const lastPt = targetSegment[targetSegment.length - 1];
+      const distToB = this.trackEditorService.getDistance(lastPt.lat, lastPt.lng, this.anchorB.lat, this.anchorB.lng);
+      if (distToB > 15 && distToB < 5000) {
+        targetSegment.push({
+          lat: this.anchorB.lat,
+          lng: this.anchorB.lng,
+          mode: lastPt.mode || lastPt.hfMode,
+          distAcum: 0,
+          timeAcum: 0
+        });
+      }
+    }
+
     if (mode === 'auto') {
       // 1. Intentar calibrar con fotos del viaje
       let calibratedWithPhotos = false;
       if (this.archivosMedia && this.archivosMedia.length > 0) {
         const prevTimes = targetSegment.map(p => p.time ? new Date(p.time as any).getTime() : NaN);
-        this.trackEditorService.calibratePointsWithMedia(targetSegment, this.archivosMedia);
+        const startAnchorTimeMs = this.getPhotoTimeForAnchorOrIdx(this.anchorA, min);
+        const endAnchorTimeMs = this.getPhotoTimeForAnchorOrIdx(this.anchorB, max);
+
+        this.trackEditorService.calibratePointsWithMedia(targetSegment, this.archivosMedia, startAnchorTimeMs, endAnchorTimeMs);
         const newTimes = targetSegment.map(p => p.time ? new Date(p.time as any).getTime() : NaN);
         calibratedWithPhotos = newTimes.some((t, i) => !isNaN(t) && t !== prevTimes[i]);
+
+        if (startAnchorTimeMs && endAnchorTimeMs && endAnchorTimeMs > startAnchorTimeMs) {
+          this.trackEditorService.ensureAccumulators(targetSegment);
+          const totalDist = targetSegment[targetSegment.length - 1]?.distAcum || 1;
+          let currentDist = 0;
+          targetSegment.forEach((pt, idx) => {
+            if (idx === 0) {
+              pt.time = new Date(startAnchorTimeMs);
+            } else if (idx === targetSegment.length - 1) {
+              pt.time = new Date(endAnchorTimeMs);
+            } else {
+              const d = this.trackEditorService.getDistance(targetSegment[idx - 1].lat, targetSegment[idx - 1].lng, pt.lat, pt.lng);
+              currentDist += d;
+              const ratio = totalDist > 0 ? Math.min(1, currentDist / totalDist) : (idx / (targetSegment.length - 1));
+              pt.time = new Date(startAnchorTimeMs + (endAnchorTimeMs - startAnchorTimeMs) * ratio);
+            }
+          });
+          calibratedWithPhotos = true;
+        }
       }
 
       // 2. Si no se calibró con fotos (o no había fotos en el tramo), calcular por velocidad del medio de transporte
@@ -1418,10 +1543,10 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     if (ptA?.time) {
       const dtA = new Date(ptA.time as any);
       if (!isNaN(dtA.getTime())) {
-        this.customStartDate = dtA.toISOString().split('T')[0];
-        const hh = dtA.getUTCHours().toString().padStart(2, '0');
-        const mm = dtA.getUTCMinutes().toString().padStart(2, '0');
-        const ss = dtA.getUTCSeconds().toString().padStart(2, '0');
+        this.customStartDate = `${dtA.getFullYear()}-${String(dtA.getMonth() + 1).padStart(2, '0')}-${String(dtA.getDate()).padStart(2, '0')}`;
+        const hh = dtA.getHours().toString().padStart(2, '0');
+        const mm = dtA.getMinutes().toString().padStart(2, '0');
+        const ss = dtA.getSeconds().toString().padStart(2, '0');
         this.customStartTime = `${hh}:${mm}:${ss}`;
       }
     }
@@ -1432,10 +1557,10 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     if (ptB?.time) {
       const dtB = new Date(ptB.time as any);
       if (!isNaN(dtB.getTime())) {
-        this.customEndDate = dtB.toISOString().split('T')[0];
-        const hh = dtB.getUTCHours().toString().padStart(2, '0');
-        const mm = dtB.getUTCMinutes().toString().padStart(2, '0');
-        const ss = dtB.getUTCSeconds().toString().padStart(2, '0');
+        this.customEndDate = `${dtB.getFullYear()}-${String(dtB.getMonth() + 1).padStart(2, '0')}-${String(dtB.getDate()).padStart(2, '0')}`;
+        const hh = dtB.getHours().toString().padStart(2, '0');
+        const mm = dtB.getMinutes().toString().padStart(2, '0');
+        const ss = dtB.getSeconds().toString().padStart(2, '0');
         this.customEndTime = `${hh}:${mm}:${ss}`;
       }
     }
@@ -1469,8 +1594,11 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     const hh = (partesHora[0] || '00').padStart(2, '0');
     const mm = (partesHora[1] || '00').padStart(2, '0');
     const ss = (partesHora[2] || '00').padStart(2, '0');
-    const isoString = `${fechaStr}T${hh}:${mm}:${ss}`;
-    return new Date(isoString).getTime();
+
+    const partesFecha = fechaStr.split('-').map(Number);
+    if (partesFecha.length < 3 || partesFecha.some(isNaN)) return NaN;
+    const dt = new Date(partesFecha[0], partesFecha[1] - 1, partesFecha[2], Number(hh), Number(mm), Number(ss));
+    return dt.getTime();
   }
 
   // ====================================================================
@@ -3129,11 +3257,11 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       let fechaFull = '';
       if (pt.time) {
         const dateObj = new Date(pt.time);
-        const hh = dateObj.getUTCHours().toString().padStart(2, '0');
-        const mm = dateObj.getUTCMinutes().toString().padStart(2, '0');
-        const ss = dateObj.getUTCSeconds().toString().padStart(2, '0');
+        const hh = dateObj.getHours().toString().padStart(2, '0');
+        const mm = dateObj.getMinutes().toString().padStart(2, '0');
+        const ss = dateObj.getSeconds().toString().padStart(2, '0');
         horaText = `${hh}:${mm}:${ss}`;
-        fechaFull = dateObj.toLocaleString('es-ES', { timeZone: 'UTC' });
+        fechaFull = dateObj.toLocaleString('es-ES');
       } else if (pt.timeAcum !== undefined) {
         const totalSec = Math.floor(pt.timeAcum);
         const hh = Math.floor(totalSec / 3600).toString().padStart(2, '0');
@@ -3257,7 +3385,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
 
       let horaFull = 'N/A';
       if (pt.time) {
-        horaFull = new Date(pt.time).toLocaleString('es-ES', { timeZone: 'UTC' });
+        horaFull = new Date(pt.time).toLocaleString('es-ES');
       } else if (pt.timeAcum !== undefined) {
         const totalSec = Math.floor(pt.timeAcum);
         const hh = Math.floor(totalSec / 3600).toString().padStart(2, '0');
@@ -3459,7 +3587,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
 
     // 1. Extraer fotos con coordenadas válidas exclusivamente en tierra
-    const candidatos: { lat: number; lng: number; timeMs: number; nombre: string }[] = [];
+    const candidatos: { lat: number; lng: number; timeMs: number; originalIndex?: number; nombre: string }[] = [];
 
     // Detectar si existe una fecha base común de la actividad a partir de las fotos
     let baseDatePrefix: string | null = null;
@@ -3474,7 +3602,8 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
     }
 
-    for (const item of this.archivosMedia) {
+    for (let itemIdx = 0; itemIdx < this.archivosMedia.length; itemIdx++) {
+      const item = this.archivosMedia[itemIdx];
       let lat: number | null = item.latitud ?? item.lat ?? null;
       let lng: number | null = item.longitud ?? item.lng ?? item.lon ?? null;
       let horaRaw = item.timestampReal || item.horaCaptura || item.fechaCreacion || item.fecha || item.time || item.timestamp;
@@ -3518,7 +3647,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       // 2. Si no resolvió pero tenemos horaCaptura (HH:mm:ss) y fecha base ("YYYY-MM-DD")
       if (!timeMs && item.horaCaptura && baseDatePrefix) {
         const timeClean = String(item.horaCaptura).trim();
-        const combined = new Date(`${baseDatePrefix}T${timeClean.length === 8 ? timeClean : timeClean + ':00'}Z`);
+        const combined = new Date(`${baseDatePrefix}T${timeClean.length === 8 ? timeClean : timeClean + ':00'}`);
         if (!isNaN(combined.getTime())) {
           timeMs = combined.getTime();
         }
@@ -3548,6 +3677,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
           lat: Number(lat),
           lng: Number(lng),
           timeMs: timeMs || 0,
+          originalIndex: item.numeroSecuencial ?? item.numeroVisual ?? item.orden ?? (itemIdx + 1),
           nombre: filename
         });
       }
@@ -3598,7 +3728,14 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     }
 
     // 2. Ordenar cronológicamente
-    fotosValidas.sort((a, b) => a.timeMs - b.timeMs);
+    fotosValidas.sort((a, b) => {
+      const idxA = (a as any).originalIndex ?? 0;
+      const idxB = (b as any).originalIndex ?? 0;
+      if (idxA > 0 && idxB > 0 && idxA !== idxB) {
+        return idxA - idxB;
+      }
+      return a.timeMs - b.timeMs;
+    });
 
     // 3. Agrupar waypoints consecutivos cercanos (< 25 metros)
     const waypoints: { lat: number; lng: number; startTimeMs: number; endTimeMs: number }[] = [];
