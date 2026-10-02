@@ -25,8 +25,22 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
   datosActividad: HealthActivity | null = null;
 
   tipoCarga: 'watch' | 'scale' = 'watch';
+
+  // ⌚ Soporte multi-tramo dinámico (1 tramo = 4 fotos, 2 tramos = 8 fotos, etc.)
+  watchSegmentsCount: number = 1;
+  expectedPhotosCount: number = 4;
+  segmentsInfo: Array<{ index: number; label: string }> = [{ index: 1, label: 'Tramo 1' }];
+  tramoActivoSubida: number = 1;
+  selectedFilesByTramo: { [tramoIndex: number]: File[] } = { 1: [] };
+  previewUrlsByTramo: { [tramoIndex: number]: string[] } = { 1: [] };
+
+  // Modo detalle: 0 = Total combinado, 1 = Tramo 1, 2 = Tramo 2, etc.
+  tramoActivoDetalle: number = 0;
+
+  // Fallback / legacy / báscula
   selectedFiles: File[] = [];
   previewUrls: string[] = [];
+
   customApiKey: string = '';
   cargando: boolean = false;
   mensajeProgreso: string = '';
@@ -50,6 +64,24 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
     }
   }
 
+  inicializarEstructurasTramos(count: number = 1, segments?: Array<{ index: number; label: string }>) {
+    this.watchSegmentsCount = Math.max(1, count);
+    this.expectedPhotosCount = this.watchSegmentsCount * 4;
+    this.segmentsInfo = segments || Array.from({ length: this.watchSegmentsCount }, (_, i) => ({
+      index: i + 1,
+      label: `Tramo ${i + 1}`
+    }));
+
+    this.selectedFilesByTramo = {};
+    this.previewUrlsByTramo = {};
+    for (let i = 1; i <= this.watchSegmentsCount; i++) {
+      this.selectedFilesByTramo[i] = [];
+      this.previewUrlsByTramo[i] = [];
+    }
+    this.tramoActivoSubida = 1;
+    this.tramoActivoDetalle = 0;
+  }
+
   verificarDatosExistentes(): void {
     this.limpiarArchivos();
     this.errorMensaje = '';
@@ -58,8 +90,12 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
     if (this.activityId) {
       this.cargandoVerificacion = true;
       this.saludService.getActivityByActivityId(this.activityId).subscribe({
-        next: (res) => {
+        next: (res: any) => {
           this.cargandoVerificacion = false;
+          const count = res?.watch_segments_count || 1;
+          const segments = res?.segments;
+          this.inicializarEstructurasTramos(count, segments);
+
           if (res && res.hasData && res.data) {
             this.datosActividad = res.data;
             this.modoVista = 'detalle';
@@ -70,11 +106,13 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
         },
         error: () => {
           this.cargandoVerificacion = false;
+          this.inicializarEstructurasTramos(1);
           this.datosActividad = null;
           this.modoVista = 'subida';
         }
       });
     } else {
+      this.inicializarEstructurasTramos(1);
       this.datosActividad = null;
       this.modoVista = 'subida';
     }
@@ -88,10 +126,41 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
     this.resultadoExito = null;
   }
 
-  onFilesSelected(event: any) {
+  cambiarTramoSubida(tramoIndex: number) {
+    if (this.cargando) return;
+    this.tramoActivoSubida = tramoIndex;
+  }
+
+  cambiarTramoDetalle(tramoIndex: number) {
+    this.tramoActivoDetalle = tramoIndex;
+  }
+
+  getArchivosTramo(tramoIndex: number): File[] {
+    return this.selectedFilesByTramo[tramoIndex] || [];
+  }
+
+  getPreviewsTramo(tramoIndex: number): string[] {
+    return this.previewUrlsByTramo[tramoIndex] || [];
+  }
+
+  get totalArchivosSeleccionados(): number {
+    if (this.tipoCarga === 'scale') {
+      return this.selectedFiles.length;
+    }
+    if (this.watchSegmentsCount > 1) {
+      let total = 0;
+      for (let i = 1; i <= this.watchSegmentsCount; i++) {
+        total += (this.selectedFilesByTramo[i] || []).length;
+      }
+      return total;
+    }
+    return (this.selectedFilesByTramo[1] || []).length || this.selectedFiles.length;
+  }
+
+  onFilesSelected(event: any, tramoIndex?: number) {
     const files: FileList = event.target.files;
     if (!files || files.length === 0) return;
-    this.agregarArchivos(Array.from(files));
+    this.agregarArchivos(Array.from(files), tramoIndex);
   }
 
   onDragOver(event: DragEvent) {
@@ -99,27 +168,77 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
     event.stopPropagation();
   }
 
-  onDrop(event: DragEvent) {
+  onDrop(event: DragEvent, tramoIndex?: number) {
     event.preventDefault();
     event.stopPropagation();
     if (event.dataTransfer && event.dataTransfer.files) {
-      this.agregarArchivos(Array.from(event.dataTransfer.files));
+      this.agregarArchivos(Array.from(event.dataTransfer.files), tramoIndex);
     }
   }
 
-  private agregarArchivos(files: File[]) {
-    const maxFiles = this.tipoCarga === 'watch' ? 4 : 2;
+  private agregarArchivos(files: File[], tramoIndex?: number) {
     const validImageFiles = files.filter(f => f.type.startsWith('image/'));
+    if (validImageFiles.length === 0) return;
 
+    if (this.tipoCarga === 'scale') {
+      const maxFiles = 2;
+      for (const file of validImageFiles) {
+        if (this.selectedFiles.length >= maxFiles) break;
+        this.selectedFiles.push(file);
+        const reader = new FileReader();
+        reader.onload = (e: any) => this.previewUrls.push(e.target.result);
+        reader.readAsDataURL(file);
+      }
+      return;
+    }
+
+    // Tipo reloj
+    if (this.watchSegmentsCount > 1 && !tramoIndex && validImageFiles.length > 4) {
+      // Distribución automática equitativa en bloques de 4 si el usuario seleccionó todas a la vez
+      const perTramo = 4;
+      let offset = 0;
+      for (let t = 1; t <= this.watchSegmentsCount; t++) {
+        const slice = validImageFiles.slice(offset, offset + perTramo);
+        offset += perTramo;
+        if (!this.selectedFilesByTramo[t]) this.selectedFilesByTramo[t] = [];
+        if (!this.previewUrlsByTramo[t]) this.previewUrlsByTramo[t] = [];
+        this.selectedFilesByTramo[t] = [];
+        this.previewUrlsByTramo[t] = [];
+
+        for (const file of slice) {
+          this.selectedFilesByTramo[t].push(file);
+          const reader = new FileReader();
+          reader.onload = (e: any) => this.previewUrlsByTramo[t].push(e.target.result);
+          reader.readAsDataURL(file);
+        }
+      }
+      return;
+    }
+
+    const t = tramoIndex || this.tramoActivoSubida || 1;
+    if (!this.selectedFilesByTramo[t]) this.selectedFilesByTramo[t] = [];
+    if (!this.previewUrlsByTramo[t]) this.previewUrlsByTramo[t] = [];
+
+    const maxFiles = 4;
     for (const file of validImageFiles) {
-      if (this.selectedFiles.length >= maxFiles) break;
-      this.selectedFiles.push(file);
+      if (this.selectedFilesByTramo[t].length >= maxFiles) break;
+      this.selectedFilesByTramo[t].push(file);
 
       const reader = new FileReader();
       reader.onload = (e: any) => {
-        this.previewUrls.push(e.target.result);
+        this.previewUrlsByTramo[t].push(e.target.result);
       };
       reader.readAsDataURL(file);
+    }
+  }
+
+  eliminarArchivoTramo(tramoIndex: number, fileIndex: number) {
+    if (this.cargando) return;
+    if (this.selectedFilesByTramo[tramoIndex]) {
+      this.selectedFilesByTramo[tramoIndex].splice(fileIndex, 1);
+    }
+    if (this.previewUrlsByTramo[tramoIndex]) {
+      this.previewUrlsByTramo[tramoIndex].splice(fileIndex, 1);
     }
   }
 
@@ -132,6 +251,7 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
   limpiarArchivos() {
     this.selectedFiles = [];
     this.previewUrls = [];
+    this.inicializarEstructurasTramos(this.watchSegmentsCount, this.segmentsInfo);
   }
 
   cerrarModal() {
@@ -177,7 +297,7 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
   }
 
   enviarCapturas() {
-    if (this.selectedFiles.length === 0) {
+    if (this.totalArchivosSeleccionados === 0) {
       this.errorMensaje = 'Selecciona al menos una captura de pantalla.';
       return;
     }
@@ -192,15 +312,33 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
     this.resultadoExito = null;
 
     if (this.tipoCarga === 'watch') {
-      this.mensajeProgreso = 'Analizando capturas de Xiaomi Mi Fitness con Gemini 3.6 Flash... Extrayendo métricas y splits...';
-      this.saludService.uploadWatch(this.itineraryId, this.activityId, this.selectedFiles, this.customApiKey)
+      const allFiles: File[] = [];
+      const tramosMeta: Array<{ tramo: number; count: number }> = [];
+
+      for (let t = 1; t <= this.watchSegmentsCount; t++) {
+        const tFiles = this.selectedFilesByTramo[t] || [];
+        if (tFiles.length > 0) {
+          allFiles.push(...tFiles);
+          tramosMeta.push({ tramo: t, count: tFiles.length });
+        }
+      }
+
+      // Fallback si venían en selectedFiles legacy
+      if (allFiles.length === 0 && this.selectedFiles.length > 0) {
+        allFiles.push(...this.selectedFiles);
+        tramosMeta.push({ tramo: 1, count: this.selectedFiles.length });
+      }
+
+      const tramosMsg = this.watchSegmentsCount > 1 ? ` de ${this.watchSegmentsCount} tramos` : '';
+      this.mensajeProgreso = `Analizando capturas${tramosMsg} de Xiaomi Mi Fitness con Gemini 3.6 Flash... Extrayendo métricas y splits...`;
+
+      this.saludService.uploadWatch(this.itineraryId, this.activityId, allFiles, this.customApiKey, tramosMeta)
         .subscribe({
           next: (res) => {
             this.cargando = false;
             this.resultadoExito = res;
             this.completado.emit(res);
 
-            // Si está vinculado a una actividad, refrescar y mostrar directamente el detalle
             if (this.activityId) {
               this.verificarDatosExistentes();
             }
@@ -230,19 +368,37 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
     }
   }
 
+  // Getter reactivo para obtener los datos del tramo seleccionado en modo detalle
+  get metricasActuales(): any {
+    if (!this.datosActividad) return null;
+    if (this.tramoActivoDetalle > 0 && this.datosActividad.tramos && this.datosActividad.tramos.length > 0) {
+      const tr = this.datosActividad.tramos.find((t: any) => t.tramo === this.tramoActivoDetalle);
+      if (tr && tr.data) {
+        return {
+          ...tr.data,
+          actividad_distancia_gps: this.datosActividad.actividad_distancia_gps,
+          splits: tr.data.splits || []
+        };
+      }
+    }
+    return this.datosActividad;
+  }
+
   get diferenciaDivergencia(): number {
-    if (!this.datosActividad) return 0;
-    const reloj = this.datosActividad.distance_km || 0;
-    const gps = this.datosActividad.actividad_distancia_gps || 0;
+    const m = this.metricasActuales;
+    if (!m) return 0;
+    const reloj = m.distance_km || 0;
+    const gps = this.datosActividad?.actividad_distancia_gps || 0;
     return Number((reloj - gps).toFixed(2));
   }
 
   get mejorRitmo(): string {
-    if (!this.datosActividad?.splits || this.datosActividad.splits.length === 0) {
-      return this.datosActividad?.pace_max || '--:--';
+    const m = this.metricasActuales;
+    if (!m?.splits || m.splits.length === 0) {
+      return m?.pace_max || '--:--';
     }
-    const paces = [...this.datosActividad.splits].map(s => s.pace).filter(Boolean);
+    const paces = [...m.splits].map((s: any) => s.pace).filter(Boolean);
     paces.sort();
-    return paces[0];
+    return paces[0] || '--:--';
   }
 }

@@ -6,6 +6,7 @@
 
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 const GeminiHealthService = require('./gemini-health.service');
 
 const dbPath = path.resolve(__dirname, '../../../../viajes.db');
@@ -16,7 +17,11 @@ function getDbConnection() {
   if (!_sharedDb) {
     _sharedDb = new sqlite3.Database(dbPath, (err) => {
       if (err) console.error('❌ Error conectando a viajes.db en HealthController:', err.message);
-      else console.log('✅ HealthController conectado a viajes.db');
+      else {
+        console.log('✅ HealthController conectado a viajes.db');
+        _sharedDb.run("ALTER TABLE travel_health_activity ADD COLUMN tramos_data TEXT", () => {});
+        _sharedDb.run("ALTER TABLE travel_health_splits ADD COLUMN tramo INTEGER DEFAULT 1", () => {});
+      }
     });
   }
   return _sharedDb;
@@ -24,14 +29,190 @@ function getDbConnection() {
 
 class HealthController {
   /**
-   * 🏃‍♂️ Procesa capturas de reloj Xiaomi y guarda actividad + splits
+   * 🔍 Detecta si el archivo GPX del reloj (o de la actividad) contiene múltiples tramos (<trkseg> o <trk>)
+   */
+  static detectWatchSegments(activityId) {
+    return new Promise((resolve) => {
+      if (!activityId) return resolve({ count: 1, segments: [{ index: 1, label: 'Tramo 1' }] });
+      const db = getDbConnection();
+      db.get('SELECT id, rutaGpxCompleto FROM actividades WHERE id = ?', [activityId], (err, act) => {
+        if (err || !act || !act.rutaGpxCompleto) {
+          return resolve({ count: 1, segments: [{ index: 1, label: 'Tramo 1' }] });
+        }
+
+        const uploadsPath = path.resolve(__dirname, '../../../../uploads');
+        const watchRelative = act.rutaGpxCompleto.replace('recorrido.gpx', 'recorrido_reloj.gpx');
+        const watchPath = path.join(uploadsPath, watchRelative);
+        const targetFile = fs.existsSync(watchPath) ? watchPath : path.join(uploadsPath, act.rutaGpxCompleto);
+
+        if (!fs.existsSync(targetFile)) {
+          return resolve({ count: 1, segments: [{ index: 1, label: 'Tramo 1' }] });
+        }
+
+        try {
+          const content = fs.readFileSync(targetFile, 'utf8');
+          const trksegs = content.match(/<trkseg[\s>]/gi);
+          let count = trksegs ? trksegs.length : 1;
+          if (count <= 1) {
+            const trks = content.match(/<trk[\s>]/gi);
+            if (trks && trks.length > 1) {
+              count = trks.length;
+            }
+          }
+          const segments = Array.from({ length: Math.max(1, count) }, (_, i) => ({
+            index: i + 1,
+            label: `Tramo ${i + 1}`
+          }));
+          console.log(`⌚ [HealthController] Actividad #${activityId} contiene ${count} tramo(s) de reloj`);
+          resolve({ count: Math.max(1, count), segments });
+        } catch (e) {
+          resolve({ count: 1, segments: [{ index: 1, label: 'Tramo 1' }] });
+        }
+      });
+    });
+  }
+
+  /**
+   * 📊 Consolida matemáticamente los datos de múltiples tramos analizados por Gemini
+   */
+  static consolidarDatosTramos(tramosResults) {
+    if (!tramosResults || tramosResults.length === 0) return null;
+    if (tramosResults.length === 1) return { ...tramosResults[0].data, tramos: tramosResults };
+
+    const parseDurationSecs = (dur) => {
+      if (!dur || typeof dur !== 'string') return 0;
+      const p = dur.split(':').map(Number);
+      if (p.length === 3) return (p[0] * 3600) + (p[1] * 60) + (p[2] || 0);
+      if (p.length === 2) return (p[0] * 60) + (p[1] || 0);
+      return 0;
+    };
+
+    const formatSecsToHms = (totalSecs) => {
+      const h = Math.floor(totalSecs / 3600);
+      const m = Math.floor((totalSecs % 3600) / 60);
+      const s = Math.floor(totalSecs % 60);
+      return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+    };
+
+    let totalDistKm = 0;
+    let totalSecs = 0;
+    let totalCaloriesActive = 0;
+    let totalCalories = 0;
+    let totalSteps = 0;
+    let maxHr = 0;
+    let weightedHrSum = 0;
+    let weightedHrDuration = 0;
+    let maxCadence = 0;
+    let weightedCadenceSum = 0;
+    let strideSum = 0;
+    let strideCount = 0;
+    let bestPaceSecs = Infinity;
+    let consolidatedSplits = [];
+    let zonesSecs = { light: 0, intensive: 0, aerobic: 0, anaerobic: 0, vo2max: 0 };
+
+    tramosResults.forEach((tr) => {
+      const d = tr.data || {};
+      const dist = Number(d.distance_km) || 0;
+      totalDistKm += dist;
+
+      const durSecs = parseDurationSecs(d.duration_total);
+      totalSecs += durSecs;
+
+      totalCaloriesActive += Number(d.calories_active) || 0;
+      totalCalories += Number(d.calories_total) || 0;
+      totalSteps += Number(d.steps) || 0;
+
+      if (d.heart_rate?.max_lpm) {
+        maxHr = Math.max(maxHr, Number(d.heart_rate.max_lpm) || 0);
+      }
+      if (d.heart_rate?.avg_lpm && durSecs > 0) {
+        weightedHrSum += (Number(d.heart_rate.avg_lpm) * durSecs);
+        weightedHrDuration += durSecs;
+      }
+
+      if (d.heart_rate?.zones) {
+        Object.keys(zonesSecs).forEach(k => {
+          zonesSecs[k] += parseDurationSecs(d.heart_rate.zones[k]);
+        });
+      }
+
+      if (d.cadence_max_bpm) maxCadence = Math.max(maxCadence, Number(d.cadence_max_bpm));
+      if (d.cadence_avg_steps_min && durSecs > 0) {
+        weightedCadenceSum += (Number(d.cadence_avg_steps_min) * durSecs);
+      }
+
+      if (d.stride_avg_cm) {
+        strideSum += Number(d.stride_avg_cm);
+        strideCount++;
+      }
+
+      if (d.pace_max) {
+        const pSecs = parseDurationSecs(d.pace_max);
+        if (pSecs > 0 && pSecs < bestPaceSecs) bestPaceSecs = pSecs;
+      }
+
+      if (Array.isArray(d.splits)) {
+        d.splits.forEach(s => {
+          consolidatedSplits.push({
+            km: consolidatedSplits.length + 1,
+            pace: s.pace,
+            tramo: tr.tramo
+          });
+        });
+      }
+    });
+
+    const avgPaceSecsPerKm = totalDistKm > 0 ? Math.round(totalSecs / totalDistKm) : 0;
+    const avgPaceStr = avgPaceSecsPerKm > 0
+      ? `${String(Math.floor(avgPaceSecsPerKm / 60)).padStart(2, '0')}:${String(avgPaceSecsPerKm % 60).padStart(2, '0')}`
+      : null;
+
+    const paceMaxStr = bestPaceSecs < Infinity
+      ? `${String(Math.floor(bestPaceSecs / 60)).padStart(2, '0')}:${String(bestPaceSecs % 60).padStart(2, '0')}`
+      : null;
+
+    const avgHr = weightedHrDuration > 0 ? Math.round(weightedHrSum / weightedHrDuration) : null;
+    const avgCadence = weightedHrDuration > 0 ? Math.round(weightedCadenceSum / weightedHrDuration) : null;
+    const avgStride = strideCount > 0 ? Math.round(strideSum / strideCount) : null;
+
+    return {
+      user: tramosResults[0].data?.user || 'Usuario',
+      date: tramosResults[0].data?.date || new Date().toISOString().slice(0, 19).replace('T', ' '),
+      distance_km: Math.round(totalDistKm * 100) / 100,
+      duration_total: formatSecsToHms(totalSecs),
+      calories_active: totalCaloriesActive,
+      calories_total: totalCalories,
+      steps: totalSteps,
+      pace_avg: avgPaceStr,
+      pace_max: paceMaxStr,
+      cadence_avg_steps_min: avgCadence,
+      cadence_max_bpm: maxCadence || null,
+      stride_avg_cm: avgStride,
+      heart_rate: {
+        avg_lpm: avgHr,
+        max_lpm: maxHr || null,
+        zones: {
+          light: formatSecsToHms(zonesSecs.light),
+          intensive: formatSecsToHms(zonesSecs.intensive),
+          aerobic: formatSecsToHms(zonesSecs.aerobic),
+          anaerobic: formatSecsToHms(zonesSecs.anaerobic),
+          vo2max: formatSecsToHms(zonesSecs.vo2max)
+        }
+      },
+      splits: consolidatedSplits,
+      tramos: tramosResults
+    };
+  }
+
+  /**
+   * 🏃‍♂️ Procesa capturas de reloj Xiaomi y guarda actividad + splits (soporta múltiples tramos)
    */
   static async uploadWatch(req, res) {
     const files = req.files;
-    const { itinerary_id, activity_id, custom_api_key } = req.body;
+    const { itinerary_id, activity_id, custom_api_key, tramos_meta } = req.body;
 
     if (!files || files.length === 0) {
-      return res.status(400).json({ error: 'Debes enviar al menos una captura de pantalla del reloj (máx 4).' });
+      return res.status(400).json({ error: 'Debes enviar al menos una captura de pantalla del reloj.' });
     }
 
     if (!itinerary_id) {
@@ -39,34 +220,90 @@ class HealthController {
     }
 
     try {
-      console.log(`🏃‍♂️ [HealthController] Procesando ${files.length} capturas de reloj con Gemini...`);
-      const buffers = files.map(f => f.buffer);
-      const data = await geminiService.procesarCapturasReloj(buffers, custom_api_key);
+      console.log(`🏃‍♂️ [HealthController] Procesando ${files.length} capturas de reloj...`);
 
-      if (!data) {
+      // Deducir o parsear grupos de archivos por tramo
+      let tramosFiles = [];
+      if (tramos_meta) {
+        try {
+          const meta = typeof tramos_meta === 'string' ? JSON.parse(tramos_meta) : tramos_meta;
+          let offset = 0;
+          for (const m of meta) {
+            const count = m.count || 0;
+            if (count > 0) {
+              tramosFiles.push({ tramo: m.tramo || (tramosFiles.length + 1), files: files.slice(offset, offset + count) });
+              offset += count;
+            }
+          }
+        } catch (eMeta) {
+          console.warn('⚠️ Error parseando tramos_meta:', eMeta);
+        }
+      }
+
+      if (tramosFiles.length === 0) {
+        let detected = { count: 1 };
+        if (activity_id) {
+          detected = await HealthController.detectWatchSegments(activity_id);
+        }
+        if (detected.count > 1 && files.length > 4) {
+          const perTramo = Math.ceil(files.length / detected.count);
+          for (let i = 0; i < detected.count; i++) {
+            const slice = files.slice(i * perTramo, (i + 1) * perTramo);
+            if (slice.length > 0) tramosFiles.push({ tramo: i + 1, files: slice });
+          }
+        } else {
+          tramosFiles.push({ tramo: 1, files });
+        }
+      }
+
+      console.log(`🏃‍♂️ [HealthController] ${tramosFiles.length} tramo(s) detectado(s) para procesar con Gemini.`);
+      const tramosResults = [];
+
+      for (let i = 0; i < tramosFiles.length; i++) {
+        const tr = tramosFiles[i];
+        console.log(`🔍 [HealthController] Analizando Tramo ${tr.tramo} (${tr.files.length} capturas)...`);
+        const buffers = tr.files.map(f => f.buffer);
+        const resTramo = await geminiService.procesarCapturasReloj(buffers, custom_api_key);
+        if (resTramo) {
+          tramosResults.push({
+            tramo: tr.tramo,
+            data: resTramo
+          });
+        }
+      }
+
+      if (tramosResults.length === 0) {
         throw new Error('No se pudo extraer información válida de las capturas.');
       }
 
-      console.log('✅ [HealthController] Datos extraídos de Xiaomi Mi Fitness:', {
+      const data = HealthController.consolidarDatosTramos(tramosResults);
+
+      console.log('✅ [HealthController] Datos consolidados de Xiaomi Mi Fitness:', {
         user: data.user,
         date: data.date,
         distance_km: data.distance_km,
         steps: data.steps,
-        splits: data.splits?.length
+        splits: data.splits?.length,
+        tramos: tramosResults.length
       });
 
       const db = getDbConnection();
 
       // Transacción en SQLite
       db.serialize(() => {
+        // Eliminar registro previo de salud para esta actividad si ya existía (para evitar duplicados)
+        if (activity_id) {
+          db.run(`DELETE FROM travel_health_activity WHERE activity_id = ?`, [activity_id]);
+        }
+
         const queryActivity = `
           INSERT INTO travel_health_activity (
             itinerary_id, activity_id, date_walk, user_name, distance_km, duration_total,
             calories_active, calories_total, steps, pace_avg, pace_max,
             cadence_avg, cadence_max, stride_avg_cm, stride_max_cm,
             hr_avg, hr_max, zone_light, zone_intensive, zone_aerobic, zone_anaerobic, zone_vo2max,
-            vitality_score
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            vitality_score, tramos_data
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const paramsActivity = [
@@ -92,7 +329,8 @@ class HealthController {
           data.heart_rate?.zones?.aerobic || null,
           data.heart_rate?.zones?.anaerobic || null,
           data.heart_rate?.zones?.vo2max || null,
-          data.vitality_score || null
+          data.vitality_score || null,
+          tramosResults.length > 1 ? JSON.stringify(tramosResults) : null
         ];
 
         db.run(queryActivity, paramsActivity, function (err) {
@@ -107,18 +345,19 @@ class HealthController {
           const splits = data.splits || [];
           if (splits.length === 0) {
             return res.status(201).json({
-              message: 'Actividad de reloj registrada correctamente (sin splits).',
+              message: `Actividad de reloj registrada correctamente (${tramosResults.length} tramo/s, sin splits).`,
               health_activity_id: healthActivityId,
+              tramos_count: tramosResults.length,
               data
             });
           }
 
-          const querySplit = `INSERT INTO travel_health_splits (health_activity_id, km_number, pace) VALUES (?, ?, ?)`;
+          const querySplit = `INSERT INTO travel_health_splits (health_activity_id, km_number, pace, tramo) VALUES (?, ?, ?, ?)`;
           let completed = 0;
           let hasSplitError = false;
 
           splits.forEach(s => {
-            db.run(querySplit, [healthActivityId, s.km, s.pace], (splitErr) => {
+            db.run(querySplit, [healthActivityId, s.km, s.pace, s.tramo || 1], (splitErr) => {
               completed++;
               if (splitErr) hasSplitError = true;
 
@@ -127,9 +366,10 @@ class HealthController {
                   console.warn('⚠️ Hubo advertencias al insertar algunos splits');
                 }
                 return res.status(201).json({
-                  message: 'Actividad de reloj y desglose de ritmos registrados con éxito.',
+                  message: `Actividad de reloj y desglose de ritmos registrados con éxito (${tramosResults.length} tramo/s).`,
                   health_activity_id: healthActivityId,
                   total_splits: splits.length,
+                  tramos_count: tramosResults.length,
                   data
                 });
               }
@@ -254,11 +494,12 @@ class HealthController {
    */
   
   /**
-   * 🩺 Obtiene la actividad de salud asociada directamente a un activity_id específico (con sus splits)
+   * 🩺 Obtiene la actividad de salud asociada directamente a un activity_id específico (con sus splits y tramos)
    */
   static async getActivityByActivityId(req, res) {
     const { activityId } = req.params;
     const db = getDbConnection();
+    const segInfo = await HealthController.detectWatchSegments(activityId);
 
     const queryAct = `
       SELECT h.*, v.nombre as viaje_nombre, a.nombre as actividad_nombre, a.distanciaKm as actividad_distancia_gps
@@ -274,7 +515,19 @@ class HealthController {
         return res.status(500).json({ error: err.message });
       }
       if (!activity) {
-        return res.json({ hasData: false, data: null });
+        return res.json({
+          hasData: false,
+          data: null,
+          watch_segments_count: segInfo.count,
+          expected_photos_count: segInfo.count * 4,
+          segments: segInfo.segments
+        });
+      }
+
+      if (activity.tramos_data) {
+        try {
+          activity.tramos = JSON.parse(activity.tramos_data);
+        } catch {}
       }
 
       const querySplits = `SELECT * FROM travel_health_splits WHERE health_activity_id = ? ORDER BY km_number ASC`;
@@ -283,7 +536,14 @@ class HealthController {
           return res.status(500).json({ error: splitErr.message });
         }
         activity.splits = splits || [];
-        res.json({ hasData: true, data: activity });
+        const count = (activity.tramos && activity.tramos.length > 0) ? activity.tramos.length : segInfo.count;
+        res.json({
+          hasData: true,
+          data: activity,
+          watch_segments_count: count,
+          expected_photos_count: count * 4,
+          segments: segInfo.segments
+        });
       });
     });
   }
@@ -303,6 +563,12 @@ class HealthController {
     db.get(queryAct, [id], (err, activity) => {
       if (err || !activity) {
         return res.status(404).json({ error: 'Actividad de salud no encontrada.' });
+      }
+
+      if (activity.tramos_data) {
+        try {
+          activity.tramos = JSON.parse(activity.tramos_data);
+        } catch {}
       }
 
       const querySplits = `SELECT * FROM travel_health_splits WHERE health_activity_id = ? ORDER BY km_number ASC`;

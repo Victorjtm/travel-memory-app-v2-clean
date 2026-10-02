@@ -832,3 +832,178 @@
     }
   }
 }
+
+// =============================================================================
+// ESTILOS MULTI-TRAMO (XIAOMI MI FITNESS FUSIÓN)
+// =============================================================================
+
+.badge-tramos-count {
+  display: inline-block;
+  color: #38bdf8 !important;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+// 1. Pestañas en modo detalle
+.tramos-detalle-tabs {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+  padding: 0.35rem;
+  background: rgba(17, 24, 39, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  overflow-x: auto;
+
+  .tramo-tab {
+    background: transparent;
+    border: 1px solid transparent;
+    color: #9ca3af;
+    padding: 0.45rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+
+    &:hover {
+      color: #f3f4f6;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    &.active {
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(14, 165, 233, 0.1));
+      border-color: rgba(56, 189, 248, 0.4);
+      color: #38bdf8;
+      box-shadow: 0 2px 8px rgba(56, 189, 248, 0.2);
+    }
+  }
+}
+
+// 2. Banner informativo multi-tramo
+.info-banner-multitramo {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.1)) !important;
+  border-color: rgba(168, 85, 247, 0.35) !important;
+  color: #e9d5ff !important;
+
+  i {
+    color: #c084fc !important;
+  }
+}
+
+// 3. Selector de tramos en formulario de subida
+.tramos-subida-selector {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+
+  .btn-tramo-subida {
+    flex: 1;
+    min-width: 140px;
+    background: rgba(31, 41, 55, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    .tramo-name {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #d1d5db;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .tramo-count {
+      font-size: 0.75rem;
+      color: #9ca3af;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.25);
+    }
+
+    &:hover {
+      background: rgba(31, 41, 55, 0.9);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    &.has-files {
+      border-color: rgba(56, 189, 248, 0.4);
+      .tramo-count {
+        background: rgba(56, 189, 248, 0.2);
+        color: #38bdf8;
+      }
+    }
+
+    &.completed {
+      border-color: rgba(16, 185, 129, 0.5);
+      .tramo-count {
+        background: rgba(16, 185, 129, 0.25);
+        color: #34d399;
+        font-weight: 700;
+      }
+    }
+
+    &.active {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(244, 63, 94, 0.08));
+      border-color: #ef4444;
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
+
+      .tramo-name {
+        color: #fca5a5;
+      }
+    }
+  }
+}
+
+// 4. Barra de selección rápida
+.fast-upload-bar {
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: center;
+
+  .btn-fast-select {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    color: #9ca3af;
+    padding: 0.45rem 1rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: all 0.2s ease;
+
+    &:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f3f4f6;
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+  }
+}
+
+// 5. Etiqueta de tramo en tabla de splits
+.tramo-tag-pill {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+

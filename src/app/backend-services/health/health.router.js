@@ -10,18 +10,18 @@ const HealthController = require('./health.controller');
 
 const router = express.Router();
 
-// Configuración de multer en memoria (máximo 4 archivos de hasta 30MB cada uno)
+// Configuración de multer en memoria (máximo 24 archivos de hasta 30MB cada uno para soportar múltiples tramos)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 30 * 1024 * 1024,
-    files: 4
+    files: 24
   }
 });
 
 // Middleware seguro para capturar errores de multer y evitar caídas de socket/ERR_CONNECTION_RESET
 function safeUpload(req, res, next) {
-  upload.array('images', 4)(req, res, (err) => {
+  upload.array('images', 24)(req, res, (err) => {
     if (err) {
       console.error('❌ [HealthRouter] Error en multer upload:', err.message);
       return res.status(400).json({ error: `Error en la subida de capturas: ${err.message}` });

@@ -14,9 +14,15 @@
           <p class="subtitle" *ngIf="datosActividad">
             Actividad: <strong>{{ datosActividad.actividad_nombre || ('#' + activityId) }}</strong> 
             <span *ngIf="datosActividad.date_walk"> &bull; {{ datosActividad.date_walk | date:'dd/MM/yyyy HH:mm' }}</span>
+            <span class="badge-tramos-count" *ngIf="datosActividad.tramos && datosActividad.tramos.length > 1">
+              &bull; {{ datosActividad.tramos.length }} Tramos Unificados
+            </span>
           </p>
           <p class="subtitle" *ngIf="!datosActividad && itineraryId">
             Vinculado al Itinerario #{{ itineraryId }} <span *ngIf="activityId">(Actividad #{{ activityId }})</span>
+            <span class="badge-tramos-count" *ngIf="watchSegmentsCount > 1">
+              &bull; {{ watchSegmentsCount }} Tramos del Reloj
+            </span>
           </p>
           <p class="subtitle" *ngIf="!datosActividad && !itineraryId">Registro Biométrico General</p>
         </div>
@@ -37,19 +43,46 @@
     <!-- ========================================================================= -->
     <div class="modal-body modal-body-detalle" *ngIf="!cargandoVerificacion && modoVista === 'detalle' && datosActividad">
       
+      <!-- PESTAÑAS DE TRAMOS (si la actividad tiene múltiples tramos guardados) -->
+      <div class="tramos-detalle-tabs" *ngIf="datosActividad.tramos && datosActividad.tramos.length > 1">
+        <button 
+          type="button" 
+          class="tramo-tab" 
+          [class.active]="tramoActivoDetalle === 0" 
+          (click)="cambiarTramoDetalle(0)">
+          <i class="fa-solid fa-chart-pie"></i> Resumen Total ({{ datosActividad.distance_km }} km)
+        </button>
+        <button 
+          type="button" 
+          *ngFor="let tr of datosActividad.tramos" 
+          class="tramo-tab" 
+          [class.active]="tramoActivoDetalle === tr.tramo" 
+          (click)="cambiarTramoDetalle(tr.tramo)">
+          <i class="fa-solid fa-stopwatch"></i> Tramo {{ tr.tramo }} ({{ tr.data?.distance_km }} km)
+        </button>
+      </div>
+
       <!-- TARJETA DE DIVERGENCIA CLAVE (Reloj vs GPS) -->
       <div class="divergence-hero-card" *ngIf="datosActividad.actividad_distancia_gps">
         <div class="divergence-header">
-          <span class="divergence-title"><i class="fa-solid fa-scale-balanced"></i> Comparativa de Distancia (Reloj vs GPS)</span>
+          <span class="divergence-title">
+            <i class="fa-solid fa-scale-balanced"></i> 
+            Comparativa de Distancia 
+            <span *ngIf="tramoActivoDetalle === 0">(Reloj Total vs GPS Itinerario)</span>
+            <span *ngIf="tramoActivoDetalle > 0">(Tramo {{ tramoActivoDetalle }} vs GPS Total)</span>
+          </span>
           <span class="divergence-badge" [class.divergence-alert]="diferenciaDivergencia !== 0">
             Diferencia: {{ diferenciaDivergencia > 0 ? '+' : '' }}{{ diferenciaDivergencia }} km
           </span>
         </div>
         <div class="divergence-metrics-row">
           <div class="divergence-item item-watch">
-            <span class="d-label"><i class="fa-solid fa-stopwatch"></i> Reloj Xiaomi</span>
-            <span class="d-val">{{ datosActividad.distance_km }} <small>km</small></span>
-            <span class="d-note">{{ datosActividad.steps | number }} pasos podómetro</span>
+            <span class="d-label">
+              <i class="fa-solid fa-stopwatch"></i> 
+              {{ tramoActivoDetalle > 0 ? ('Reloj Tramo ' + tramoActivoDetalle) : 'Reloj Xiaomi Total' }}
+            </span>
+            <span class="d-val">{{ metricasActuales?.distance_km }} <small>km</small></span>
+            <span class="d-note">{{ metricasActuales?.steps | number }} pasos podómetro</span>
           </div>
           <div class="divergence-vs">VS</div>
           <div class="divergence-item item-gps">
@@ -66,7 +99,7 @@
           <div class="stat-icon icon-time"><i class="fa-solid fa-clock"></i></div>
           <div class="stat-info">
             <span class="stat-label">Tiempo Total</span>
-            <span class="stat-value">{{ datosActividad.duration_total }}</span>
+            <span class="stat-value">{{ metricasActuales?.duration_total }}</span>
           </div>
         </div>
 
@@ -74,7 +107,7 @@
           <div class="stat-icon icon-pace"><i class="fa-solid fa-gauge-high"></i></div>
           <div class="stat-info">
             <span class="stat-label">Ritmo Promedio</span>
-            <span class="stat-value">{{ datosActividad.pace_avg }} <small>/km</small></span>
+            <span class="stat-value">{{ metricasActuales?.pace_avg }} <small>/km</small></span>
             <span class="stat-sub">Mejor km: {{ mejorRitmo }}</span>
           </div>
         </div>
@@ -83,8 +116,8 @@
           <div class="stat-icon icon-hr"><i class="fa-solid fa-heart-pulse"></i></div>
           <div class="stat-info">
             <span class="stat-label">Frec. Cardíaca</span>
-            <span class="stat-value">{{ datosActividad.hr_avg }} <small>bpm</small></span>
-            <span class="stat-sub">Máx: {{ datosActividad.hr_max }} bpm</span>
+            <span class="stat-value">{{ metricasActuales?.heart_rate?.avg_lpm || metricasActuales?.hr_avg }} <small>bpm</small></span>
+            <span class="stat-sub">Máx: {{ metricasActuales?.heart_rate?.max_lpm || metricasActuales?.hr_max }} bpm</span>
           </div>
         </div>
 
@@ -92,8 +125,8 @@
           <div class="stat-icon icon-cal"><i class="fa-solid fa-fire"></i></div>
           <div class="stat-info">
             <span class="stat-label">Calorías Activas</span>
-            <span class="stat-value">{{ datosActividad.calories_active }} <small>kcal</small></span>
-            <span class="stat-sub">Total: {{ datosActividad.calories_total }} kcal</span>
+            <span class="stat-value">{{ metricasActuales?.calories_active }} <small>kcal</small></span>
+            <span class="stat-sub">Total: {{ metricasActuales?.calories_total }} kcal</span>
           </div>
         </div>
 
@@ -101,8 +134,8 @@
           <div class="stat-icon icon-cadence"><i class="fa-solid fa-shoe-prints"></i></div>
           <div class="stat-info">
             <span class="stat-label">Cadencia</span>
-            <span class="stat-value">{{ datosActividad.cadence_avg }} <small>spm</small></span>
-            <span class="stat-sub">Máx: {{ datosActividad.cadence_max }} spm</span>
+            <span class="stat-value">{{ metricasActuales?.cadence_avg_steps_min || metricasActuales?.cadence_avg || '--' }} <small>spm</small></span>
+            <span class="stat-sub">Máx: {{ metricasActuales?.cadence_max_bpm || metricasActuales?.cadence_max || '--' }} spm</span>
           </div>
         </div>
 
@@ -110,44 +143,44 @@
           <div class="stat-icon icon-stride"><i class="fa-solid fa-ruler-horizontal"></i></div>
           <div class="stat-info">
             <span class="stat-label">Zancada Media</span>
-            <span class="stat-value">{{ datosActividad.stride_avg_cm }} <small>cm</small></span>
-            <span class="stat-sub">Máx: {{ datosActividad.stride_max_cm }} cm</span>
+            <span class="stat-value">{{ metricasActuales?.stride_avg_cm || '--' }} <small>cm</small></span>
+            <span class="stat-sub">Máx: {{ metricasActuales?.stride_max_cm || '--' }} cm</span>
           </div>
         </div>
       </div>
 
       <!-- ZONAS DE RITMO CARDÍACO -->
-      <div class="heart-zones-section" *ngIf="datosActividad.zone_light || datosActividad.zone_intensive || datosActividad.zone_aerobic">
+      <div class="heart-zones-section" *ngIf="metricasActuales?.zone_light || metricasActuales?.heart_rate?.zones">
         <h4 class="section-title"><i class="fa-solid fa-wave-square"></i> Zonas de Frecuencia Cardíaca</h4>
         <div class="zones-chips">
           <div class="zone-chip chip-light">
             <span class="zone-tag">Ligera</span>
-            <span class="zone-time">{{ datosActividad.zone_light || '00:00:00' }}</span>
+            <span class="zone-time">{{ metricasActuales?.heart_rate?.zones?.light || metricasActuales?.zone_light || '00:00:00' }}</span>
           </div>
           <div class="zone-chip chip-intensive">
             <span class="zone-tag">Intensiva</span>
-            <span class="zone-time">{{ datosActividad.zone_intensive || '00:00:00' }}</span>
+            <span class="zone-time">{{ metricasActuales?.heart_rate?.zones?.intensive || metricasActuales?.zone_intensive || '00:00:00' }}</span>
           </div>
           <div class="zone-chip chip-aerobic">
             <span class="zone-tag">Aeróbica</span>
-            <span class="zone-time">{{ datosActividad.zone_aerobic || '00:00:00' }}</span>
+            <span class="zone-time">{{ metricasActuales?.heart_rate?.zones?.aerobic || metricasActuales?.zone_aerobic || '00:00:00' }}</span>
           </div>
           <div class="zone-chip chip-anaerobic">
             <span class="zone-tag">Anaeróbica</span>
-            <span class="zone-time">{{ datosActividad.zone_anaerobic || '00:00:00' }}</span>
+            <span class="zone-time">{{ metricasActuales?.heart_rate?.zones?.anaerobic || metricasActuales?.zone_anaerobic || '00:00:00' }}</span>
           </div>
-          <div class="zone-chip chip-vo2max" *ngIf="datosActividad.zone_vo2max && datosActividad.zone_vo2max !== '00:00:00'">
+          <div class="zone-chip chip-vo2max" *ngIf="(metricasActuales?.heart_rate?.zones?.vo2max || metricasActuales?.zone_vo2max) && (metricasActuales?.heart_rate?.zones?.vo2max !== '00:00:00' || metricasActuales?.zone_vo2max !== '00:00:00')">
             <span class="zone-tag">VO2 Máx</span>
-            <span class="zone-time">{{ datosActividad.zone_vo2max }}</span>
+            <span class="zone-time">{{ metricasActuales?.heart_rate?.zones?.vo2max || metricasActuales?.zone_vo2max }}</span>
           </div>
         </div>
       </div>
 
       <!-- TABLA DE SPLITS POR KILÓMETRO -->
-      <div class="splits-section" *ngIf="datosActividad.splits && datosActividad.splits.length > 0">
+      <div class="splits-section" *ngIf="metricasActuales?.splits && metricasActuales.splits.length > 0">
         <h4 class="section-title">
           <i class="fa-solid fa-flag-checkered"></i> Desglose de Ritmo por Kilómetro (Splits)
-          <span class="badge-count">{{ datosActividad.splits.length }} km</span>
+          <span class="badge-count">{{ metricasActuales.splits.length }} km</span>
         </h4>
         
         <div class="splits-table-container">
@@ -155,14 +188,18 @@
             <thead>
               <tr>
                 <th>Kilómetro</th>
+                <th *ngIf="tramoActivoDetalle === 0 && datosActividad.tramos && datosActividad.tramos.length > 1">Tramo</th>
                 <th>Ritmo por Km</th>
                 <th>Rendimiento Visual</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let split of datosActividad.splits">
+              <tr *ngFor="let split of metricasActuales.splits">
                 <td class="km-col">
-                  <span class="km-badge">Km {{ split.km_number }}</span>
+                  <span class="km-badge">Km {{ split.km_number || split.km }}</span>
+                </td>
+                <td *ngIf="tramoActivoDetalle === 0 && datosActividad.tramos && datosActividad.tramos.length > 1" class="tramo-col">
+                  <span class="tramo-tag-pill" *ngIf="split.tramo">Tramo {{ split.tramo }}</span>
                 </td>
                 <td class="pace-col">
                   <strong>{{ split.pace }}</strong> /km
@@ -229,10 +266,19 @@
         </button>
       </div>
 
-      <!-- Explicación dinámica -->
-      <div class="info-banner" *ngIf="tipoCarga === 'watch'">
+      <!-- Explicación dinámica (1 solo tramo) -->
+      <div class="info-banner" *ngIf="tipoCarga === 'watch' && watchSegmentsCount <= 1">
         <i class="fa-solid fa-circle-info"></i>
         <span>Sube hasta <strong>4 capturas</strong> de Xiaomi Mi Fitness (resumen, ritmos, pulsaciones, gráficos). Gemini 3.6 Flash extraerá todas las métricas clínicas y el desglose de splits por kilómetro.</span>
+      </div>
+
+      <!-- Explicación dinámica (Múltiples tramos) -->
+      <div class="info-banner info-banner-multitramo" *ngIf="tipoCarga === 'watch' && watchSegmentsCount > 1">
+        <i class="fa-solid fa-layer-group"></i>
+        <span>
+          ⌚ Se han detectado <strong>{{ watchSegmentsCount }} tramos del Reloj Xiaomi</strong> en esta actividad.
+          Sube las 4 capturas de cada sesión de Mi Fitness (<strong>{{ expectedPhotosCount }} capturas en total</strong>: 4 para cada tramo).
+        </span>
       </div>
 
       <div class="info-banner" *ngIf="tipoCarga === 'scale'">
@@ -240,22 +286,89 @@
         <span>Sube la captura de la app de tu báscula inteligente. Se extraerán automáticamente peso, IMC, masa grasa, muscular, agua y metabolismo.</span>
       </div>
 
-      <!-- Zona de Drag & Drop -->
+      <!-- SELECTOR DE TRAMO ACTIVO PARA SUBIDA (cuando hay más de 1 tramo) -->
+      <div class="tramos-subida-selector" *ngIf="tipoCarga === 'watch' && watchSegmentsCount > 1 && !resultadoExito">
+        <button 
+          type="button" 
+          *ngFor="let seg of segmentsInfo" 
+          class="btn-tramo-subida" 
+          [class.active]="tramoActivoSubida === seg.index"
+          [class.has-files]="getArchivosTramo(seg.index).length > 0"
+          [class.completed]="getArchivosTramo(seg.index).length >= 4"
+          (click)="cambiarTramoSubida(seg.index)">
+          <span class="tramo-name"><i class="fa-solid fa-stopwatch"></i> {{ seg.label }}</span>
+          <span class="tramo-count">{{ getArchivosTramo(seg.index).length }}/4 fotos</span>
+        </button>
+      </div>
+
+      <!-- Barra de selección rápida de todas las fotos a la vez -->
+      <div class="fast-upload-bar" *ngIf="tipoCarga === 'watch' && watchSegmentsCount > 1 && !resultadoExito">
+        <button type="button" class="btn-fast-select" (click)="allFilesInput.click()" [disabled]="cargando">
+          <i class="fa-solid fa-images"></i> O seleccionar las {{ expectedPhotosCount }} capturas juntas de tu galería
+        </button>
+        <input #allFilesInput type="file" accept="image/*" multiple (change)="onFilesSelected($event)" style="display: none;" />
+      </div>
+
+      <!-- ========================================================== -->
+      <!-- ZONA DE DRAG & DROP: CASO MULTI-TRAMO (WatchSegments > 1)   -->
+      <!-- ========================================================== -->
+      <div 
+        class="dropzone dropzone-multitramo" 
+        (dragover)="onDragOver($event)" 
+        (drop)="onDrop($event, tramoActivoSubida)" 
+        (click)="tramoFileInput.click()" 
+        *ngIf="tipoCarga === 'watch' && watchSegmentsCount > 1 && !resultadoExito">
+        
+        <input 
+          #tramoFileInput 
+          type="file" 
+          accept="image/*" 
+          multiple 
+          (change)="onFilesSelected($event, tramoActivoSubida)" 
+          style="display: none;" />
+
+        <div class="dropzone-content" *ngIf="getArchivosTramo(tramoActivoSubida).length === 0">
+          <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
+          <h4>Arrastra las capturas de <strong>{{ segmentsInfo[tramoActivoSubida - 1].label }}</strong> aquí</h4>
+          <p class="drop-hint">Haz clic para seleccionar las 4 fotos de esta sesión de Mi Fitness</p>
+        </div>
+
+        <!-- Miniaturas del tramo activo -->
+        <div class="previews-grid" *ngIf="getArchivosTramo(tramoActivoSubida).length > 0" (click)="$event.stopPropagation()">
+          <div class="preview-item" *ngFor="let url of getPreviewsTramo(tramoActivoSubida); let i = index">
+            <img [src]="url" [alt]="'Captura ' + (i + 1)" />
+            <button class="btn-remove-thumb" (click)="eliminarArchivoTramo(tramoActivoSubida, i)" [disabled]="cargando" title="Eliminar captura">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+            <span class="preview-badge">T{{ tramoActivoSubida }} #{{ i + 1 }}</span>
+          </div>
+
+          <div class="add-more-card" (click)="tramoFileInput.click()" *ngIf="getArchivosTramo(tramoActivoSubida).length < 4">
+            <i class="fa-solid fa-plus"></i>
+            <span>Añadir</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================================== -->
+      <!-- ZONA DE DRAG & DROP: CASO ESTÁNDAR (1 Tramo o Báscula)     -->
+      <!-- ========================================================== -->
       <div 
         class="dropzone" 
         (dragover)="onDragOver($event)" 
-        (drop)="onDrop($event)"
-        (click)="fileInput.click()"
-        *ngIf="!resultadoExito">
+        (drop)="onDrop($event, 1)" 
+        (click)="fileInputStandard.click()" 
+        *ngIf="(tipoCarga === 'scale' || watchSegmentsCount <= 1) && !resultadoExito">
+        
         <input 
-          #fileInput 
+          #fileInputStandard 
           type="file" 
           accept="image/*" 
           [multiple]="tipoCarga === 'watch'" 
-          (change)="onFilesSelected($event)" 
+          (change)="onFilesSelected($event, 1)" 
           style="display: none;" />
         
-        <div class="dropzone-content" *ngIf="selectedFiles.length === 0">
+        <div class="dropzone-content" *ngIf="selectedFiles.length === 0 && getArchivosTramo(1).length === 0">
           <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
           <h4>Arrastra tus capturas aquí o haz clic para seleccionar</h4>
           <p class="drop-hint" *ngIf="tipoCarga === 'watch'">Formatos JPG, PNG, WebP (Máx. 4 capturas consecutivas)</p>
@@ -263,19 +376,34 @@
         </div>
 
         <!-- Miniaturas de archivos seleccionados -->
-        <div class="previews-grid" *ngIf="selectedFiles.length > 0" (click)="$event.stopPropagation()">
-          <div class="preview-item" *ngFor="let url of previewUrls; let i = index">
-            <img [src]="url" [alt]="'Captura ' + (i + 1)" />
-            <button class="btn-remove-thumb" (click)="eliminarArchivo(i)" [disabled]="cargando" title="Eliminar captura">
-              <i class="fa-solid fa-trash-can"></i>
-            </button>
-            <span class="preview-badge">#{{ i + 1 }}</span>
-          </div>
-          
-          <div class="add-more-card" (click)="fileInput.click()" *ngIf="(tipoCarga === 'watch' && selectedFiles.length < 4) || (tipoCarga === 'scale' && selectedFiles.length < 2)">
-            <i class="fa-solid fa-plus"></i>
-            <span>Añadir</span>
-          </div>
+        <div class="previews-grid" *ngIf="(selectedFiles.length > 0 || getArchivosTramo(1).length > 0)" (click)="$event.stopPropagation()">
+          <ng-container *ngIf="tipoCarga === 'scale'">
+            <div class="preview-item" *ngFor="let url of previewUrls; let i = index">
+              <img [src]="url" [alt]="'Captura ' + (i + 1)" />
+              <button class="btn-remove-thumb" (click)="eliminarArchivo(i)" [disabled]="cargando" title="Eliminar captura">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+              <span class="preview-badge">#{{ i + 1 }}</span>
+            </div>
+            <div class="add-more-card" (click)="fileInputStandard.click()" *ngIf="selectedFiles.length < 2">
+              <i class="fa-solid fa-plus"></i>
+              <span>Añadir</span>
+            </div>
+          </ng-container>
+
+          <ng-container *ngIf="tipoCarga === 'watch'">
+            <div class="preview-item" *ngFor="let url of getPreviewsTramo(1); let i = index">
+              <img [src]="url" [alt]="'Captura ' + (i + 1)" />
+              <button class="btn-remove-thumb" (click)="eliminarArchivoTramo(1, i)" [disabled]="cargando" title="Eliminar captura">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+              <span class="preview-badge">#{{ i + 1 }}</span>
+            </div>
+            <div class="add-more-card" (click)="fileInputStandard.click()" *ngIf="getArchivosTramo(1).length < 4">
+              <i class="fa-solid fa-plus"></i>
+              <span>Añadir</span>
+            </div>
+          </ng-container>
         </div>
       </div>
 
@@ -301,10 +429,11 @@
           <h4>¡Extracción y guardado completados con éxito!</h4>
           <p>{{ resultadoExito.message }}</p>
           <div class="quick-summary" *ngIf="tipoCarga === 'watch' && resultadoExito.data">
-            <span><strong>Distancia:</strong> {{ resultadoExito.data.distance_km }} km</span> |
-            <span><strong>Pasos:</strong> {{ resultadoExito.data.steps }}</span> |
+            <span><strong>Distancia Total:</strong> {{ resultadoExito.data.distance_km }} km</span> |
+            <span><strong>Pasos:</strong> {{ resultadoExito.data.steps | number }}</span> |
             <span><strong>Duración:</strong> {{ resultadoExito.data.duration_total }}</span> |
             <span><strong>Splits:</strong> {{ resultadoExito.total_splits || 0 }} km</span>
+            <span *ngIf="resultadoExito.tramos_count && resultadoExito.tramos_count > 1"> | <strong>Tramos:</strong> {{ resultadoExito.tramos_count }}</span>
           </div>
         </div>
       </div>
@@ -331,9 +460,11 @@
         class="btn-procesar" 
         *ngIf="!resultadoExito" 
         (click)="enviarCapturas()" 
-        [disabled]="cargando || selectedFiles.length === 0">
+        [disabled]="cargando || totalArchivosSeleccionados === 0">
         <i class="fa-solid fa-wand-magic-sparkles"></i> 
-        <span>{{ cargando ? 'Extrayendo...' : 'Procesar con IA y Guardar' }}</span>
+        <span>
+          {{ cargando ? 'Extrayendo...' : ('Procesar ' + totalArchivosSeleccionados + (watchSegmentsCount > 1 ? ('/' + expectedPhotosCount) : '') + ' Capturas con IA') }}
+        </span>
       </button>
 
       <button 

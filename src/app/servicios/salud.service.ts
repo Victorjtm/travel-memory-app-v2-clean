@@ -33,6 +33,11 @@ export interface HealthActivity {
   actividad_nombre?: string;
   actividad_distancia_gps?: number;
   splits?: HealthSplit[];
+  tramos?: any[];
+  tramos_data?: string;
+  watch_segments_count?: number;
+  expected_photos_count?: number;
+  segments?: Array<{ index: number; label: string }>;
 }
 
 export interface HealthSplit {
@@ -40,6 +45,7 @@ export interface HealthSplit {
   health_activity_id?: number;
   km_number: number;
   pace: string;
+  tramo?: number;
 }
 
 export interface BodyMetric {
@@ -77,7 +83,7 @@ export class SaludService {
 
   constructor(private http: HttpClient) {}
 
-  uploadWatch(itineraryId: number, activityId: number | null, files: File[], customApiKey?: string): Observable<any> {
+  uploadWatch(itineraryId: number, activityId: number | null, files: File[], customApiKey?: string, tramosMeta?: any): Observable<any> {
     const formData = new FormData();
     formData.append('itinerary_id', String(itineraryId));
     if (activityId !== null && activityId !== undefined) {
@@ -85,6 +91,9 @@ export class SaludService {
     }
     if (customApiKey) {
       formData.append('custom_api_key', customApiKey);
+    }
+    if (tramosMeta) {
+      formData.append('tramos_meta', typeof tramosMeta === 'string' ? tramosMeta : JSON.stringify(tramosMeta));
     }
     files.forEach(f => formData.append('images', f));
 
