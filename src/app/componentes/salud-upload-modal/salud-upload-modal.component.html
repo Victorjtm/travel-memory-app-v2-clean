@@ -44,22 +44,46 @@
     <div class="modal-body modal-body-detalle" *ngIf="!cargandoVerificacion && modoVista === 'detalle' && datosActividad">
       
       <!-- PESTAÑAS DE TRAMOS (si la actividad tiene múltiples tramos guardados) -->
-      <div class="tramos-detalle-tabs" *ngIf="datosActividad.tramos && datosActividad.tramos.length > 1">
-        <button 
-          type="button" 
-          class="tramo-tab" 
-          [class.active]="tramoActivoDetalle === 0" 
-          (click)="cambiarTramoDetalle(0)">
-          <i class="fa-solid fa-chart-pie"></i> Resumen Total ({{ datosActividad.distance_km }} km)
-        </button>
-        <button 
-          type="button" 
-          *ngFor="let tr of datosActividad.tramos" 
-          class="tramo-tab" 
-          [class.active]="tramoActivoDetalle === tr.tramo" 
-          (click)="cambiarTramoDetalle(tr.tramo)">
-          <i class="fa-solid fa-stopwatch"></i> Tramo {{ tr.tramo }} ({{ tr.data?.distance_km }} km)
-        </button>
+      <div class="tramos-selector-card" *ngIf="datosActividad.tramos && datosActividad.tramos.length > 1">
+        <div class="tramos-selector-header">
+          <div class="header-left">
+            <i class="fa-solid fa-layer-group"></i>
+            <span>Visualizar Métricas de Salud:</span>
+          </div>
+          <span class="active-tramo-indicator">
+            <span *ngIf="tramoActivoDetalle === 0"><i class="fa-solid fa-check"></i> Viendo <strong>Resumen Total</strong></span>
+            <span *ngIf="tramoActivoDetalle > 0"><i class="fa-solid fa-check"></i> Viendo <strong>Tramo {{ tramoActivoDetalle }}</strong></span>
+          </span>
+        </div>
+
+        <div class="tramos-nav-tabs">
+          <button 
+            type="button" 
+            class="tramo-tab-btn" 
+            [class.active]="tramoActivoDetalle === 0" 
+            (click)="cambiarTramoDetalle(0)"
+            title="Ver métricas unificadas de toda la actividad">
+            <span class="tab-icon-wrap"><i class="fa-solid fa-chart-pie"></i></span>
+            <span class="tab-main-info">
+              <span class="tab-title">Resumen Total</span>
+              <span class="tab-dist">{{ datosActividad.distance_km }} km</span>
+            </span>
+          </button>
+
+          <button 
+            type="button" 
+            *ngFor="let tr of datosActividad.tramos" 
+            class="tramo-tab-btn" 
+            [class.active]="tramoActivoDetalle === tr.tramo" 
+            (click)="cambiarTramoDetalle(tr.tramo)"
+            [title]="'Ver métricas individuales del Tramo ' + tr.tramo">
+            <span class="tab-icon-wrap"><i class="fa-solid fa-person-walking"></i></span>
+            <span class="tab-main-info">
+              <span class="tab-title">Tramo {{ tr.tramo }}</span>
+              <span class="tab-dist">{{ tr.data?.distance_km }} km</span>
+            </span>
+          </button>
+        </div>
       </div>
 
       <!-- TARJETA DE DIVERGENCIA CLAVE (Reloj vs GPS) -->
