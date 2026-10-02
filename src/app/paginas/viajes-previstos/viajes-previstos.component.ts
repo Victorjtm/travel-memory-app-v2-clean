@@ -1,17 +1,22 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { ViajesPrevistosService } from '../../servicios/viajes-previstos.service';
 import { ViajesRescateService } from '../../servicios/viajes-rescate.service';
-import { HttpClientModule } from '@angular/common/http';
+import { HttpClient, HttpClientModule, HttpEventType } from '@angular/common/http';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDialogModule } from '@angular/material/dialog';
+import { timeout, catchError } from 'rxjs/operators';
+import { throwError } from 'rxjs';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-viajes-previstos',
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     HttpClientModule,
     RouterModule,
     MatMenuModule,
@@ -25,13 +30,42 @@ export class ViajesPrevistosComponent implements OnInit {
   rangosFechasPorViaje: { [viajeId: number]: any } = {};
   desplegablesAbiertos: { [viajeId: number]: boolean } = {};
 
-  // ✨ NUEVO: Gestión de vistas
+  // ✨ Gestión de vistas
   vistaModo: 'viajes' | 'fechas' = 'viajes';
   itinerariosCombinados: any[] = [];
   ultimaUnificacion: any = null;
 
+  // 🚀 Flujo de Importación desde Móvil (Directo al pulsar +)
+  private readonly API_URL = environment.apiUrl;
+  mostrarModalImport = false;
+  viajesExistentesCoincidentes: any[] = [];
+  viajeExistenteSeleccionadoId: number | null = null;
+  modoImportacion: 'anadir_actividad' | 'crear_viaje' = 'crear_viaje';
+
+  importando = false;
+  progresoSubida = 0;
+  mensajeProgreso = '';
+
+  destinoViaje = '';
+  tipoActividadId: number | null = null;
+  tiposActividad: any[] = [];
+
+  archivosSeleccionados: File[] = [];
+  manifestData: any = null;
+
+  videosRequeridos = false;
+  videosSeleccionados = false;
+  ignorarVideos = false;
+  archivosVideo: File[] = [];
+
+  videosExtraidosMtp: any[] = [];
+  buscandoVideosMtp = false;
+  mensajeMtp = '';
+  origenVideos = '';
+
   // Inyección de servicios
   private viajesRescateService = inject(ViajesRescateService);
+  private http = inject(HttpClient);
 
   constructor(
     private viajesPrevistosService: ViajesPrevistosService,
@@ -40,6 +74,12 @@ export class ViajesPrevistosComponent implements OnInit {
 
   ngOnInit(): void {
     console.log('[INIT] Cargando viajes previstos...');
+    this.cargarTiposActividad();
+    this.cargarViajes();
+    this.cargarUltimaUnificacion();
+  }
+
+  cargarViajes(): void {
     this.viajesPrevistosService.obtenerViajes().subscribe((viajes) => {
       console.log('[GET viajes] Respuesta del servidor:', viajes);
 
@@ -57,8 +97,6 @@ export class ViajesPrevistosComponent implements OnInit {
 
       console.log('[VIAJES ORDENADOS]', this.viajesPrevistos);
     });
-
-    this.cargarUltimaUnificacion();
   }
 
   cargarUltimaUnificacion(): void {
@@ -348,5 +386,332 @@ export class ViajesPrevistosComponent implements OnInit {
   irAMapaViaje(viajeId: number): void {
     console.log('[NAVIGATE] Ir a mapa GPX de viaje completo:', viajeId);
     this.router.navigate(['/viajes-previstos', viajeId, 'mapa-gpx']);
+  }
+
+  // ====================================================================
+  // CARGAR TIPOS DE ACTIVIDAD PARA IMPORTACIÓN
+  // ====================================================================
+  cargarTiposActividad(): void {
+    const url = `${this.API_URL}/tipos-actividad`;
+    this.http.get<any[]>(url).subscribe({
+      next: (tipos) => {
+        this.tiposActividad = tipos;
+      },
+      error: (error) => {
+        console.error('❌ Error cargando tipos de actividad:', error);
+        this.tiposActividad = [
+          { id: 1, nombre: 'Senderismo' },
+          { id: 2, nombre: 'Conducir' },
+          { id: 3, nombre: 'Ciclismo' }
+        ];
+      }
+    });
+  }
+
+  esModoDynamics(): boolean {
+    if (!this.manifestData) return false;
+    return this.manifestData.metadatos_maestros?.origen === 'AudioPhotoApp_Dynamics' ||
+           this.manifestData.estadisticas?.fuente === 'AudioPhotoApp_Dynamics' ||
+           (typeof this.manifestData.nombre === 'string' && this.manifestData.nombre.startsWith('Recorrido_Dynamics_')) ||
+           (typeof this.manifestData.viaje_id === 'string' && this.manifestData.viaje_id.startsWith('Recorrido_Dynamics_'));
+  }
+
+  obtenerFechaTracking(): string | null {
+    if (!this.manifestData) return null;
+    const matchNombre = this.manifestData.nombre?.match(/(\d{8})/);
+    if (matchNombre) return matchNombre[1];
+
+    const matchViaje = this.manifestData.viaje_id?.match(/(\d{8})/);
+    if (matchViaje) return matchViaje[1];
+
+    const fStr = this.manifestData.fecha || this.manifestData.metadatos_maestros?.fecha_inicio || this.manifestData.estadisticas?.fecha;
+    if (fStr) {
+      const matchYMD = fStr.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
+      if (matchYMD) return `${matchYMD[1]}${matchYMD[2]}${matchYMD[3]}`;
+      const matchDMY = fStr.match(/(\d{2})[-/](\d{2})[-/](\d{4})/);
+      if (matchDMY) return `${matchDMY[3]}${matchDMY[2]}${matchDMY[1]}`;
+    }
+    return null;
+  }
+
+  async extraerVideosMtpDynamics(): Promise<boolean> {
+    this.buscandoVideosMtp = true;
+    this.mensajeMtp = 'Buscando vídeos en el dispositivo móvil (DCIM/AudioPhotoApp/videos)...';
+
+    const fechaTracking = this.obtenerFechaTracking();
+    const videosEnManifest = this.manifestData?.multimedia
+      ?.filter((m: any) => m.tipo === 'video')
+      .map((m: any) => m.nombre.toLowerCase()) || [];
+
+    try {
+      const url = `${this.API_URL}/mtp/extraer-videos-dynamics`;
+      const res: any = await this.http.post(url, {
+        fecha: fechaTracking,
+        nombresManifest: videosEnManifest
+      }).toPromise();
+
+      this.buscandoVideosMtp = false;
+
+      if (res && res.success && res.videos && res.videos.length > 0) {
+        this.videosExtraidosMtp = res.videos;
+        this.videosSeleccionados = true;
+        this.origenVideos = res.videos[0]?.origen || 'DCIM/AudioPhotoApp/videos';
+        this.mensajeMtp = `✅ Se extrajeron automáticamente ${res.videos.length} vídeos desde ${this.origenVideos}`;
+        return true;
+      } else {
+        this.mensajeMtp = res?.mensaje || 'No se pudieron extraer vídeos automáticamente desde el móvil.';
+        return false;
+      }
+    } catch (err: any) {
+      this.buscandoVideosMtp = false;
+      this.mensajeMtp = 'No se pudo comunicar con el servicio MTP.';
+      return false;
+    }
+  }
+
+  // ====================================================================
+  // 1. EL HUMANO PULSA EL ICONO + (Add) -> Abre directamente explorador
+  // ====================================================================
+  async importarDesdeMovil(): Promise<void> {
+    console.log('📂 [Mi Memoria de Viajes] Iniciando importación directa desde móvil...');
+
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      (input as any).webkitdirectory = true;
+      input.multiple = true;
+
+      const filesPromise = new Promise<FileList | null>((resolve) => {
+        input.onchange = () => resolve(input.files);
+        input.oncancel = () => resolve(null);
+      });
+
+      input.click();
+      const files = await filesPromise;
+
+      if (!files || files.length === 0) {
+        return;
+      }
+
+      this.archivosSeleccionados = Array.from(files);
+      const manifestFile = this.archivosSeleccionados.find(f => f.name === 'manifest.json');
+
+      if (!manifestFile) {
+        alert('❌ La carpeta seleccionada no contiene manifest.json\n\nAsegúrate de seleccionar una carpeta exportada desde AudioPhotoApp.');
+        return;
+      }
+
+      const manifestText = await manifestFile.text();
+      this.manifestData = JSON.parse(manifestText);
+
+      this.videosExtraidosMtp = [];
+      this.archivosVideo = [];
+      this.mensajeMtp = '';
+      this.origenVideos = '';
+
+      const hayVideos = (this.manifestData.multimedia && this.manifestData.multimedia.some((m: any) => m.tipo === 'video')) ||
+                        (this.manifestData.estadisticas?.num_videos > 0) ||
+                        (this.manifestData.estadisticas?.numeroVideos > 0) ||
+                        (this.manifestData.estadisticas?.videos > 0) ||
+                        (this.manifestData.metadatos_maestros?.total_videos > 0);
+
+      if (hayVideos) {
+        this.videosRequeridos = true;
+        this.videosSeleccionados = false;
+        if (this.esModoDynamics()) {
+          await this.extraerVideosMtpDynamics();
+        } else {
+          const videosEnCarpeta = this.archivosSeleccionados.filter(f => f.name.toLowerCase().endsWith('.mp4'));
+          if (videosEnCarpeta.length > 0) {
+            this.archivosVideo = videosEnCarpeta;
+            this.videosSeleccionados = true;
+            this.origenVideos = 'Carpeta de la ruta (sistema clásico)';
+          }
+        }
+      } else {
+        this.videosRequeridos = false;
+      }
+
+      const primeraFoto = this.manifestData.multimedia?.find((m: any) => m.tipo === 'foto');
+      if (primeraFoto?.gps) {
+        this.destinoViaje = this.manifestData.destino || 'España';
+      }
+
+      this.viajesExistentesCoincidentes = [];
+      this.viajeExistenteSeleccionadoId = null;
+      this.modoImportacion = 'crear_viaje';
+
+      try {
+        const fechaStr = this.obtenerFechaTracking();
+        const fechaIso = fechaStr && fechaStr.length === 8 ? `${fechaStr.slice(0, 4)}-${fechaStr.slice(4, 6)}-${fechaStr.slice(6, 8)}` : null;
+
+        if (fechaIso) {
+          const todosViajes: any = await this.http.get(`${this.API_URL}/viajes`).toPromise();
+          if (Array.isArray(todosViajes) && todosViajes.length > 0) {
+            this.viajesExistentesCoincidentes = todosViajes.filter((v: any) => {
+              const fIni = v.fecha_inicio ? v.fecha_inicio.split('T')[0] : '';
+              const fFin = v.fecha_fin ? v.fecha_fin.split('T')[0] : '';
+              return (fIni && fFin && fIni <= fechaIso && fechaIso <= fFin) || fIni === fechaIso || fFin === fechaIso;
+            });
+
+            if (this.viajesExistentesCoincidentes.length > 0) {
+              this.modoImportacion = 'anadir_actividad';
+              this.viajeExistenteSeleccionadoId = this.viajesExistentesCoincidentes[0].id;
+              if (this.viajesExistentesCoincidentes[0].destino) {
+                this.destinoViaje = this.viajesExistentesCoincidentes[0].destino;
+              }
+            }
+          }
+        }
+      } catch (errViajes) {
+        console.warn('⚠️ No se pudieron consultar viajes coincidentes:', errViajes);
+      }
+
+      this.mostrarModalImport = true;
+
+    } catch (error: any) {
+      console.error('❌ Error seleccionando carpeta:', error);
+      alert(`Error al acceder a la carpeta: ${error.message}`);
+    }
+  }
+
+  async seleccionarCarpetaVideos(): Promise<void> {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      (input as any).webkitdirectory = true;
+      input.multiple = true;
+
+      const filesPromise = new Promise<FileList | null>((resolve) => {
+        input.onchange = () => resolve(input.files);
+        input.oncancel = () => resolve(null);
+      });
+
+      input.click();
+      const files = await filesPromise;
+      if (!files || files.length === 0) return;
+
+      const allMp4 = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.mp4'));
+      this.archivosVideo = allMp4;
+      this.videosSeleccionados = true;
+    } catch (error: any) {
+      console.error('❌ Error seleccionando carpeta de videos:', error);
+    }
+  }
+
+  cancelarImportacion(): void {
+    this.mostrarModalImport = false;
+    this.archivosSeleccionados = [];
+    this.manifestData = null;
+    this.destinoViaje = '';
+    this.tipoActividadId = null;
+    this.videosRequeridos = false;
+    this.videosSeleccionados = false;
+    this.ignorarVideos = false;
+    this.archivosVideo = [];
+    this.videosExtraidosMtp = [];
+    this.buscandoVideosMtp = false;
+    this.mensajeMtp = '';
+    this.origenVideos = '';
+    this.viajesExistentesCoincidentes = [];
+    this.viajeExistenteSeleccionadoId = null;
+    this.modoImportacion = 'crear_viaje';
+  }
+
+  async confirmarImportacion(): Promise<void> {
+    if (!this.destinoViaje.trim()) {
+      alert('Por favor, ingresa el destino del viaje');
+      return;
+    }
+
+    if (!this.tipoActividadId) {
+      alert('Por favor, selecciona el tipo de actividad');
+      return;
+    }
+
+    this.importando = true;
+    this.progresoSubida = 0;
+    this.mensajeProgreso = 'Preparando archivos...';
+
+    try {
+      const formData = new FormData();
+      formData.append('destino', this.destinoViaje);
+      formData.append('tipoActividadId', this.tipoActividadId.toString());
+
+      if (this.modoImportacion === 'anadir_actividad' && this.viajeExistenteSeleccionadoId) {
+        formData.append('viajeId', this.viajeExistenteSeleccionadoId.toString());
+      }
+
+      if (this.videosExtraidosMtp && this.videosExtraidosMtp.length > 0) {
+        formData.append('videosMtpExtraidos', JSON.stringify(this.videosExtraidosMtp));
+      }
+
+      const todosLosArchivos = [...this.archivosSeleccionados, ...this.archivosVideo];
+      const totalBytes = todosLosArchivos.reduce((sum, f) => sum + f.size, 0);
+
+      todosLosArchivos.forEach((file, index) => {
+        const relativePath = (file as any).webkitRelativePath || file.name;
+        formData.append('archivos', file, relativePath);
+        const progreso = Math.round((index / todosLosArchivos.length) * 30);
+        this.progresoSubida = progreso;
+        this.mensajeProgreso = `Preparando archivos... ${index + 1}/${todosLosArchivos.length}`;
+      });
+
+      const uploadUrl = `${this.API_URL}/import-tracking`;
+      this.mensajeProgreso = 'Iniciando subida...';
+      this.progresoSubida = 0;
+
+      await new Promise<any>((resolve, reject) => {
+        this.http.post(uploadUrl, formData, {
+          reportProgress: true,
+          observe: 'events'
+        }).pipe(
+          timeout(1800000),
+          catchError(err => {
+            if (err.name === 'TimeoutError') {
+              return throwError(() => new Error('La subida ha superado el tiempo máximo (30 min).'));
+            }
+            return throwError(() => err);
+          })
+        ).subscribe({
+          next: (event: any) => {
+            if (event.type === HttpEventType.UploadProgress) {
+              const total = event.total || totalBytes;
+              this.progresoSubida = Math.round((event.loaded / total) * 100);
+              const mbSubidos = (event.loaded / 1024 / 1024).toFixed(2);
+              const mbTotal = (total / 1024 / 1024).toFixed(2);
+              this.mensajeProgreso = `Subiendo archivos... ${this.progresoSubida}% (${mbSubidos} / ${mbTotal} MB)`;
+            } else if (event.type === HttpEventType.Response) {
+              this.mensajeProgreso = 'Procesando en servidor...';
+              this.progresoSubida = 100;
+              resolve(event.body);
+            }
+          },
+          error: (err) => {
+            console.error('❌ Error en subida:', err);
+            reject(err);
+          }
+        });
+      });
+
+      alert(`✅ Importación completada con éxito en «Mi memoria de viajes»:\n\n• Viaje: "${this.manifestData?.nombre || this.destinoViaje}"\n• Fotos: ${this.manifestData?.estadisticas?.num_fotos || 0}\n• Vídeos: ${this.manifestData?.estadisticas?.num_videos || 0}\n• Audios: ${this.manifestData?.estadisticas?.num_audios || 0}`);
+
+      this.mostrarModalImport = false;
+      this.importando = false;
+
+      // Recargar la lista automáticamente para que aparezca arriba de inmediato
+      this.ngOnInit();
+
+    } catch (error: any) {
+      console.error('❌ Error en importación:', error);
+      this.importando = false;
+      alert(`❌ Error al importar:\n\n${error.error?.error || error.message || 'Error desconocido'}`);
+    }
+  }
+
+  getTamanoTotal(): string {
+    const totalBytes = this.archivosSeleccionados.reduce((sum, f) => sum + f.size, 0);
+    const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
+    return `${totalMB} MB`;
   }
 }

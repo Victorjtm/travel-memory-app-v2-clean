@@ -1,54 +1,103 @@
 <section class="viajes-previstos-page">
   <div class="page-header">
-    <div>
-      <p class="page-kicker">Recuerdos</p>
-      <h1 class="page-title">Viajes importados</h1>
-      <p class="page-subtitle">Gestiona destinos, itinerarios, albumes y archivos asociados desde una sola vista.</p>
+    <div class="page-header-row">
+      <div class="page-header-titles">
+        <p class="page-kicker">Recuerdos</p>
+        <h1 class="page-title">Mi memoria de viajes</h1>
+        <p class="page-subtitle">Gestiona destinos, itinerarios, álbumes y archivos asociados desde una sola vista.</p>
+      </div>
+
+      <!-- Hilera minimalista de 3 iconos interactivos alineados a la derecha (Mobile-First) -->
+      <div class="header-action-row" aria-label="Acciones principales">
+        <!-- 1. Botón + (Abre directamente explorador de archivos / importar ruta) -->
+        <button 
+          type="button" 
+          class="action-icon-btn btn-add" 
+          (click)="importarDesdeMovil()" 
+          title="Importar nueva ruta desde el móvil" 
+          aria-label="Añadir e importar ruta">
+          <i class="fa-solid fa-plus"></i>
+        </button>
+
+        <!-- 2. Botón 🔗 (Dropdown de unificación y deshacer) -->
+        <button 
+          type="button" 
+          class="action-icon-btn btn-link" 
+          [matMenuTriggerFor]="menuUnificar" 
+          title="Opciones de unificación de destinos" 
+          aria-label="Opciones de unificación">
+          <i class="fa-solid fa-link"></i>
+          <span class="badge-dot-warning" *ngIf="ultimaUnificacion" title="Unificación disponible para deshacer"></span>
+        </button>
+
+        <!-- 3. Botón 🎛️ (Dropdown de filtros y modos de organización) -->
+        <button 
+          type="button" 
+          class="action-icon-btn btn-filters" 
+          [matMenuTriggerFor]="menuOrganizar" 
+          title="Modos de organización y vistas" 
+          aria-label="Organizar y filtrar">
+          <i class="fa-solid fa-sliders"></i>
+        </button>
+      </div>
     </div>
   </div>
 
-  <div class="acciones-globales app-card">
-    <!-- Menú desplegable para Añadir Viaje -->
-    <button class="app-button primary" [matMenuTriggerFor]="menuNuevoViaje" title="Opciones para añadir un viaje">
-      <i class="fa fa-plus"></i>
-      Añadir viaje
-      <i class="fa fa-chevron-down ml-1" style="font-size: 0.75rem; margin-left: 0.35rem;"></i>
+  <!-- DROPDOWN 2: Menú Flotante de Unificación 🔗 -->
+  <mat-menu #menuUnificar="matMenu" xPosition="before" class="mobile-action-dropdown">
+    <button mat-menu-item (click)="ejecutarUnificacion()" class="dropdown-touch-item">
+      <div class="menu-item-row">
+        <div class="menu-icon-box icon-unify">
+          <i class="fa-solid fa-compress"></i>
+        </div>
+        <div class="menu-text-box">
+          <span class="menu-item-title">Unificar destinos</span>
+          <span class="menu-item-sub">Reagrupar viajes del mismo destino</span>
+        </div>
+      </div>
     </button>
 
-    <mat-menu #menuNuevoViaje="matMenu" xPosition="after">
-      <!-- Opción 1: Flujo Normal / Formulario / IA -->
-      <button mat-menu-item (click)="irAlFormulario()">
-        <i class="fa-solid fa-wand-magic-sparkles" style="margin-right: 0.6rem; color: #4f46e5;"></i>
-        <span>Crear viaje planificado (Formulario / IA)</span>
-      </button>
+    <button mat-menu-item (click)="deshacerUnificacion()" [disabled]="!ultimaUnificacion" class="dropdown-touch-item">
+      <div class="menu-item-row">
+        <div class="menu-icon-box icon-undo" [class.disabled-icon]="!ultimaUnificacion">
+          <i class="fa-solid fa-arrow-rotate-left"></i>
+        </div>
+        <div class="menu-text-box">
+          <span class="menu-item-title">Deshacer unificación</span>
+          <span class="menu-item-sub" *ngIf="ultimaUnificacion">Revertir {{ ultimaUnificacion.destino }}</span>
+          <span class="menu-item-sub text-muted" *ngIf="!ultimaUnificacion">Sin unificaciones pendientes</span>
+        </div>
+      </div>
+    </button>
+  </mat-menu>
 
-      <!-- Opción 2: Flujo Rápido de Rescate con datos por defecto -->
-      <button mat-menu-item (click)="crearViajeRapido()">
-        <i class="fa-solid fa-bolt" style="margin-right: 0.6rem; color: #f59e0b;"></i>
-        <span>Añadir viaje rápido con datos por defecto</span>
-      </button>
-    </mat-menu>
-
-    <button (click)="ejecutarUnificacion()" class="app-button">
-      <i class="fa fa-compress"></i>
-      Unificar destinos
+  <!-- DROPDOWN 3: Menú Flotante de Organización 🎛️ -->
+  <mat-menu #menuOrganizar="matMenu" xPosition="before" class="mobile-action-dropdown">
+    <button mat-menu-item (click)="toggleVista()" class="dropdown-touch-item">
+      <div class="menu-item-row">
+        <div class="menu-icon-box icon-calendar">
+          <i class="fa-solid fa-calendar-days"></i>
+        </div>
+        <div class="menu-text-box">
+          <span class="menu-item-title">{{ vistaModo === 'viajes' ? 'Ver por fechas' : 'Ver por viajes' }}</span>
+          <span class="menu-item-sub">{{ vistaModo === 'viajes' ? 'Organización cronológica continua' : 'Organización por carpetas de viaje' }}</span>
+        </div>
+        <span class="active-check" *ngIf="vistaModo === 'fechas'"><i class="fa-solid fa-check"></i></span>
+      </div>
     </button>
 
-    <button *ngIf="ultimaUnificacion" (click)="deshacerUnificacion()" class="app-button warning" title="Deshacer la última unificación de destinos realizada">
-      <i class="fa fa-undo"></i>
-      Deshacer unificación ({{ ultimaUnificacion.destino }})
+    <button mat-menu-item (click)="irAMapaViajes()" class="dropdown-touch-item">
+      <div class="menu-item-row">
+        <div class="menu-icon-box icon-pin">
+          <i class="fa-solid fa-map-pin"></i>
+        </div>
+        <div class="menu-text-box">
+          <span class="menu-item-title">Ver por mapa</span>
+          <span class="menu-item-sub">Visualizar destinos en mapa global</span>
+        </div>
+      </div>
     </button>
-
-    <button (click)="toggleVista()" class="app-button">
-      <i class="fa" [ngClass]="vistaModo === 'viajes' ? 'fa-calendar' : 'fa-suitcase'"></i>
-      {{ vistaModo === 'viajes' ? 'Ver por fechas' : 'Ver por viajes' }}
-    </button>
-
-    <button (click)="irAMapaViajes()" class="app-button">
-      <i class="fa fa-globe"></i>
-      Ver mapa
-    </button>
-  </div>
+  </mat-menu>
 
   <ul *ngIf="vistaModo === 'viajes'" class="viajes-list">
     <li *ngFor="let viaje of viajesPrevistos; index as i" class="viaje-item">
@@ -157,3 +206,161 @@
     </li>
   </ul>
 </section>
+
+<!-- MODAL DE IMPORTACIÓN DIRECTA DESDE MÓVIL (Al pulsar +) -->
+<div class="modal-overlay" *ngIf="mostrarModalImport" (click)="cancelarImportacion()">
+  <div class="modal-import" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <div>
+        <p class="page-kicker">Importación Móvil</p>
+        <h2>Preparar ruta importada</h2>
+      </div>
+      <button class="btn-close" (click)="cancelarImportacion()" [disabled]="importando" aria-label="Cerrar modal">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <div *ngIf="!importando">
+        <div class="tracking-info app-card" *ngIf="manifestData">
+          <h3>Tracking detectado</h3>
+          <div class="info-grid">
+            <div class="info-item">
+              <strong>Nombre</strong>
+              <span>{{ manifestData.nombre }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Fecha</strong>
+              <span>{{ manifestData.fecha_exportacion | date:'dd/MM/yyyy HH:mm' }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Distancia</strong>
+              <span>{{ manifestData.estadisticas?.distancia_km || 0 }} km</span>
+            </div>
+            <div class="info-item">
+              <strong>Duración</strong>
+              <span>{{ manifestData.estadisticas?.duracion_formateada || '--:--' }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Fotos</strong>
+              <span>{{ manifestData.estadisticas?.num_fotos || 0 }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Vídeos</strong>
+              <span>{{ manifestData.estadisticas?.num_videos || 0 }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Audios</strong>
+              <span>{{ manifestData.estadisticas?.num_audios || 0 }}</span>
+            </div>
+            <div class="info-item">
+              <strong>Archivos</strong>
+              <span>{{ archivosSeleccionados.length }} ({{ getTamanoTotal() }})</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="video-alert" *ngIf="videosRequeridos">
+          <div class="alert-content" [class.success]="videosSeleccionados" [class.ignored]="ignorarVideos">
+            <div class="icon">
+              <i class="fa-solid" [ngClass]="videosSeleccionados ? 'fa-check' : (ignorarVideos ? 'fa-triangle-exclamation' : (buscandoVideosMtp ? 'fa-spinner fa-spin' : 'fa-video'))"></i>
+            </div>
+            <div class="text">
+              <h4>
+                <span *ngIf="esModoDynamics()" class="badge-dynamics" style="background: #2563eb; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; margin-right: 6px;">Modo Dynamics</span>
+                {{ videosSeleccionados ? 'Vídeos listos para importar' : (ignorarVideos ? 'Importación de vídeos omitida' : (buscandoVideosMtp ? 'Buscando vídeos en el móvil...' : 'Vídeos detectados')) }}
+              </h4>
+              <p *ngIf="buscandoVideosMtp">Buscando automáticamente en el dispositivo móvil (DCIM/AudioPhotoApp/videos)...</p>
+              <p *ngIf="!videosSeleccionados && !ignorarVideos && !buscandoVideosMtp">
+                <span *ngIf="mensajeMtp">{{ mensajeMtp }}<br></span>
+                <span *ngIf="esModoDynamics()">Ubicación nativa: <code>DCIM/AudioPhotoApp/videos</code> o <code>DCIM/AudioPhotoApp</code>.</span>
+                <span *ngIf="!esModoDynamics()">Selecciona la carpeta <code>DCIM/AudioPhotoApp/videos</code> para incluirlos.</span>
+              </p>
+              <p *ngIf="ignorarVideos">Se importará el viaje sin archivos de vídeo.</p>
+              <p *ngIf="videosSeleccionados">
+                <span *ngIf="videosExtraidosMtp.length > 0">Se han extraído {{ videosExtraidosMtp.length }} vídeos desde {{ origenVideos || 'el móvil (MTP)' }}.</span>
+                <span *ngIf="archivosVideo.length > 0">Se han cargado {{ archivosVideo.length }} vídeos correctamente.</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="video-actions" *ngIf="!videosSeleccionados && !buscandoVideosMtp">
+            <button *ngIf="!ignorarVideos && esModoDynamics()" class="app-button" (click)="extraerVideosMtpDynamics()">
+              <i class="fa-solid fa-mobile-screen"></i>
+              Reintentar búsqueda MTP
+            </button>
+            <button *ngIf="!ignorarVideos" class="app-button" (click)="seleccionarCarpetaVideos()">
+              <i class="fa-solid fa-folder-open"></i>
+              Seleccionar manualmente
+            </button>
+            <button class="app-button" (click)="ignorarVideos = !ignorarVideos">
+              <i class="fa-solid" [ngClass]="ignorarVideos ? 'fa-rotate-left' : 'fa-forward'"></i>
+              {{ ignorarVideos ? 'Volver a intentar' : 'Omitir vídeos' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="config-form">
+          <h3>Datos del viaje</h3>
+
+          <!-- Selector inteligente de viaje existente vs viaje nuevo -->
+          <div class="form-group" *ngIf="viajesExistentesCoincidentes && viajesExistentesCoincidentes.length > 0" style="background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.25); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+            <label style="font-weight: 600; color: #1e40af; margin-bottom: 8px; display: block;">
+              <i class="fa-solid fa-route" style="margin-right: 6px;"></i>Destino de la importación
+            </label>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                <input type="radio" name="modoImportacion" value="anadir_actividad" [(ngModel)]="modoImportacion" style="margin-top: 3px;">
+                <span style="flex: 1;">
+                  <strong>Añadir como actividad al viaje existente</strong> (Recomendado)
+                  <select *ngIf="modoImportacion === 'anadir_actividad'" [(ngModel)]="viajeExistenteSeleccionadoId" class="form-select" style="margin-top: 6px; font-size: 0.9rem; width: 100%;">
+                    <option *ngFor="let v of viajesExistentesCoincidentes" [value]="v.id">
+                      {{ v.nombre }}
+                    </option>
+                  </select>
+                </span>
+              </label>
+
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="radio" name="modoImportacion" value="crear_viaje" [(ngModel)]="modoImportacion">
+                <span>Crear un nuevo viaje independiente</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="destino">Destino del viaje</label>
+            <input type="text" id="destino" [(ngModel)]="destinoViaje" placeholder="Ej: Málaga, España" class="form-input" required>
+          </div>
+
+          <div class="form-group">
+            <label for="tipoActividad">Tipo de actividad</label>
+            <select id="tipoActividad" [(ngModel)]="tipoActividadId" class="form-select" required>
+              <option [value]="null" disabled selected>Selecciona una actividad</option>
+              <option *ngFor="let tipo of tiposActividad" [value]="tipo.id">
+                {{ tipo.nombre }}
+              </option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="importando" class="progress-container">
+        <h3>Importando archivos</h3>
+        <div class="progress-bar-container">
+          <div class="progress-bar" [style.width.%]="progresoSubida">{{ progresoSubida }}%</div>
+        </div>
+        <p class="progress-message">{{ mensajeProgreso }}</p>
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="app-button" (click)="cancelarImportacion()" [disabled]="importando">Cancelar</button>
+      <button class="app-button primary" (click)="confirmarImportacion()"
+        [disabled]="importando || !destinoViaje || !tipoActividadId || (videosRequeridos && !videosSeleccionados && !ignorarVideos)">
+        Importar
+      </button>
+    </div>
+  </div>
+</div>
