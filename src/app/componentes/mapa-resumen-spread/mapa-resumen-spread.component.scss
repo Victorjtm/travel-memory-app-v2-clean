@@ -222,9 +222,78 @@
       color: #ffffff;
     }
 
+    &.btn-modo-interactivo {
+      width: auto !important;
+      padding: 0 14px !important;
+      gap: 8px !important;
+      font-size: 0.82rem !important;
+      font-weight: 600 !important;
+      color: #38bdf8 !important;
+      letter-spacing: 0.5px !important;
+      text-transform: uppercase !important;
+    }
+
     &:not(:last-child) {
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
+  }
+}
+
+/* IMAGEN ESTÁTICA PRE-RENDERIZADA DEL MAPA */
+.mapa-resumen-img-estatica {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  display: block !important;
+  user-select: none !important;
+  pointer-events: none !important;
+}
+
+/* MARCADORES DESTACADOS DE CIUDADES EN LEAFLET */
+::ng-deep .divicon-parada-clave {
+  background: transparent !important;
+  border: none !important;
+}
+
+::ng-deep .marcador-parada-clave-leaflet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+
+  .pin-numero {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #0f172a;
+    color: #ffffff;
+    font-family: 'Cinzel', 'Outfit', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 12px rgba(0, 0, 0, 0.8), 0 0 16px rgba(0, 210, 255, 0.4);
+    z-index: 2;
+  }
+
+  .badge-ciudad {
+    margin-top: 4px;
+    background: rgba(15, 23, 42, 0.94);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #ffffff;
+    font-family: 'Cinzel', 'Outfit', 'Segoe UI', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 4px 12px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+    white-space: nowrap;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   }
 }
 
@@ -259,3 +328,4 @@
     transform: translateY(0);
   }
 }
+

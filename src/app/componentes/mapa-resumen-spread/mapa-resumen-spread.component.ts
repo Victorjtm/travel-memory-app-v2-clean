@@ -13,6 +13,7 @@ import {
 import { CommonModule } from '@angular/common';
 import * as L from 'leaflet';
 import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.service';
+import { PuntoClaveMapa } from '../../servicios/route-video-generator.service';
 
 @Component({
   selector: 'app-mapa-resumen-spread',
@@ -35,9 +36,12 @@ export class MapaResumenSpreadComponent implements OnInit, AfterViewInit, OnDest
   @Input() itinerariosLista?: any[] = [];
   @Input() esMapaGeneral: boolean = false;
   @Input() esMapaItinerario: boolean = false;
+  @Input() urlImagenMapa?: string;
+  @Input() puntosClave?: PuntoClaveMapa[] = [];
 
   mapaListo: boolean = false;
   capaActual: 'satelite' | 'calles' = 'satelite';
+  modoInteractivoForzado: boolean = false;
 
   private map: L.Map | null = null;
   private polylineGroup: L.LayerGroup | null = null;
@@ -51,10 +55,16 @@ export class MapaResumenSpreadComponent implements OnInit, AfterViewInit, OnDest
     private ngZone: NgZone
   ) {}
 
-  ngOnInit(): void {}
+  ngOnInit(): void {
+    if (this.urlImagenMapa) {
+      this.mapaListo = true;
+    }
+  }
 
   ngAfterViewInit(): void {
-    if (this.trackGpx) {
+    if (this.urlImagenMapa && !this.modoInteractivoForzado) {
+      this.mapaListo = true;
+    } else if (this.trackGpx) {
       setTimeout(() => this.inicializarMapa(), 60);
     }
 
@@ -155,25 +165,48 @@ export class MapaResumenSpreadComponent implements OnInit, AfterViewInit, OnDest
       // 6. Flechas sutiles de sentido de viaje
       this.agregarFlechasDireccion(this.coordenadas, '#00D2FF');
 
-      // 7. Marcador sutil de Inicio (Verde) y Fin (Rojo) - ¡SIN NÚMEROS DE FOTOS!
-      const primerPunto = this.coordenadas[0];
-      const ultimoPunto = this.coordenadas[this.coordenadas.length - 1];
+      // 7. Marcadores destacados de Paradas Clave (o inicio/fin)
+      if (this.puntosClave && this.puntosClave.length > 0) {
+        this.puntosClave.forEach((p, idx) => {
+          const num = p.numero || (idx + 1);
+          const esInicio = idx === 0;
+          const esFin = idx === this.puntosClave!.length - 1;
+          const color = p.color || (esInicio ? '#10B981' : (esFin ? '#EF4444' : '#00D2FF'));
 
-      const inicioIcon = L.divIcon({
-        className: 'marker-punto-inicio',
-        html: `<div style="background-color: #10B981; width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.6);"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7]
-      });
-      L.marker(primerPunto, { icon: inicioIcon }).bindPopup('<b>Inicio del Recorrido</b>').addTo(this.polylineGroup);
+          const markerHtml = `
+            <div class="marcador-parada-clave-leaflet">
+              <div class="pin-numero" style="border: 3px solid ${color};">${num}</div>
+              <div class="badge-ciudad" style="border: 2px solid ${color};">${p.nombre.toUpperCase()}</div>
+            </div>
+          `;
+          const customIcon = L.divIcon({
+            className: 'divicon-parada-clave',
+            html: markerHtml,
+            iconSize: [140, 52],
+            iconAnchor: [70, 26]
+          });
+          L.marker([p.lat, p.lng], { icon: customIcon }).addTo(this.polylineGroup!);
+        });
+      } else {
+        const primerPunto = this.coordenadas[0];
+        const ultimoPunto = this.coordenadas[this.coordenadas.length - 1];
 
-      const finIcon = L.divIcon({
-        className: 'marker-punto-fin',
-        html: `<div style="background-color: #EF4444; width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.6);"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7]
-      });
-      L.marker(ultimoPunto, { icon: finIcon }).bindPopup('<b>Fin del Recorrido</b>').addTo(this.polylineGroup);
+        const inicioIcon = L.divIcon({
+          className: 'marker-punto-inicio',
+          html: `<div style="background-color: #10B981; width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.6);"></div>`,
+          iconSize: [14, 14],
+          iconAnchor: [7, 7]
+        });
+        L.marker(primerPunto, { icon: inicioIcon }).bindPopup('<b>Inicio del Recorrido</b>').addTo(this.polylineGroup);
+
+        const finIcon = L.divIcon({
+          className: 'marker-punto-fin',
+          html: `<div style="background-color: #EF4444; width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.6);"></div>`,
+          iconSize: [14, 14],
+          iconAnchor: [7, 7]
+        });
+        L.marker(ultimoPunto, { icon: finIcon }).bindPopup('<b>Fin del Recorrido</b>').addTo(this.polylineGroup);
+      }
 
       // 8. Ajustar encuadre exacto (fitBounds) con buen margen
       const bounds = L.latLngBounds(this.coordenadas);
@@ -256,5 +289,12 @@ export class MapaResumenSpreadComponent implements OnInit, AfterViewInit, OnDest
       this.layerSatelite.addTo(this.map);
       this.capaActual = 'satelite';
     }
+  }
+
+  activarModoInteractivo(): void {
+    this.modoInteractivoForzado = true;
+    setTimeout(() => {
+      this.inicializarMapa();
+    }, 60);
   }
 }

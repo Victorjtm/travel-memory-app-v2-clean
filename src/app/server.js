@@ -4843,8 +4843,36 @@ app.post(['/actividades/:id/subtramos/video', '/api/actividades/:id/subtramos/vi
     const relPath = path.relative(uploadsPath, finalFilePath).replace(/\\/g, '/');
 
     const tempInput = req.file.path;
+    const duracionObjetivo = parseFloat(req.body.duracionSegundos) || 7.5;
+
+    // Detectar duración real del archivo subido con FFmpeg
+    const duracionRealSubida = await new Promise((resolve) => {
+      exec(`${FFMPEG_BIN} -i "${tempInput}"`, (err, stdout, stderr) => {
+        const m = (stderr || '').match(/Duration:\s*(\d+):(\d+):(\d+(\.\d+)?)/);
+        if (m) {
+          const h = parseFloat(m[1]);
+          const min = parseFloat(m[2]);
+          const s = parseFloat(m[3]);
+          resolve(h * 3600 + min * 60 + s);
+        } else {
+          resolve(0);
+        }
+      });
+    });
+
+    let filtroTiempo = '';
+    if (duracionObjetivo > 0 && duracionRealSubida > 0) {
+      const ratio = duracionRealSubida / duracionObjetivo;
+      // Si la duración grabada difiere en más de un 15% (lag de CPU o throttling en pestañas inactivas)
+      if (ratio > 1.15 || ratio < 0.85) {
+        const factorVelocidad = duracionObjetivo / duracionRealSubida;
+        filtroTiempo = `-vf "setpts=${factorVelocidad.toFixed(6)}*PTS" -r 30 -t ${duracionObjetivo}`;
+        console.log(`⏱️ [VideoSubtramo] Ajuste automático de velocidad ffmpeg: ${duracionRealSubida.toFixed(2)}s -> ${duracionObjetivo.toFixed(2)}s (factor ${factorVelocidad.toFixed(4)})`);
+      }
+    }
+
     // FFmpeg obligatorio con -movflags +faststart para streaming instantáneo
-    const cmd = `${FFMPEG_BIN} -y -i "${tempInput}" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart "${finalFilePath}"`;
+    const cmd = `${FFMPEG_BIN} -y -i "${tempInput}" ${filtroTiempo} -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart "${finalFilePath}"`;
     exec(cmd, async (ffmpegErr, stdout, stderr) => {
       try { if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput); } catch (e) {}
 

@@ -39,6 +39,15 @@ export interface ProgresoRenderizadoRuta {
   mensaje: string;
 }
 
+export interface PuntoClaveMapa {
+  numero?: number;
+  nombre: string;
+  lat: number;
+  lng: number;
+  subtexto?: string;
+  color?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -217,11 +226,21 @@ export class RouteVideoGeneratorService {
     }
     // Densificar cualquier salto anómalo superior a 80m para interpolación fluida y sin teletransportes
     points = this.densificarSaltosGps(points, 80);
+
+    // ✨ Recalcular distAcum estrictamente continuo y monotónico desde 0
+    let distAcum = 0;
+    points[0].distAcum = 0;
+    for (let i = 1; i < points.length; i++) {
+      const d = this.gpxService.getDistance(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
+      distAcum += d;
+      points[i].distAcum = distAcum;
+    }
+
     // Resolución panorámica 2.22:1 optimizada para cubrir el pliego completo de ambas páginas del libro (1600x720)
     const width = options.width || 1600;
     const height = options.height || 720;
     const fps = options.fps || 30;
-    const duracionSeg = options.duracionSegundos || this.calcularDuracionDinamica(options.distanciaKm || 0);
+    const duracionSeg = options.duracionSegundos || this.calcularDuracionDinamica(options.distanciaKm || (distAcum / 1000));
 
     // 🛡️ REGLA CRÍTICA: El avatar DEBE llegar desde el punto A de inicio hasta el punto B de destino
     // y mantenerse firmemente allí descansando al 100% durante 1.4s para contemplar la llegada.
@@ -612,8 +631,11 @@ export class RouteVideoGeneratorService {
     let remainder: number;
 
     if (hasDistAcum) {
-      const totalDist = points[points.length - 1].distAcum as number;
-      const targetDist = progress * totalDist;
+      const startDist = (points[0].distAcum as number) || 0;
+      const endDist = points[points.length - 1].distAcum as number;
+      const totalDist = Math.max(1, endDist - startDist);
+      const safeProgress = Math.max(0, Math.min(1, progress));
+      const targetDist = startDist + safeProgress * totalDist;
 
       let lo = 0, hi = points.length - 2;
       while (lo < hi) {
@@ -626,9 +648,10 @@ export class RouteVideoGeneratorService {
       const d0 = points[lo].distAcum as number;
       const d1 = (points[lo + 1]?.distAcum as number) ?? d0;
       const segLen = d1 - d0;
-      remainder = segLen > 0 ? (targetDist - d0) / segLen : 0;
+      remainder = segLen > 0 ? Math.max(0, Math.min(1, (targetDist - d0) / segLen)) : 0;
     } else {
-      const targetIdxFloat = progress * (points.length - 1);
+      const safeProgress = Math.max(0, Math.min(1, progress));
+      const targetIdxFloat = safeProgress * (points.length - 1);
       targetIdx = Math.floor(targetIdxFloat);
       remainder = targetIdxFloat - targetIdx;
     }
@@ -1226,14 +1249,15 @@ export class RouteVideoGeneratorService {
     subtitulo: string = '',
     distanciaKm?: number,
     width: number = 1920,
-    height: number = 1080
+    height: number = 1080,
+    puntosClave?: PuntoClaveMapa[]
   ): Promise<HTMLImageElement> {
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d')!;
 
-    await this.renderizarSnapshotMapaEnCanvas(canvas, ctx, trackGpx, titulo, subtitulo, distanciaKm, width, height);
+    await this.renderizarSnapshotMapaEnCanvas(canvas, ctx, trackGpx, titulo, subtitulo, distanciaKm, width, height, puntosClave);
     return await this.canvasAImagen(canvas);
   }
 
@@ -1248,14 +1272,15 @@ export class RouteVideoGeneratorService {
     subtitulo: string = '',
     distanciaKm?: number,
     tipo: 'general' | 'itinerario' = 'general',
-    itinerarioId?: number
+    itinerarioId?: number,
+    puntosClave?: PuntoClaveMapa[]
   ): Promise<string> {
     const canvas = document.createElement('canvas');
     canvas.width = 1920;
     canvas.height = 1080;
     const ctx = canvas.getContext('2d')!;
 
-    await this.renderizarSnapshotMapaEnCanvas(canvas, ctx, trackGpx, titulo, subtitulo, distanciaKm, 1920, 1080);
+    await this.renderizarSnapshotMapaEnCanvas(canvas, ctx, trackGpx, titulo, subtitulo, distanciaKm, 1920, 1080, puntosClave);
 
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((b) => {
@@ -1281,6 +1306,24 @@ export class RouteVideoGeneratorService {
     return resp.url;
   }
 
+  /**
+   * Consulta al backend si ya existe un snapshot pre-renderizado para el viaje o itinerario
+   */
+  public async verificarSnapshotExiste(
+    viajeId: number,
+    tipo: 'general' | 'itinerario' = 'general',
+    itinerarioId?: number
+  ): Promise<{ exists: boolean; url: string | null }> {
+    const backendUrl = environment.apiUrl || 'http://localhost:3000';
+    let url = `${backendUrl}/api/viajes/${viajeId}/mapa-snapshot?tipo=${tipo}`;
+    if (itinerarioId) url += `&itinerarioId=${itinerarioId}`;
+    try {
+      return await firstValueFrom(this.http.get<{ exists: boolean; url: string | null }>(url));
+    } catch {
+      return { exists: false, url: null };
+    }
+  }
+
   public async renderizarSnapshotMapaEnCanvas(
     canvas: HTMLCanvasElement,
     ctx: CanvasRenderingContext2D,
@@ -1289,7 +1332,8 @@ export class RouteVideoGeneratorService {
     subtitulo: string = '',
     distanciaKm?: number,
     width: number = 1920,
-    height: number = 1080
+    height: number = 1080,
+    puntosClave?: PuntoClaveMapa[]
   ): Promise<void> {
     // Fondo pergamino inicial
     ctx.fillStyle = '#0a1128';
@@ -1326,11 +1370,21 @@ export class RouteVideoGeneratorService {
         if (p.lng > maxLng) maxLng = p.lng;
       }
 
+      // Si se especifican puntos clave (destinos del crucero/viaje), asegurar que queden incluidos en el encuadre
+      if (puntosClave && puntosClave.length > 0) {
+        for (const pt of puntosClave) {
+          if (pt.lat < minLat) minLat = pt.lat;
+          if (pt.lat > maxLat) maxLat = pt.lat;
+          if (pt.lng < minLng) minLng = pt.lng;
+          if (pt.lng > maxLng) maxLng = pt.lng;
+        }
+      }
+
       const centerLat = (minLat + maxLat) / 2;
       const centerLng = (minLng + maxLng) / 2;
 
-      const padX = 160;
-      const padY = 160;
+      const padX = 220;
+      const padY = 220;
       const availW = width - 2 * padX;
       const availH = height - 2 * padY;
 
@@ -1389,28 +1443,131 @@ export class RouteVideoGeneratorService {
         ctx.stroke();
         ctx.restore();
 
-        const pInicio = proyectar(rawPoints[0].lat, rawPoints[0].lng);
-        const pFin = proyectar(rawPoints[rawPoints.length - 1].lat, rawPoints[rawPoints.length - 1].lng);
+        // Si tenemos puntos clave destacados (ej: paradas de crucero), los dibujamos con cartelas grandes y legibles
+        if (puntosClave && puntosClave.length > 0) {
+          puntosClave.forEach((p, idx) => {
+            const pt = proyectar(p.lat, p.lng);
+            if (pt.x < -100 || pt.x > width + 100 || pt.y < -100 || pt.y > height + 100) return;
 
-        const dibujarPin = (p: { x: number; y: number }, color: string, label: string) => {
-          ctx.save();
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 3;
-          ctx.stroke();
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 13px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(label, p.x, p.y);
-          ctx.restore();
-        };
+            const num = p.numero || (idx + 1);
+            const esInicio = idx === 0;
+            const esFin = idx === puntosClave.length - 1;
+            const colorPin = p.color || (esInicio ? '#10b981' : (esFin ? '#ef4444' : '#00d2ff'));
 
-        dibujarPin(pInicio, '#10b981', 'A');
-        dibujarPin(pFin, '#ef4444', 'B');
+            ctx.save();
+
+            // 1. Halo / Resplandor circular suave
+            const gradHalo = ctx.createRadialGradient(pt.x, pt.y, 8, pt.x, pt.y, 36);
+            gradHalo.addColorStop(0, 'rgba(0, 210, 255, 0.45)');
+            gradHalo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradHalo;
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 36, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 2. Pin circular numerado
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 20, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = colorPin;
+            ctx.lineWidth = 3.5;
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 16px "Cinzel", "Outfit", "Segoe UI", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(String(num), pt.x, pt.y + 1);
+
+            // 3. Cartela grande y destacada con el nombre de la ciudad
+            const nombreUpper = p.nombre.toUpperCase();
+            ctx.font = 'bold 20px "Cinzel", "Outfit", "Segoe UI", sans-serif';
+            const textMetrics = ctx.measureText(nombreUpper);
+            const tagPadX = 22;
+            const tagW = Math.max(textMetrics.width + tagPadX * 2, 130);
+            const tagH = 44;
+
+            let tagY = pt.y - 66; // Por defecto arriba del pin
+            let flechaApuntaAbajo = true;
+            if (pt.y < 230) {
+              tagY = pt.y + 32; // Si está muy cerca del borde superior, colocar abajo
+              flechaApuntaAbajo = false;
+            }
+
+            let tagX = pt.x - tagW / 2;
+            if (tagX < 30) tagX = 30;
+            if (tagX + tagW > width - 30) tagX = width - 30 - tagW;
+
+            // Sombra envolvente
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+            ctx.shadowBlur = 18;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 6;
+
+            // Fondo cartela
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+            this.dibujarRectanguloRedondeado(ctx, tagX, tagY, tagW, tagH, 10);
+            ctx.fill();
+
+            ctx.shadowColor = 'transparent';
+
+            // Borde cartela
+            ctx.strokeStyle = colorPin;
+            ctx.lineWidth = 2.5;
+            this.dibujarRectanguloRedondeado(ctx, tagX, tagY, tagW, tagH, 10);
+            ctx.stroke();
+
+            // Puntero triangular hacia el pin
+            ctx.fillStyle = colorPin;
+            ctx.beginPath();
+            if (flechaApuntaAbajo) {
+              ctx.moveTo(pt.x, pt.y - 22);
+              ctx.lineTo(pt.x - 7, tagY + tagH);
+              ctx.lineTo(pt.x + 7, tagY + tagH);
+            } else {
+              ctx.moveTo(pt.x, pt.y + 22);
+              ctx.lineTo(pt.x - 7, tagY);
+              ctx.lineTo(pt.x + 7, tagY);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            // Nombre de la ciudad en grande
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 18px "Cinzel", "Outfit", "Segoe UI", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(nombreUpper, tagX + tagW / 2, tagY + tagH / 2);
+
+            ctx.restore();
+          });
+        } else {
+          // Fallback a marcadores clásicos A y B si no hay lista de destinos
+          const pInicio = proyectar(rawPoints[0].lat, rawPoints[0].lng);
+          const pFin = proyectar(rawPoints[rawPoints.length - 1].lat, rawPoints[rawPoints.length - 1].lng);
+
+          const dibujarPin = (p: { x: number; y: number }, color: string, label: string) => {
+            ctx.save();
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 16, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, p.x, p.y);
+            ctx.restore();
+          };
+
+          dibujarPin(pInicio, '#10b981', 'A');
+          dibujarPin(pFin, '#ef4444', 'B');
+        }
       }
 
       // Placa / Cabecera superior elegante del mapa
@@ -1442,6 +1599,23 @@ export class RouteVideoGeneratorService {
     } catch (err) {
       console.warn('⚠️ Error generando snapshot mapa:', err);
     }
+  }
+
+  private dibujarRectanguloRedondeado(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number
+  ): void {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
   }
 
   private canvasAImagen(canvas: HTMLCanvasElement): Promise<HTMLImageElement> {

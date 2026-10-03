@@ -21,7 +21,7 @@ import { MiniMapaGpxComponent } from '../../../../componentes/mini-mapa-gpx/mini
 import { MapaResumenSpreadComponent } from '../../../../componentes/mapa-resumen-spread/mapa-resumen-spread.component';
 import { GpxAnimationService, GpxPoint } from '../../../../servicios/gpx-animation.service';
 import { TrackEditorService } from '../../../../servicios/track-editor.service';
-import { RouteVideoGeneratorService, ProgresoRenderizadoRuta } from '../../../../servicios/route-video-generator.service';
+import { RouteVideoGeneratorService, ProgresoRenderizadoRuta, PuntoClaveMapa } from '../../../../servicios/route-video-generator.service';
 import { IntroCinematicaDynamicsComponent } from '../../../../componentes/intro-cinematica-dynamics/intro-cinematica-dynamics.component';
 import { IntroMemoryPreloaderService } from '../../../../servicios/intro-memory-preloader.service';
 import { IntroVideoGeneratorService } from '../../../../servicios/intro-video-generator.service';
@@ -63,6 +63,7 @@ interface PaginaMedia {
   distanciaAcumuladaKm?: number;
   horaFormateada?: string;
   transportSegments?: any[];
+  puntosClave?: PuntoClaveMapa[];
   visualSessionData?: any;
   isHighFidelityMode?: boolean;
   actividadId?: number;
@@ -308,6 +309,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   direccionVolteo3D: 'adelante' | 'atras' = 'adelante';
   paginaVolteoSaliente: PaginaMedia | null = null;
   paginaVolteoEntrante: PaginaMedia | null = null;
+  paginaDebajoIzquierda: PaginaMedia | null = null;
+  paginaDebajoDerecha: PaginaMedia | null = null;
   private pendienteAbrirLibro: { activarModoRecuerdo: boolean; modoGuiado: boolean } | null = null;
 
   spreadActual: number = 0;
@@ -1119,10 +1122,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   get paginaMostradaIzquierda(): PaginaMedia | null {
+    if (this.hojaVolteando3D && this.paginaDebajoIzquierda) {
+      return this.paginaDebajoIzquierda;
+    }
     return this.paginaSpreadIzquierda;
   }
 
   get paginaMostradaDerecha(): PaginaMedia | null {
+    if (this.hojaVolteando3D && this.paginaDebajoDerecha) {
+      return this.paginaDebajoDerecha;
+    }
     return this.paginaSpreadDerecha;
   }
 
@@ -4440,6 +4449,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     // Puntos acumulados de todos los itinerarios para el Mapa General del Viaje
     const puntosTodosItinerarios: GpxPoint[] = [];
+    const mapaGpsPorItinerario = new Map<number, GpxPoint[]>();
     let distanciaTotalViajeKm = 0;
 
     // Generar mapas y contenido para cada itinerario
@@ -4469,6 +4479,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         const infoItinGpx = await this.resolverGpxItinerario(actsItin, fotosItinerario);
 
         if (infoItinGpx.puntos.length > 0) {
+          mapaGpsPorItinerario.set(itinerario.id, infoItinGpx.puntos);
           if (puntosTodosItinerarios.length > 0) {
             infoItinGpx.puntos[0].isGap = true;
           }
@@ -4541,6 +4552,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     const tituloMapaGeneral = `MAPA GENERAL: ${this.obtenerTituloIntroLimpio()}`;
     const descMapaGeneral = `Recorrido unificado y vista panorámica de ${this.obtenerTituloIntroLimpio()}`;
 
+    const puntosClaveGeneral = this.extraerPuntosClaveParaMapa(itinerariosOrdenados, mapaGpsPorItinerario);
+
     const paginaMapaGeneralViaje: PaginaMedia = {
       archivo: {} as Archivo,
       url: '',
@@ -4556,9 +4569,44 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       trackGpx: gpxGeneralViaje,
       distanciaTramoKm: distanciaTotalViajeKm,
       multimedia: [],
-      visualSessionData: null
+      visualSessionData: null,
+      puntosClave: puntosClaveGeneral
     };
     paginasFinales.push(paginaMapaGeneralViaje);
+
+    // Consulta de pre-caché y generación de snapshot del mapa general para carga instantánea
+    const viajeId = this.infoViaje?.id || this.contextoViaje?.viajeId;
+    if (viajeId) {
+      this.routeVideoGeneratorService.verificarSnapshotExiste(viajeId, 'general')
+        .then(async (snap) => {
+          if (snap.exists && snap.url) {
+            const fullUrl = snap.url.startsWith('http') ? snap.url : `${environment.apiUrl || 'http://localhost:3000'}${snap.url}`;
+            paginaMapaGeneralViaje.urlMapaRenderizado = fullUrl;
+            paginaMapaGeneralViaje.url = fullUrl;
+            this.cdr.detectChanges();
+          } else if (gpxGeneralViaje) {
+            try {
+              const urlGen = await this.routeVideoGeneratorService.generarYSubirSnapshotMapa(
+                viajeId,
+                gpxGeneralViaje,
+                tituloMapaGeneral,
+                descMapaGeneral,
+                distanciaTotalViajeKm,
+                'general',
+                undefined,
+                puntosClaveGeneral
+              );
+              const fullUrl = urlGen.startsWith('http') ? urlGen : `${environment.apiUrl || 'http://localhost:3000'}${urlGen}`;
+              paginaMapaGeneralViaje.urlMapaRenderizado = fullUrl;
+              paginaMapaGeneralViaje.url = fullUrl;
+              this.cdr.detectChanges();
+            } catch (e) {
+              console.warn('⚠️ No se pudo generar snapshot inicial de mapa general:', e);
+            }
+          }
+        })
+        .catch((e) => console.warn('⚠️ Error al verificar snapshot de mapa general:', e));
+    }
 
     // Añadir todos los itinerarios (carta + mapa doble página + fotos)
     paginasFinales.push(...contenidoItinerarios);
@@ -5167,22 +5215,29 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         if (direccion > 0) {
           this.paginaVolteoSaliente = this.paginaSpreadDerecha;
           this.paginaVolteoEntrante = spreadDestino?.paginaIzquierda || null;
+          this.paginaDebajoIzquierda = this.paginaSpreadIzquierda; // Mantener la página izquierda actual visible abajo
+          this.paginaDebajoDerecha = spreadDestino?.paginaDerecha || null; // Revelar debajo de la hoja que se levanta la nueva derecha
         } else {
           this.paginaVolteoSaliente = this.paginaSpreadIzquierda;
           this.paginaVolteoEntrante = spreadDestino?.paginaDerecha || null;
+          this.paginaDebajoIzquierda = spreadDestino?.paginaIzquierda || null; // Revelar debajo la nueva izquierda
+          this.paginaDebajoDerecha = this.paginaSpreadDerecha; // Mantener la derecha actual visible abajo
         }
 
         this.hojaVolteando3D = true;
-        this.spreadActual = nuevoSpread;
-        this.paginaActual = nuevaPaginaIdx;
-
         this.detenerVideosActuales();
-        this.reiniciarInstanciaMapa();
+        this.cdr.detectChanges();
 
         setTimeout(() => {
+          this.spreadActual = nuevoSpread;
+          this.paginaActual = nuevaPaginaIdx;
           this.hojaVolteando3D = false;
           this.paginaVolteoSaliente = null;
           this.paginaVolteoEntrante = null;
+          this.paginaDebajoIzquierda = null;
+          this.paginaDebajoDerecha = null;
+
+          this.reiniciarInstanciaMapa();
 
           // Iniciar secuencia de reproducción de video en el nuevo spread (Regla 3)
           this.iniciarSecuenciaVideosSpread();
@@ -5213,7 +5268,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           }
 
           this.cdr.detectChanges();
-        }, 650);
+        }, 600);
       } else {
         this.spreadActual = nuevoSpread;
         this.paginaActual = nuevaPaginaIdx;
@@ -7782,7 +7837,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               subTexto,
               p.distanciaTramoKm,
               tipo,
-              p.itinerarioId
+              p.itinerarioId,
+              p.puntosClave
             );
             const urlCompleta = urlSnapshot.startsWith('http') ? urlSnapshot : `${environment.apiUrl || 'http://localhost:3000'}${urlSnapshot.startsWith('/') ? '' : '/'}${urlSnapshot}`;
             p.urlMapaRenderizado = urlCompleta;
@@ -7982,7 +8038,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               id: `ruta-video-${p.idParadaOrigen}-${p.idParadaDestino}-${index}`,
               tipo: 'video',
               url: p.urlVideoAnimacion,
-              duracion: p.distanciaTramoKm ? this.routeVideoGeneratorService.calcularDuracionDinamica(p.distanciaTramoKm * 1000) : 5,
+              duracion: p.distanciaTramoKm ? this.routeVideoGeneratorService.calcularDuracionDinamica(p.distanciaTramoKm) : 5,
               titulo: p.titulo || `Recorrido Parada #${p.idParadaOrigen} ➔ #${p.idParadaDestino}`,
               descripcion: p.descripcion,
               fecha: fechaHora.fecha,
@@ -8276,4 +8332,54 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
   }
 
+  extraerPuntosClaveParaMapa(itinerarios: any[], mapaGps: Map<number, GpxPoint[]>): PuntoClaveMapa[] {
+    const puntosClave: PuntoClaveMapa[] = [];
+    if (!itinerarios || itinerarios.length === 0) return puntosClave;
+
+    itinerarios.forEach((it, idx) => {
+      const pts = mapaGps.get(it.id);
+      let coord: { lat: number; lng: number } | null = null;
+      if (pts && pts.length > 0) {
+        if (idx === 0 && pts.length > 10) {
+          // En la etapa de salida (ej. Zaragoza -> Barcelona), el destino de parada es el final del track (puerto)
+          coord = { lat: pts[pts.length - 1].lat, lng: pts[pts.length - 1].lng };
+        } else {
+          coord = { lat: pts[0].lat, lng: pts[0].lng };
+        }
+      }
+
+      const ciudad = this.limpiarNombreCiudadPuntoClave(it.destinosPorDia, it.descripcionGeneral || it.descripcion, coord, idx, itinerarios.length);
+      if (ciudad && coord) {
+        puntosClave.push({
+          numero: puntosClave.length + 1,
+          nombre: ciudad,
+          lat: coord.lat,
+          lng: coord.lng,
+          subtexto: it.fechaInicio ? this.formatearFechaCorta(it.fechaInicio) : undefined
+        });
+      }
+    });
+
+    return puntosClave;
+  }
+
+  limpiarNombreCiudadPuntoClave(dest: string, desc: string, coords: { lat: number; lng: number } | null, idx: number, total: number): string | null {
+    let ciudad = (dest || '').split(',')[0].replace(/[\[\]"']/g, '').trim();
+    const descL = (desc || '').toLowerCase();
+
+    if (ciudad.toLowerCase().includes('marseille')) return 'Marsella';
+    if (ciudad.toLowerCase().includes('firenze') || ciudad.toLowerCase().includes('livorno')) return 'Livorno / Florencia';
+    if (ciudad.toLowerCase().includes('españa') && (descL.includes('cerdeña') || (coords && coords.lat < 40 && coords.lat > 38 && coords.lng > 8 && coords.lng < 10))) {
+      return 'Cagliari (Cerdeña)';
+    }
+    if (ciudad.toLowerCase().includes('il-mosta') || ciudad.toLowerCase().includes('malta')) return 'Malta';
+    if (ciudad.toLowerCase().includes('palermo')) return 'Palermo';
+
+    if (coords && coords.lat > 41.2 && coords.lat < 41.5 && coords.lng > 2.0 && coords.lng < 2.3) {
+      return idx === 0 ? 'Barcelona (Salida)' : 'Barcelona (Llegada)';
+    }
+    if (ciudad === 'Destino por Asignar' || descL.includes('solo navegando')) return null;
+    return ciudad || 'Destino';
+  }
 }
+

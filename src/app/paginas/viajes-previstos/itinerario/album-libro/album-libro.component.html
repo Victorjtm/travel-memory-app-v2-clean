@@ -2163,7 +2163,9 @@
             [itinerariosCount]="listaItinerarios.length || 1"
             [itinerariosLista]="listaItinerarios"
             [esMapaGeneral]="pagMapa.esMapaGeneral || false"
-            [esMapaItinerario]="pagMapa.esMapaItinerario || false">
+            [esMapaItinerario]="pagMapa.esMapaItinerario || false"
+            [urlImagenMapa]="pagMapa.urlMapaRenderizado"
+            [puntosClave]="pagMapa.puntosClave || []">
           </app-mapa-resumen-spread>
         </ng-container>
 
@@ -2597,23 +2599,44 @@
           </ng-container>
 
           <ng-container *ngIf="direccionVolteo3D === 'atras'">
-            <div class="reverso-papel-antiguo-vacio">
-              <div class="sello-vintage-dorso">✦ DIARIO DE RECUERDOS ✦</div>
+            <div class="foto-vintage-container" *ngIf="paginaVolteoSaliente as pSal">
+              <div class="foto-polaroid-vintage" *ngIf="pSal.tipoMedia === 'imagen' || !pSal.esCartaManuscrita">
+                <img *ngIf="pSal.tipoMedia === 'imagen'" [src]="pSal.url" [alt]="pSal.titulo"
+                  class="imagen-foto-vintage" />
+                <div *ngIf="pSal.tipoMedia === 'video'" class="video-preview-vintage">
+                  <video *ngIf="pSal.url" [src]="pSal.url + '#t=0.5'" class="video-foto-vintage" muted></video>
+                </div>
+              </div>
+              <div class="pie-foto-vintage" *ngIf="pSal.titulo">
+                <h4 class="titulo-pie-vintage">{{ pSal.titulo }}</h4>
+              </div>
             </div>
           </ng-container>
         </div>
 
-        <!-- Cara Reverso: Dorso que aterriza en la página izquierda -->
+        <!-- Cara Reverso: Dorso que aterriza en la página opuesta -->
         <div class="cara-hoja cara-reverso">
           <div class="textura-papel-antiguo"></div>
           <div class="sombra-curvatura-papel"></div>
 
           <ng-container *ngIf="direccionVolteo3D === 'adelante'">
-            <div class="reverso-papel-antiguo-vacio">
+            <div class="foto-vintage-container" *ngIf="paginaVolteoEntrante as pEnt">
+              <div class="foto-polaroid-vintage" *ngIf="pEnt.tipoMedia === 'imagen' || !pEnt.esCartaManuscrita">
+                <img *ngIf="pEnt.tipoMedia === 'imagen'" [src]="pEnt.url" [alt]="pEnt.titulo"
+                  class="imagen-foto-vintage" />
+                <div *ngIf="pEnt.tipoMedia === 'video'" class="video-preview-vintage">
+                  <video *ngIf="pEnt.url" [src]="pEnt.url + '#t=0.5'" class="video-foto-vintage" muted></video>
+                </div>
+              </div>
+              <div class="pie-foto-vintage" *ngIf="pEnt.titulo">
+                <h4 class="titulo-pie-vintage">{{ pEnt.titulo }}</h4>
+                <p class="desc-pie-vintage" *ngIf="pEnt.descripcion && !esTextoDuplicado(pEnt.titulo, pEnt.descripcion)">{{ pEnt.descripcion }}</p>
+              </div>
+            </div>
+            <div class="reverso-papel-antiguo-vacio" *ngIf="!paginaVolteoEntrante || paginaVolteoEntrante.esCartaManuscrita">
               <div class="sello-vintage-dorso">✦ DIARIO DE RECUERDOS ✦</div>
-              <div class="pie-foto-vintage"
-                *ngIf="paginaVolteoSaliente?.descripcion && !esTextoDuplicado(paginaVolteoSaliente?.titulo, paginaVolteoSaliente?.descripcion)">
-                <p class="desc-pie-vintage">{{ paginaVolteoSaliente?.descripcion }}</p>
+              <div class="pie-foto-vintage" *ngIf="paginaVolteoEntrante?.descripcion">
+                <p class="desc-pie-vintage">{{ paginaVolteoEntrante?.descripcion }}</p>
               </div>
             </div>
           </ng-container>
@@ -2623,9 +2646,13 @@
               <div class="foto-polaroid-vintage" *ngIf="pEnt.tipoMedia === 'imagen' || !pEnt.esCartaManuscrita">
                 <img *ngIf="pEnt.tipoMedia === 'imagen'" [src]="pEnt.url" [alt]="pEnt.titulo"
                   class="imagen-foto-vintage" />
+                <div *ngIf="pEnt.tipoMedia === 'video'" class="video-preview-vintage">
+                  <video *ngIf="pEnt.url" [src]="pEnt.url + '#t=0.5'" class="video-foto-vintage" muted></video>
+                </div>
               </div>
               <div class="pie-foto-vintage" *ngIf="pEnt.titulo">
                 <h4 class="titulo-pie-vintage">{{ pEnt.titulo }}</h4>
+                <p class="desc-pie-vintage" *ngIf="pEnt.descripcion && !esTextoDuplicado(pEnt.titulo, pEnt.descripcion)">{{ pEnt.descripcion }}</p>
               </div>
             </div>
           </ng-container>

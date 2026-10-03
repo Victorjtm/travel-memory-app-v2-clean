@@ -1,6 +1,11 @@
 <div class="mapa-resumen-container">
-  <!-- Mapa Leaflet Base -->
-  <div #mapContainer class="mapa-resumen-canvas" [class.listo]="mapaListo"></div>
+  <!-- MODO 1: Mapa Pre-renderizado Instantáneo (Cero retardo de carga) -->
+  <div *ngIf="urlImagenMapa && !modoInteractivoForzado" class="mapa-resumen-canvas listo" style="position: absolute; inset: 0;">
+    <img [src]="urlImagenMapa" class="mapa-resumen-img-estatica" alt="Mapa General del Viaje" />
+  </div>
+
+  <!-- MODO 2: Mapa Leaflet Interactivo (Si no hay snapshot o si el usuario pide interactuar) -->
+  <div #mapContainer *ngIf="!urlImagenMapa || modoInteractivoForzado" class="mapa-resumen-canvas" [class.listo]="mapaListo"></div>
 
   <!-- Sombra / Pliegue central del libro sobre el mapa -->
   <div class="pliegue-central-lomo" aria-hidden="true"></div>
@@ -35,29 +40,39 @@
 
   <!-- CONTROLES FLOTANTES DEL MAPA -->
   <div class="mapa-controles-flotantes" *ngIf="mapaListo">
-    <!-- Zoom In/Out -->
-    <div class="control-grupo">
-      <button type="button" class="btn-map-control" (click)="zoomIn()" title="Acercar mapa">
-        <i class="fas fa-plus"></i>
-      </button>
-      <button type="button" class="btn-map-control" (click)="zoomOut()" title="Alejar mapa">
-        <i class="fas fa-minus"></i>
+    <!-- Si estamos en modo imagen estática pre-renderizada: Botón para pasar a Interactivo -->
+    <div class="control-grupo" *ngIf="urlImagenMapa && !modoInteractivoForzado">
+      <button type="button" class="btn-map-control btn-modo-interactivo" (click)="activarModoInteractivo()" title="Explorar mapa interactivo con zoom">
+        <i class="fas fa-hand-pointer"></i> <span>Explorar</span>
       </button>
     </div>
 
-    <!-- Recentrar ruta completa -->
-    <div class="control-grupo">
-      <button type="button" class="btn-map-control" (click)="recentrar()" title="Centrar recorrido completo">
-        <i class="fas fa-expand"></i>
-      </button>
-    </div>
+    <!-- Controles de navegación Leaflet si estamos en modo interactivo -->
+    <ng-container *ngIf="!urlImagenMapa || modoInteractivoForzado">
+      <!-- Zoom In/Out -->
+      <div class="control-grupo">
+        <button type="button" class="btn-map-control" (click)="zoomIn()" title="Acercar mapa">
+          <i class="fas fa-plus"></i>
+        </button>
+        <button type="button" class="btn-map-control" (click)="zoomOut()" title="Alejar mapa">
+          <i class="fas fa-minus"></i>
+        </button>
+      </div>
 
-    <!-- Selector de capa: Satélite vs Callejero -->
-    <div class="control-grupo">
-      <button type="button" class="btn-map-control" [class.activo]="capaActual === 'satelite'" (click)="toggleCapa()" [title]="capaActual === 'satelite' ? 'Cambiar a Mapa Callejero' : 'Cambiar a Satélite'">
-        <i class="fas fa-layer-group"></i>
-      </button>
-    </div>
+      <!-- Recentrar ruta completa -->
+      <div class="control-grupo">
+        <button type="button" class="btn-map-control" (click)="recentrar()" title="Centrar recorrido completo">
+          <i class="fas fa-expand"></i>
+        </button>
+      </div>
+
+      <!-- Selector de capa: Satélite vs Callejero -->
+      <div class="control-grupo">
+        <button type="button" class="btn-map-control" [class.activo]="capaActual === 'satelite'" (click)="toggleCapa()" [title]="capaActual === 'satelite' ? 'Cambiar a Mapa Callejero' : 'Cambiar a Satélite'">
+          <i class="fas fa-layer-group"></i>
+        </button>
+      </div>
+    </ng-container>
   </div>
 
   <!-- LOADER INICIAL MIENTRAS SE PROCESA EL GPX -->
