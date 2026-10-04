@@ -8,7 +8,11 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
   imports: [CommonModule],
   template: `
     <div class="mini-mapa-gpx-container" [class.full-page-mode]="fullPage">
-      <div #miniMapElement class="mini-mapa-canvas" [class.mapa-listo]="mapaListo"></div>
+      <!-- MODO INSTANTÁNEO: Imagen pre-renderizada por Canvas (0ms de latencia, cero parpadeo de tiles) -->
+      <img *ngIf="imagenInstantanea" [src]="imagenInstantanea" class="mini-mapa-img-instantanea" alt="Mapa de Ruta" />
+
+      <!-- MODO DINÁMICO: Contenedor Canvas/Leaflet -->
+      <div #miniMapElement *ngIf="!imagenInstantanea" class="mini-mapa-canvas" [class.mapa-listo]="mapaListo"></div>
       
       <!-- Overlay con badge de transporte y distancia -->
       <div class="mini-mapa-info-badge" *ngIf="mapaListo && distanciaKm">
@@ -16,7 +20,7 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
         <span class="badge-distancia-texto">{{ distanciaKm | number:'1.1-2' }} km</span>
       </div>
 
-      <div class="mini-mapa-spinner" *ngIf="!mapaListo">
+      <div class="mini-mapa-spinner" *ngIf="!mapaListo && !imagenInstantanea">
         <div class="spinner-mini"></div>
       </div>
     </div>
@@ -41,6 +45,18 @@ import { GpxAnimationService, GpxPoint } from '../../servicios/gpx-animation.ser
         min-height: 260px;
         max-height: 100%;
       }
+    }
+
+    .mini-mapa-img-instantanea {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 2px;
+      pointer-events: none;
+      z-index: 1;
     }
 
     .mini-mapa-canvas {
@@ -116,25 +132,159 @@ export class MiniMapaGpxComponent implements OnInit, AfterViewInit, OnChanges, O
   @Input() distanciaKm?: number;
 
   mapaListo: boolean = false;
+  imagenInstantanea: string | null = null;
+  private static cacheMiniMapas = new Map<string, string>();
   private map: any = null;
   private L: any = null;
   private polylineRef: any = null;
 
   constructor(private gpxService: GpxAnimationService) {}
 
-  ngOnInit(): void {}
+  ngOnInit(): void {
+    this.intentarCargaInstantanea();
+  }
 
   ngAfterViewInit(): void {
-    if (this.trackGpx) {
-      setTimeout(() => this.renderMiniMapa(), 50);
+    if (!this.imagenInstantanea && this.trackGpx) {
+      this.intentarCargaInstantanea();
+      if (!this.imagenInstantanea) {
+        setTimeout(() => this.renderMiniMapa(), 50);
+      }
     }
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if ((changes['trackGpx'] && !changes['trackGpx'].isFirstChange()) ||
-        (changes['fullPage'] && !changes['fullPage'].isFirstChange())) {
-      setTimeout(() => this.renderMiniMapa(), 50);
+    if (changes['trackGpx'] || changes['fullPage'] || changes['transportMode']) {
+      this.intentarCargaInstantanea();
+      if (!this.imagenInstantanea && this.trackGpx) {
+        setTimeout(() => this.renderMiniMapa(), 50);
+      }
     }
+  }
+
+  private intentarCargaInstantanea(): void {
+    if (!this.trackGpx) return;
+    const cacheKey = `${this.trackGpx.length}_${this.trackGpx.slice(0, 100)}_${this.transportMode}_${this.fullPage}`;
+    if (MiniMapaGpxComponent.cacheMiniMapas.has(cacheKey)) {
+      this.imagenInstantanea = MiniMapaGpxComponent.cacheMiniMapas.get(cacheKey)!;
+      this.mapaListo = true;
+      return;
+    }
+
+    try {
+      const points = this.gpxService.parseGpx(this.trackGpx);
+      if (points && points.length > 1) {
+        const w = this.fullPage ? 420 : 320;
+        const h = this.fullPage ? 320 : 220;
+        const dataUrl = this.generarSnapshotCanvas(points, w, h);
+        if (dataUrl) {
+          MiniMapaGpxComponent.cacheMiniMapas.set(cacheKey, dataUrl);
+          this.imagenInstantanea = dataUrl;
+          this.mapaListo = true;
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ Error generando snapshot canvas de mini mapa:', e);
+    }
+  }
+
+  private obtenerColorTransporte(): string {
+    const m = (this.transportMode || '').toLowerCase();
+    if (m.includes('walk') || m.includes('andando') || m.includes('pie') || m.includes('caminar')) return '#10b981';
+    if (m.includes('boat') || m.includes('barco') || m.includes('ferry')) return '#06b6d4';
+    if (m.includes('plane') || m.includes('avion') || m.includes('vuelo')) return '#a855f7';
+    if (m.includes('train') || m.includes('tren')) return '#f59e0b';
+    if (m.includes('bicycle') || m.includes('bici') || m.includes('bike')) return '#84cc16';
+    return '#dc2626';
+  }
+
+  private generarSnapshotCanvas(points: GpxPoint[], width: number, height: number): string {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(300, width * 2);
+    canvas.height = Math.max(200, height * 2);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+    ctx.scale(2, 2);
+
+    const w = canvas.width / 2;
+    const h = canvas.height / 2;
+
+    // Fondo pergamino vintage elegante
+    ctx.fillStyle = '#f4ebd8';
+    ctx.fillRect(0, 0, w, h);
+
+    // Bounding box
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const p of points) {
+      if (p.lat < minLat) minLat = p.lat;
+      if (p.lat > maxLat) maxLat = p.lat;
+      if (p.lng < minLng) minLng = p.lng;
+      if (p.lng > maxLng) maxLng = p.lng;
+    }
+
+    const pad = 24;
+    const availW = w - 2 * pad;
+    const availH = h - 2 * pad;
+
+    const spanLat = Math.max(0.0001, maxLat - minLat);
+    const spanLng = Math.max(0.0001, maxLng - minLng);
+    const scale = Math.min(availW / spanLng, availH / spanLat);
+
+    const midLat = (minLat + maxLat) / 2;
+    const midLng = (minLng + maxLng) / 2;
+
+    const proyectar = (lat: number, lng: number) => ({
+      x: w / 2 + (lng - midLng) * scale,
+      y: h / 2 - (lat - midLat) * scale
+    });
+
+    // Sombra blanca de contraste de la ruta
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    points.forEach((p, idx) => {
+      const pt = proyectar(p.lat, p.lng);
+      if (idx === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.stroke();
+
+    // Línea de ruta coloreada según transporte
+    ctx.beginPath();
+    ctx.strokeStyle = this.obtenerColorTransporte();
+    ctx.lineWidth = 3.6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    points.forEach((p, idx) => {
+      const pt = proyectar(p.lat, p.lng);
+      if (idx === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.stroke();
+
+    // Marcador Inicio (Verde)
+    const ptIni = proyectar(points[0].lat, points[0].lng);
+    ctx.beginPath();
+    ctx.arc(ptIni.x, ptIni.y, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#16a34a';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Marcador Fin (Rojo)
+    const ptFin = proyectar(points[points.length - 1].lat, points[points.length - 1].lng);
+    ctx.beginPath();
+    ctx.arc(ptFin.x, ptFin.y, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#dc2626';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    return canvas.toDataURL('image/jpeg', 0.88);
   }
 
   getTransportIcon(): string {
@@ -150,6 +300,7 @@ export class MiniMapaGpxComponent implements OnInit, AfterViewInit, OnChanges, O
   private static cachedLeafletModule: any = null;
 
   private async renderMiniMapa(): Promise<void> {
+    if (this.imagenInstantanea) return;
     if (!this.trackGpx || !this.miniMapElement?.nativeElement) return;
 
     try {

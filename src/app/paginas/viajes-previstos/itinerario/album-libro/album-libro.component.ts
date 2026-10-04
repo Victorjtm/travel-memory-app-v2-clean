@@ -4510,12 +4510,39 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           };
           contenidoItinerarios.push(paginaDescripcion);
 
-          // 2. Mapa específico del Itinerario a doble página
+          // 2. Mapa específico del Itinerario a doble página con puntos clave y pre-renderizado instantáneo
+          const tituloMapaItin = `MAPA: ${tituloItin}`;
+          const descMapaItin = descItin;
+          const puntosClaveItin: PuntoClaveMapa[] = [];
+          if (infoItinGpx.puntos && infoItinGpx.puntos.length > 0) {
+            const pt0 = infoItinGpx.puntos[0];
+            const destinosItin = (itinerarioCompleto?.destinosPorDia || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+            const origenNom = destinosItin[0] || itinerario.nombre || 'Salida';
+            puntosClaveItin.push({
+              numero: 1,
+              nombre: origenNom,
+              lat: pt0.lat,
+              lng: pt0.lng,
+              color: '#10b981'
+            });
+            if (infoItinGpx.puntos.length > 5) {
+              const ptN = infoItinGpx.puntos[infoItinGpx.puntos.length - 1];
+              const destNom = destinosItin.length > 1 ? destinosItin[destinosItin.length - 1] : (itinerarioCompleto?.descripcionGeneral || 'Llegada');
+              puntosClaveItin.push({
+                numero: 2,
+                nombre: destNom,
+                lat: ptN.lat,
+                lng: ptN.lng,
+                color: '#ef4444'
+              });
+            }
+          }
+
           const paginaMapaItin: PaginaMedia = {
             archivo: {} as Archivo,
             url: '',
-            titulo: `MAPA: ${tituloItin}`,
-            descripcion: descItin,
+            titulo: tituloMapaItin,
+            descripcion: descMapaItin,
             fecha: fechaItin,
             tipoMedia: 'mapa-animado',
             mimeType: '',
@@ -4526,9 +4553,44 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             trackGpx: infoItinGpx.gpx,
             distanciaTramoKm: infoItinGpx.distanciaKm,
             itinerarioId: itinerario.id,
-            multimedia: fotosItinerario
+            multimedia: fotosItinerario,
+            puntosClave: puntosClaveItin
           };
           contenidoItinerarios.push(paginaMapaItin);
+
+          // Consulta de pre-caché y generación de snapshot del mapa de itinerario para carga instantánea sin frames
+          const idViajeActual = this.infoViaje?.id || this.contextoViaje?.viajeId;
+          if (idViajeActual && itinerario.id) {
+            this.routeVideoGeneratorService.verificarSnapshotExiste(idViajeActual, 'itinerario', itinerario.id)
+              .then(async (snap) => {
+                if (snap.exists && snap.url) {
+                  const fullUrl = snap.url.startsWith('http') ? snap.url : `${environment.apiUrl || 'http://localhost:3000'}${snap.url}`;
+                  paginaMapaItin.urlMapaRenderizado = fullUrl;
+                  paginaMapaItin.url = fullUrl;
+                  this.cdr.detectChanges();
+                } else if (infoItinGpx.gpx) {
+                  try {
+                    const urlGen = await this.routeVideoGeneratorService.generarYSubirSnapshotMapa(
+                      idViajeActual,
+                      infoItinGpx.gpx,
+                      tituloMapaItin,
+                      descMapaItin,
+                      infoItinGpx.distanciaKm,
+                      'itinerario',
+                      itinerario.id,
+                      puntosClaveItin
+                    );
+                    const fullUrl = urlGen.startsWith('http') ? urlGen : `${environment.apiUrl || 'http://localhost:3000'}${urlGen}`;
+                    paginaMapaItin.urlMapaRenderizado = fullUrl;
+                    paginaMapaItin.url = fullUrl;
+                    this.cdr.detectChanges();
+                  } catch (e) {
+                    console.warn(`⚠️ No se pudo generar snapshot de mapa itinerario ${itinerario.id}:`, e);
+                  }
+                }
+              })
+              .catch((e) => console.warn(`⚠️ Error al verificar snapshot de itinerario ${itinerario.id}:`, e));
+          }
 
           // 3. Fotos ordenadas del itinerario
           contenidoItinerarios.push(...fotosItinerario);
