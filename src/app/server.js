@@ -467,7 +467,11 @@ function migrarColumnasUbicacionViajes() {
       { name: 'lng_representativa', sqlType: 'REAL' },
       { name: 'metodo_calculo', sqlType: 'TEXT' },
       { name: 'estado', sqlType: "TEXT DEFAULT 'planificado'" },
-      { name: 'en_viaje_de', sqlType: "TEXT DEFAULT '🏖️ Vacaciones'" }
+      { name: 'en_viaje_de', sqlType: "TEXT DEFAULT '🏖️ Vacaciones'" },
+      { name: 'desglose_transporte', sqlType: "TEXT DEFAULT '[]'" },
+      { name: 'total_segundos_caminando', sqlType: 'INTEGER DEFAULT 0' },
+      { name: 'total_pasos_caminando', sqlType: 'INTEGER DEFAULT 0' },
+      { name: 'total_km_caminando', sqlType: 'REAL DEFAULT 0' }
     ];
 
     for (const columna of columnasObjetivo) {
@@ -2494,6 +2498,253 @@ async function recalcularEstadisticasActividad(actividadId) {
   }
 }
 
+const MODE_META = {
+  walking: { nombre: 'A pie', icono: 'fa-solid fa-person-walking', emoji: '🚶', esCaminar: true },
+  walk: { nombre: 'A pie', icono: 'fa-solid fa-person-walking', emoji: '🚶', esCaminar: true },
+  running: { nombre: 'Corriendo', icono: 'fa-solid fa-person-running', emoji: '🏃', esCaminar: true },
+  senderismo: { nombre: 'Senderismo', icono: 'fa-solid fa-person-hiking', emoji: '🥾', esCaminar: true },
+  driving: { nombre: 'Coche', icono: 'fa-solid fa-car', emoji: '🚗', esCaminar: false },
+  car: { nombre: 'Coche', icono: 'fa-solid fa-car', emoji: '🚗', esCaminar: false },
+  boat: { nombre: 'Barco', icono: 'fa-solid fa-ship', emoji: '🚢', esCaminar: false },
+  ship: { nombre: 'Barco', icono: 'fa-solid fa-ship', emoji: '🚢', esCaminar: false },
+  bus: { nombre: 'Autobús', icono: 'fa-solid fa-bus', emoji: '🚌', esCaminar: false },
+  train: { nombre: 'Tren', icono: 'fa-solid fa-train', emoji: '🚆', esCaminar: false },
+  plane: { nombre: 'Avión', icono: 'fa-solid fa-plane', emoji: '✈️', esCaminar: false },
+  flight: { nombre: 'Avión', icono: 'fa-solid fa-plane', emoji: '✈️', esCaminar: false },
+  cycling: { nombre: 'Bicicleta', icono: 'fa-solid fa-bicycle', emoji: '🚲', esCaminar: false },
+  bike: { nombre: 'Bicicleta', icono: 'fa-solid fa-bicycle', emoji: '🚲', esCaminar: false }
+};
+
+function normalizarModoTransporte(rawMode, velocidadMedia) {
+  if (!rawMode || rawMode === 'none' || rawMode === 'unknown') {
+    if (velocidadMedia && velocidadMedia > 18) return 'driving';
+    if (velocidadMedia && velocidadMedia > 0 && velocidadMedia <= 12) return 'walking';
+    return 'walking';
+  }
+  const clean = String(rawMode).toLowerCase().trim();
+  if (clean.includes('coche') || clean.includes('car') || clean.includes('driv') || clean.includes('auto')) return 'driving';
+  if (clean.includes('barco') || clean.includes('boat') || clean.includes('ship') || clean.includes('ferry') || clean.includes('cruc')) return 'boat';
+  if (clean.includes('bus') || clean.includes('autobus') || clean.includes('autobús')) return 'bus';
+  if (clean.includes('tren') || clean.includes('train')) return 'train';
+  if (clean.includes('avion') || clean.includes('avión') || clean.includes('plane') || clean.includes('flight')) return 'plane';
+  if (clean.includes('bici') || clean.includes('bike') || clean.includes('cycl')) return 'cycling';
+  if (clean.includes('run') || clean.includes('corr')) return 'running';
+  if (clean.includes('walk') || clean.includes('camin') || clean.includes('send')) return 'walking';
+  return clean;
+}
+
+/**
+ * 🚀 Calcula el desglose completo de kilómetros por medio de transporte (coche, barco, bus, a pie)
+ * y extrae estrictamente las métricas activas a pie (segundos y pasos).
+ */
+async function calcularEstadisticasCompletasViaje(viajeId) {
+  if (!viajeId) return null;
+  const vId = parseInt(viajeId, 10);
+  if (isNaN(vId) || vId <= 0) return null;
+
+  try {
+    const acts = await dbQuery.all('SELECT * FROM actividades WHERE viajePrevistoId = ?', [vId]);
+    if (!acts || acts.length === 0) {
+      return {
+        totalKm: 0,
+        desgloseTransporte: [],
+        totalSegundosCaminando: 0,
+        totalPasosCaminando: 0,
+        totalKmCaminando: 0
+      };
+    }
+
+    function calcDistM(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const phi1 = (lat1 * Math.PI) / 180;
+      const phi2 = (lat2 * Math.PI) / 180;
+      const dphi = ((lat2 - lat1) * Math.PI) / 180;
+      const dlam = ((lon2 - lon1) * Math.PI) / 180;
+      const a = Math.sin(dphi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlam / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function resolveAnchorIdx(anchor, ptsList) {
+      if (!ptsList || ptsList.length === 0) return -1;
+      if (anchor && anchor.time) {
+        const aTime = new Date(anchor.time).getTime();
+        let bestIdx = -1, minDiff = Infinity;
+        for (let i = 0; i < ptsList.length; i++) {
+          if (ptsList[i].time) {
+            const diff = Math.abs(new Date(ptsList[i].time).getTime() - aTime);
+            if (diff < minDiff) { minDiff = diff; bestIdx = i; }
+          }
+        }
+        if (bestIdx !== -1 && minDiff < 2000) return bestIdx;
+      }
+      let bestIdx = -1, minD = Infinity;
+      for (let i = 0; i < ptsList.length; i++) {
+        const d = Math.abs(ptsList[i].lat - anchor.lat) + Math.abs(ptsList[i].lng - anchor.lng);
+        if (d < minD) { minD = d; bestIdx = i; }
+      }
+      return minD < 0.0002 ? bestIdx : -1;
+    }
+
+    const modosMetros = {};
+    let totalKmSum = 0;
+    let segsCaminando = 0;
+    let metrosCaminando = 0;
+    let pasosCaminando = 0;
+
+    for (const act of acts) {
+      totalKmSum += (act.distanciaKm || 0);
+
+      const segRows = await dbQuery.all('SELECT * FROM segments WHERE actividadId = ? ORDER BY segmentOrder ASC', [act.id]);
+
+      let replayed = [];
+      if (segRows && segRows.length > 0) {
+        for (const seg of segRows) {
+          let pts = [];
+          try { pts = JSON.parse(seg.points_json || '[]'); } catch (e) {}
+          if (!pts || pts.length === 0) continue;
+          if (seg.source === 'original' || seg.source === 'user-append') {
+            replayed.push(...pts);
+          } else if (seg.source === 'user-prepend') {
+            replayed.unshift(...pts);
+          } else if (seg.source === 'user-override' || seg.source === 'user-insert') {
+            const idxA = resolveAnchorIdx(pts[0], replayed);
+            const idxB = resolveAnchorIdx(pts[pts.length - 1], replayed);
+            if (idxA !== -1 && idxB !== -1) {
+              replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1, ...pts);
+            }
+          } else if (seg.source === 'user-delete') {
+            const idxA = resolveAnchorIdx(pts[0], replayed);
+            const idxB = resolveAnchorIdx(pts[1] || pts[pts.length - 1], replayed);
+            if (idxA !== -1 && idxB !== -1) {
+              replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1);
+            }
+          }
+        }
+      }
+
+      if (replayed.length > 1) {
+        let curMode = normalizarModoTransporte(replayed[0]?.mode, act.velocidadMediaKmh);
+        let actWalkDistM = 0;
+        let actWalkSecs = 0;
+
+        for (let i = 1; i < replayed.length; i++) {
+          const d = calcDistM(replayed[i - 1].lat, replayed[i - 1].lng, replayed[i].lat, replayed[i].lng);
+          let m = normalizarModoTransporte(replayed[i].mode, act.velocidadMediaKmh);
+          if (!m || m === 'none') m = curMode;
+          modosMetros[m] = (modosMetros[m] || 0) + d;
+
+          let dt = 0;
+          if (replayed[i - 1].time && replayed[i].time) {
+            dt = Math.max(0, (new Date(replayed[i].time).getTime() - new Date(replayed[i - 1].time).getTime()) / 1000);
+          }
+
+          const esWalk = MODE_META[m]?.esCaminar ?? (m === 'walking');
+          if (esWalk) {
+            actWalkDistM += d;
+            actWalkSecs += dt;
+          }
+          curMode = m;
+        }
+
+        metrosCaminando += actWalkDistM;
+        segsCaminando += actWalkSecs;
+        if (actWalkDistM > 0) {
+          if (curMode === 'walking' && act.pasosEstimados > 0 && (act.pasosEstimados / (actWalkDistM / 1000)) < 2500) {
+            pasosCaminando += act.pasosEstimados;
+          } else {
+            pasosCaminando += Math.round(actWalkDistM / 0.75);
+          }
+        }
+      } else {
+        // Actividad sin segmentos detallados
+        const m = normalizarModoTransporte(act.perfilTransporte, act.velocidadMediaKmh);
+        const dM = (act.distanciaMetros && act.distanciaMetros > 0) ? act.distanciaMetros : ((act.distanciaKm || 0) * 1000);
+        modosMetros[m] = (modosMetros[m] || 0) + dM;
+
+        const esWalk = MODE_META[m]?.esCaminar ?? (m === 'walking' || (!act.perfilTransporte && act.velocidadMediaKmh < 12));
+        if (esWalk) {
+          metrosCaminando += dM;
+          segsCaminando += (act.duracionSegundos || 0);
+          const ratio = dM > 0 ? (act.pasosEstimados || 0) / (dM / 1000) : 0;
+          if (act.pasosEstimados > 0 && ratio > 200 && ratio < 2500) {
+            pasosCaminando += act.pasosEstimados;
+          } else if (dM > 0) {
+            pasosCaminando += Math.round(dM / 0.75);
+          }
+        }
+      }
+    }
+
+    const desgloseList = [];
+    for (const [modeKey, meters] of Object.entries(modosMetros)) {
+      const km = parseFloat((meters / 1000).toFixed(2));
+      if (km > 0.05) {
+        const meta = MODE_META[modeKey] || {
+          nombre: modeKey.charAt(0).toUpperCase() + modeKey.slice(1),
+          icono: 'fa-solid fa-route',
+          emoji: '🛣️'
+        };
+        desgloseList.push({
+          tipo: modeKey,
+          nombre: meta.nombre,
+          icono: meta.icono,
+          emoji: meta.emoji,
+          distanciaKm: km,
+          distanciaMetros: Math.round(meters)
+        });
+      }
+    }
+
+    desgloseList.sort((a, b) => b.distanciaKm - a.distanciaKm);
+
+    const kmCaminando = parseFloat((metrosCaminando / 1000).toFixed(2));
+    const finalTotalKm = parseFloat(totalKmSum.toFixed(2));
+
+    return {
+      totalKm: finalTotalKm,
+      desgloseTransporte: desgloseList,
+      totalSegundosCaminando: Math.round(segsCaminando),
+      totalPasosCaminando: pasosCaminando,
+      totalKmCaminando: kmCaminando
+    };
+  } catch (err) {
+    console.error(`❌ Error calculando estadísticas completas del viaje ${viajeId}:`, err.message);
+    return null;
+  }
+}
+
+/**
+ * 💾 Actualiza y persiste en la base de datos las estadísticas totales de un viaje
+ */
+async function actualizarEstadisticasTotalesViaje(viajeId) {
+  if (!viajeId) return null;
+  const stats = await calcularEstadisticasCompletasViaje(viajeId);
+  if (!stats) return null;
+
+  try {
+    await dbQuery.run(`
+      UPDATE viajes SET 
+        desglose_transporte = ?,
+        total_segundos_caminando = ?,
+        total_pasos_caminando = ?,
+        total_km_caminando = ?
+      WHERE id = ?
+    `, [
+      JSON.stringify(stats.desgloseTransporte),
+      stats.totalSegundosCaminando,
+      stats.totalPasosCaminando,
+      stats.totalKmCaminando,
+      viajeId
+    ]);
+
+    console.log(`✅ [STATS VIAJE] Viaje #${viajeId}: Total ${stats.totalKm} km | Caminando: ${stats.totalKmCaminando} km, ${stats.totalPasosCaminando} pasos, ${Math.floor(stats.totalSegundosCaminando/3600)}h ${Math.floor((stats.totalSegundosCaminando%3600)/60)}m`);
+    return stats;
+  } catch (err) {
+    console.error(`❌ Error persistiendo estadísticas del viaje ${viajeId}:`, err.message);
+    return null;
+  }
+}
+
 // Sincronizar automáticamente estadísticas de viajes y actividades importados en segundo plano
 setTimeout(async () => {
   try {
@@ -2507,10 +2758,16 @@ setTimeout(async () => {
     console.warn('⚠️ Error sincronizando actividades con segmentos:', e.message);
   }
 
-  db.all(`SELECT id FROM viajes WHERE descripcion LIKE '%Tracking importado%'`, (err, rows) => {
+  db.all(`SELECT id FROM viajes`, async (err, rows) => {
     if (rows && rows.length > 0) {
-      console.log(`🔄 [INICIO] Sincronizando estadísticas totales para ${rows.length} viajes con tracking importado...`);
-      rows.forEach(r => actualizarEstadisticasTotalesViaje(r.id));
+      console.log(`🔄 [INICIO] Sincronizando estadísticas totales para ${rows.length} viajes...`);
+      for (const r of rows) {
+        try {
+          await actualizarEstadisticasTotalesViaje(r.id);
+        } catch (errViaje) {
+          console.error(`Error actualizando stats viaje ${r.id}:`, errViaje.message);
+        }
+      }
     }
   });
 }, 3000);
@@ -2527,8 +2784,8 @@ app.get('/viajes', (req, res) => {
        WHERE a.tipo = 'foto' AND act.viajePrevistoId = v.id 
        ORDER BY RANDOM() LIMIT 1) AS foto_fallback,
       (SELECT COALESCE(SUM(act.distanciaKm), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_km,
-      (SELECT COALESCE(SUM(act.duracionSegundos), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_segundos,
-      (SELECT COALESCE(SUM(act.pasosEstimados), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_pasos,
+      (SELECT COALESCE(SUM(act.duracionSegundos), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_segundos_raw,
+      (SELECT COALESCE(SUM(act.pasosEstimados), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_pasos_raw,
       (SELECT COUNT(it.id) FROM ItinerarioGeneral it WHERE it.viajePrevistoId = v.id) AS total_itinerarios
     FROM viajes v
   `;
@@ -2544,12 +2801,40 @@ app.get('/viajes', (req, res) => {
       const fallbackUrl = viaje.foto_fallback ? `${req.protocol}://${req.get('host')}/uploads/${viaje.foto_fallback}` : null;
       const imagenUrl = viaje.imagen ? `${req.protocol}://${req.get('host')}/uploads/${viaje.imagen}` : fallbackUrl;
 
+      let desglose = [];
+      try {
+        if (typeof viaje.desglose_transporte === 'string') {
+          desglose = JSON.parse(viaje.desglose_transporte || '[]');
+        } else if (Array.isArray(viaje.desglose_transporte)) {
+          desglose = viaje.desglose_transporte;
+        }
+      } catch (e) {
+        desglose = [];
+      }
+
+      // Pasos caminando: dar prioridad absoluta a total_pasos_caminando
+      const pasosCaminando = (viaje.total_pasos_caminando !== undefined && viaje.total_pasos_caminando !== null && viaje.total_pasos_caminando > 0)
+        ? viaje.total_pasos_caminando
+        : ((viaje.total_km_caminando !== undefined && viaje.total_km_caminando > 0)
+            ? Math.round((viaje.total_km_caminando * 1000) / 0.75)
+            : (viaje.total_km > 0 && desglose.length === 0 ? viaje.total_pasos_raw : 0));
+
+      const segundosCaminando = (viaje.total_segundos_caminando !== undefined && viaje.total_segundos_caminando !== null && viaje.total_segundos_caminando > 0)
+        ? viaje.total_segundos_caminando
+        : ((viaje.total_km > 0 && desglose.length === 0) ? viaje.total_segundos_raw : 0);
+
       return {
         ...viaje,
         en_viaje_de: viaje.en_viaje_de || '🏖️ Vacaciones',
         imagen_url: imagenUrl,
         foto_fallback_url: fallbackUrl,
-        audio_url: viaje.audio ? `${req.protocol}://${req.get('host')}/uploads/${viaje.audio}` : null
+        audio_url: viaje.audio ? `${req.protocol}://${req.get('host')}/uploads/${viaje.audio}` : null,
+        desglose_transporte: desglose,
+        total_pasos: pasosCaminando,
+        total_segundos: segundosCaminando,
+        total_pasos_caminando: pasosCaminando,
+        total_segundos_caminando: segundosCaminando,
+        total_km_caminando: viaje.total_km_caminando || 0
       };
     });
 
@@ -2561,7 +2846,7 @@ app.get('/viajes', (req, res) => {
 app.get('/viajes/:id', async (req, res) => {
   const { id } = req.params;
 
-  // Auto-sincronizar estadísticas si es un viaje importado
+  // Auto-sincronizar estadísticas si no las tiene o si es consultado
   try {
     await actualizarEstadisticasTotalesViaje(id);
   } catch (e) {
@@ -2576,8 +2861,8 @@ app.get('/viajes/:id', async (req, res) => {
        WHERE a.tipo = 'foto' AND act.viajePrevistoId = v.id 
        ORDER BY RANDOM() LIMIT 1) AS foto_fallback,
       (SELECT COALESCE(SUM(act.distanciaKm), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_km,
-      (SELECT COALESCE(SUM(act.duracionSegundos), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_segundos,
-      (SELECT COALESCE(SUM(act.pasosEstimados), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_pasos,
+      (SELECT COALESCE(SUM(act.duracionSegundos), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_segundos_raw,
+      (SELECT COALESCE(SUM(act.pasosEstimados), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_pasos_raw,
       (SELECT COUNT(it.id) FROM ItinerarioGeneral it WHERE it.viajePrevistoId = v.id) AS total_itinerarios
     FROM viajes v WHERE v.id = ?
   `;
@@ -2595,12 +2880,39 @@ app.get('/viajes/:id', async (req, res) => {
     const fallbackUrl = row.foto_fallback ? `${req.protocol}://${req.get('host')}/uploads/${row.foto_fallback}` : null;
     const imagenUrl = row.imagen ? `${req.protocol}://${req.get('host')}/uploads/${row.imagen}` : fallbackUrl;
 
+    let desglose = [];
+    try {
+      if (typeof row.desglose_transporte === 'string') {
+        desglose = JSON.parse(row.desglose_transporte || '[]');
+      } else if (Array.isArray(row.desglose_transporte)) {
+        desglose = row.desglose_transporte;
+      }
+    } catch (e) {
+      desglose = [];
+    }
+
+    const pasosCaminando = (row.total_pasos_caminando !== undefined && row.total_pasos_caminando !== null && row.total_pasos_caminando > 0)
+      ? row.total_pasos_caminando
+      : ((row.total_km_caminando !== undefined && row.total_km_caminando > 0)
+          ? Math.round((row.total_km_caminando * 1000) / 0.75)
+          : (row.total_km > 0 && desglose.length === 0 ? row.total_pasos_raw : 0));
+
+    const segundosCaminando = (row.total_segundos_caminando !== undefined && row.total_segundos_caminando !== null && row.total_segundos_caminando > 0)
+      ? row.total_segundos_caminando
+      : ((row.total_km > 0 && desglose.length === 0) ? row.total_segundos_raw : 0);
+
     const viajeConImagenUrl = {
       ...row,
       en_viaje_de: row.en_viaje_de || '🏖️ Vacaciones',
       imagen_url: imagenUrl,
       foto_fallback_url: fallbackUrl,
-      audio_url: row.audio ? `${req.protocol}://${req.get('host')}/uploads/${row.audio}` : null
+      audio_url: row.audio ? `${req.protocol}://${req.get('host')}/uploads/${row.audio}` : null,
+      desglose_transporte: desglose,
+      total_pasos: pasosCaminando,
+      total_segundos: segundosCaminando,
+      total_pasos_caminando: pasosCaminando,
+      total_segundos_caminando: segundosCaminando,
+      total_km_caminando: row.total_km_caminando || 0
     };
 
     res.json(viajeConImagenUrl);

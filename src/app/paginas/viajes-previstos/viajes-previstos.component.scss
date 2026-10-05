@@ -275,7 +275,7 @@
 .airbnb-card {
   background: #ffffff;
   border-radius: 22px;
-  overflow: hidden;
+  overflow: visible;
   border: 1.5px solid rgba(226, 232, 240, 0.85);
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
   cursor: pointer;
@@ -284,6 +284,10 @@
   padding: 12px;
   position: relative;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &.con-popover {
+    z-index: 35;
+  }
 
   &:hover {
     transform: translateY(-4px);
@@ -555,25 +559,33 @@
       }
     }
 
-    // ⚡ MÉTRICAS DE RENDIMIENTO (KILÓMETROS, TIEMPO, PASOS)
+    // ⚡ MÉTRICAS DE RENDIMIENTO (KILÓMETROS CON DESGLOSE, TIEMPO A PIE, PASOS A PIE)
     .card-metrics-grid {
       display: flex;
       flex-wrap: wrap;
+      align-items: center;
       gap: 7px;
       margin-top: 5px;
+
+      .metric-wrapper {
+        position: relative;
+        display: inline-flex;
+      }
 
       .metric-item {
         display: inline-flex;
         align-items: center;
-        gap: 5px;
-        padding: 4px 9px;
-        border-radius: 8px;
+        gap: 6px;
+        padding: 5px 10px;
+        border-radius: 9px;
         background: #f8fafc;
         border: 1px solid #e2e8f0;
         font-size: 0.8rem;
         font-weight: 700;
         color: #334155;
-        transition: background 0.2s;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        text-align: left;
+        outline: none;
 
         small {
           font-size: 0.72rem;
@@ -581,16 +593,182 @@
           color: #64748b;
         }
 
-        &.metric-km i {
-          color: #0284c7;
+        &.metric-km {
+          i.fa-route {
+            color: #0284c7;
+          }
+
+          &.con-desglose {
+            cursor: pointer;
+            padding-right: 7px;
+
+            &:hover, &.activo {
+              background: #f0f9ff;
+              border-color: #38bdf8;
+              box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
+            }
+          }
+
+          .badge-desglose-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 17px;
+            height: 17px;
+            border-radius: 50%;
+            background: rgba(2, 132, 199, 0.1);
+            color: #0284c7;
+            font-size: 0.62rem;
+            margin-left: 2px;
+            transition: all 0.22s ease;
+
+            i {
+              transition: transform 0.22s ease;
+              &.rotado {
+                transform: rotate(180deg);
+              }
+            }
+          }
         }
 
-        &.metric-time i {
-          color: #f59e0b;
+        &.metric-time {
+          i {
+            color: #f59e0b;
+          }
         }
 
-        &.metric-steps i {
-          color: #10b981;
+        &.metric-steps {
+          i {
+            color: #10b981;
+          }
+        }
+
+        .metric-tag-walking {
+          font-size: 0.65rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          padding: 1px 5px;
+          border-radius: 4px;
+          background: rgba(100, 116, 139, 0.1);
+          color: #475569;
+        }
+
+        &.metric-time .metric-tag-walking {
+          background: rgba(245, 158, 11, 0.12);
+          color: #b45309;
+        }
+
+        &.metric-steps .metric-tag-walking {
+          background: rgba(16, 185, 129, 0.12);
+          color: #047857;
+        }
+      }
+
+      // 🎈 DESPLEGABLE FLOTANTE DE DESGLOSE DE TRANSPORTE
+      .desglose-popover {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        min-width: 240px;
+        background: #ffffff;
+        border-radius: 12px;
+        border: 1px solid #cbd5e1;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+        padding: 10px 12px;
+        z-index: 50;
+        animation: popoverFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+        .popover-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding-bottom: 7px;
+          margin-bottom: 7px;
+          border-bottom: 1px solid #f1f5f9;
+
+          .popover-header-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            font-weight: 800;
+            color: #1e293b;
+
+            i {
+              color: #0284c7;
+              font-size: 0.76rem;
+            }
+          }
+
+          .btn-popover-close {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            font-size: 0.8rem;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            line-height: 1;
+            transition: all 0.15s;
+
+            &:hover {
+              color: #0f172a;
+              background: #f1f5f9;
+            }
+          }
+        }
+
+        .popover-items-list {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+
+          .popover-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 5px 8px;
+            border-radius: 7px;
+            background: #f8fafc;
+            transition: background 0.15s;
+
+            &:hover {
+              background: #f1f5f9;
+            }
+
+            .item-modo-col {
+              display: inline-flex;
+              align-items: center;
+              gap: 7px;
+
+              .item-emoji {
+                font-size: 0.95rem;
+                line-height: 1;
+              }
+
+              .item-nombre {
+                font-size: 0.8rem;
+                font-weight: 700;
+                color: #334155;
+              }
+            }
+
+            .item-km-col {
+              font-size: 0.82rem;
+              color: #0f172a;
+
+              strong {
+                font-weight: 800;
+              }
+
+              small {
+                font-size: 0.72rem;
+                color: #64748b;
+                margin-left: 2px;
+              }
+            }
+          }
         }
       }
     }
@@ -1368,5 +1546,16 @@
 
   .destinos-texto {
     max-width: 76vw;
+  }
+}
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }

@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, HostListener, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -29,6 +29,7 @@ export class ViajesPrevistosComponent implements OnInit {
   viajesPrevistos: any[] = [];
   rangosFechasPorViaje: { [viajeId: number]: any } = {};
   desplegablesAbiertos: { [viajeId: number]: boolean } = {};
+  desgloseAbiertoId: number | null = null;
 
   // ✨ Gestión de vistas (Airbnb Layout: Grid / Lineal + Modo fechas)
   vistaModo: 'viajes' | 'fechas' = 'viajes';
@@ -180,6 +181,34 @@ export class ViajesPrevistosComponent implements OnInit {
     this.viajeActivoId = null;
   }
 
+  // 🚗 Desglose interactivo de transporte por viaje
+  toggleDesgloseTransporte(viajeId: number, event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.desgloseAbiertoId = this.desgloseAbiertoId === viajeId ? null : viajeId;
+  }
+
+  cerrarDesglose(): void {
+    this.desgloseAbiertoId = null;
+  }
+
+  tieneDesgloseTransporte(viaje: any): boolean {
+    return Array.isArray(viaje.desglose_transporte) && viaje.desglose_transporte.length > 0;
+  }
+
+  formatearKm(val: number): string {
+    if (val === undefined || val === null || isNaN(val)) return '0,00';
+    return Number(val).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(): void {
+    if (this.desgloseAbiertoId !== null) {
+      this.desgloseAbiertoId = null;
+    }
+  }
+
   // 🖼️ Plan B: Fallback de imagen si no carga o no tiene foto
   onImageError(viaje: any): void {
     if (viaje.foto_fallback_url && viaje.imagen_url !== viaje.foto_fallback_url) {
@@ -209,20 +238,25 @@ export class ViajesPrevistosComponent implements OnInit {
 
   getDistanciaKm(viaje: any): string {
     if (viaje.total_km && viaje.total_km > 0) {
-      return viaje.total_km.toFixed(2);
+      return Number(viaje.total_km).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
     if (viaje.descripcion) {
-      const match = viaje.descripcion.match(/(\d+(?:\.\d+)?)\s*km/i);
+      const match = viaje.descripcion.match(/(\d+(?:[\.,]\d+)?)\s*km/i);
       if (match) return match[1];
     }
-    return '0.00';
+    return '0,00';
   }
 
   getDuracionViaje(viaje: any): string {
-    if (viaje.total_segundos && viaje.total_segundos > 0) {
-      const h = Math.floor(viaje.total_segundos / 3600);
-      const m = Math.floor((viaje.total_segundos % 3600) / 60);
-      const s = viaje.total_segundos % 60;
+    // Horas activas exclusivamente a pie
+    const segs = (viaje.total_segundos_caminando !== undefined && viaje.total_segundos_caminando !== null && viaje.total_segundos_caminando > 0)
+      ? viaje.total_segundos_caminando
+      : (viaje.total_segundos && viaje.total_segundos > 0 ? viaje.total_segundos : 0);
+
+    if (segs > 0) {
+      const h = Math.floor(segs / 3600);
+      const m = Math.floor((segs % 3600) / 60);
+      const s = segs % 60;
       return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }
     if (viaje.descripcion) {
@@ -233,6 +267,10 @@ export class ViajesPrevistosComponent implements OnInit {
   }
 
   getPasosViaje(viaje: any): string {
+    // Pasos registrados exclusivamente caminando
+    if (viaje.total_pasos_caminando !== undefined && viaje.total_pasos_caminando !== null && viaje.total_pasos_caminando > 0) {
+      return viaje.total_pasos_caminando.toLocaleString('es-ES');
+    }
     if (viaje.total_pasos && viaje.total_pasos > 0) {
       return viaje.total_pasos.toLocaleString('es-ES');
     }

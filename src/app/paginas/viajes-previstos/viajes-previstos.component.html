@@ -137,6 +137,7 @@
       *ngFor="let viaje of viajesPrevistos; index as i" 
       class="airbnb-card"
       [class.card-activa]="viajeActivoId === viaje.id"
+      [class.con-popover]="desgloseAbiertoId === viaje.id"
       (click)="toggleAccionesViaje(viaje.id, $event)">
       
       <!-- FOTO PRINCIPAL EN ALTA CALIDAD (CON PLAN B FALLBACK) -->
@@ -213,21 +214,65 @@
           </div>
         </div>
 
-        <!-- 4. Datos de rendimiento (Distancia, Tiempo y Pasos) -->
+        <!-- 4. Datos de rendimiento (Distancia con desglose interactivo, Tiempo a pie, Pasos a pie) -->
         <div class="card-metrics-grid">
-          <div class="metric-item metric-km" title="Distancia recorrida">
-            <i class="fa-solid fa-route"></i>
-            <span class="metric-val">{{ getDistanciaKm(viaje) }} <small>km</small></span>
+          <!-- KM con desglose desplegable si tiene medios -->
+          <div class="metric-wrapper metric-km-wrapper">
+            <button 
+              type="button" 
+              class="metric-item metric-km" 
+              [class.con-desglose]="tieneDesgloseTransporte(viaje)"
+              [class.activo]="desgloseAbiertoId === viaje.id"
+              (click)="toggleDesgloseTransporte(viaje.id, $event)"
+              [title]="tieneDesgloseTransporte(viaje) ? 'Pulsar para ver desglose por medio de transporte' : 'Distancia total recorrida'">
+              <i class="fa-solid fa-route"></i>
+              <span class="metric-val">{{ getDistanciaKm(viaje) }} <small>km</small></span>
+              <span *ngIf="tieneDesgloseTransporte(viaje)" class="badge-desglose-toggle">
+                <i class="fa-solid fa-chevron-down" [class.rotado]="desgloseAbiertoId === viaje.id"></i>
+              </span>
+            </button>
+
+            <!-- Desplegable flotante elegante con los medios de transporte -->
+            <div 
+              class="desglose-popover" 
+              *ngIf="desgloseAbiertoId === viaje.id" 
+              (click)="$event.stopPropagation()">
+              <div class="popover-header">
+                <div class="popover-header-title">
+                  <i class="fa-solid fa-layer-group"></i>
+                  <span>Medios de transporte</span>
+                </div>
+                <button type="button" class="btn-popover-close" (click)="cerrarDesglose()" aria-label="Cerrar desglose">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
+              <div class="popover-items-list">
+                <div class="popover-item" *ngFor="let item of viaje.desglose_transporte">
+                  <div class="item-modo-col">
+                    <span class="item-emoji">{{ item.emoji || '🛣️' }}</span>
+                    <span class="item-nombre">{{ item.nombre }}</span>
+                  </div>
+                  <div class="item-km-col">
+                    <strong>{{ formatearKm(item.distanciaKm) }}</strong> <small>km</small>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div class="metric-item metric-time" title="Tiempo empleado">
-            <i class="fa-solid fa-stopwatch"></i>
+          <!-- Tiempo activo caminando -->
+          <div class="metric-item metric-time" title="Tiempo activo caminando (excluye traslados en vehículos)">
+            <i class="fa-solid fa-person-walking"></i>
             <span class="metric-val">{{ getDuracionViaje(viaje) }}</span>
+            <span class="metric-tag-walking">a pie</span>
           </div>
 
-          <div class="metric-item metric-steps" title="Número de pasos totales">
+          <!-- Pasos estrictamente a pie -->
+          <div class="metric-item metric-steps" title="Pasos registrados caminando (excluye trayectos en vehículos)">
             <i class="fa-solid fa-shoe-prints"></i>
-            <span class="metric-val">{{ getPasosViaje(viaje) }} <small>pasos</small></span>
+            <span class="metric-val">{{ getPasosViaje(viaje) }}</span>
+            <span class="metric-tag-walking">pasos</span>
           </div>
         </div>
 
