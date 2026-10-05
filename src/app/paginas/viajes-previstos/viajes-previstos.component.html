@@ -232,22 +232,57 @@
               </span>
             </button>
 
-            <!-- Desplegable flotante elegante con los medios de transporte -->
+            <!-- Desplegable flotante elegante con los medios de transporte y actividades -->
             <div 
               class="desglose-popover" 
               *ngIf="desgloseAbiertoId === viaje.id" 
               (click)="$event.stopPropagation()">
               <div class="popover-header">
                 <div class="popover-header-title">
-                  <i class="fa-solid fa-layer-group"></i>
-                  <span>Medios de transporte</span>
+                  <i class="fa-solid fa-chart-pie"></i>
+                  <span>Desglose de {{ getDistanciaKm(viaje) }} km</span>
                 </div>
                 <button type="button" class="btn-popover-close" (click)="cerrarDesglose()" aria-label="Cerrar desglose">
                   <i class="fa-solid fa-xmark"></i>
                 </button>
               </div>
 
-              <div class="popover-items-list">
+              <!-- Pestañas de alternancia si hay múltiples actividades y transporte -->
+              <div class="popover-tabs" *ngIf="viaje.desglose_actividades?.length > 1 && viaje.desglose_transporte?.length > 0">
+                <button 
+                  type="button" 
+                  class="popover-tab-btn" 
+                  [class.active]="getPopoverTab(viaje) === 'actividades'"
+                  (click)="setPopoverTab(viaje.id, 'actividades', $event)">
+                  <i class="fa-solid fa-list-check"></i> Actividades ({{ viaje.desglose_actividades.length }})
+                </button>
+                <button 
+                  type="button" 
+                  class="popover-tab-btn" 
+                  [class.active]="getPopoverTab(viaje) === 'transporte'"
+                  (click)="setPopoverTab(viaje.id, 'transporte', $event)">
+                  <i class="fa-solid fa-layer-group"></i> Transporte
+                </button>
+              </div>
+
+              <!-- 1. VISTA ACTIVIDADES INDIVIDUALES -->
+              <div class="popover-items-list" *ngIf="getPopoverTab(viaje) === 'actividades' && viaje.desglose_actividades?.length > 0">
+                <div class="popover-item item-actividad" *ngFor="let act of viaje.desglose_actividades">
+                  <div class="item-modo-col">
+                    <span class="item-emoji">{{ act.emoji || '🚶' }}</span>
+                    <div class="item-act-info">
+                      <span class="item-nombre">{{ act.nombre }}</span>
+                      <small class="item-subinfo">{{ act.duracionFormateada }} · {{ act.pasos?.toLocaleString('es-ES') }} pasos</small>
+                    </div>
+                  </div>
+                  <div class="item-km-col">
+                    <strong>{{ formatearKm(act.distanciaKm) }}</strong> <small>km</small>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. VISTA MEDIOS DE TRANSPORTE -->
+              <div class="popover-items-list" *ngIf="getPopoverTab(viaje) === 'transporte' || !viaje.desglose_actividades || viaje.desglose_actividades.length <= 1">
                 <div class="popover-item" *ngFor="let item of viaje.desglose_transporte">
                   <div class="item-modo-col">
                     <span class="item-emoji">{{ item.emoji || '🛣️' }}</span>

@@ -181,7 +181,9 @@ export class ViajesPrevistosComponent implements OnInit {
     this.viajeActivoId = null;
   }
 
-  // 🚗 Desglose interactivo de transporte por viaje
+  // 🚗 Desglose interactivo de transporte y actividades por viaje
+  popoverTabPorViaje: { [viajeId: number]: 'transporte' | 'actividades' } = {};
+
   toggleDesgloseTransporte(viajeId: number, event?: Event): void {
     if (event) {
       event.stopPropagation();
@@ -194,7 +196,29 @@ export class ViajesPrevistosComponent implements OnInit {
   }
 
   tieneDesgloseTransporte(viaje: any): boolean {
-    return Array.isArray(viaje.desglose_transporte) && viaje.desglose_transporte.length > 0;
+    const tieneTransportes = Array.isArray(viaje.desglose_transporte) && viaje.desglose_transporte.length > 0;
+    const tieneActividades = Array.isArray(viaje.desglose_actividades) && viaje.desglose_actividades.length > 1;
+    return tieneTransportes || tieneActividades;
+  }
+
+  getPopoverTab(viaje: any): 'transporte' | 'actividades' {
+    if (this.popoverTabPorViaje[viaje.id]) {
+      return this.popoverTabPorViaje[viaje.id];
+    }
+    // Si tiene múltiples actividades y pocos o un solo medio de transporte, priorizar actividades
+    if (viaje.desglose_actividades && viaje.desglose_actividades.length > 1) {
+      if (!viaje.desglose_transporte || viaje.desglose_transporte.length <= 1) {
+        return 'actividades';
+      }
+    }
+    return 'transporte';
+  }
+
+  setPopoverTab(viajeId: number, tab: 'transporte' | 'actividades', event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.popoverTabPorViaje[viajeId] = tab;
   }
 
   formatearKm(val: number): string {
