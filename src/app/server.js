@@ -466,7 +466,8 @@ function migrarColumnasUbicacionViajes() {
       { name: 'lat_representativa', sqlType: 'REAL' },
       { name: 'lng_representativa', sqlType: 'REAL' },
       { name: 'metodo_calculo', sqlType: 'TEXT' },
-      { name: 'estado', sqlType: "TEXT DEFAULT 'planificado'" }
+      { name: 'estado', sqlType: "TEXT DEFAULT 'planificado'" },
+      { name: 'en_viaje_de', sqlType: "TEXT DEFAULT '🏖️ Vacaciones'" }
     ];
 
     for (const columna of columnasObjetivo) {
@@ -2518,18 +2519,39 @@ console.log('Registrando rutas de viajes...');
 
 // Ruta para obtener todos los viajes
 app.get('/viajes', (req, res) => {
-  db.all('SELECT * FROM viajes', [], (err, rows) => {
+  const sql = `
+    SELECT 
+      v.*,
+      (SELECT a.rutaArchivo FROM archivos a 
+       JOIN actividades act ON a.actividadId = act.id 
+       WHERE a.tipo = 'foto' AND act.viajePrevistoId = v.id 
+       ORDER BY RANDOM() LIMIT 1) AS foto_fallback,
+      (SELECT COALESCE(SUM(act.distanciaKm), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_km,
+      (SELECT COALESCE(SUM(act.duracionSegundos), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_segundos,
+      (SELECT COALESCE(SUM(act.pasosEstimados), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_pasos,
+      (SELECT COUNT(it.id) FROM ItinerarioGeneral it WHERE it.viajePrevistoId = v.id) AS total_itinerarios
+    FROM viajes v
+  `;
+
+  db.all(sql, [], (err, rows) => {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
     }
 
-    // Agregar URL completa para las imágenes y audios
-    const viajesConImagenUrl = rows.map(viaje => ({
-      ...viaje,
-      imagen_url: viaje.imagen ? `${req.protocol}://${req.get('host')}/uploads/${viaje.imagen}` : null,
-      audio_url: viaje.audio ? `${req.protocol}://${req.get('host')}/uploads/${viaje.audio}` : null
-    }));
+    // Agregar URL completa para las imágenes y audios + Plan B foto aleatoria
+    const viajesConImagenUrl = rows.map(viaje => {
+      const fallbackUrl = viaje.foto_fallback ? `${req.protocol}://${req.get('host')}/uploads/${viaje.foto_fallback}` : null;
+      const imagenUrl = viaje.imagen ? `${req.protocol}://${req.get('host')}/uploads/${viaje.imagen}` : fallbackUrl;
+
+      return {
+        ...viaje,
+        en_viaje_de: viaje.en_viaje_de || '🏖️ Vacaciones',
+        imagen_url: imagenUrl,
+        foto_fallback_url: fallbackUrl,
+        audio_url: viaje.audio ? `${req.protocol}://${req.get('host')}/uploads/${viaje.audio}` : null
+      };
+    });
 
     res.json(viajesConImagenUrl);
   });
@@ -2546,7 +2568,21 @@ app.get('/viajes/:id', async (req, res) => {
     console.warn('⚠️ Error al auto-sincronizar estadísticas en /viajes/:id:', e);
   }
 
-  db.get('SELECT * FROM viajes WHERE id = ?', [id], (err, row) => {
+  const sql = `
+    SELECT 
+      v.*,
+      (SELECT a.rutaArchivo FROM archivos a 
+       JOIN actividades act ON a.actividadId = act.id 
+       WHERE a.tipo = 'foto' AND act.viajePrevistoId = v.id 
+       ORDER BY RANDOM() LIMIT 1) AS foto_fallback,
+      (SELECT COALESCE(SUM(act.distanciaKm), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_km,
+      (SELECT COALESCE(SUM(act.duracionSegundos), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_segundos,
+      (SELECT COALESCE(SUM(act.pasosEstimados), 0) FROM actividades act WHERE act.viajePrevistoId = v.id) AS total_pasos,
+      (SELECT COUNT(it.id) FROM ItinerarioGeneral it WHERE it.viajePrevistoId = v.id) AS total_itinerarios
+    FROM viajes v WHERE v.id = ?
+  `;
+
+  db.get(sql, [id], (err, row) => {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
@@ -2556,10 +2592,14 @@ app.get('/viajes/:id', async (req, res) => {
       return;
     }
 
-    // Agregar URL completa de la imagen y audio
+    const fallbackUrl = row.foto_fallback ? `${req.protocol}://${req.get('host')}/uploads/${row.foto_fallback}` : null;
+    const imagenUrl = row.imagen ? `${req.protocol}://${req.get('host')}/uploads/${row.imagen}` : fallbackUrl;
+
     const viajeConImagenUrl = {
       ...row,
-      imagen_url: row.imagen ? `${req.protocol}://${req.get('host')}/uploads/${row.imagen}` : null,
+      en_viaje_de: row.en_viaje_de || '🏖️ Vacaciones',
+      imagen_url: imagenUrl,
+      foto_fallback_url: fallbackUrl,
       audio_url: row.audio ? `${req.protocol}://${req.get('host')}/uploads/${row.audio}` : null
     };
 
@@ -2649,17 +2689,18 @@ app.get('/viajes/:id/rangos-fechas', (req, res) => {
 
 // Ruta para agregar un nuevo viaje
 app.post('/viajes', upload.fields([{ name: 'imagen', maxCount: 1 }, { name: 'audio', maxCount: 1 }]), (req, res) => {
-  const { nombre, destino, fecha_inicio, fecha_fin, descripcion } = req.body;
+  const { nombre, destino, fecha_inicio, fecha_fin, descripcion, en_viaje_de } = req.body;
   const imagen = req.files?.imagen ? req.files.imagen[0].filename : null;
   const audio = req.files?.audio ? req.files.audio[0].filename : null;
+  const motivo = en_viaje_de || '🏖️ Vacaciones';
 
   console.log('📸 Imagen recibida:', req.files?.imagen?.[0]);
   console.log('🎵 Audio recibido:', req.files?.audio?.[0]);
-  console.log('📝 Datos recibidos:', { nombre, destino, fecha_inicio, fecha_fin, descripcion });
+  console.log('📝 Datos recibidos:', { nombre, destino, fecha_inicio, fecha_fin, descripcion, en_viaje_de: motivo });
 
   db.run(
-    'INSERT INTO viajes (nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion],
+    'INSERT INTO viajes (nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion, en_viaje_de) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion, motivo],
     function (err) {
       if (err) {
         console.error('❌ Error al insertar viaje:', err);
@@ -2672,7 +2713,8 @@ app.post('/viajes', upload.fields([{ name: 'imagen', maxCount: 1 }, { name: 'aud
         message: 'Viaje creado exitosamente',
         imagen: imagen,
         audio: audio,
-        descripcion: descripcion
+        descripcion: descripcion,
+        en_viaje_de: motivo
       });
     }
   );
@@ -2689,18 +2731,19 @@ const handleCrearViajeBorrador = async (req, res) => {
       destino = 'Destino por Asignar',
       fecha_inicio = new Date().toISOString().split('T')[0],
       fecha_fin = new Date().toISOString().split('T')[0],
-      descripcion = 'Borrador rápido para diseño de ruta GPX en mapa'
+      descripcion = 'Borrador rápido para diseño de ruta GPX en mapa',
+      en_viaje_de = '🏖️ Vacaciones'
     } = req.body || {};
 
-    console.log('⚡ [RESCATE] Creando viaje borrador silencioso:', { nombre, destino, fecha_inicio });
+    console.log('⚡ [RESCATE] Creando viaje borrador silencioso:', { nombre, destino, fecha_inicio, en_viaje_de });
 
     // 1. Insertar viaje con estado = 'borrador'
     const insertViajeSql = `
-      INSERT INTO viajes (nombre, destino, fecha_inicio, fecha_fin, descripcion, estado)
-      VALUES (?, ?, ?, ?, ?, 'borrador')
+      INSERT INTO viajes (nombre, destino, fecha_inicio, fecha_fin, descripcion, estado, en_viaje_de)
+      VALUES (?, ?, ?, ?, ?, 'borrador', ?)
     `;
     const viajeResult = await dbQuery.run(insertViajeSql, [
-      nombre, destino, fecha_inicio, fecha_fin, descripcion
+      nombre, destino, fecha_inicio, fecha_fin, descripcion, en_viaje_de
     ]);
     const viajeId = viajeResult.lastID;
 
@@ -2740,6 +2783,7 @@ const handleCrearViajeBorrador = async (req, res) => {
       fecha_fin,
       descripcion,
       estado: 'borrador',
+      en_viaje_de,
       itinerarioId,
       actividadId
     });
@@ -2755,21 +2799,22 @@ app.post('/api/viajes/crear-borrador', handleCrearViajeBorrador);
 // Ruta para actualizar un viaje
 app.put('/viajes/:id', upload.fields([{ name: 'imagen', maxCount: 1 }, { name: 'audio', maxCount: 1 }]), (req, res) => {
   const { id } = req.params;
-  const { nombre, destino, fecha_inicio, fecha_fin, descripcion, imagen_actual, audio_actual } = req.body;
+  const { nombre, destino, fecha_inicio, fecha_fin, descripcion, imagen_actual, audio_actual, en_viaje_de } = req.body;
 
   // Si se subió nueva imagen, usarla. Si no, mantener la actual
   const imagen = req.files?.imagen ? req.files.imagen[0].filename : imagen_actual;
   // Si se subió nuevo audio, usarlo. Si no, mantener el actual
   const audio = req.files?.audio ? req.files.audio[0].filename : audio_actual;
+  const motivo = en_viaje_de || '🏖️ Vacaciones';
 
   console.log('🔄 Actualizando viaje ID:', id);
   console.log('📸 Imagen:', imagen);
   console.log('🎵 Audio:', audio);
-  console.log('📝 Datos recibidos:', { nombre, destino, fecha_inicio, fecha_fin, descripcion });
+  console.log('📝 Datos recibidos:', { nombre, destino, fecha_inicio, fecha_fin, descripcion, en_viaje_de: motivo });
 
   db.run(
-    'UPDATE viajes SET nombre = ?, destino = ?, fecha_inicio = ?, fecha_fin = ?, imagen = ?, audio = ?, descripcion = ? WHERE id = ?',
-    [nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion, id],
+    'UPDATE viajes SET nombre = ?, destino = ?, fecha_inicio = ?, fecha_fin = ?, imagen = ?, audio = ?, descripcion = ?, en_viaje_de = ? WHERE id = ?',
+    [nombre, destino, fecha_inicio, fecha_fin, imagen, audio, descripcion, motivo, id],
     function (err) {
       if (err) {
         console.error('❌ Error al actualizar viaje:', err);
@@ -2782,7 +2827,8 @@ app.put('/viajes/:id', upload.fields([{ name: 'imagen', maxCount: 1 }, { name: '
         message: 'Viaje actualizado exitosamente',
         imagen: imagen,
         audio: audio,
-        descripcion: descripcion
+        descripcion: descripcion,
+        en_viaje_de: motivo
       });
     }
   );

@@ -11,6 +11,28 @@
     <input type="text" id="destino" [(ngModel)]="viaje.destino" name="destino" required />
   </div>
 
+  <!-- Campo obligatorio: En viaje de: -->
+  <div class="campo-motivo">
+    <label for="en_viaje_de">En viaje de: <span class="required-asterisk">*</span></label>
+    
+    <!-- Selector desplegable -->
+    <select id="en_viaje_de" [(ngModel)]="viaje.en_viaje_de" name="en_viaje_de" required class="select-motivo">
+      <option *ngFor="let opt of opcionesMotivo" [value]="opt">{{ opt }}</option>
+    </select>
+
+    <!-- Botones de selección rápida visual estilo Airbnb -->
+    <div class="motivo-chips-grid" role="group" aria-label="Seleccionar motivo del viaje">
+      <button 
+        type="button" 
+        *ngFor="let opt of opcionesMotivo" 
+        class="motivo-chip-btn" 
+        [class.activo]="viaje.en_viaje_de === opt"
+        (click)="viaje.en_viaje_de = opt">
+        {{ opt }}
+      </button>
+    </div>
+  </div>
+
   <!-- Campo Fecha de inicio -->
   <div>
     <label for="fecha_inicio">Fecha de inicio:</label>

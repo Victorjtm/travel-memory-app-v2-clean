@@ -176,3 +176,76 @@ input[type="file"]#audio::-webkit-file-upload-button {
 input[type="file"]#audio::-webkit-file-upload-button:hover {
   background-color: #1976d2;
 }
+
+/* ===== SELECTOR MOTIVO: EN VIAJE DE: (Airbnb Style) ===== */
+.campo-motivo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+
+  .required-asterisk {
+    color: #e53935;
+    font-weight: 700;
+  }
+
+  .select-motivo {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1.5px solid #d1d5db;
+    border-radius: 0.65rem;
+    background-color: #fafafa;
+    font-size: 1rem;
+    color: #1f2937;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:focus {
+      outline: none;
+      border-color: #ff385c;
+      background-color: #ffffff;
+      box-shadow: 0 0 0 3px rgba(255, 56, 92, 0.15);
+    }
+  }
+
+  .motivo-chips-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+
+    .motivo-chip-btn {
+      padding: 0.45rem 0.85rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: 1.5px solid #e5e7eb;
+      background-color: #f9fafb;
+      color: #374151;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+
+      &:hover {
+        background-color: #f3f4f6;
+        border-color: #d1d5db;
+        transform: translateY(-1px);
+      }
+
+      &.activo {
+        background: linear-gradient(135deg, #ff385c 0%, #e00b41 100%);
+        border-color: #e00b41;
+        color: #ffffff;
+        box-shadow: 0 3px 10px rgba(224, 11, 65, 0.3);
+        transform: scale(1.03);
+      }
+
+      &:active {
+        transform: scale(0.97);
+      }
+    }
+  }
+}

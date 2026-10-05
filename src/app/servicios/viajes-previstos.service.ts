@@ -38,6 +38,7 @@ export class ViajesPrevistosService extends BaseHttpService {
     formData.append('fecha_inicio', viaje.fecha_inicio);
     formData.append('fecha_fin', viaje.fecha_fin);
     formData.append('descripcion', viaje.descripcion || '');
+    formData.append('en_viaje_de', viaje.en_viaje_de || '🏖️ Vacaciones');
 
     // Si hay imagen, agregarla
     if (imagen) {
@@ -63,6 +64,7 @@ export class ViajesPrevistosService extends BaseHttpService {
     formData.append('fecha_inicio', viaje.fecha_inicio);
     formData.append('fecha_fin', viaje.fecha_fin);
     formData.append('descripcion', viaje.descripcion || '');
+    formData.append('en_viaje_de', viaje.en_viaje_de || '🏖️ Vacaciones');
     formData.append('imagen_actual', viaje.imagen || ''); // Para mantener imagen actual si no se cambia
     formData.append('audio_actual', viaje.audio || ''); // Para mantener audio actual si no se cambia
 

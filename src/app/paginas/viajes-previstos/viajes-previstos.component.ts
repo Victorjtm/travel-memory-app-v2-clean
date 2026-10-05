@@ -30,8 +30,10 @@ export class ViajesPrevistosComponent implements OnInit {
   rangosFechasPorViaje: { [viajeId: number]: any } = {};
   desplegablesAbiertos: { [viajeId: number]: boolean } = {};
 
-  // ✨ Gestión de vistas
+  // ✨ Gestión de vistas (Airbnb Layout: Grid / Lineal + Modo fechas)
   vistaModo: 'viajes' | 'fechas' = 'viajes';
+  disposicionVista: 'grid' | 'lineal' = (localStorage.getItem('viajes_disposicion_vista') as any) || 'grid';
+  viajeActivoId: number | null = null;
   itinerariosCombinados: any[] = [];
   ultimaUnificacion: any = null;
 
@@ -157,6 +159,119 @@ export class ViajesPrevistosComponent implements OnInit {
 
   toggleDesplegable(viajeId: number): void {
     this.desplegablesAbiertos[viajeId] = !this.desplegablesAbiertos[viajeId];
+  }
+
+  // 🏡 Alternancia de Vistas (Línea / Cuadrícula) estilo Airbnb
+  cambiarDisposicion(modo: 'grid' | 'lineal'): void {
+    this.disposicionVista = modo;
+    localStorage.setItem('viajes_disposicion_vista', modo);
+    console.log('[VIEW] Disposición cambiada a:', modo);
+  }
+
+  // 🎯 Comportamiento Interactivo: Revelar / ocultar acciones al pulsar
+  toggleAccionesViaje(viajeId: number, event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.viajeActivoId = this.viajeActivoId === viajeId ? null : viajeId;
+  }
+
+  cerrarAcciones(): void {
+    this.viajeActivoId = null;
+  }
+
+  // 🖼️ Plan B: Fallback de imagen si no carga o no tiene foto
+  onImageError(viaje: any): void {
+    if (viaje.foto_fallback_url && viaje.imagen_url !== viaje.foto_fallback_url) {
+      console.log(`🖼️ [Plan B] Usando foto aleatoria de itinerario para viaje ${viaje.id}`);
+      viaje.imagen_url = viaje.foto_fallback_url;
+    } else {
+      viaje._sinFoto = true;
+    }
+  }
+
+  // 📊 Métricas de rendimiento consolidadas
+  getDiasViaje(viaje: any): number {
+    if (this.rangosFechasPorViaje[viaje.id]?.total) {
+      return this.rangosFechasPorViaje[viaje.id].total;
+    }
+    if (viaje.total_itinerarios && viaje.total_itinerarios > 0) {
+      return viaje.total_itinerarios;
+    }
+    if (viaje.fecha_inicio && viaje.fecha_fin) {
+      const d1 = new Date(viaje.fecha_inicio).getTime();
+      const d2 = new Date(viaje.fecha_fin).getTime();
+      const diff = Math.round(Math.abs(d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
+      return isNaN(diff) || diff < 1 ? 1 : diff;
+    }
+    return 1;
+  }
+
+  getDistanciaKm(viaje: any): string {
+    if (viaje.total_km && viaje.total_km > 0) {
+      return viaje.total_km.toFixed(2);
+    }
+    if (viaje.descripcion) {
+      const match = viaje.descripcion.match(/(\d+(?:\.\d+)?)\s*km/i);
+      if (match) return match[1];
+    }
+    return '0.00';
+  }
+
+  getDuracionViaje(viaje: any): string {
+    if (viaje.total_segundos && viaje.total_segundos > 0) {
+      const h = Math.floor(viaje.total_segundos / 3600);
+      const m = Math.floor((viaje.total_segundos % 3600) / 60);
+      const s = viaje.total_segundos % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+    if (viaje.descripcion) {
+      const match = viaje.descripcion.match(/(\d{2}:\d{2}:\d{2})/);
+      if (match) return match[1];
+    }
+    return '--:--';
+  }
+
+  getPasosViaje(viaje: any): string {
+    if (viaje.total_pasos && viaje.total_pasos > 0) {
+      return viaje.total_pasos.toLocaleString('es-ES');
+    }
+    if (viaje.descripcion) {
+      const match = viaje.descripcion.match(/([\d\.]+)\s*pasos/i);
+      if (match) return match[1];
+    }
+    return '0';
+  }
+
+  formatearRangoViaje(viaje: any): string {
+    const rangosInfo = this.rangosFechasPorViaje[viaje.id];
+    if (rangosInfo && rangosInfo.rangos && rangosInfo.rangos.length > 0) {
+      const primero = rangosInfo.rangos[0];
+      const ultimo = rangosInfo.rangos[rangosInfo.rangos.length - 1];
+      const inicio = primero.inicio || viaje.fecha_inicio;
+      const fin = ultimo.fin || primero.fin || viaje.fecha_fin;
+      if (inicio === fin) {
+        return this.formatearFecha(inicio);
+      }
+      return `${this.formatearFecha(inicio)} - ${this.formatearFecha(fin)}`;
+    }
+    if (viaje.fecha_inicio && viaje.fecha_fin && viaje.fecha_inicio !== viaje.fecha_fin) {
+      return `${this.formatearFecha(viaje.fecha_inicio)} - ${this.formatearFecha(viaje.fecha_fin)}`;
+    }
+    return this.formatearFecha(viaje.fecha_inicio);
+  }
+
+  getMotivoIcon(motivo?: string): string {
+    if (!motivo) return '🏖️';
+    const clean = motivo.trim().toLowerCase();
+    if (clean.includes('vacaciones')) return '🏖️';
+    if (clean.includes('trabajo')) return '💼';
+    if (clean.includes('negocio')) return '🤝';
+    if (clean.includes('escapada')) return '🚗';
+    if (clean.includes('excursión') || clean.includes('excursion')) return '🥾';
+    if (clean.includes('evento')) return '🎟️';
+    if (clean.includes('entrenamiento')) return '🏃‍♂️';
+    return '🏖️';
   }
 
   // ✨ NUEVO: Limpiar comillas de los destinos

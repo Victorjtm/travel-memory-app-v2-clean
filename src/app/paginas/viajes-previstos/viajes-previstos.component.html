@@ -99,92 +99,183 @@
     </button>
   </mat-menu>
 
-  <ul *ngIf="vistaModo === 'viajes'" class="viajes-list">
-    <li *ngFor="let viaje of viajesPrevistos; index as i" class="viaje-item">
-      <div class="viaje-info">
-        <div class="viaje-title-row">
-          <span class="destino">{{ viaje.destino }}</span>
-          <span class="app-chip">Viaje {{ i + 1 }}</span>
+  <!-- BARRA DE HERRAMIENTAS SUPERIOR: SELECTOR DE VISTAS (AIRBNB STYLE) -->
+  <div class="airbnb-toolbar" *ngIf="vistaModo === 'viajes'">
+    <div class="toolbar-info">
+      <span class="trip-count-badge">
+        <i class="fa-solid fa-earth-americas"></i> {{ viajesPrevistos.length }} viajes registrados
+      </span>
+    </div>
+
+    <!-- Selector de vista Cuadrícula / Lista -->
+    <div class="view-switcher-pill" role="tablist" aria-label="Modo de visualización">
+      <button 
+        type="button" 
+        class="switch-btn" 
+        [class.active]="disposicionVista === 'grid'"
+        (click)="cambiarDisposicion('grid')"
+        title="Vista en cuadrícula (Grid)">
+        <i class="fa-solid fa-grip"></i>
+        <span class="switch-label">Cuadrícula</span>
+      </button>
+
+      <button 
+        type="button" 
+        class="switch-btn" 
+        [class.active]="disposicionVista === 'lineal'"
+        (click)="cambiarDisposicion('lineal')"
+        title="Vista lineal (Lista)">
+        <i class="fa-solid fa-list-ul"></i>
+        <span class="switch-label">Lista</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- CONTENEDOR DE VIAJES: DISPOSICIÓN DINÁMICA (GRID / LINEAL) -->
+  <div *ngIf="vistaModo === 'viajes'" class="viajes-airbnb-container" [ngClass]="'vista-' + disposicionVista">
+    <article 
+      *ngFor="let viaje of viajesPrevistos; index as i" 
+      class="airbnb-card"
+      [class.card-activa]="viajeActivoId === viaje.id"
+      (click)="toggleAccionesViaje(viaje.id, $event)">
+      
+      <!-- FOTO PRINCIPAL EN ALTA CALIDAD (CON PLAN B FALLBACK) -->
+      <div class="card-media">
+        <img 
+          *ngIf="viaje.imagen_url && !viaje._sinFoto"
+          [src]="viaje.imagen_url" 
+          (error)="onImageError(viaje)"
+          [alt]="viaje.destino || viaje.nombre" 
+          class="card-img" 
+          loading="lazy" />
+
+        <!-- Fallback Placeholder sofisticado estilo Airbnb -->
+        <div *ngIf="!viaje.imagen_url || viaje._sinFoto" class="card-img-placeholder">
+          <div class="ph-gradient"></div>
+          <span class="ph-icon">{{ getMotivoIcon(viaje.en_viaje_de) }}</span>
+          <span class="ph-text">{{ viaje.destino || viaje.nombre }}</span>
         </div>
 
-        <div class="rangos-fechas" *ngIf="rangosFechasPorViaje[viaje.id]">
-          <ng-container *ngIf="rangosFechasPorViaje[viaje.id].rangos.length === 1">
-            <div class="rango-unico clickable" (click)="irAItinerarios(viaje.id, rangosFechasPorViaje[viaje.id].rangos[0])">
-              <i class="fa-solid fa-calendar-days"></i>
-              {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
-              <span class="badge-dias">{{ rangosFechasPorViaje[viaje.id].total }} dias</span>
-              <span class="tooltip-container" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].destinos">
-                <span class="destinos-texto">{{ limpiarDestinos(rangosFechasPorViaje[viaje.id].rangos[0].destinos) }}</span>
-                <span class="tooltip-box" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].descripcion">
-                  {{ rangosFechasPorViaje[viaje.id].rangos[0].descripcion }}
-                </span>
-              </span>
-            </div>
-          </ng-container>
-
-          <ng-container *ngIf="rangosFechasPorViaje[viaje.id].rangos.length > 1">
-            <div class="rangos-multiples">
-              <div class="rango-principal" (click)="irAItinerarios(viaje.id, rangosFechasPorViaje[viaje.id].rangos[0])">
-                <span class="rango-texto">
-                  <i class="fa-solid fa-calendar-days"></i>
-                  {{ formatearRango(rangosFechasPorViaje[viaje.id].rangos[0]) }}
-                  <span class="tooltip-container" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].destinos">
-                    <span class="destinos-texto">{{ limpiarDestinos(rangosFechasPorViaje[viaje.id].rangos[0].destinos) }}</span>
-                    <span class="tooltip-box" *ngIf="rangosFechasPorViaje[viaje.id].rangos[0].descripcion">
-                      {{ rangosFechasPorViaje[viaje.id].rangos[0].descripcion }}
-                    </span>
-                  </span>
-                </span>
-                <span class="badge-dias">{{ rangosFechasPorViaje[viaje.id].total }} dias total</span>
-                <button class="desplegable-button" [class.abierto]="desplegablesAbiertos[viaje.id]"
-                  (click)="toggleDesplegable(viaje.id); $event.stopPropagation()" aria-label="Mostrar mas fechas">
-                  <i class="fa-solid fa-chevron-down"></i>
-                </button>
-              </div>
-
-              <div class="rangos-adicionales" *ngIf="desplegablesAbiertos[viaje.id]">
-                <div class="rango-item" *ngFor="let rango of rangosFechasPorViaje[viaje.id].rangos.slice(1)"
-                  (click)="irAItinerarios(viaje.id, rango)">
-                  <i class="fa-solid fa-calendar-day"></i>
-                  {{ formatearRango(rango) }}
-                  <span class="badge-dias-secundario">{{ rango.dias }} dias</span>
-                  <span class="tooltip-container" *ngIf="rango.destinos">
-                    <span class="destinos-texto">{{ limpiarDestinos(rango.destinos) }}</span>
-                    <span class="tooltip-box" *ngIf="rango.descripcion">{{ rango.descripcion }}</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </ng-container>
+        <!-- Badges flotantes sobre la foto -->
+        <div class="card-floating-badges">
+          <span class="badge-index">Viaje {{ i + 1 }}</span>
+          <span class="badge-motivo">
+            {{ viaje.en_viaje_de || '🏖️ Vacaciones' }}
+          </span>
         </div>
 
-        <p class="descripcion">{{ viaje.descripcion }}</p>
+        <!-- Indicador interactivo para pulsar -->
+        <div class="card-tap-hint" title="Toca para ver opciones">
+          <i class="fa-solid fa-ellipsis"></i>
+        </div>
       </div>
 
-      <div class="acciones">
-        <button (click)="verAlbumEnLibro(viaje.id)" class="app-button">
-          <i class="fa fa-book"></i>
-          Album
-        </button>
-        <button (click)="irAMapaViaje(viaje.id)" class="app-button">
-          <i class="fa fa-map-marker"></i>
-          Mapa
-        </button>
-        <button (click)="irAEditarViaje(viaje.id)" class="app-button">
-          <i class="fa fa-pencil"></i>
-          Actualizar
-        </button>
-        <button (click)="irAItinerarios(viaje.id)" class="app-button">
-          <i class="fa fa-map"></i>
-          Itinerarios
-        </button>
-        <button (click)="eliminarViaje(viaje.id)" class="app-button danger">
-          <i class="fa fa-trash"></i>
-          Eliminar
-        </button>
+      <!-- INFORMACIÓN DEL VIAJE (ORGANIZADA Y LIMPIA) -->
+      <div class="card-body">
+        <!-- 1. Categoría: Motivo claro -->
+        <div class="card-category-row">
+          <span class="category-tag">
+            <span class="tag-label">En viaje de:</span>
+            <strong class="tag-value">{{ viaje.en_viaje_de || '🏖️ Vacaciones' }}</strong>
+          </span>
+        </div>
+
+        <!-- 2. Destino o Título -->
+        <h2 class="card-title" [title]="viaje.destino || viaje.nombre">
+          {{ viaje.destino || viaje.nombre }}
+        </h2>
+
+        <!-- 3. Fecha y duración -->
+        <div class="card-dates-row">
+          <i class="fa-regular fa-calendar"></i>
+          <span>{{ formatearRangoViaje(viaje) }} • {{ getDiasViaje(viaje) }} {{ getDiasViaje(viaje) === 1 ? 'día' : 'días' }}</span>
+        </div>
+
+        <!-- Rangos adicionales si existen -->
+        <div class="card-extra-dates" *ngIf="rangosFechasPorViaje[viaje.id]?.rangos?.length > 1">
+          <button 
+            type="button" 
+            class="extra-dates-toggle" 
+            [class.abierto]="desplegablesAbiertos[viaje.id]"
+            (click)="toggleDesplegable(viaje.id); $event.stopPropagation()">
+            <span>{{ rangosFechasPorViaje[viaje.id].rangos.length }} periodos</span>
+            <i class="fa-solid fa-chevron-down"></i>
+          </button>
+
+          <div class="extra-dates-dropdown" *ngIf="desplegablesAbiertos[viaje.id]" (click)="$event.stopPropagation()">
+            <div 
+              class="extra-date-item" 
+              *ngFor="let rango of rangosFechasPorViaje[viaje.id].rangos"
+              (click)="irAItinerarios(viaje.id, rango)">
+              <span>{{ formatearRango(rango) }}</span>
+              <span class="badge-dias-mini">{{ rango.dias }}d</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Datos de rendimiento (Distancia, Tiempo y Pasos) -->
+        <div class="card-metrics-grid">
+          <div class="metric-item metric-km" title="Distancia recorrida">
+            <i class="fa-solid fa-route"></i>
+            <span class="metric-val">{{ getDistanciaKm(viaje) }} <small>km</small></span>
+          </div>
+
+          <div class="metric-item metric-time" title="Tiempo empleado">
+            <i class="fa-solid fa-stopwatch"></i>
+            <span class="metric-val">{{ getDuracionViaje(viaje) }}</span>
+          </div>
+
+          <div class="metric-item metric-steps" title="Número de pasos totales">
+            <i class="fa-solid fa-shoe-prints"></i>
+            <span class="metric-val">{{ getPasosViaje(viaje) }} <small>pasos</small></span>
+          </div>
+        </div>
+
+        <!-- Descripción breve si existe y no es el texto auto-generado -->
+        <p class="card-desc" *ngIf="viaje.descripcion && !viaje.descripcion.startsWith('Tracking importado')" [title]="viaje.descripcion">
+          {{ viaje.descripcion }}
+        </p>
+
+        <!-- 5. PANEL DE ACCIONES INTERACTIVO: OCULTO POR DEFECTO, REVELADO AL PULSAR -->
+        <div class="card-actions-drawer" [class.abierto]="viajeActivoId === viaje.id" (click)="$event.stopPropagation()">
+          <div class="drawer-header">
+            <span class="drawer-title"><i class="fa-solid fa-sliders"></i> Opciones de viaje</span>
+            <button type="button" class="btn-drawer-close" (click)="cerrarAcciones()" aria-label="Cerrar opciones">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <div class="drawer-buttons-grid">
+            <button type="button" (click)="verAlbumEnLibro(viaje.id)" class="drawer-btn btn-album">
+              <i class="fa-solid fa-book-open"></i>
+              <span>Álbum</span>
+            </button>
+
+            <button type="button" (click)="irAMapaViaje(viaje.id)" class="drawer-btn btn-mapa">
+              <i class="fa-solid fa-location-dot"></i>
+              <span>Mapa</span>
+            </button>
+
+            <button type="button" (click)="irAItinerarios(viaje.id)" class="drawer-btn btn-itin">
+              <i class="fa-solid fa-map"></i>
+              <span>Itinerarios</span>
+            </button>
+
+            <button type="button" (click)="irAEditarViaje(viaje.id)" class="drawer-btn btn-edit">
+              <i class="fa-solid fa-pen-to-square"></i>
+              <span>Actualizar</span>
+            </button>
+
+            <button type="button" (click)="eliminarViaje(viaje.id)" class="drawer-btn btn-delete">
+              <i class="fa-solid fa-trash-can"></i>
+              <span>Eliminar</span>
+            </button>
+          </div>
+        </div>
+
       </div>
-    </li>
-  </ul>
+    </article>
+  </div>
 
   <ul *ngIf="vistaModo === 'fechas'" class="lista-cronologica">
     <li *ngFor="let item of itinerariosCombinados" class="itinerario-item-cronologico"

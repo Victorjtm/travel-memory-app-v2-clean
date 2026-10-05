@@ -14,12 +14,23 @@ import { Subscription } from 'rxjs';
 })
 
 export class FormularioViajePrevistoComponent implements OnInit, OnDestroy {
+  readonly opcionesMotivo: string[] = [
+    '🏖️ Vacaciones',
+    '💼 Trabajo',
+    '🤝 Negocio',
+    '🚗 Escapada',
+    '🥾 Excursión',
+    '🎟️ Evento',
+    '🏃‍♂️ Entrenamiento'
+  ];
+
   viaje = { 
     nombre: '', 
     destino: '', 
     fecha_inicio: '', 
     fecha_fin: '', 
     descripcion: '',
+    en_viaje_de: '🏖️ Vacaciones',
     imagen: '',
     audio: ''
   };
@@ -55,6 +66,7 @@ this.viaje = {
   fecha_inicio: viaje.fecha_inicio || '',
   fecha_fin: viaje.fecha_fin || '',
   descripcion: viaje.descripcion || '',
+  en_viaje_de: viaje.en_viaje_de || '🏖️ Vacaciones',
   imagen: viaje.imagen || '',
   audio: viaje.audio || ''
 };
