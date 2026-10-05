@@ -5193,7 +5193,13 @@ app.get('/actividades/:id/estadisticas', (req, res) => {
             }
 
             if (dataExtra.stats.desgloseTransporte) {
-              estadisticas.desgloseTransporte = dataExtra.stats.desgloseTransporte;
+              estadisticas.desgloseTransporte = dataExtra.stats.desgloseTransporte.map(item => {
+                const durStr = item.duracionFormateada || item.tiempoFormateado || item.duracion_ui || (item.duracionSegundos ? new Date(item.duracionSegundos * 1000).toISOString().substr(11, 8) : '00:00:00');
+                return {
+                  ...item,
+                  duracionFormateada: durStr
+                };
+              });
               console.log(`📊 [DEBUG] Desglose detectado: ${estadisticas.desgloseTransporte.length} segmentos. Claves primer seg: ${Object.keys(estadisticas.desgloseTransporte[0] || {}).join(', ')}`);
             }
 

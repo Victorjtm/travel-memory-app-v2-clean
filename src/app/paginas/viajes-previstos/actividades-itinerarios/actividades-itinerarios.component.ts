@@ -739,10 +739,72 @@ export class ActividadesItinerariosComponent implements OnInit {
         }
         const totalTrackKm = parseFloat((totalTrackMeters / 1000).toFixed(2));
         const currentStatsKm = parseFloat(String(this.estadisticasGPX?.distanciaKm || 0));
-        if (totalTrackKm > 0 && (currentStatsKm === 0 || Math.abs(totalTrackKm - currentStatsKm) > 1)) {
+        if (totalTrackKm > 0 && (currentStatsKm === 0 || Math.abs(totalTrackKm - currentStatsKm) > 0.1)) {
           console.log(`📏 [parseGPX] Actualizando distancia total mostrada para incluir todos los tramos (tierra, mar, aire): ${totalTrackKm} km (era ${currentStatsKm} km)`);
           this.estadisticasGPX.distanciaKm = totalTrackKm.toFixed(2);
           this.estadisticasGPX.distanciaMetros = Math.round(totalTrackMeters);
+        }
+      }
+
+      // ⏱️ Sincronizar duración total calculada a partir de los timestamps del GPX
+      let firstTime: Date | null = null;
+      let lastTime: Date | null = null;
+      for (let i = 0; i < trkpts.length; i++) {
+        const timeEl = trkpts[i].getElementsByTagName('time')[0];
+        if (timeEl && timeEl.textContent) {
+          const t = new Date(timeEl.textContent.trim());
+          if (!isNaN(t.getTime())) {
+            if (!firstTime) firstTime = t;
+            lastTime = t;
+          }
+        }
+      }
+      if (firstTime && lastTime && lastTime.getTime() > firstTime.getTime()) {
+        const diffSecs = Math.round((lastTime.getTime() - firstTime.getTime()) / 1000);
+        const currentSecs = this.estadisticasGPX?.duracion?.segundos || 0;
+        if (diffSecs > 60 && (currentSecs === 0 || Math.abs(diffSecs - currentSecs) > 120)) {
+          const h = Math.floor(diffSecs / 3600);
+          const m = Math.floor((diffSecs % 3600) / 60);
+          const s = diffSecs % 60;
+          const durStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+          console.log(`⏱️ [parseGPX] Actualizando duración con timestamps reales del GPX: ${durStr} (${diffSecs}s)`);
+          if (!this.estadisticasGPX.duracion) {
+            this.estadisticasGPX.duracion = { formateada: durStr, segundos: diffSecs };
+          } else {
+            this.estadisticasGPX.duracion.formateada = durStr;
+            this.estadisticasGPX.duracion.segundos = diffSecs;
+          }
+          if (this.estadisticasGPX.distanciaKm) {
+            const km = parseFloat(this.estadisticasGPX.distanciaKm);
+            if (km > 0 && diffSecs > 0) {
+              if (!this.estadisticasGPX.velocidad) {
+                this.estadisticasGPX.velocidad = { media: '0.0', maxima: '0.0', minima: '0.0' };
+              }
+              this.estadisticasGPX.velocidad.media = (km / (diffSecs / 3600)).toFixed(2);
+            }
+          }
+        }
+      }
+
+      // Sincronizar desglose de transporte si tiene 1 modo o falta duración formateada
+      if (this.estadisticasGPX?.desgloseTransporte && this.estadisticasGPX.desgloseTransporte.length > 0) {
+        this.estadisticasGPX.desgloseTransporte.forEach((item: any) => {
+          if (!item.duracionFormateada && (item.tiempoFormateado || item.duracion_ui)) {
+            item.duracionFormateada = item.tiempoFormateado || item.duracion_ui;
+          }
+        });
+        if (this.estadisticasGPX.desgloseTransporte.length === 1) {
+          const seg: any = this.estadisticasGPX.desgloseTransporte[0];
+          const segKm = parseFloat(String(seg.distanciaKm || 0));
+          const totalTrackKm = parseFloat(this.estadisticasGPX.distanciaKm || '0');
+          if (totalTrackKm > 0 && Math.abs(segKm - totalTrackKm) > 0.1) {
+            seg.distanciaKm = this.estadisticasGPX.distanciaKm;
+            seg.distanciaMetros = this.estadisticasGPX.distanciaMetros;
+          }
+          if (this.estadisticasGPX.duracion?.formateada) {
+            seg.duracionFormateada = this.estadisticasGPX.duracion.formateada;
+            seg.duracionSegundos = this.estadisticasGPX.duracion.segundos;
+          }
         }
       }
 
