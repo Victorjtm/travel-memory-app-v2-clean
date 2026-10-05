@@ -2271,11 +2271,248 @@ app.get('/api/server-info', (req, res) => {
 // RUTAS PARA Viajes previstos
 // ----------------------------------------
 
-console.log('Registrando rutas de viajes...');
+/**
+ * 📊 Actualiza de forma acumulativa y canónica las estadísticas totales de un viaje
+ * (total de kilómetros, tiempo empleado acumulado, pasos estimados, rango de fechas y número de días).
+ * Si la descripción del viaje es del tipo auto-generado por importación ("Tracking importado..."),
+ * se sincroniza para reflejar la totalidad de días, distancia, tiempo y pasos de todas las actividades.
+ */
+function actualizarEstadisticasTotalesViaje(viajeId) {
+  if (!viajeId) return Promise.resolve(null);
+  const vId = parseInt(viajeId, 10);
+  if (isNaN(vId) || vId <= 0) return Promise.resolve(null);
 
-// ----------------------------------------
-// RUTAS PARA Viajes prvistgos
-// ----------------------------------------
+  return new Promise((resolve) => {
+    db.get('SELECT * FROM viajes WHERE id = ?', [vId], (err, viaje) => {
+      if (err || !viaje) return resolve(null);
+
+      db.get(`
+        SELECT 
+          COALESCE(SUM(distanciaKm), 0) as totalKm,
+          COALESCE(SUM(duracionSegundos), 0) as totalSegundos,
+          COALESCE(SUM(pasosEstimados), 0) as totalPasos,
+          COUNT(id) as totalActividades
+        FROM actividades 
+        WHERE viajePrevistoId = ?
+      `, [vId], (errAct, stats) => {
+        if (errAct) return resolve(null);
+
+        db.all(`
+          SELECT fechaInicio, fechaFin 
+          FROM ItinerarioGeneral 
+          WHERE viajePrevistoId = ? 
+          ORDER BY fechaInicio ASC
+        `, [vId], (errItin, itins) => {
+          const fechas = [];
+          if (itins && itins.length > 0) {
+            itins.forEach(it => {
+              if (it.fechaInicio) fechas.push(it.fechaInicio);
+              if (it.fechaFin) fechas.push(it.fechaFin);
+            });
+          }
+          if (viaje.fecha_inicio) fechas.push(viaje.fecha_inicio);
+          if (viaje.fecha_fin) fechas.push(viaje.fecha_fin);
+
+          fechas.sort();
+          const minFecha = fechas.length > 0 ? fechas[0] : viaje.fecha_inicio;
+          const maxFecha = fechas.length > 0 ? fechas[fechas.length - 1] : (viaje.fecha_fin || minFecha);
+
+          let totalDias = (itins && itins.length > 0) ? itins.length : 1;
+          if (minFecha && maxFecha) {
+            const d1 = new Date(minFecha);
+            const d2 = new Date(maxFecha);
+            const diffDays = Math.round(Math.abs(d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
+            if (!isNaN(diffDays) && diffDays > 0) {
+              totalDias = Math.max(totalDias, diffDays);
+            }
+          }
+
+          const totalKm = stats ? Number(stats.totalKm || 0) : 0;
+          const totalSegundos = stats ? Number(stats.totalSegundos || 0) : 0;
+          const totalPasos = stats ? Number(stats.totalPasos || 0) : 0;
+
+          const horas = Math.floor(totalSegundos / 3600);
+          const minutos = Math.floor((totalSegundos % 3600) / 60);
+          const segundos = totalSegundos % 60;
+          const duracionFormateada = `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}:${String(segundos).padStart(2, '0')}`;
+          const duracionCorta = `${horas}h ${String(minutos).padStart(2, '0')}m`;
+
+          const diasTexto = `${totalDias} ${totalDias === 1 ? 'día' : 'días'}`;
+          const pasosTexto = totalPasos > 0 ? ` - ${totalPasos.toLocaleString('es-ES')} pasos` : '';
+
+          let nuevaDescripcion = viaje.descripcion;
+          const esDescTracking = !viaje.descripcion || 
+            viaje.descripcion.startsWith('Tracking importado') || 
+            viaje.descripcion.includes('Tracking importado desde AudioPhotoApp');
+
+          if (esDescTracking && totalKm > 0) {
+            nuevaDescripcion = `Tracking importado desde AudioPhotoApp - ${diasTexto} - ${totalKm.toFixed(2)} km - ${duracionFormateada} (${duracionCorta})${pasosTexto}`;
+          }
+
+          db.run(`
+            UPDATE viajes 
+            SET fecha_inicio = ?, fecha_fin = ?, descripcion = ? 
+            WHERE id = ?
+          `, [minFecha, maxFecha, nuevaDescripcion, vId], (errUpd) => {
+            if (errUpd) console.warn('⚠️ Error al actualizar totales del viaje:', errUpd.message);
+            else console.log(`✅ [ESTADÍSTICAS TOTALES] Viaje ${vId} sincronizado: ${minFecha} a ${maxFecha} | ${totalKm.toFixed(2)} km | ${duracionFormateada} | ${totalPasos} pasos | ${totalDias} días`);
+
+            resolve({
+              viajeId: vId,
+              minFecha,
+              maxFecha,
+              totalDias,
+              totalKm,
+              totalSegundos,
+              duracionFormateada,
+              duracionCorta,
+              totalPasos,
+              descripcion: nuevaDescripcion
+            });
+          });
+        });
+      });
+    });
+  });
+}
+
+/**
+ * 📊 Recalcula la distancia total y desglose de transporte de una actividad con segmentos
+ * asegurando que todos los medios (terrestre, barco, avión, etc.) sumen al total canónico.
+ */
+async function recalcularEstadisticasActividad(actividadId) {
+  if (!actividadId) return null;
+  const actId = parseInt(actividadId, 10);
+  if (isNaN(actId) || actId <= 0) return null;
+
+  try {
+    const actRow = await dbQuery.get('SELECT id, viajePrevistoId, distanciaKm, perfilTransporte FROM actividades WHERE id = ?', [actId]);
+    if (!actRow) return null;
+
+    const segRows = await dbQuery.all('SELECT * FROM segments WHERE actividadId = ? ORDER BY segmentOrder ASC', [actId]);
+    if (!segRows || segRows.length === 0) return null;
+
+    function calcDistM(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const phi1 = (lat1 * Math.PI) / 180;
+      const phi2 = (lat2 * Math.PI) / 180;
+      const dphi = ((lat2 - lat1) * Math.PI) / 180;
+      const dlam = ((lon2 - lon1) * Math.PI) / 180;
+      const a = Math.sin(dphi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlam / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function resolveAnchorIdx(anchor, ptsList) {
+      if (!ptsList || ptsList.length === 0) return -1;
+      if (anchor && anchor.time) {
+        const aTime = new Date(anchor.time).getTime();
+        let bestIdx = -1, minDiff = Infinity;
+        for (let i = 0; i < ptsList.length; i++) {
+          if (ptsList[i].time) {
+            const diff = Math.abs(new Date(ptsList[i].time).getTime() - aTime);
+            if (diff < minDiff) { minDiff = diff; bestIdx = i; }
+          }
+        }
+        if (bestIdx !== -1 && minDiff < 2000) return bestIdx;
+      }
+      let bestIdx = -1, minD = Infinity;
+      for (let i = 0; i < ptsList.length; i++) {
+        const d = Math.abs(ptsList[i].lat - anchor.lat) + Math.abs(ptsList[i].lng - anchor.lng);
+        if (d < minD) { minD = d; bestIdx = i; }
+      }
+      return minD < 0.0002 ? bestIdx : -1;
+    }
+
+    let replayed = [];
+    for (const seg of segRows) {
+      let pts = [];
+      try { pts = JSON.parse(seg.points_json || '[]'); } catch (e) {}
+      if (!pts || pts.length === 0) continue;
+      if (seg.source === 'original' || seg.source === 'user-append') {
+        replayed.push(...pts);
+      } else if (seg.source === 'user-prepend') {
+        replayed.unshift(...pts);
+      } else if (seg.source === 'user-override' || seg.source === 'user-insert') {
+        const idxA = resolveAnchorIdx(pts[0], replayed);
+        const idxB = resolveAnchorIdx(pts[pts.length - 1], replayed);
+        if (idxA !== -1 && idxB !== -1) {
+          replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1, ...pts);
+        }
+      } else if (seg.source === 'user-delete') {
+        const idxA = resolveAnchorIdx(pts[0], replayed);
+        const idxB = resolveAnchorIdx(pts[1] || pts[pts.length - 1], replayed);
+        if (idxA !== -1 && idxB !== -1) {
+          replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1);
+        }
+      }
+    }
+
+    if (replayed.length === 0) return null;
+
+    let totalDistM = 0;
+    const distPorModo = {};
+    let curMode = replayed[0]?.mode || 'walking';
+    distPorModo[curMode] = 0;
+
+    for (let i = 1; i < replayed.length; i++) {
+      const d = calcDistM(replayed[i - 1].lat, replayed[i - 1].lng, replayed[i].lat, replayed[i].lng);
+      totalDistM += d;
+      const pMode = replayed[i].mode || curMode;
+      distPorModo[pMode] = (distPorModo[pMode] || 0) + d;
+      curMode = pMode;
+    }
+
+    const totalKm = parseFloat((totalDistM / 1000).toFixed(2));
+    const totalMetros = Math.round(totalDistM);
+
+    let dominantMode = 'walking';
+    let maxDistMode = 0;
+    for (const [mode, distM] of Object.entries(distPorModo)) {
+      if (distM > maxDistMode) {
+        maxDistMode = distM;
+        dominantMode = mode;
+      }
+    }
+
+    await dbQuery.run(`
+      UPDATE actividades 
+      SET distanciaKm = ?, distanciaMetros = ?, puntosGPS = ?, perfilTransporte = ?
+      WHERE id = ?
+    `, [totalKm, totalMetros, replayed.length, dominantMode, actId]);
+
+    console.log(`✅ [RECALC ACTIVIDAD] Actividad ${actId}: ${totalKm} km (${totalMetros} m), ${replayed.length} pts, perfil: ${dominantMode}`);
+
+    if (actRow.viajePrevistoId) {
+      await actualizarEstadisticasTotalesViaje(actRow.viajePrevistoId);
+    }
+
+    return { totalKm, totalMetros, puntosGPS: replayed.length, dominantMode };
+  } catch (err) {
+    console.error('❌ Error recalculando estadísticas de actividad:', err.message);
+    return null;
+  }
+}
+
+// Sincronizar automáticamente estadísticas de viajes y actividades importados en segundo plano
+setTimeout(async () => {
+  try {
+    const actRows = await dbQuery.all(`SELECT DISTINCT actividadId FROM segments`);
+    if (actRows && actRows.length > 0) {
+      for (const a of actRows) {
+        await recalcularEstadisticasActividad(a.actividadId);
+      }
+    }
+  } catch (e) {
+    console.warn('⚠️ Error sincronizando actividades con segmentos:', e.message);
+  }
+
+  db.all(`SELECT id FROM viajes WHERE descripcion LIKE '%Tracking importado%'`, (err, rows) => {
+    if (rows && rows.length > 0) {
+      console.log(`🔄 [INICIO] Sincronizando estadísticas totales para ${rows.length} viajes con tracking importado...`);
+      rows.forEach(r => actualizarEstadisticasTotalesViaje(r.id));
+    }
+  });
+}, 3000);
 
 console.log('Registrando rutas de viajes...');
 
@@ -2299,8 +2536,16 @@ app.get('/viajes', (req, res) => {
 });
 
 // Ruta para obtener un viaje por id
-app.get('/viajes/:id', (req, res) => {
+app.get('/viajes/:id', async (req, res) => {
   const { id } = req.params;
+
+  // Auto-sincronizar estadísticas si es un viaje importado
+  try {
+    await actualizarEstadisticasTotalesViaje(id);
+  } catch (e) {
+    console.warn('⚠️ Error al auto-sincronizar estadísticas en /viajes/:id:', e);
+  }
+
   db.get('SELECT * FROM viajes WHERE id = ?', [id], (err, row) => {
     if (err) {
       res.status(500).json({ error: err.message });
@@ -4668,6 +4913,23 @@ app.get('/actividades/:id/estadisticas', (req, res) => {
                 estadisticas.tracking.perfilTransporte = maxSeg.tipo;
               }
               estadisticas.tracking.puntosGPS = replayed.length;
+
+              const totalDynDistMeters = dynDesglose.reduce((sum, s) => sum + (s.distanciaMetros || 0), 0);
+              const totalDynDistKm = parseFloat((totalDynDistMeters / 1000).toFixed(2));
+              if (totalDynDistMeters > 0) {
+                estadisticas.distancia = {
+                  km: totalDynDistKm,
+                  metros: totalDynDistMeters
+                };
+                estadisticas.distanciaKm = totalDynDistKm;
+                estadisticas.km = totalDynDistKm;
+
+                if (row.distanciaKm !== totalDynDistKm) {
+                  db.run('UPDATE actividades SET distanciaKm = ?, distanciaMetros = ?, perfilTransporte = ? WHERE id = ?',
+                    [totalDynDistKm, totalDynDistMeters, maxSeg ? maxSeg.tipo : row.perfilTransporte, id]
+                  );
+                }
+              }
             }
           }
         }
@@ -9085,6 +9347,13 @@ app.post('/import-tracking', (req, res, next) => {
     console.log(`✅ Actividad ID: ${actividadId}`);
     console.log(`✅ Archivos importados: ${archivosCreados.length}`);
 
+    // Sincronizar estadísticas totales y acumulativas del viaje completo
+    try {
+      await actualizarEstadisticasTotalesViaje(viajeId);
+    } catch (eEst) {
+      console.warn('⚠️ Error al actualizar estadísticas acumuladas del viaje:', eEst);
+    }
+
     res.status(201).json({
       success: true,
       viajeId,
@@ -9835,19 +10104,15 @@ app.post('/api/actividades/:id/segments', (req, res) => {
       VALUES (?, ?, ?, ?)
     `;
 
-    db.run(sql, [actividadId, segSource, nextOrder, points_json], function (insertErr) {
+    db.run(sql, [actividadId, segSource, nextOrder, points_json], async function (insertErr) {
       if (insertErr) {
         console.error('❌ Error guardando segment:', insertErr.message);
         return res.status(500).json({ error: 'Error guardando segment' });
       }
       console.log(`✅ Segment creado: id=${this.lastID}, actividad=${actividadId}, order=${nextOrder}, source=${segSource}, puntos=${points.length}`);
 
-      // Actualizar perfilTransporte dominante en la actividad
-      const specificPt = points.find(p => p.mode && !['walking', 'walk', 'andando', 'caminar', 'pie', 'transport'].includes(p.mode.toLowerCase()));
-      const dominantMode = specificPt?.mode || points[0]?.mode;
-      if (dominantMode) {
-        db.run('UPDATE actividades SET perfilTransporte = ? WHERE id = ?', [dominantMode, actividadId]);
-      }
+      // Recalcular estadísticas completas (terrestre, mar, aire) y sincronizar viaje
+      await recalcularEstadisticasActividad(actividadId);
 
       res.json({ id: this.lastID, segmentOrder: nextOrder, message: 'Segment creado correctamente' });
     });
@@ -9857,13 +10122,19 @@ app.post('/api/actividades/:id/segments', (req, res) => {
 // 3. Eliminar un segmento por ID
 app.delete('/api/segments/:id', (req, res) => {
   const { id } = req.params;
-  const sql = 'DELETE FROM segments WHERE id = ?';
-  db.run(sql, [id], function (err) {
-    if (err) {
-      console.error('❌ Error eliminando segment:', err.message);
-      return res.status(500).json({ error: 'Error eliminando segment' });
-    }
-    res.json({ success: true, deleted: this.changes });
+  db.get('SELECT actividadId FROM segments WHERE id = ?', [id], (findErr, segRow) => {
+    const actId = segRow?.actividadId;
+    const sql = 'DELETE FROM segments WHERE id = ?';
+    db.run(sql, [id], async function (err) {
+      if (err) {
+        console.error('❌ Error eliminando segment:', err.message);
+        return res.status(500).json({ error: 'Error eliminando segment' });
+      }
+      if (actId) {
+        await recalcularEstadisticasActividad(actId);
+      }
+      res.json({ success: true, deleted: this.changes });
+    });
   });
 });
 
@@ -9902,6 +10173,9 @@ app.post('/api/actividades/:id/restaurar-ruta-original', async (req, res) => {
 
     const origMode = (originalPoints && originalPoints[0]?.mode) || 'walking';
     await dbQuery.run('UPDATE actividades SET perfilTransporte = ? WHERE id = ?', [origMode, actividadId]);
+
+    // Recalcular estadísticas completas tras restaurar original
+    await recalcularEstadisticasActividad(actividadId);
 
     console.log(`🧹 [RESTAURAR ORIGINAL] Actividad ${actividadId}: Eliminados ${delSegResult.changes} segmentos manuales y ${delEditsResult.changes} track_edits.`);
 
@@ -9992,6 +10266,9 @@ app.post('/api/actividades/:id/guardar-ruta-generada', async (req, res) => {
     if (!actRow.rutaGpxCompleto) {
       await dbQuery.run('UPDATE actividades SET rutaGpxCompleto = ? WHERE id = ?', [relGpxPath, actividadId]);
     }
+
+    // 5. Recalcular estadísticas canónicas de actividad y viaje
+    await recalcularEstadisticasActividad(actividadId);
 
     console.log(`✅ [GUARDAR RUTA PROBABLE] Actividad ${actividadId}: ${points.length} puntos guardados en BD y GPX sincronizado.`);
 

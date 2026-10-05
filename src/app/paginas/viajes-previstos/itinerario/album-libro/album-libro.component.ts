@@ -4609,7 +4609,57 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       }
     }
 
-    const diasTotalesViaje = this.calcularDiasEntreFechas(this.infoViaje?.fechaInicio, this.infoViaje?.fechaFin);
+    // Acumular duración total y pasos de todas las actividades del viaje
+    let duracionTotalViajeSegundos = 0;
+    let pasosTotalesViaje = 0;
+    for (const [itId, acts] of actividadesPorItinerario.entries()) {
+      for (const act of acts) {
+        if (act.duracionSegundos) {
+          duracionTotalViajeSegundos += Number(act.duracionSegundos);
+        }
+        if (act.pasosEstimados) {
+          pasosTotalesViaje += Number(act.pasosEstimados);
+        }
+      }
+    }
+
+    // Calcular fechas y días reales de todo el conjunto de itinerarios
+    const todasFechas: string[] = [];
+    if (this.infoViaje?.fechaInicio) todasFechas.push(this.infoViaje.fechaInicio);
+    if (this.infoViaje?.fechaFin) todasFechas.push(this.infoViaje.fechaFin);
+    this.listaItinerarios.forEach(it => {
+      if (it.fechaInicio) todasFechas.push(it.fechaInicio);
+      if (it.fechaFin) todasFechas.push(it.fechaFin);
+    });
+    todasFechas.sort();
+    const fechaMinViaje = todasFechas.length > 0 ? todasFechas[0] : (this.infoViaje?.fechaInicio || '');
+    const fechaMaxViaje = todasFechas.length > 0 ? todasFechas[todasFechas.length - 1] : (this.infoViaje?.fechaFin || fechaMinViaje);
+
+    let diasTotalesViaje = this.listaItinerarios.length > 0 ? this.listaItinerarios.length : 1;
+    if (fechaMinViaje && fechaMaxViaje) {
+      diasTotalesViaje = Math.max(diasTotalesViaje, this.calcularDiasEntreFechas(fechaMinViaje, fechaMaxViaje));
+    }
+
+    // Si la carta intro tiene la descripción auto-generada de tracking importado, actualizarla con los totales reales del viaje
+    const esDescTracking = !paginaIntroViaje.descripcion ||
+      paginaIntroViaje.descripcion.includes('Tracking importado') ||
+      paginaIntroViaje.descripcion.startsWith('Tracking importado');
+
+    if (esDescTracking && distanciaTotalViajeKm > 0) {
+      const horas = Math.floor(duracionTotalViajeSegundos / 3600);
+      const minutos = Math.floor((duracionTotalViajeSegundos % 3600) / 60);
+      const segundos = duracionTotalViajeSegundos % 60;
+      const duracionStr = `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}:${String(segundos).padStart(2, '0')}`;
+      const duracionCorta = `${horas}h ${String(minutos).padStart(2, '0')}m`;
+      const diasStr = `${diasTotalesViaje} ${diasTotalesViaje === 1 ? 'día' : 'días'}`;
+      const pasosStr = pasosTotalesViaje > 0 ? ` - ${pasosTotalesViaje.toLocaleString('es-ES')} pasos` : '';
+
+      paginaIntroViaje.descripcion = `Tracking importado desde AudioPhotoApp - ${diasStr} - ${distanciaTotalViajeKm.toFixed(2)} km - ${duracionStr} (${duracionCorta})${pasosStr}`;
+    }
+
+    if (fechaMinViaje) {
+      paginaIntroViaje.fecha = fechaMinViaje;
+    }
 
     const tituloMapaGeneral = `MAPA GENERAL: ${this.obtenerTituloIntroLimpio()}`;
     const descMapaGeneral = `Recorrido unificado y vista panorámica de ${this.obtenerTituloIntroLimpio()}`;
@@ -4621,7 +4671,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       url: '',
       titulo: tituloMapaGeneral,
       descripcion: descMapaGeneral,
-      fecha: this.infoViaje?.fechaInicio || '',
+      fecha: fechaMinViaje || this.infoViaje?.fechaInicio || '',
       tipoMedia: 'mapa-animado',
       mimeType: '',
       cargado: true,

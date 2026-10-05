@@ -721,6 +721,31 @@ export class ActividadesItinerariosComponent implements OnInit {
 
       console.log(`✅ GPX parseado. ${this.coordenadasGPX.length} puntos extraídos (${this.puntosGPXConModo.length} con modo de transporte, etiquetas XML: ${hasXmlTransportModes}).`);
 
+      // 📏 Sincronizar distancia total calculada del trazado GPX completo (incluye mar, aire, tierra)
+      if (this.coordenadasGPX.length > 1) {
+        let totalTrackMeters = 0;
+        for (let i = 1; i < this.coordenadasGPX.length; i++) {
+          const lat1 = this.coordenadasGPX[i - 1][0];
+          const lon1 = this.coordenadasGPX[i - 1][1];
+          const lat2 = this.coordenadasGPX[i][0];
+          const lon2 = this.coordenadasGPX[i][1];
+          const R = 6371e3;
+          const phi1 = (lat1 * Math.PI) / 180;
+          const phi2 = (lat2 * Math.PI) / 180;
+          const dphi = ((lat2 - lat1) * Math.PI) / 180;
+          const dlam = ((lon2 - lon1) * Math.PI) / 180;
+          const a = Math.sin(dphi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlam / 2) ** 2;
+          totalTrackMeters += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+        const totalTrackKm = parseFloat((totalTrackMeters / 1000).toFixed(2));
+        const currentStatsKm = parseFloat(String(this.estadisticasGPX?.distanciaKm || 0));
+        if (totalTrackKm > 0 && (currentStatsKm === 0 || Math.abs(totalTrackKm - currentStatsKm) > 1)) {
+          console.log(`📏 [parseGPX] Actualizando distancia total mostrada para incluir todos los tramos (tierra, mar, aire): ${totalTrackKm} km (era ${currentStatsKm} km)`);
+          this.estadisticasGPX.distanciaKm = totalTrackKm.toFixed(2);
+          this.estadisticasGPX.distanciaMetros = Math.round(totalTrackMeters);
+        }
+      }
+
       // ✨ DESGLOSE Y FALLBACK POR TRANSPORTE:
       // Si el GPX XML ya contiene etiquetas explícitas de modo de transporte (de ediciones o importación rica),
       // respetamos estrictamente los modos punto por punto del GPX.
