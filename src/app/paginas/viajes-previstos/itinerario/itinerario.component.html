@@ -1,113 +1,464 @@
-<div class="contenedor">
-  <h2>Itinerarios para el viaje {{ viajePrevistoId }}</h2>
+<section class="itinerarios-page">
+  <!-- CABECERA MODERNA MOBILE-FIRST -->
+  <div class="page-header">
+    <div class="page-header-row">
+      <div class="page-header-titles">
+        <p class="page-kicker">
+          <i class="fa-solid fa-compass"></i> Itinerarios · {{ viaje?.en_viaje_de || '🏖️ Vacaciones' }}
+        </p>
+        <h1 class="page-title">
+          {{ viaje?.destino || viaje?.nombre || ('Itinerarios del viaje #' + viajePrevistoId) }}
+        </h1>
+        <p class="page-subtitle" *ngIf="viaje">
+          <i class="fa-regular fa-calendar-days"></i>
+          {{ formatearRangoFechas(viaje.fecha_inicio, viaje.fecha_fin) }}
+          <span class="separador-bullet">•</span>
+          {{ itinerarios.length }} {{ itinerarios.length === 1 ? 'etapa' : 'etapas' }} registradas
+        </p>
+      </div>
 
-  <!-- Botón para añadir un nuevo itinerario -->
-  <button [routerLink]="['/formulario-itinerario', viajePrevistoId]" class="btn-agregar">
-    <i class="fa fa-plus-circle"></i> Añadir Itinerario
-  </button>
+      <!-- Hilera de acciones principales alineada a la derecha -->
+      <div class="header-action-row" aria-label="Acciones principales">
+        <!-- Volver a viajes -->
+        <button 
+          type="button" 
+          class="action-icon-btn btn-back" 
+          (click)="volverAViajes()" 
+          title="Volver a viajes previstos" 
+          aria-label="Volver">
+          <i class="fa-solid fa-arrow-left"></i>
+        </button>
 
-  <button *ngIf="hayDuplicados" (click)="unificarMismoDia()" class="btn-unificar">
-    <i class="fa fa-broom"></i> 🧹 Unificar Itinerarios del Mismo Día
-  </button>
-  <p *ngIf="hayDuplicados" style="color: #ff9800; font-size: 0.8rem; margin-top: 5px;">(Modo Unificación Activo: Se han
-    detectado fechas duplicadas)</p>
+        <!-- Añadir itinerario -->
+        <a 
+          [routerLink]="['/formulario-itinerario', viajePrevistoId]" 
+          class="action-icon-btn btn-add" 
+          title="Añadir nuevo itinerario a este viaje" 
+          aria-label="Añadir itinerario">
+          <i class="fa-solid fa-plus"></i>
+        </a>
 
-  <!-- Banner de Filtro Activo -->
-  <div *ngIf="filtroInicio && filtroFin" class="filtro-banner">
-    <div class="filtro-info">
-      <i class="fa fa-filter"></i>
-      <span>Fecha: <strong>{{ filtroInicio }} - {{ filtroFin }}</strong></span>
-      <span class="badge-conteo">({{ itinerarios.length }} itinerarios)</span>
+        <!-- Ver mapa GPX del viaje -->
+        <button 
+          type="button" 
+          class="action-icon-btn btn-map" 
+          (click)="irAMapaViaje()" 
+          title="Ver mapa interactivo de rutas GPX" 
+          aria-label="Ver mapa">
+          <i class="fa-solid fa-map-location-dot"></i>
+        </button>
+
+        <!-- Ver Álbum libro -->
+        <button 
+          type="button" 
+          class="action-icon-btn btn-album" 
+          (click)="verAlbumEnLibro()" 
+          title="Ver álbum de fotos en formato libro" 
+          aria-label="Ver álbum libro">
+          <i class="fa-solid fa-book-open"></i>
+        </button>
+
+        <!-- Unificar itinerarios duplicados si los hay -->
+        <button 
+          *ngIf="hayDuplicados" 
+          type="button" 
+          class="action-icon-btn btn-unify" 
+          (click)="unificarMismoDia()" 
+          title="Unificar itinerarios del mismo día detectados" 
+          aria-label="Unificar">
+          <i class="fa-solid fa-broom"></i>
+          <span class="badge-dot-warning" title="Duplicados detectados"></span>
+        </button>
+      </div>
     </div>
-    <button (click)="limpiarFiltro()" class="btn-limpiar-filtro">
-      <i class="fa fa-times-circle"></i> Mostrar todos
+  </div>
+
+  <!-- AVISO DE DUPLICADOS SI EXISTEN -->
+  <div *ngIf="hayDuplicados" class="duplicados-banner">
+    <div class="duplicados-info">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      <span>Se han detectado itinerarios con la misma fecha en este viaje.</span>
+    </div>
+    <button (click)="unificarMismoDia()" class="btn-resolver-duplicados">
+      <i class="fa-solid fa-broom"></i> Unificar ahora
     </button>
   </div>
 
-  <hr>
-
-  <!-- Mostrar formulario de actualización solo cuando se seleccione un itinerario -->
-  <div *ngIf="itinerarioActualizado.id !== 0">
-    <h3>Actualizar Itinerario</h3>
-    <form (ngSubmit)="guardarActualizacion()">
-      <label for="fechaInicio">Fecha de inicio</label>
-      <input type="date" id="fechaInicio" [(ngModel)]="itinerarioActualizado.fechaInicio" name="fechaInicio" required />
-
-      <label for="fechaFin">Fecha de fin</label>
-      <input type="date" id="fechaFin" [(ngModel)]="itinerarioActualizado.fechaFin" name="fechaFin" required />
-
-      <label for="duracionDias">Duración (días)</label>
-      <input type="number" id="duracionDias" [(ngModel)]="itinerarioActualizado.duracionDias" name="duracionDias"
-        required />
-
-      <label for="destinosPorDia">Destinos por día</label>
-      <input type="text" id="destinosPorDia" [(ngModel)]="itinerarioActualizado.destinosPorDia" name="destinosPorDia"
-        required />
-
-      <label for="descripcionGeneral">Descripción general</label>
-      <textarea id="descripcionGeneral" [(ngModel)]="itinerarioActualizado.descripcionGeneral" name="descripcionGeneral"
-        required></textarea>
-
-      <label for="horaInicio">Hora de inicio</label>
-      <input type="time" id="horaInicio" [(ngModel)]="itinerarioActualizado.horaInicio" name="horaInicio" required />
-
-      <label for="horaFin">Hora de fin</label>
-      <input type="time" id="horaFin" [(ngModel)]="itinerarioActualizado.horaFin" name="horaFin" required />
-
-      <label for="climaGeneral">Clima general</label>
-      <input type="text" id="climaGeneral" [(ngModel)]="itinerarioActualizado.climaGeneral" name="climaGeneral"
-        required />
-
-      <label for="tipoDeViaje">Tipo de actividad</label>
-      <app-tipos-de-actividad 
-        [tipoSeleccionado]="itinerarioActualizado.tipoDeViaje || 'costa'"
-        (tipoSeleccionadoChange)="itinerarioActualizado.tipoDeViaje = $any($event)">
-      </app-tipos-de-actividad>
-
-      <label for="audioItinerario"><i class="fa fa-music"></i> Música / Audio de Fondo (MP3)</label>
-      <input type="file" id="audioItinerario" (change)="onAudioSelected($event)" accept="audio/*" />
-      <span *ngIf="itinerarioActualizado.audio" style="font-size: 0.85rem; color: #0284c7; display: block; margin-top: 2px;">
-        🎵 Audio actual: {{ itinerarioActualizado.audio }}
-      </span>
-      <span *ngIf="archivoAudioSeleccionado" style="font-size: 0.85rem; color: #059669; display: block; margin-top: 2px;">
-        <i class="fa fa-check-circle"></i> Nuevo audio: {{ archivoAudioSeleccionado.name }}
-      </span>
-
-      <button type="submit" class="btn-guardar">Guardar cambios</button>
-      <button type="button" class="btn-cancelar" (click)="cancelarActualizacion()">Cancelar</button>
-    </form>
-    <hr>
+  <!-- BANNER DE FILTRO ACTIVO -->
+  <div *ngIf="filtroInicio && filtroFin" class="filtro-banner">
+    <div class="filtro-info">
+      <i class="fa-solid fa-filter"></i>
+      <span>Filtro de fecha: <strong>{{ filtroInicio }} - {{ filtroFin }}</strong></span>
+      <span class="badge-conteo">({{ itinerarios.length }} etapas)</span>
+    </div>
+    <button (click)="limpiarFiltro()" class="btn-limpiar-filtro">
+      <i class="fa-solid fa-xmark"></i> Mostrar todos
+    </button>
   </div>
 
-  <!-- Lista de itinerarios, solo se muestra si no estamos actualizando uno -->
-  <div *ngIf="itinerarioActualizado.id === 0">
-    <div *ngFor="let itinerario of itinerarios">
-      <h3>Itinerario {{ itinerario.id }}</h3>
-      <p><strong>Fecha:</strong> {{ itinerario.fechaInicio }} - {{ itinerario.fechaFin }}</p>
-      <p><strong>Duración:</strong> {{ itinerario.duracionDias }} días</p>
-      <p><strong>Destinos:</strong> {{ itinerario.destinosPorDia }}</p>
-      <p><strong>Descripción:</strong> {{ itinerario.descripcionGeneral }}</p>
-      <p><strong>Horario:</strong> {{ itinerario.horaInicio }} a {{ itinerario.horaFin }}</p>
-      <p><strong>Clima:</strong> {{ itinerario.climaGeneral }}</p>
-      <p><strong>Tipo:</strong> {{ itinerario.tipoDeViaje }}</p>
-      <p *ngIf="itinerario.audio"><strong><i class="fa fa-music"></i> Música:</strong> {{ itinerario.audio }}</p>
+  <!-- BARRA DE HERRAMIENTAS AIRBNB: SELECTOR DE VISTAS (CUADRÍCULA / LISTA) -->
+  <div class="airbnb-toolbar">
+    <div class="toolbar-info">
+      <span class="trip-count-badge">
+        <i class="fa-solid fa-route"></i>
+        {{ itinerarios.length }} {{ itinerarios.length === 1 ? 'itinerario' : 'itinerarios' }}
+      </span>
+    </div>
 
-      <button class="btn-eliminar" (click)="eliminarItinerario(itinerario.id)">
-        <i class="fa fa-trash"></i> Eliminar
-      </button>
-      <button class="btn-actualizar" (click)="actualizarItinerario(itinerario)">
-        <i class="fa fa-edit"></i> Actualizar
-      </button>
-      <button class="btn-verActividades" (click)="verActividades(itinerario)">
-        <i class="fa fa-eye"></i> Ver Actividades
+    <!-- Selector de vista Cuadrícula / Lista -->
+    <div class="view-switcher-pill" role="tablist" aria-label="Modo de visualización">
+      <button 
+        type="button" 
+        class="switch-btn" 
+        [class.active]="disposicionVista === 'grid'"
+        (click)="cambiarDisposicion('grid')"
+        title="Vista en cuadrícula">
+        <i class="fa-solid fa-grip"></i>
+        <span class="switch-label">Cuadrícula</span>
       </button>
 
-      <button (click)="agregarActividad(itinerario)">
-        <i class="fa fa-plus"></i> Agregar Actividad
+      <button 
+        type="button" 
+        class="switch-btn" 
+        [class.active]="disposicionVista === 'lineal'"
+        (click)="cambiarDisposicion('lineal')"
+        title="Vista lineal">
+        <i class="fa-solid fa-list-ul"></i>
+        <span class="switch-label">Lista</span>
       </button>
-      <hr>
     </div>
   </div>
 
-  <button (click)="volverAViajes()"><i class="fa fa-arrow-left"></i> Volver a Viajes Previsto</button>
+  <!-- ESTADO DE CARGA -->
+  <div class="loading-state" *ngIf="cargando">
+    <div class="spinner"></div>
+    <p>Cargando itinerarios...</p>
+  </div>
+
+  <!-- ESTADO VACÍO -->
+  <div class="empty-state" *ngIf="!cargando && itinerarios.length === 0">
+    <div class="empty-icon-wrap">
+      <i class="fa-solid fa-map-location-dot"></i>
+    </div>
+    <h3>No hay itinerarios registrados para este viaje</h3>
+    <p>Crea el primer itinerario para comenzar a registrar actividades, rutas y fotos de este viaje.</p>
+    <a [routerLink]="['/formulario-itinerario', viajePrevistoId]" class="app-btn-primary">
+      <i class="fa-solid fa-plus"></i> Añadir Itinerario
+    </a>
+  </div>
+
+  <!-- CONTENEDOR DE TARJETAS DE ITINERARIOS: ESTILO AIRBNB (GRID / LINEAL) -->
+  <div *ngIf="!cargando && itinerarios.length > 0" class="itinerarios-airbnb-container" [ngClass]="'vista-' + disposicionVista">
+    <article 
+      *ngFor="let itinerario of itinerarios; index as i" 
+      class="airbnb-card"
+      [class.card-activa]="itinerarioActivoId === itinerario.id"
+      [class.con-popover]="desgloseAbiertoId === itinerario.id"
+      (click)="toggleAccionesItinerario(itinerario.id, $event)">
+      
+      <!-- FOTO PRINCIPAL PROTAGONISTA EN ALTA CALIDAD -->
+      <div class="card-media">
+        <img 
+          *ngIf="itinerario.imagen_url && !itinerario._sinFoto"
+          [src]="itinerario.imagen_url" 
+          (error)="onImageError(itinerario)"
+          [alt]="getTituloItinerario(itinerario, i)" 
+          class="card-img" 
+          loading="lazy" />
+
+        <!-- Fallback Placeholder sofisticado estilo Airbnb si no hay foto -->
+        <div *ngIf="!itinerario.imagen_url || itinerario._sinFoto" class="card-img-placeholder">
+          <div class="ph-gradient"></div>
+          <span class="ph-icon">{{ getTipoIcon(itinerario.tipoDeViaje) }}</span>
+          <span class="ph-text">{{ getTituloItinerario(itinerario, i) }}</span>
+        </div>
+
+        <!-- Badges flotantes sobre la foto -->
+        <div class="card-floating-badges">
+          <span class="badge-index">Día {{ i + 1 }}</span>
+          <span class="badge-motivo">
+            {{ getTipoEtiqueta(itinerario.tipoDeViaje) }}
+          </span>
+        </div>
+
+        <!-- Indicador interactivo para pulsar -->
+        <div class="card-tap-hint" title="Toca para ver opciones">
+          <i class="fa-solid fa-ellipsis"></i>
+        </div>
+      </div>
+
+      <!-- INFORMACIÓN DEL ITINERARIO (ORGANIZADA Y LIMPIA) -->
+      <div class="card-body">
+        <!-- 1. Fila de etiquetas y horario -->
+        <div class="card-category-row">
+          <span class="category-tag">
+            <span class="tag-label">Horario:</span>
+            <strong class="tag-value">{{ itinerario.horaInicio || '00:00' }} - {{ itinerario.horaFin || '23:59' }}</strong>
+          </span>
+
+          <span class="weather-tag" *ngIf="itinerario.climaGeneral">
+            <i class="fa-solid fa-cloud-sun"></i> {{ itinerario.climaGeneral }}
+          </span>
+
+          <span class="media-count-badge" *ngIf="itinerario.total_fotos && itinerario.total_fotos > 0">
+            <i class="fa-regular fa-image"></i> {{ itinerario.total_fotos }} fotos
+          </span>
+        </div>
+
+        <!-- 2. Destino / Título Descriptivo (Evita el ID numérico) -->
+        <h2 class="card-title" [title]="getTituloItinerario(itinerario, i)">
+          {{ getTituloItinerario(itinerario, i) }}
+        </h2>
+
+        <!-- 3. Fecha y duración -->
+        <div class="card-dates-row">
+          <i class="fa-regular fa-calendar"></i>
+          <span>{{ formatearRangoItinerario(itinerario) }} • {{ itinerario.duracionDias }} {{ itinerario.duracionDias === 1 ? 'día' : 'días' }}</span>
+        </div>
+
+        <!-- 4. Métricas de rendimiento consolidadas (KM con desglose interactivo, Tiempo a pie, Pasos a pie) -->
+        <div class="card-metrics-grid">
+          <!-- KM con desglose desplegable si tiene medios -->
+          <div class="metric-wrapper metric-km-wrapper">
+            <button 
+              type="button" 
+              class="metric-item metric-km" 
+              [class.con-desglose]="tieneDesgloseTransporte(itinerario)"
+              [class.activo]="desgloseAbiertoId === itinerario.id"
+              (click)="toggleDesgloseTransporte(itinerario.id, $event)"
+              [title]="tieneDesgloseTransporte(itinerario) ? 'Pulsar para ver desglose por medio de transporte' : 'Distancia total recorrida'">
+              <i class="fa-solid fa-route"></i>
+              <span class="metric-val">{{ getDistanciaKm(itinerario) }} <small>km</small></span>
+              <span *ngIf="tieneDesgloseTransporte(itinerario)" class="badge-desglose-toggle">
+                <i class="fa-solid fa-chevron-down" [class.rotado]="desgloseAbiertoId === itinerario.id"></i>
+              </span>
+            </button>
+
+            <!-- Desplegable flotante elegante con los medios de transporte y actividades -->
+            <div 
+              class="desglose-popover" 
+              *ngIf="desgloseAbiertoId === itinerario.id" 
+              (click)="$event.stopPropagation()">
+              <div class="popover-header">
+                <div class="popover-header-title">
+                  <i class="fa-solid fa-chart-pie"></i>
+                  <span>Desglose de {{ getDistanciaKm(itinerario) }} km</span>
+                </div>
+                <button type="button" class="btn-popover-close" (click)="cerrarDesglose()" aria-label="Cerrar desglose">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
+              <!-- Pestañas de alternancia si hay múltiples actividades y transporte -->
+              <div class="popover-tabs" *ngIf="itinerario.desglose_actividades && itinerario.desglose_actividades.length > 1 && itinerario.desglose_transporte && itinerario.desglose_transporte.length > 0">
+                <button 
+                  type="button" 
+                  class="popover-tab-btn" 
+                  [class.active]="getPopoverTab(itinerario) === 'actividades'"
+                  (click)="setPopoverTab(itinerario.id, 'actividades', $event)">
+                  <i class="fa-solid fa-list-check"></i> Actividades ({{ itinerario.desglose_actividades.length }})
+                </button>
+                <button 
+                  type="button" 
+                  class="popover-tab-btn" 
+                  [class.active]="getPopoverTab(itinerario) === 'transporte'"
+                  (click)="setPopoverTab(itinerario.id, 'transporte', $event)">
+                  <i class="fa-solid fa-layer-group"></i> Transporte
+                </button>
+              </div>
+
+              <!-- 1. VISTA ACTIVIDADES INDIVIDUALES -->
+              <div class="popover-items-list" *ngIf="getPopoverTab(itinerario) === 'actividades' && itinerario.desglose_actividades && itinerario.desglose_actividades.length > 0">
+                <div class="popover-item item-actividad" *ngFor="let act of itinerario.desglose_actividades">
+                  <div class="item-modo-col">
+                    <span class="item-emoji">{{ act.emoji || '🚶' }}</span>
+                    <div class="item-act-info">
+                      <span class="item-nombre">{{ act.nombre }}</span>
+                      <small class="item-subinfo">{{ act.duracionFormateada }} · {{ act.pasos?.toLocaleString('es-ES') }} pasos</small>
+                    </div>
+                  </div>
+                  <div class="item-km-col">
+                    <strong>{{ formatearKm(act.distanciaKm) }}</strong> <small>km</small>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. VISTA MEDIOS DE TRANSPORTE -->
+              <div class="popover-items-list" *ngIf="getPopoverTab(itinerario) === 'transporte' || !itinerario.desglose_actividades || itinerario.desglose_actividades.length <= 1">
+                <div class="popover-item" *ngFor="let item of itinerario.desglose_transporte">
+                  <div class="item-modo-col">
+                    <span class="item-emoji">{{ item.emoji || '🛣️' }}</span>
+                    <span class="item-nombre">{{ item.nombre }}</span>
+                  </div>
+                  <div class="item-km-col">
+                    <strong>{{ formatearKm(item.distanciaKm) }}</strong> <small>km</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tiempo activo caminando -->
+          <div class="metric-item metric-time" title="Tiempo activo caminando en esta etapa">
+            <i class="fa-solid fa-person-walking"></i>
+            <span class="metric-val">{{ getDuracionItinerario(itinerario) }}</span>
+            <span class="metric-tag-walking">a pie</span>
+          </div>
+
+          <!-- Pasos estrictamente a pie -->
+          <div class="metric-item metric-steps" title="Pasos registrados caminando en esta etapa">
+            <i class="fa-solid fa-shoe-prints"></i>
+            <span class="metric-val">{{ getPasosItinerario(itinerario) }}</span>
+            <span class="metric-tag-walking">pasos</span>
+          </div>
+        </div>
+
+        <!-- Descripción breve si existe -->
+        <p class="card-desc" *ngIf="getDescripcionLimpia(itinerario)" [title]="getDescripcionLimpia(itinerario)">
+          {{ getDescripcionLimpia(itinerario) }}
+        </p>
+
+        <!-- Música / Audio asociado si existe -->
+        <div class="card-audio-pill" *ngIf="itinerario.audio">
+          <i class="fa-solid fa-music"></i>
+          <span>Audio de fondo incluido</span>
+        </div>
+
+        <!-- Botón rápido directo a ver actividades -->
+        <div class="card-quick-actions">
+          <button 
+            type="button" 
+            class="btn-quick-actividades" 
+            (click)="verActividades(itinerario); $event.stopPropagation()">
+            <i class="fa-solid fa-eye"></i>
+            <span>Ver Actividades</span>
+            <span class="acts-badge" *ngIf="itinerario.total_actividades">{{ itinerario.total_actividades }}</span>
+          </button>
+        </div>
+
+        <!-- 5. PANEL DE ACCIONES INTERACTIVO: REVELADO AL PULSAR SOBRE LA TARJETA -->
+        <div class="card-actions-drawer" [class.abierto]="itinerarioActivoId === itinerario.id" (click)="$event.stopPropagation()">
+          <div class="drawer-header">
+            <span class="drawer-title"><i class="fa-solid fa-sliders"></i> Opciones de itinerario</span>
+            <button type="button" class="btn-drawer-close" (click)="cerrarAcciones()" aria-label="Cerrar opciones">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <div class="drawer-buttons-grid">
+            <button type="button" (click)="verActividades(itinerario)" class="drawer-btn btn-itin" title="Ver actividades del día">
+              <i class="fa-solid fa-list-check"></i>
+              <span>Actividades</span>
+            </button>
+
+            <button type="button" (click)="agregarActividad(itinerario)" class="drawer-btn btn-add-act" title="Añadir nueva actividad">
+              <i class="fa-solid fa-circle-plus"></i>
+              <span>+ Actividad</span>
+            </button>
+
+            <button type="button" (click)="irAMapaViaje()" class="drawer-btn btn-mapa" title="Ver trazado en el mapa">
+              <i class="fa-solid fa-location-dot"></i>
+              <span>Mapa</span>
+            </button>
+
+            <button type="button" (click)="actualizarItinerario(itinerario)" class="drawer-btn btn-edit" title="Editar datos del itinerario">
+              <i class="fa-solid fa-pen-to-square"></i>
+              <span>Actualizar</span>
+            </button>
+
+            <button type="button" (click)="eliminarItinerario(itinerario.id)" class="drawer-btn btn-delete" title="Eliminar este itinerario">
+              <i class="fa-solid fa-trash-can"></i>
+              <span>Eliminar</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- MODAL MODERNO DE ACTUALIZACIÓN DE ITINERARIO -->
+<div class="modal-overlay" *ngIf="mostrarModalActualizar" (click)="cancelarActualizacion()">
+  <div class="modal-card" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-header-titles">
+        <p class="modal-kicker">Edición</p>
+        <h3 class="modal-title">Actualizar Itinerario</h3>
+      </div>
+      <button type="button" class="btn-modal-close" (click)="cancelarActualizacion()" aria-label="Cerrar">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <form (ngSubmit)="guardarActualizacion()" class="modal-form">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="modalFechaInicio">Fecha de inicio</label>
+          <input type="date" id="modalFechaInicio" [(ngModel)]="itinerarioActualizado.fechaInicio" name="fechaInicio" required />
+        </div>
+
+        <div class="form-group">
+          <label for="modalFechaFin">Fecha de fin</label>
+          <input type="date" id="modalFechaFin" [(ngModel)]="itinerarioActualizado.fechaFin" name="fechaFin" required />
+        </div>
+
+        <div class="form-group">
+          <label for="modalHoraInicio">Hora de inicio</label>
+          <input type="time" id="modalHoraInicio" [(ngModel)]="itinerarioActualizado.horaInicio" name="horaInicio" />
+        </div>
+
+        <div class="form-group">
+          <label for="modalHoraFin">Hora de fin</label>
+          <input type="time" id="modalHoraFin" [(ngModel)]="itinerarioActualizado.horaFin" name="horaFin" />
+        </div>
+
+        <div class="form-group full-width">
+          <label for="modalDestinos">Destinos / Lugares visitados</label>
+          <input type="text" id="modalDestinos" [(ngModel)]="itinerarioActualizado.destinosPorDia" name="destinosPorDia" placeholder="Ej: Zaragoza, Aragón, España" required />
+        </div>
+
+        <div class="form-group full-width">
+          <label for="modalDescripcion">Descripción general</label>
+          <textarea id="modalDescripcion" [(ngModel)]="itinerarioActualizado.descripcionGeneral" name="descripcionGeneral" rows="3" placeholder="Detalles, notas o narración de este día..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="modalClima">Clima</label>
+          <input type="text" id="modalClima" [(ngModel)]="itinerarioActualizado.climaGeneral" name="climaGeneral" placeholder="Ej: Soleado, 24°C" />
+        </div>
+
+        <div class="form-group">
+          <label for="modalDuracion">Duración (días)</label>
+          <input type="number" id="modalDuracion" [(ngModel)]="itinerarioActualizado.duracionDias" name="duracionDias" min="1" required />
+        </div>
+
+        <div class="form-group full-width">
+          <label>Tipo de actividad / entorno</label>
+          <app-tipos-de-actividad 
+            [tipoSeleccionado]="itinerarioActualizado.tipoDeViaje || 'costa'"
+            (tipoSeleccionadoChange)="itinerarioActualizado.tipoDeViaje = $any($event)">
+          </app-tipos-de-actividad>
+        </div>
+
+        <div class="form-group full-width">
+          <label for="modalAudio"><i class="fa-solid fa-music"></i> Música o audio de fondo (MP3)</label>
+          <input type="file" id="modalAudio" (change)="onAudioSelected($event)" accept="audio/*" class="file-input" />
+          <span *ngIf="itinerarioActualizado.audio" class="audio-hint-existente">
+            🎵 Audio actual: {{ itinerarioActualizado.audio }}
+          </span>
+          <span *ngIf="archivoAudioSeleccionado" class="audio-hint-nuevo">
+            <i class="fa-solid fa-check"></i> Nuevo archivo: {{ archivoAudioSeleccionado.name }}
+          </span>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" (click)="cancelarActualizacion()">Cancelar</button>
+        <button type="submit" class="btn-primary" [disabled]="cargando">
+          <i class="fa-solid fa-floppy-disk"></i> Guardar cambios
+        </button>
+      </div>
+    </form>
+  </div>
 </div>

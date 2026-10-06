@@ -2230,6 +2230,16 @@ Formatos soportados:
       });
     });
 
+    this.eventSourceIA.addEventListener('cambio_modelo', (event: any) => {
+      this.ngZone.run(() => {
+        try {
+          const datos = JSON.parse(event.data);
+          this.estadoTextoIA = `🔄 ${datos.mensaje || 'Cambiando a modelo de respaldo...'}`;
+        } catch (e) {}
+        this.cdr.detectChanges();
+      });
+    });
+
     this.eventSourceIA.addEventListener('progreso', (event: any) => {
       this.ngZone.run(() => {
         try {

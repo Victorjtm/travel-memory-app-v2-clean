@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef, NgZone, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
@@ -40,6 +40,134 @@ export class ActividadesItinerariosComponent implements OnInit {
   actividades: Actividad[] = [];
   viajePrevistoId!: number;
   itinerarioId!: number;
+
+  // 🏡 Disposición de vista y estado interactivo (Airbnb Style: Grid / Lineal)
+  disposicionVista: 'grid' | 'lineal' = (localStorage.getItem('actividades_disposicion_vista') as any) || 'grid';
+  actividadActivaId: number | null = null;
+  itinerario: any = null;
+  viaje: any = null;
+  cargando = false;
+
+  cambiarDisposicion(modo: 'grid' | 'lineal'): void {
+    this.disposicionVista = modo;
+    localStorage.setItem('actividades_disposicion_vista', modo);
+  }
+
+  toggleAccionesActividad(actividadId: number, event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.actividadActivaId = this.actividadActivaId === actividadId ? null : actividadId;
+  }
+
+  cerrarAcciones(): void {
+    this.actividadActivaId = null;
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(): void {
+    if (this.actividadActivaId !== null) {
+      this.actividadActivaId = null;
+    }
+  }
+
+  cargarItinerarioYViaje(): void {
+    if (this.itinerarioId) {
+      this.http.get<any>(`${environment.apiUrl}/itinerarios/${this.itinerarioId}`).subscribe({
+        next: (itin) => {
+          this.itinerario = itin;
+          this.cdr.detectChanges();
+        },
+        error: (err) => console.warn('No se pudo cargar info del itinerario:', err)
+      });
+    }
+    if (this.viajePrevistoId) {
+      this.http.get<any>(`${environment.apiUrl}/viajes-previstos/${this.viajePrevistoId}`).subscribe({
+        next: (v) => {
+          this.viaje = v;
+          this.cdr.detectChanges();
+        },
+        error: (err) => console.warn('No se pudo cargar info del viaje:', err)
+      });
+    }
+  }
+
+  getTituloCabecera(): string {
+    if (this.itinerario?.destinosPorDia) return this.itinerario.destinosPorDia;
+    if (this.itinerario?.descripcionGeneral) return this.itinerario.descripcionGeneral;
+    if (this.viaje?.destino) return `Itinerario en ${this.viaje.destino}`;
+    return `Itinerario #${this.itinerarioId}`;
+  }
+
+  getPerfilIcon(actividad: any): string {
+    const perfil = (actividad.perfilTransporte || '').toLowerCase();
+    const tipo = (actividad.tipoActividadNombre || actividad.nombre || '').toLowerCase();
+    
+    if (perfil.includes('boat') || perfil.includes('barco') || tipo.includes('barco') || tipo.includes('crucero') || tipo.includes('ferry')) return '⛵';
+    if (perfil.includes('flight') || perfil.includes('plane') || perfil.includes('avion') || tipo.includes('vuelo') || tipo.includes('avión')) return '✈️';
+    if (perfil.includes('train') || perfil.includes('tren') || tipo.includes('tren') || tipo.includes('metro')) return '🚆';
+    if (perfil.includes('car') || perfil.includes('coche') || perfil.includes('driving') || perfil.includes('auto') || tipo.includes('coche') || tipo.includes('conducir')) return '🚗';
+    if (perfil.includes('bus') || perfil.includes('autobus') || tipo.includes('autobús')) return '🚌';
+    if (perfil.includes('bike') || perfil.includes('bici') || perfil.includes('cycling') || tipo.includes('bici') || tipo.includes('ciclismo')) return '🚲';
+    if (perfil.includes('run') || perfil.includes('correr') || tipo.includes('running') || tipo.includes('carrera')) return '🏃';
+    if (tipo.includes('museo') || tipo.includes('monumento') || tipo.includes('cultura')) return '🏛️';
+    if (tipo.includes('playa') || tipo.includes('mar') || tipo.includes('costa')) return '🏖️';
+    if (tipo.includes('montaña') || tipo.includes('senderismo') || tipo.includes('trekking')) return '🏔️';
+    if (tipo.includes('restaurante') || tipo.includes('comida') || tipo.includes('cena')) return '🍽️';
+    return '🚶';
+  }
+
+  getPerfilEtiqueta(actividad: any): string {
+    if (actividad.tipoActividadNombre) {
+      return actividad.tipoActividadNombre.charAt(0).toUpperCase() + actividad.tipoActividadNombre.slice(1);
+    }
+    const perfil = (actividad.perfilTransporte || '').toLowerCase();
+    if (perfil.includes('boat') || perfil.includes('barco')) return 'Barco / Marítimo';
+    if (perfil.includes('car') || perfil.includes('driving')) return 'Vehículo';
+    if (perfil.includes('bike') || perfil.includes('cycling')) return 'Bicicleta';
+    if (perfil.includes('train') || perfil.includes('tren')) return 'Tren';
+    if (perfil.includes('flight') || perfil.includes('avion')) return 'Vuelo';
+    return 'Paseo / Actividad';
+  }
+
+  getDistanciaKm(actividad: any): string {
+    if (actividad.distanciaKm !== undefined && actividad.distanciaKm !== null && !isNaN(actividad.distanciaKm)) {
+      return Number(actividad.distanciaKm).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    if (actividad.distanciaMetros && actividad.distanciaMetros > 0) {
+      return (actividad.distanciaMetros / 1000).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return '0,00';
+  }
+
+  getDuracion(actividad: any): string {
+    if (actividad.duracionFormateada && actividad.duracionFormateada !== '00:00:00') {
+      return actividad.duracionFormateada;
+    }
+    const segs = actividad.duracionSegundos;
+    if (segs && segs > 0) {
+      const h = Math.floor(segs / 3600);
+      const m = Math.floor((segs % 3600) / 60);
+      const s = segs % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+    return '--:--';
+  }
+
+  getPasos(actividad: any): string {
+    if (actividad.pasosEstimados && actividad.pasosEstimados > 0) {
+      return Number(actividad.pasosEstimados).toLocaleString('es-ES');
+    }
+    return '0';
+  }
+
+  onImageError(actividad: any): void {
+    if (actividad.imagen_url !== actividad.mapa_url && actividad.mapa_url) {
+      actividad.imagen_url = actividad.mapa_url;
+    } else {
+      actividad._sinFoto = true;
+    }
+  }
 
   // ✨ PROPIEDADES PARA MODALES
   mostrarModalGPX = false;
@@ -117,6 +245,10 @@ export class ActividadesItinerariosComponent implements OnInit {
       nombre?: string;
       distanciaKm?: string;
       duracionFormateada?: string;
+      tiempoFormateado?: string;
+      duracion_ui?: string;
+      duracionSegundos?: number;
+      [key: string]: any;
     }>;
     fecha?: string;
     horario?: { inicio?: string; fin?: string };
@@ -221,6 +353,7 @@ export class ActividadesItinerariosComponent implements OnInit {
       if (viajeId && itinId) {
         this.viajePrevistoId = +viajeId;
         this.itinerarioId = +itinId;
+        this.cargarItinerarioYViaje();
         this.cargarActividades();
       }
     });
@@ -229,14 +362,16 @@ export class ActividadesItinerariosComponent implements OnInit {
   cargarActividades(): void {
     if (!this.viajePrevistoId || !this.itinerarioId) return;
 
+    this.cargando = true;
     this.actividadService.getByViajeYItinerario(this.viajePrevistoId, this.itinerarioId)
       .subscribe({
         next: actividades => {
           console.log('Actividades cargadas:', actividades);
           this.actividades = actividades;
+          this.cargando = false;
           this.cdr.detectChanges();
           this.scrollToTargetElement();
-            this.cargarActividadesConSalud();
+          this.cargarActividadesConSalud();
 
           // 🗺️ Si se solicita abrir el editor de ruta automáticamente (Flujo de Rescate/Manual)
           const params = this.route.snapshot.queryParams;
@@ -250,7 +385,11 @@ export class ActividadesItinerariosComponent implements OnInit {
             }
           }
         },
-        error: err => console.error('Error cargando actividades:', err)
+        error: err => {
+          console.error('Error cargando actividades:', err);
+          this.cargando = false;
+          this.cdr.detectChanges();
+        }
       });
   }
 

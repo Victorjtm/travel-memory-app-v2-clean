@@ -2577,7 +2577,219 @@ function obtenerSegundosActividad(act) {
 
 /**
  * 🚀 Calcula el desglose completo de kilómetros por medio de transporte (coche, barco, bus, a pie),
- * el desglose detallado por actividad individual, y extrae estrictamente las métricas activas a pie.
+ * el desglose detallado por actividad individual, y extrae estrictamente las métricas activas a pie
+ * a partir de un listado de actividades.
+ */
+async function calcularEstadisticasDesdeActividades(acts) {
+  if (!acts || acts.length === 0) {
+    return {
+      totalKm: 0,
+      desgloseTransporte: [],
+      desgloseActividades: [],
+      totalSegundosCaminando: 0,
+      totalPasosCaminando: 0,
+      totalKmCaminando: 0
+    };
+  }
+
+  function calcDistM(lat1, lon1, lat2, lon2) {
+    const R = 6371e3;
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const dphi = ((lat2 - lat1) * Math.PI) / 180;
+    const dlam = ((lon2 - lon1) * Math.PI) / 180;
+    const a = Math.sin(dphi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlam / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function resolveAnchorIdx(anchor, ptsList) {
+    if (!ptsList || ptsList.length === 0) return -1;
+    if (anchor && anchor.time) {
+      const aTime = new Date(anchor.time).getTime();
+      let bestIdx = -1, minDiff = Infinity;
+      for (let i = 0; i < ptsList.length; i++) {
+        if (ptsList[i].time) {
+          const diff = Math.abs(new Date(ptsList[i].time).getTime() - aTime);
+          if (diff < minDiff) { minDiff = diff; bestIdx = i; }
+        }
+      }
+      if (bestIdx !== -1 && minDiff < 2000) return bestIdx;
+    }
+    let bestIdx = -1, minD = Infinity;
+    for (let i = 0; i < ptsList.length; i++) {
+      const d = Math.abs(ptsList[i].lat - anchor.lat) + Math.abs(ptsList[i].lng - anchor.lng);
+      if (d < minD) { minD = d; bestIdx = i; }
+    }
+    return minD < 0.0002 ? bestIdx : -1;
+  }
+
+  const modosMetros = {};
+  let totalKmSum = 0;
+  let segsCaminando = 0;
+  let metrosCaminando = 0;
+  let pasosCaminando = 0;
+
+  for (const act of acts) {
+    totalKmSum += (act.distanciaKm || 0);
+
+    const segRows = await dbQuery.all('SELECT * FROM segments WHERE actividadId = ? ORDER BY segmentOrder ASC', [act.id]);
+
+    let replayed = [];
+    if (segRows && segRows.length > 0) {
+      for (const seg of segRows) {
+        let pts = [];
+        try { pts = JSON.parse(seg.points_json || '[]'); } catch (e) {}
+        if (!pts || pts.length === 0) continue;
+        if (seg.source === 'original' || seg.source === 'user-append') {
+          replayed.push(...pts);
+        } else if (seg.source === 'user-prepend') {
+          replayed.unshift(...pts);
+        } else if (seg.source === 'user-override' || seg.source === 'user-insert') {
+          const idxA = resolveAnchorIdx(pts[0], replayed);
+          const idxB = resolveAnchorIdx(pts[pts.length - 1], replayed);
+          if (idxA !== -1 && idxB !== -1) {
+            replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1, ...pts);
+          }
+        } else if (seg.source === 'user-delete') {
+          const idxA = resolveAnchorIdx(pts[0], replayed);
+          const idxB = resolveAnchorIdx(pts[1] || pts[pts.length - 1], replayed);
+          if (idxA !== -1 && idxB !== -1) {
+            replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1);
+          }
+        }
+      }
+    }
+
+    if (replayed.length > 1) {
+      let curMode = normalizarModoTransporte(replayed[0]?.mode, act.velocidadMediaKmh);
+      let actWalkDistM = 0;
+      let actWalkSecs = 0;
+
+      for (let i = 1; i < replayed.length; i++) {
+        const d = calcDistM(replayed[i - 1].lat, replayed[i - 1].lng, replayed[i].lat, replayed[i].lng);
+        let m = normalizarModoTransporte(replayed[i].mode, act.velocidadMediaKmh);
+        if (!m || m === 'none') m = curMode;
+        modosMetros[m] = (modosMetros[m] || 0) + d;
+
+        let dt = 0;
+        if (replayed[i - 1].time && replayed[i].time) {
+          dt = Math.max(0, (new Date(replayed[i].time).getTime() - new Date(replayed[i - 1].time).getTime()) / 1000);
+        }
+
+        const esWalk = MODE_META[m]?.esCaminar ?? (m === 'walking');
+        if (esWalk) {
+          actWalkDistM += d;
+          actWalkSecs += dt;
+        }
+        curMode = m;
+      }
+
+      // Rescatar duración si no había tiempos exactos entre puntos GPS
+      const actSecsFallback = obtenerSegundosActividad(act);
+      if (actWalkSecs === 0 && actSecsFallback > 0) {
+        actWalkSecs = actSecsFallback;
+      } else if (actSecsFallback > 0 && Math.abs(actSecsFallback - actWalkSecs) > 120 && curMode === 'walking') {
+        actWalkSecs = Math.max(actWalkSecs, actSecsFallback);
+      }
+
+      metrosCaminando += actWalkDistM;
+      segsCaminando += actWalkSecs;
+      if (actWalkDistM > 0) {
+        if (curMode === 'walking' && act.pasosEstimados > 0 && (act.pasosEstimados / (actWalkDistM / 1000)) < 2500) {
+          pasosCaminando += act.pasosEstimados;
+        } else {
+          pasosCaminando += Math.round(actWalkDistM / 0.75);
+        }
+      }
+    } else {
+      // Actividad sin segmentos detallados
+      const m = normalizarModoTransporte(act.perfilTransporte, act.velocidadMediaKmh);
+      const dM = (act.distanciaMetros && act.distanciaMetros > 0) ? act.distanciaMetros : ((act.distanciaKm || 0) * 1000);
+      modosMetros[m] = (modosMetros[m] || 0) + dM;
+
+      const actSecs = obtenerSegundosActividad(act);
+      const esWalk = MODE_META[m]?.esCaminar ?? (m === 'walking' || (!act.perfilTransporte && act.velocidadMediaKmh < 12));
+      if (esWalk) {
+        metrosCaminando += dM;
+        segsCaminando += actSecs;
+        const ratio = dM > 0 ? (act.pasosEstimados || 0) / (dM / 1000) : 0;
+        if (act.pasosEstimados > 0 && ratio > 200 && ratio < 2500) {
+          pasosCaminando += act.pasosEstimados;
+        } else if (dM > 0) {
+          pasosCaminando += Math.round(dM / 0.75);
+        }
+      }
+    }
+  }
+
+  const desgloseList = [];
+  for (const [modeKey, meters] of Object.entries(modosMetros)) {
+    const km = parseFloat((meters / 1000).toFixed(2));
+    if (km > 0.05) {
+      const meta = MODE_META[modeKey] || {
+        nombre: modeKey.charAt(0).toUpperCase() + modeKey.slice(1),
+        icono: 'fa-solid fa-route',
+        emoji: '🛣️'
+      };
+      desgloseList.push({
+        tipo: modeKey,
+        nombre: meta.nombre,
+        icono: meta.icono,
+        emoji: meta.emoji,
+        distanciaKm: km,
+        distanciaMetros: Math.round(meters)
+      });
+    }
+  }
+  desgloseList.sort((a, b) => b.distanciaKm - a.distanciaKm);
+
+  // Generar desglose detallado por Actividad individual
+  const desgloseActividades = acts.map((act, idx) => {
+    const modo = normalizarModoTransporte(act.perfilTransporte, act.velocidadMediaKmh);
+    const meta = MODE_META[modo] || { nombre: 'A pie', emoji: '🚶', icono: 'fa-solid fa-person-walking' };
+    const secs = obtenerSegundosActividad(act);
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    const durStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+    let etiqueta = `Actividad ${idx + 1}`;
+    if (act.nombre && !act.nombre.includes('Recorrido_Dynamics_')) {
+      etiqueta = act.nombre;
+    }
+
+    const km = act.distanciaKm !== undefined && act.distanciaKm !== null ? parseFloat(Number(act.distanciaKm).toFixed(2)) : (act.distanciaMetros ? parseFloat((act.distanciaMetros / 1000).toFixed(2)) : 0);
+    const pasos = (act.pasosEstimados && act.pasosEstimados > 0) ? act.pasosEstimados : Math.round((km * 1000) / 0.75);
+
+    return {
+      id: act.id,
+      nombre: etiqueta,
+      nombreCompleto: act.nombre || `Actividad ${act.id}`,
+      distanciaKm: km,
+      duracionSegundos: secs,
+      duracionFormateada: durStr,
+      perfilTransporte: modo,
+      emoji: meta.emoji,
+      nombreModo: meta.nombre,
+      pasos: pasos
+    };
+  });
+
+  const kmCaminando = parseFloat((metrosCaminando / 1000).toFixed(2));
+  const finalTotalKm = parseFloat(totalKmSum.toFixed(2));
+
+  return {
+    totalKm: finalTotalKm,
+    desgloseTransporte: desgloseList,
+    desgloseActividades: desgloseActividades,
+    totalSegundosCaminando: Math.round(segsCaminando),
+    totalPasosCaminando: pasosCaminando,
+    totalKmCaminando: kmCaminando
+  };
+}
+
+/**
+ * 🚀 Calcula el desglose completo de un viaje completo
  */
 async function calcularEstadisticasCompletasViaje(viajeId) {
   if (!viajeId) return null;
@@ -2586,213 +2798,26 @@ async function calcularEstadisticasCompletasViaje(viajeId) {
 
   try {
     const acts = await dbQuery.all('SELECT * FROM actividades WHERE viajePrevistoId = ? ORDER BY id ASC', [vId]);
-    if (!acts || acts.length === 0) {
-      return {
-        totalKm: 0,
-        desgloseTransporte: [],
-        desgloseActividades: [],
-        totalSegundosCaminando: 0,
-        totalPasosCaminando: 0,
-        totalKmCaminando: 0
-      };
-    }
-
-    function calcDistM(lat1, lon1, lat2, lon2) {
-      const R = 6371e3;
-      const phi1 = (lat1 * Math.PI) / 180;
-      const phi2 = (lat2 * Math.PI) / 180;
-      const dphi = ((lat2 - lat1) * Math.PI) / 180;
-      const dlam = ((lon2 - lon1) * Math.PI) / 180;
-      const a = Math.sin(dphi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlam / 2) ** 2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    function resolveAnchorIdx(anchor, ptsList) {
-      if (!ptsList || ptsList.length === 0) return -1;
-      if (anchor && anchor.time) {
-        const aTime = new Date(anchor.time).getTime();
-        let bestIdx = -1, minDiff = Infinity;
-        for (let i = 0; i < ptsList.length; i++) {
-          if (ptsList[i].time) {
-            const diff = Math.abs(new Date(ptsList[i].time).getTime() - aTime);
-            if (diff < minDiff) { minDiff = diff; bestIdx = i; }
-          }
-        }
-        if (bestIdx !== -1 && minDiff < 2000) return bestIdx;
-      }
-      let bestIdx = -1, minD = Infinity;
-      for (let i = 0; i < ptsList.length; i++) {
-        const d = Math.abs(ptsList[i].lat - anchor.lat) + Math.abs(ptsList[i].lng - anchor.lng);
-        if (d < minD) { minD = d; bestIdx = i; }
-      }
-      return minD < 0.0002 ? bestIdx : -1;
-    }
-
-    const modosMetros = {};
-    let totalKmSum = 0;
-    let segsCaminando = 0;
-    let metrosCaminando = 0;
-    let pasosCaminando = 0;
-
-    for (const act of acts) {
-      totalKmSum += (act.distanciaKm || 0);
-
-      const segRows = await dbQuery.all('SELECT * FROM segments WHERE actividadId = ? ORDER BY segmentOrder ASC', [act.id]);
-
-      let replayed = [];
-      if (segRows && segRows.length > 0) {
-        for (const seg of segRows) {
-          let pts = [];
-          try { pts = JSON.parse(seg.points_json || '[]'); } catch (e) {}
-          if (!pts || pts.length === 0) continue;
-          if (seg.source === 'original' || seg.source === 'user-append') {
-            replayed.push(...pts);
-          } else if (seg.source === 'user-prepend') {
-            replayed.unshift(...pts);
-          } else if (seg.source === 'user-override' || seg.source === 'user-insert') {
-            const idxA = resolveAnchorIdx(pts[0], replayed);
-            const idxB = resolveAnchorIdx(pts[pts.length - 1], replayed);
-            if (idxA !== -1 && idxB !== -1) {
-              replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1, ...pts);
-            }
-          } else if (seg.source === 'user-delete') {
-            const idxA = resolveAnchorIdx(pts[0], replayed);
-            const idxB = resolveAnchorIdx(pts[1] || pts[pts.length - 1], replayed);
-            if (idxA !== -1 && idxB !== -1) {
-              replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1);
-            }
-          }
-        }
-      }
-
-      if (replayed.length > 1) {
-        let curMode = normalizarModoTransporte(replayed[0]?.mode, act.velocidadMediaKmh);
-        let actWalkDistM = 0;
-        let actWalkSecs = 0;
-
-        for (let i = 1; i < replayed.length; i++) {
-          const d = calcDistM(replayed[i - 1].lat, replayed[i - 1].lng, replayed[i].lat, replayed[i].lng);
-          let m = normalizarModoTransporte(replayed[i].mode, act.velocidadMediaKmh);
-          if (!m || m === 'none') m = curMode;
-          modosMetros[m] = (modosMetros[m] || 0) + d;
-
-          let dt = 0;
-          if (replayed[i - 1].time && replayed[i].time) {
-            dt = Math.max(0, (new Date(replayed[i].time).getTime() - new Date(replayed[i - 1].time).getTime()) / 1000);
-          }
-
-          const esWalk = MODE_META[m]?.esCaminar ?? (m === 'walking');
-          if (esWalk) {
-            actWalkDistM += d;
-            actWalkSecs += dt;
-          }
-          curMode = m;
-        }
-
-        // Rescatar duración si no había tiempos exactos entre puntos GPS
-        const actSecsFallback = obtenerSegundosActividad(act);
-        if (actWalkSecs === 0 && actSecsFallback > 0) {
-          actWalkSecs = actSecsFallback;
-        } else if (actSecsFallback > 0 && Math.abs(actSecsFallback - actWalkSecs) > 120 && curMode === 'walking') {
-          actWalkSecs = Math.max(actWalkSecs, actSecsFallback);
-        }
-
-        metrosCaminando += actWalkDistM;
-        segsCaminando += actWalkSecs;
-        if (actWalkDistM > 0) {
-          if (curMode === 'walking' && act.pasosEstimados > 0 && (act.pasosEstimados / (actWalkDistM / 1000)) < 2500) {
-            pasosCaminando += act.pasosEstimados;
-          } else {
-            pasosCaminando += Math.round(actWalkDistM / 0.75);
-          }
-        }
-      } else {
-        // Actividad sin segmentos detallados
-        const m = normalizarModoTransporte(act.perfilTransporte, act.velocidadMediaKmh);
-        const dM = (act.distanciaMetros && act.distanciaMetros > 0) ? act.distanciaMetros : ((act.distanciaKm || 0) * 1000);
-        modosMetros[m] = (modosMetros[m] || 0) + dM;
-
-        const actSecs = obtenerSegundosActividad(act);
-        const esWalk = MODE_META[m]?.esCaminar ?? (m === 'walking' || (!act.perfilTransporte && act.velocidadMediaKmh < 12));
-        if (esWalk) {
-          metrosCaminando += dM;
-          segsCaminando += actSecs;
-          const ratio = dM > 0 ? (act.pasosEstimados || 0) / (dM / 1000) : 0;
-          if (act.pasosEstimados > 0 && ratio > 200 && ratio < 2500) {
-            pasosCaminando += act.pasosEstimados;
-          } else if (dM > 0) {
-            pasosCaminando += Math.round(dM / 0.75);
-          }
-        }
-      }
-    }
-
-    const desgloseList = [];
-    for (const [modeKey, meters] of Object.entries(modosMetros)) {
-      const km = parseFloat((meters / 1000).toFixed(2));
-      if (km > 0.05) {
-        const meta = MODE_META[modeKey] || {
-          nombre: modeKey.charAt(0).toUpperCase() + modeKey.slice(1),
-          icono: 'fa-solid fa-route',
-          emoji: '🛣️'
-        };
-        desgloseList.push({
-          tipo: modeKey,
-          nombre: meta.nombre,
-          icono: meta.icono,
-          emoji: meta.emoji,
-          distanciaKm: km,
-          distanciaMetros: Math.round(meters)
-        });
-      }
-    }
-    desgloseList.sort((a, b) => b.distanciaKm - a.distanciaKm);
-
-    // Generar desglose detallado por Actividad individual
-    const desgloseActividades = acts.map((act, idx) => {
-      const modo = normalizarModoTransporte(act.perfilTransporte, act.velocidadMediaKmh);
-      const meta = MODE_META[modo] || { nombre: 'A pie', emoji: '🚶', icono: 'fa-solid fa-person-walking' };
-      const secs = obtenerSegundosActividad(act);
-      const h = Math.floor(secs / 3600);
-      const m = Math.floor((secs % 3600) / 60);
-      const s = secs % 60;
-      const durStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-
-      let etiqueta = `Actividad ${idx + 1}`;
-      if (act.nombre && !act.nombre.includes('Recorrido_Dynamics_')) {
-        etiqueta = act.nombre;
-      }
-
-      const km = act.distanciaKm !== undefined && act.distanciaKm !== null ? parseFloat(Number(act.distanciaKm).toFixed(2)) : (act.distanciaMetros ? parseFloat((act.distanciaMetros / 1000).toFixed(2)) : 0);
-      const pasos = (act.pasosEstimados && act.pasosEstimados > 0) ? act.pasosEstimados : Math.round((km * 1000) / 0.75);
-
-      return {
-        id: act.id,
-        nombre: etiqueta,
-        nombreCompleto: act.nombre || `Actividad ${act.id}`,
-        distanciaKm: km,
-        duracionSegundos: secs,
-        duracionFormateada: durStr,
-        perfilTransporte: modo,
-        emoji: meta.emoji,
-        nombreModo: meta.nombre,
-        pasos: pasos
-      };
-    });
-
-    const kmCaminando = parseFloat((metrosCaminando / 1000).toFixed(2));
-    const finalTotalKm = parseFloat(totalKmSum.toFixed(2));
-
-    return {
-      totalKm: finalTotalKm,
-      desgloseTransporte: desgloseList,
-      desgloseActividades: desgloseActividades,
-      totalSegundosCaminando: Math.round(segsCaminando),
-      totalPasosCaminando: pasosCaminando,
-      totalKmCaminando: kmCaminando
-    };
+    return await calcularEstadisticasDesdeActividades(acts);
   } catch (err) {
     console.error(`❌ Error calculando estadísticas completas del viaje ${viajeId}:`, err.message);
+    return null;
+  }
+}
+
+/**
+ * 🚀 Calcula el desglose completo de un itinerario específico
+ */
+async function calcularEstadisticasItinerario(itinerarioId) {
+  if (!itinerarioId) return null;
+  const iId = parseInt(itinerarioId, 10);
+  if (isNaN(iId) || iId <= 0) return null;
+
+  try {
+    const acts = await dbQuery.all('SELECT * FROM actividades WHERE itinerarioId = ? ORDER BY id ASC', [iId]);
+    return await calcularEstadisticasDesdeActividades(acts);
+  } catch (err) {
+    console.error(`❌ Error calculando estadísticas del itinerario ${itinerarioId}:`, err.message);
     return null;
   }
 }
@@ -4281,15 +4306,30 @@ app.post('/viajes/:id/unificar-itinerarios', async (req, res) => {
 //    - Si pasas ?viajePrevistoId=123, devuelve sólo los de ese viaje
 
 console.log('Registrando rutas de itinerarios...');
-app.get('/itinerarios', (req, res) => {
+app.get('/itinerarios', async (req, res) => {
   const { viajePrevistoId } = req.query;
 
   // Ordenación: 1) fecha ASC, 2) hora mínima real de actividades ASC.
-  // La hora se normaliza a HHMM con printf para manejar formatos mixtos
-  // (e.g. '8:07:50', '08:30', '13:20'). Itinerarios sin hora válida
-  // reciben 'zzzz' via COALESCE y quedan al final del mismo día.
   const sqlConViaje = `
-    SELECT ig.*
+    SELECT ig.*,
+      (SELECT a.rutaArchivo FROM archivos a 
+       JOIN actividades act ON a.actividadId = act.id 
+       WHERE a.tipo = 'foto' AND act.itinerarioId = ig.id 
+       ORDER BY a.id ASC LIMIT 1) AS foto_fallback,
+      (SELECT act.rutaMapaCompleto FROM actividades act 
+       WHERE act.itinerarioId = ig.id AND act.rutaMapaCompleto IS NOT NULL AND act.rutaMapaCompleto != '' 
+       LIMIT 1) AS mapa_fallback,
+      (SELECT COUNT(a.id) FROM archivos a 
+       JOIN actividades act ON a.actividadId = act.id 
+       WHERE a.tipo = 'foto' AND act.itinerarioId = ig.id) AS total_fotos,
+      (SELECT COUNT(a.id) FROM archivos a 
+       JOIN actividades act ON a.actividadId = act.id 
+       WHERE a.tipo = 'video' AND act.itinerarioId = ig.id) AS total_videos,
+      (SELECT COUNT(act.id) FROM actividades act 
+       WHERE act.itinerarioId = ig.id) AS total_actividades,
+      (SELECT COALESCE(SUM(act.distanciaKm), 0) FROM actividades act WHERE act.itinerarioId = ig.id) AS total_km_raw,
+      (SELECT COALESCE(SUM(act.duracionSegundos), 0) FROM actividades act WHERE act.itinerarioId = ig.id) AS total_segundos_raw,
+      (SELECT COALESCE(SUM(act.pasosEstimados), 0) FROM actividades act WHERE act.itinerarioId = ig.id) AS total_pasos_raw
     FROM ItinerarioGeneral ig
     LEFT JOIN (
       SELECT
@@ -4311,7 +4351,25 @@ app.get('/itinerarios', (req, res) => {
   `;
 
   const sqlSinViaje = `
-    SELECT ig.*
+    SELECT ig.*,
+      (SELECT a.rutaArchivo FROM archivos a 
+       JOIN actividades act ON a.actividadId = act.id 
+       WHERE a.tipo = 'foto' AND act.itinerarioId = ig.id 
+       ORDER BY a.id ASC LIMIT 1) AS foto_fallback,
+      (SELECT act.rutaMapaCompleto FROM actividades act 
+       WHERE act.itinerarioId = ig.id AND act.rutaMapaCompleto IS NOT NULL AND act.rutaMapaCompleto != '' 
+       LIMIT 1) AS mapa_fallback,
+      (SELECT COUNT(a.id) FROM archivos a 
+       JOIN actividades act ON a.actividadId = act.id 
+       WHERE a.tipo = 'foto' AND act.itinerarioId = ig.id) AS total_fotos,
+      (SELECT COUNT(a.id) FROM archivos a 
+       JOIN actividades act ON a.actividadId = act.id 
+       WHERE a.tipo = 'video' AND act.itinerarioId = ig.id) AS total_videos,
+      (SELECT COUNT(act.id) FROM actividades act 
+       WHERE act.itinerarioId = ig.id) AS total_actividades,
+      (SELECT COALESCE(SUM(act.distanciaKm), 0) FROM actividades act WHERE act.itinerarioId = ig.id) AS total_km_raw,
+      (SELECT COALESCE(SUM(act.duracionSegundos), 0) FROM actividades act WHERE act.itinerarioId = ig.id) AS total_segundos_raw,
+      (SELECT COALESCE(SUM(act.pasosEstimados), 0) FROM actividades act WHERE act.itinerarioId = ig.id) AS total_pasos_raw
     FROM ItinerarioGeneral ig
     LEFT JOIN (
       SELECT
@@ -4334,26 +4392,116 @@ app.get('/itinerarios', (req, res) => {
   const sql = viajePrevistoId ? sqlConViaje : sqlSinViaje;
   const params = viajePrevistoId ? [viajePrevistoId] : [];
 
-  db.all(sql, params, (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    res.json(rows);
-  });
+  try {
+    const rows = await dbQuery.all(sql, params);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    const procesados = await Promise.all(rows.map(async (it) => {
+      let stats = null;
+      try {
+        stats = await calcularEstadisticasItinerario(it.id);
+      } catch (e) {
+        console.warn(`Error stats itinerario ${it.id}:`, e.message);
+      }
+
+      const fotoUrl = it.foto_fallback ? `${baseUrl}/uploads/${it.foto_fallback}` : null;
+      const mapaUrl = it.mapa_fallback ? `${baseUrl}/uploads/${it.mapa_fallback}` : null;
+      const imagenUrl = fotoUrl || mapaUrl;
+
+      const totalKm = (stats && stats.totalKm > 0) ? stats.totalKm : (it.total_km_raw || 0);
+      const totalPasos = (stats && stats.totalPasosCaminando > 0) ? stats.totalPasosCaminando : (it.total_pasos_raw || 0);
+      const totalSegundos = (stats && stats.totalSegundosCaminando > 0) ? stats.totalSegundosCaminando : (it.total_segundos_raw || 0);
+
+      return {
+        ...it,
+        imagen_url: imagenUrl,
+        foto_fallback_url: fotoUrl,
+        mapa_url: mapaUrl,
+        audio_url: it.audio ? `${baseUrl}/uploads/${it.audio}` : null,
+        total_km: totalKm,
+        total_pasos: totalPasos,
+        total_pasos_caminando: totalPasos,
+        total_segundos: totalSegundos,
+        total_segundos_caminando: totalSegundos,
+        total_km_caminando: (stats && stats.totalKmCaminando > 0) ? stats.totalKmCaminando : 0,
+        desglose_transporte: stats ? stats.desgloseTransporte : [],
+        desglose_actividades: stats ? stats.desgloseActividades : []
+      };
+    }));
+
+    res.json(procesados);
+  } catch (err) {
+    console.error('❌ Error al obtener itinerarios:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // 2️⃣ GET un itinerario por ID
-app.get('/itinerarios/:id', (req, res) => {
+app.get('/itinerarios/:id', async (req, res) => {
   const { id } = req.params;
-  db.get('SELECT * FROM ItinerarioGeneral WHERE id = ?', [id], (err, row) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
+  try {
+    const sql = `
+      SELECT ig.*,
+        (SELECT a.rutaArchivo FROM archivos a 
+         JOIN actividades act ON a.actividadId = act.id 
+         WHERE a.tipo = 'foto' AND act.itinerarioId = ig.id 
+         ORDER BY a.id ASC LIMIT 1) AS foto_fallback,
+        (SELECT act.rutaMapaCompleto FROM actividades act 
+         WHERE act.itinerarioId = ig.id AND act.rutaMapaCompleto IS NOT NULL AND act.rutaMapaCompleto != '' 
+         LIMIT 1) AS mapa_fallback,
+        (SELECT COUNT(a.id) FROM archivos a 
+         JOIN actividades act ON a.actividadId = act.id 
+         WHERE a.tipo = 'foto' AND act.itinerarioId = ig.id) AS total_fotos,
+        (SELECT COUNT(a.id) FROM archivos a 
+         JOIN actividades act ON a.actividadId = act.id 
+         WHERE a.tipo = 'video' AND act.itinerarioId = ig.id) AS total_videos,
+        (SELECT COUNT(act.id) FROM actividades act 
+         WHERE act.itinerarioId = ig.id) AS total_actividades,
+        (SELECT COALESCE(SUM(act.distanciaKm), 0) FROM actividades act WHERE act.itinerarioId = ig.id) AS total_km_raw,
+        (SELECT COALESCE(SUM(act.duracionSegundos), 0) FROM actividades act WHERE act.itinerarioId = ig.id) AS total_segundos_raw,
+        (SELECT COALESCE(SUM(act.pasosEstimados), 0) FROM actividades act WHERE act.itinerarioId = ig.id) AS total_pasos_raw
+      FROM ItinerarioGeneral ig
+      WHERE ig.id = ?
+    `;
+    const row = await dbQuery.get(sql, [id]);
     if (!row) {
       return res.status(404).json({ error: 'Itinerario no encontrado' });
     }
-    res.json(row);
-  });
+
+    let stats = null;
+    try {
+      stats = await calcularEstadisticasItinerario(row.id);
+    } catch (e) {
+      console.warn(`Error stats itinerario ${row.id}:`, e.message);
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const fotoUrl = row.foto_fallback ? `${baseUrl}/uploads/${row.foto_fallback}` : null;
+    const mapaUrl = row.mapa_fallback ? `${baseUrl}/uploads/${row.mapa_fallback}` : null;
+    const imagenUrl = fotoUrl || mapaUrl;
+
+    const totalKm = (stats && stats.totalKm > 0) ? stats.totalKm : (row.total_km_raw || 0);
+    const totalPasos = (stats && stats.totalPasosCaminando > 0) ? stats.totalPasosCaminando : (row.total_pasos_raw || 0);
+    const totalSegundos = (stats && stats.totalSegundosCaminando > 0) ? stats.totalSegundosCaminando : (row.total_segundos_raw || 0);
+
+    res.json({
+      ...row,
+      imagen_url: imagenUrl,
+      foto_fallback_url: fotoUrl,
+      mapa_url: mapaUrl,
+      audio_url: row.audio ? `${baseUrl}/uploads/${row.audio}` : null,
+      total_km: totalKm,
+      total_pasos: totalPasos,
+      total_pasos_caminando: totalPasos,
+      total_segundos: totalSegundos,
+      total_segundos_caminando: totalSegundos,
+      total_km_caminando: (stats && stats.totalKmCaminando > 0) ? stats.totalKmCaminando : 0,
+      desglose_transporte: stats ? stats.desgloseTransporte : [],
+      desglose_actividades: stats ? stats.desgloseActividades : []
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // 3️⃣ POST crear un nuevo itinerario
@@ -4777,22 +4925,50 @@ console.log('Registrando rutas de actividades por itinerario...');
 // GET actividades de un itinerario o de un viaje
 app.get('/actividades', (req, res) => {
   const { viajePrevistoId, itinerarioId } = req.query;
-  let sql = 'SELECT * FROM actividades';
+  let sql = `
+    SELECT act.*,
+      ta.nombre AS tipoActividadNombre,
+      (SELECT a.rutaArchivo FROM archivos a 
+       WHERE a.tipo = 'foto' AND a.actividadId = act.id 
+       ORDER BY a.id ASC LIMIT 1) AS foto_fallback,
+      (SELECT COUNT(a.id) FROM archivos a 
+       WHERE a.tipo = 'foto' AND a.actividadId = act.id) AS total_fotos,
+      (SELECT COUNT(a.id) FROM archivos a 
+       WHERE a.tipo = 'video' AND a.actividadId = act.id) AS total_videos,
+      (SELECT COUNT(a.id) FROM archivos a 
+       WHERE a.actividadId = act.id) AS total_archivos
+    FROM actividades act
+    LEFT JOIN TiposActividad ta ON act.tipoActividadId = ta.id
+  `;
   let params = [];
 
   if (itinerarioId) {
-    sql += ' WHERE itinerarioId = ?';
+    sql += ' WHERE act.itinerarioId = ?';
     params.push(itinerarioId);
   } else if (viajePrevistoId) {
-    sql += ' WHERE viajePrevistoId = ?';
+    sql += ' WHERE act.viajePrevistoId = ?';
     params.push(viajePrevistoId);
   }
 
+  sql += ' ORDER BY act.id ASC';
+
   db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const procesados = (rows || []).map(act => {
+      const fotoUrl = act.foto_fallback ? `${baseUrl}/uploads/${act.foto_fallback}` : null;
+      const mapaUrl = (act.rutaMapaCompleto && act.rutaMapaCompleto !== '') ? `${baseUrl}/uploads/${act.rutaMapaCompleto}` : null;
+      return {
+        ...act,
+        imagen_url: fotoUrl || mapaUrl,
+        foto_fallback_url: fotoUrl,
+        mapa_url: mapaUrl
+      };
+    });
+    res.json(procesados);
   });
 });
+
 
 // POST nueva actividad
 app.post('/actividades', (req, res) => {

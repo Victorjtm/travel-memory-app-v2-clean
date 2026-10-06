@@ -1,66 +1,301 @@
-<div class="contenedor">
-  <h2>Actividades para el itinerario {{ itinerarioId }}</h2>
+<section class="actividades-page">
+  <!-- CABECERA MODERNA MOBILE-FIRST ESTILO AIRBNB -->
+  <div class="page-header">
+    <div class="page-header-row">
+      <div class="page-header-titles">
+        <p class="page-kicker">
+          <i class="fa-solid fa-person-walking"></i> Actividades · {{ viaje?.en_viaje_de || 'Recorrido' }}
+        </p>
+        <h1 class="page-title">
+          {{ getTituloCabecera() }}
+        </h1>
+        <p class="page-subtitle">
+          <i class="fa-regular fa-calendar-days"></i>
+          <span *ngIf="itinerario?.fechaInicio">{{ itinerario.fechaInicio | date:'dd/MM/yyyy' }}</span>
+          <span class="separador-bullet" *ngIf="itinerario?.fechaInicio">•</span>
+          {{ actividades.length }} {{ actividades.length === 1 ? 'actividad' : 'actividades' }} registradas
+        </p>
+      </div>
 
-  <!-- Botón para añadir una nueva actividad -->
-  <button [routerLink]="['/formulario-actividad', viajePrevistoId, itinerarioId, 'nuevo']" class="btn-agregar">
-    <i class="fa fa-plus-circle"></i> Añadir Actividad
-  </button>
+      <!-- Hilera de acciones principales alineada a la derecha -->
+      <div class="header-action-row" aria-label="Acciones principales">
+        <!-- Volver a itinerarios -->
+        <button 
+          type="button" 
+          class="action-icon-btn btn-back" 
+          (click)="volverAItinerarios()" 
+          title="Volver a los itinerarios" 
+          aria-label="Volver">
+          <i class="fa-solid fa-arrow-left"></i>
+        </button>
 
-  <hr>
-
-  <!-- Lista de actividades -->
-  <div *ngFor="let actividad of actividades; trackBy: trackByActividad" [id]="'actividad-' + actividad.id">
-    <h3>Actividad {{ actividad.id }}</h3>
-    <p><strong>Nombre:</strong> {{ actividad.nombre }}</p>
-    <p><strong>Descripción:</strong> {{ actividad.descripcion }}</p>
-    <p><strong>Horario:</strong> {{ actividad.horaInicio }} a {{ actividad.horaFin }}</p>
-
-    <!-- ✨ CONTENEDOR DE BOTONES DE ACCIÓN -->
-    <div class="acciones-actividad">
-      <button class="btn-eliminar" (click)="eliminarActividad(actividad.id)">
-        <i class="fa fa-trash"></i> Eliminar
-      </button>
-      <button class="btn-actualizar" (click)="actualizarActividad(actividad)">
-        <i class="fa fa-edit"></i> Actualizar
-      </button>
-      <button class="btn-ver-archivos" (click)="verArchivos(actividad.id, $event)">
-        <i class="fa fa-folder-open"></i> Ver Archivos
-      </button>
-
-      <!-- ✨ NUEVOS BOTONES -->
-      <button class="btn-gpx" (click)="verGPX(actividad.id)">
-        <i class="fa fa-map-marker"></i> Ver GPX
-      </button>
-      <button class="btn-animacion" (click)="animarGPX(actividad.id)">
-        <i class="fa fa-play-circle"></i> Animación
-      </button>
-      <button class="btn-salud" [class.btn-salud-activo]="actividadesConSalud.has(actividad.id)" (click)="abrirModalSalud(actividad.id)" title="Registrar Salud y Rendimiento (Xiaomi / Báscula)">
-        <i class="fa-solid fa-heart-pulse"></i> Salud
-      </button>
-      <button class="btn-animacion btn-recorrido-guiado" (click)="iniciarRecorridoGuiado(actividad.id)" title="Recorrido guiado continuo con paradas exclusivas en Puntos de Interés">
-        <i class="fa fa-route"></i> Recorrido Guiado
-      </button>
-      <button class="btn-editor-track" (click)="abrirEditorTrack(actividad.id)">
-        <i class="fa fa-pencil"></i> Editar Recorrido
-      </button>
-      <button class="btn-gpx" (click)="abrirConfiguracionVideo(actividad)" title="Exportar Vídeo GPX" [disabled]="generandoVideo">
-        <i class="fa fa-video-camera"></i> Crear Vídeo
-      </button>
-      <button class="btn-mapa" (click)="verMapa(actividad.id)">
-        <i class="fa fa-image"></i> Ver Mapa
-      </button>
-      <button class="btn-estadisticas" (click)="verEstadisticas(actividad.id)">
-        <i class="fa fa-bar-chart"></i> Estadísticas
-      </button>
+        <!-- Añadir actividad -->
+        <a 
+          [routerLink]="['/formulario-actividad', viajePrevistoId, itinerarioId, 'nuevo']" 
+          class="action-icon-btn btn-add" 
+          title="Añadir nueva actividad" 
+          aria-label="Añadir actividad">
+          <i class="fa-solid fa-plus"></i>
+        </a>
+      </div>
     </div>
-
-    <hr>
   </div>
 
-  <button (click)="volverAItinerarios()">
-    <i class="fa fa-arrow-left"></i> Volver a Itinerarios
-  </button>
-</div>
+  <!-- BARRA DE HERRAMIENTAS AIRBNB: CONTEO Y SELECTOR DE VISTAS (CUADRÍCULA / LISTA) -->
+  <div class="airbnb-toolbar">
+    <div class="toolbar-info">
+      <span class="trip-count-badge">
+        <i class="fa-solid fa-person-hiking"></i>
+        {{ actividades.length }} {{ actividades.length === 1 ? 'actividad' : 'actividades' }}
+      </span>
+    </div>
+
+    <!-- Selector de vista Cuadrícula / Lista -->
+    <div class="view-switcher-pill" role="tablist" aria-label="Modo de visualización">
+      <button 
+        type="button" 
+        class="switch-btn" 
+        [class.active]="disposicionVista === 'grid'"
+        (click)="cambiarDisposicion('grid')"
+        title="Vista en cuadrícula">
+        <i class="fa-solid fa-grip"></i>
+        <span class="switch-label">Cuadrícula</span>
+      </button>
+
+      <button 
+        type="button" 
+        class="switch-btn" 
+        [class.active]="disposicionVista === 'lineal'"
+        (click)="cambiarDisposicion('lineal')"
+        title="Vista lineal">
+        <i class="fa-solid fa-list-ul"></i>
+        <span class="switch-label">Lista</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ESTADO DE CARGA -->
+  <div class="loading-state" *ngIf="cargando">
+    <div class="spinner"></div>
+    <p>Cargando actividades...</p>
+  </div>
+
+  <!-- ESTADO VACÍO -->
+  <div class="empty-state" *ngIf="!cargando && actividades.length === 0">
+    <div class="empty-icon-wrap">
+      <i class="fa-solid fa-route"></i>
+    </div>
+    <h3>No hay actividades registradas para este itinerario</h3>
+    <p>Añade tu primera actividad o recorrido para comenzar a visualizar trayectos, fotos y métricas de salud.</p>
+    <a [routerLink]="['/formulario-actividad', viajePrevistoId, itinerarioId, 'nuevo']" class="app-btn-primary">
+      <i class="fa-solid fa-plus"></i> Añadir Actividad
+    </a>
+  </div>
+
+  <!-- CONTENEDOR DE TARJETAS DE ACTIVIDADES: ESTILO AIRBNB (GRID / LINEAL) -->
+  <div *ngIf="!cargando && actividades.length > 0" class="actividades-airbnb-container" [ngClass]="'vista-' + disposicionVista">
+    <article 
+      *ngFor="let actividad of actividades; index as i; trackBy: trackByActividad" 
+      [id]="'actividad-' + actividad.id"
+      class="airbnb-card"
+      [class.card-activa]="actividadActivaId === actividad.id"
+      (click)="toggleAccionesActividad(actividad.id, $event)">
+      
+      <!-- FOTO PRINCIPAL PROTAGONISTA EN ALTA CALIDAD -->
+      <div class="card-media">
+        <img 
+          *ngIf="actividad.imagen_url && !actividad._sinFoto"
+          [src]="actividad.imagen_url" 
+          (error)="onImageError(actividad)"
+          [alt]="actividad.nombre || ('Actividad ' + actividad.id)" 
+          class="card-img" 
+          loading="lazy" />
+
+        <!-- Fallback Placeholder sofisticado estilo Airbnb si no hay foto -->
+        <div *ngIf="!actividad.imagen_url || actividad._sinFoto" class="card-img-placeholder">
+          <div class="ph-gradient"></div>
+          <span class="ph-icon">{{ getPerfilIcon(actividad) }}</span>
+          <span class="ph-text">{{ actividad.nombre || ('Actividad ' + actividad.id) }}</span>
+        </div>
+
+        <!-- Badges flotantes sobre la foto -->
+        <div class="card-floating-badges">
+          <span class="badge-index">Actividad {{ i + 1 }}</span>
+          <span class="badge-motivo">
+            {{ getPerfilEtiqueta(actividad) }}
+          </span>
+          <span class="badge-salud" *ngIf="actividadesConSalud.has(actividad.id)" title="Datos de salud registrados">
+            <i class="fa-solid fa-heart-pulse"></i> Salud
+          </span>
+        </div>
+
+        <!-- Indicador interactivo para pulsar -->
+        <div class="card-tap-hint" title="Toca para ver opciones de actividad">
+          <i class="fa-solid fa-ellipsis"></i>
+        </div>
+      </div>
+
+      <!-- INFORMACIÓN DE LA ACTIVIDAD -->
+      <div class="card-body">
+        <!-- 1. Fila de categorías, horario y metadatos -->
+        <div class="card-category-row">
+          <span class="category-tag">
+            <span class="tag-label">Horario:</span>
+            <strong class="tag-value">{{ actividad.horaInicio || '--:--' }} - {{ actividad.horaFin || '--:--' }}</strong>
+          </span>
+
+          <span class="media-count-badge" *ngIf="actividad.total_fotos && actividad.total_fotos > 0">
+            <i class="fa-regular fa-image"></i> {{ actividad.total_fotos }} fotos
+          </span>
+
+          <span class="speed-tag" *ngIf="actividad.velocidadMediaKmh && actividad.velocidadMediaKmh > 0">
+            <i class="fa-solid fa-gauge-high"></i> {{ actividad.velocidadMediaKmh }} km/h
+          </span>
+        </div>
+
+        <!-- 2. Título de la actividad -->
+        <h2 class="card-title" [title]="actividad.nombre || ('Actividad ' + actividad.id)">
+          {{ actividad.nombre || ('Actividad #' + actividad.id) }}
+        </h2>
+
+        <!-- 3. Métricas de rendimiento consolidadas (KM, Tiempo, Pasos) -->
+        <div class="card-metrics-grid">
+          <!-- KM -->
+          <div class="metric-item metric-km" title="Distancia recorrida">
+            <i class="fa-solid fa-route"></i>
+            <span class="metric-val">{{ getDistanciaKm(actividad) }} <small>km</small></span>
+          </div>
+
+          <!-- Tiempo activo -->
+          <div class="metric-item metric-time" title="Tiempo activo de la actividad">
+            <i class="fa-solid fa-stopwatch"></i>
+            <span class="metric-val">{{ getDuracion(actividad) }}</span>
+          </div>
+
+          <!-- Pasos -->
+          <div class="metric-item metric-steps" title="Pasos registrados o estimados">
+            <i class="fa-solid fa-shoe-prints"></i>
+            <span class="metric-val">{{ getPasos(actividad) }}</span>
+            <span class="metric-tag-walking">pasos</span>
+          </div>
+        </div>
+
+        <!-- Descripción breve si existe -->
+        <p class="card-desc" *ngIf="actividad.descripcion" [title]="actividad.descripcion">
+          {{ actividad.descripcion }}
+        </p>
+
+        <!-- Botones rápidos de acceso directo sobre la tarjeta -->
+        <div class="card-quick-actions">
+          <button 
+            type="button" 
+            class="btn-quick-archivos" 
+            (click)="verArchivos(actividad.id, $event)"
+            title="Ver fotos, vídeos y audios de esta actividad">
+            <i class="fa-solid fa-folder-open"></i>
+            <span>Ver Archivos</span>
+            <span class="acts-badge" *ngIf="actividad.total_archivos || actividad.total_fotos">
+              {{ actividad.total_archivos || actividad.total_fotos }}
+            </span>
+          </button>
+
+          <button 
+            type="button" 
+            class="btn-quick-gpx" 
+            (click)="verGPX(actividad.id); $event.stopPropagation()"
+            title="Ver mapa de ruta interactivo">
+            <i class="fa-solid fa-map-location-dot"></i>
+            <span>Mapa GPX</span>
+          </button>
+        </div>
+
+        <!-- 5. PANEL DE ACCIONES INTERACTIVO: REVELADO AL PULSAR SOBRE LA TARJETA -->
+        <div class="card-actions-drawer" [class.abierto]="actividadActivaId === actividad.id" (click)="$event.stopPropagation()">
+          <div class="drawer-header">
+            <span class="drawer-title"><i class="fa-solid fa-sliders"></i> Opciones de actividad</span>
+            <button type="button" class="btn-drawer-close" (click)="cerrarAcciones()" aria-label="Cerrar opciones">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <div class="drawer-buttons-grid">
+            <!-- 1. Ver Archivos -->
+            <button type="button" (click)="verArchivos(actividad.id, $event)" class="drawer-btn btn-archivos" title="Ver archivos multimedia">
+              <i class="fa-solid fa-folder-open"></i>
+              <span>Archivos</span>
+            </button>
+
+            <!-- 2. Ver GPX -->
+            <button type="button" (click)="verGPX(actividad.id)" class="drawer-btn btn-gpx" title="Ver ruta GPX interactiva">
+              <i class="fa-solid fa-map-location-dot"></i>
+              <span>Mapa GPX</span>
+            </button>
+
+            <!-- 3. Animación GPX -->
+            <button type="button" (click)="animarGPX(actividad.id)" class="drawer-btn btn-animacion" title="Reproducir animación de la ruta">
+              <i class="fa-solid fa-circle-play"></i>
+              <span>Animación</span>
+            </button>
+
+            <!-- 4. Recorrido Guiado -->
+            <button type="button" (click)="iniciarRecorridoGuiado(actividad.id)" class="drawer-btn btn-guiado" title="Recorrido guiado por puntos de interés">
+              <i class="fa-solid fa-route"></i>
+              <span>Guiado</span>
+            </button>
+
+            <!-- 5. Editar Recorrido -->
+            <button type="button" (click)="abrirEditorTrack(actividad.id)" class="drawer-btn btn-edit-track" title="Editar trazado y segmentos de ruta">
+              <i class="fa-solid fa-pen-ruler"></i>
+              <span>Editar Track</span>
+            </button>
+
+            <!-- 6. Crear Vídeo -->
+            <button type="button" (click)="abrirConfiguracionVideo(actividad)" [disabled]="generandoVideo" class="drawer-btn btn-video" title="Exportar vídeo GPX con fotos">
+              <i class="fa-solid fa-video"></i>
+              <span>Crear Vídeo</span>
+            </button>
+
+            <!-- 7. Ver Mapa PNG -->
+            <button type="button" (click)="verMapa(actividad.id)" class="drawer-btn btn-mapa" title="Ver imagen estática del mapa">
+              <i class="fa-solid fa-map"></i>
+              <span>Mapa PNG</span>
+            </button>
+
+            <!-- 8. Estadísticas -->
+            <button type="button" (click)="verEstadisticas(actividad.id)" class="drawer-btn btn-stats" title="Ver estadísticas detalladas">
+              <i class="fa-solid fa-chart-simple"></i>
+              <span>Estadísticas</span>
+            </button>
+
+            <!-- 9. Salud y Rendimiento -->
+            <button 
+              type="button" 
+              (click)="abrirModalSalud(actividad.id)" 
+              class="drawer-btn btn-salud" 
+              [class.activo]="actividadesConSalud.has(actividad.id)"
+              title="Registrar o ver datos de salud (Xiaomi / Báscula)">
+              <i class="fa-solid fa-heart-pulse"></i>
+              <span>Salud</span>
+            </button>
+
+            <!-- 10. Actualizar / Editar -->
+            <button type="button" (click)="actualizarActividad(actividad)" class="drawer-btn btn-edit" title="Editar datos básicos de la actividad">
+              <i class="fa-solid fa-pen-to-square"></i>
+              <span>Actualizar</span>
+            </button>
+
+            <!-- 11. Eliminar -->
+            <button type="button" (click)="eliminarActividad(actividad.id)" class="drawer-btn btn-delete" title="Eliminar esta actividad">
+              <i class="fa-solid fa-trash-can"></i>
+              <span>Eliminar</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </article>
+  </div>
+</section>
 
 <!-- ✨ MODAL MAPA PNG -->
 <div class="modal" *ngIf="mostrarModalMapa" (click)="cerrarModalMapa()">

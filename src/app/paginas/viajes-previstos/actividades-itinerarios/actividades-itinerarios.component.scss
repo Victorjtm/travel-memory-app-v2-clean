@@ -17,547 +17,932 @@ $color-warning: #f39c12;
 $radio: 12px;
 $transicion: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 
-// =========================================
-// CONTENEDOR PRINCIPAL
-// =========================================
-.contenedor {
-  max-width: 1200px;
+// =============================================================================
+// CONTENEDOR PRINCIPAL ESTILO AIRBNB
+// =============================================================================
+.actividades-page {
+  width: min(var(--app-content, 1200px), calc(100vw - var(--app-page-pad, 24px) * 2));
   margin: 0 auto;
-  padding: 2rem;
-  background: $color-fondo;
-  min-height: 100vh;
-
-  @media (max-width: 768px) {
-    padding: 1rem;
-  }
-
-  h2 {
-    color: $color-primario;
-    font-size: 2rem;
-    margin-bottom: 2rem;
-    text-align: center;
-    font-weight: 600;
-
-    @media (max-width: 768px) {
-      font-size: 1.6rem;
-      margin-bottom: 1.5rem;
-    }
-  }
-}
-
-// =========================================
-// BOTÓN AGREGAR ACTIVIDAD
-// =========================================
-.btn-agregar {
-  background: linear-gradient(135deg, $color-primario, $color-secundario);
-  color: $color-blanco;
-  border: none;
-  padding: 1rem 2rem;
-  border-radius: $radio;
-  font-size: 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: $transicion;
+  padding: 1.5rem 0 3rem 0;
   display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  margin: 0 auto 2rem auto;
-  box-shadow: 0 4px 15px rgba($color-primario, 0.3);
-  text-decoration: none;
-
-  i {
-    font-size: 1.3rem;
-  }
-
-  &:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba($color-primario, 0.4);
-    background: linear-gradient(135deg, $color-secundario, $color-primario);
-  }
-
-  @media (max-width: 768px) {
-    padding: 0.8rem 1.5rem;
-    font-size: 1rem;
-
-    i {
-      font-size: 1.1rem;
-    }
-  }
+  flex-direction: column;
+  gap: 20px;
+  animation: appFadeUp 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-// =========================================
-// FORMULARIO DE ACTUALIZACIÓN
-// =========================================
-.contenedor>div:has(h3:contains("Actualizar Actividad")) {
-  background: $color-blanco;
-  border-radius: $radio;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  border-left: 4px solid $color-warning;
-
-  h3 {
-    color: $color-warning;
-    font-size: 1.4rem;
-    margin-bottom: 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-
-    &::before {
-      content: '\f044';
-      font-family: 'Font Awesome 6 Free';
-      font-weight: 900;
-    }
-  }
-
-  form {
-    display: grid;
-    gap: 1.5rem;
-
-    @media (min-width: 768px) {
-      grid-template-columns: 1fr 1fr;
-      grid-template-areas:
-        "nombre nombre"
-        "descripcion descripcion"
-        "horaInicio horaFin"
-        "botones botones";
-    }
-
-    label {
-      color: $color-texto;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-      display: block;
-    }
-
-    input,
-    textarea {
-      width: 100%;
-      padding: 0.8rem;
-      border: 2px solid #e1e5e9;
-      border-radius: $radio;
-      font-size: 1rem;
-      transition: $transicion;
-      background: $color-blanco;
-
-      &:focus {
-        outline: none;
-        border-color: $color-primario;
-        box-shadow: 0 0 0 3px rgba($color-primario, 0.1);
-      }
-    }
-
-    textarea {
-      grid-area: descripcion;
-      min-height: 80px;
-      resize: vertical;
-    }
-
-    #nombre {
-      grid-area: nombre;
-    }
-
-    #horaInicio {
-      grid-area: horaInicio;
-    }
-
-    #horaFin {
-      grid-area: horaFin;
-    }
-
-    .btn-guardar,
-    .btn-cancelar {
-      grid-area: botones;
-      justify-self: center;
-    }
-  }
-}
-
-// =========================================
-// LISTA DE ACTIVIDADES
-// =========================================
-.contenedor>div:not(:has(h3:contains("Actualizar Actividad")))>div {
-  background: $color-blanco;
-  border-radius: $radio;
-  padding: 2rem;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.08);
-  transition: $transicion;
-  border-left: 4px solid $color-exito;
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
-  }
-
-  h3 {
-    color: $color-primario;
-    font-size: 1.3rem;
-    margin-bottom: 1rem;
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-
-    &::before {
-      content: '\f073';
-      font-family: 'Font Awesome 6 Free';
-      font-weight: 900;
-      color: $color-exito;
-    }
-  }
-
-  p {
-    margin: 0.8rem 0;
-    line-height: 1.6;
-    color: $color-texto-suave;
-
-    strong {
-      color: $color-texto;
-      font-weight: 600;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      min-width: 90px;
-
-      &:has-text("Nombre")::before {
-        content: '\f02b';
-        font-family: 'Font Awesome 6 Free';
-        font-weight: 900;
-      }
-
-      &:has-text("Descripción")::before {
-        content: '\f036';
-        font-family: 'Font Awesome 6 Free';
-        font-weight: 900;
-      }
-
-      &:has-text("Horario")::before {
-        content: '\f017';
-        font-family: 'Font Awesome 6 Free';
-        font-weight: 900;
-      }
-    }
-  }
-
-  // Contenedor de botones
-  .acciones-actividad {
-    display: flex;
-    gap: 1rem;
-    margin-top: 1.5rem;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-
-    @media (max-width: 768px) {
-      justify-content: center;
-      gap: 0.8rem;
-    }
-  }
-}
-
-// =========================================
-// BOTONES DE ACCIÓN
-// =========================================
-.btn-eliminar,
-.btn-actualizar,
-.btn-ver-archivos,
-.btn-guardar,
-.btn-cancelar {
-  border: none;
-  padding: 0.8rem 1.5rem;
-  border-radius: $radio;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: $transicion;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  text-decoration: none;
-
-  i {
-    font-size: 1rem;
-  }
-
-  &:hover {
-    transform: translateY(-2px);
-  }
-
-  @media (max-width: 768px) {
-    padding: 0.7rem 1.2rem;
-    font-size: 0.85rem;
-
-    i {
-      font-size: 0.9rem;
-    }
-  }
-}
-
-.btn-eliminar {
-  background: linear-gradient(135deg, $color-error, color.adjust($color-error, $lightness: -10%));
-  color: $color-blanco;
-
-  &:hover {
-    box-shadow: 0 4px 15px rgba($color-error, 0.3);
-  }
-}
-
-.btn-actualizar {
-  background: linear-gradient(135deg, $color-warning, color.adjust($color-warning, $lightness: -10%));
-  color: $color-blanco;
-
-  &:hover {
-    box-shadow: 0 4px 15px rgba($color-warning, 0.3);
-  }
-}
-
-.btn-ver-archivos {
-  background: linear-gradient(135deg, $color-secundario, color.adjust($color-secundario, $lightness: -10%));
-  color: $color-blanco;
-
-  &:hover {
-    box-shadow: 0 4px 15px rgba($color-secundario, 0.3);
-  }
-}
-
-.btn-guardar {
-  background: linear-gradient(135deg, $color-exito, color.adjust($color-exito, $lightness: -10%));
-  color: $color-blanco;
-
-  &:hover {
-    box-shadow: 0 4px 15px rgba($color-exito, 0.3);
-  }
-}
-
-.btn-cancelar {
-  background: linear-gradient(135deg, $color-gris, color.adjust($color-gris, $lightness: -10%));
-  color: $color-blanco;
-
-  &:hover {
-    box-shadow: 0 4px 15px rgba($color-gris, 0.3);
-  }
-}
-
-// =========================================
-// BOTÓN VOLVER
-// =========================================
-.contenedor>button:last-child {
-  background: linear-gradient(135deg, $color-texto-suave, color.adjust($color-texto-suave, $lightness: -10%));
-  color: $color-blanco;
-  border: none;
-  padding: 1rem 2rem;
-  border-radius: $radio;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: $transicion;
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  margin: 2rem auto 0 auto;
-
-  i {
-    font-size: 1.1rem;
-  }
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba($color-texto-suave, 0.3);
-  }
-
-  @media (max-width: 768px) {
-    padding: 0.8rem 1.5rem;
-    font-size: 0.9rem;
-  }
-}
-
-// =========================================
-// SEPARADORES
-// =========================================
-hr {
-  border: none;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, $color-gris, transparent);
-  margin: 2rem 0;
-}
-
-// =========================================
-// ESTADOS VACÍOS
-// =========================================
-.sin-actividades {
-  text-align: center;
-  padding: 3rem 2rem;
-  background: $color-blanco;
-  border-radius: $radio;
-  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.08);
-  border: 2px dashed $color-gris;
-
-  i {
-    font-size: 3rem;
-    color: $color-gris;
-    margin-bottom: 1rem;
-  }
-
-  p {
-    color: $color-texto-suave;
-    font-size: 1.1rem;
-    margin: 0;
-  }
-}
-
-// =========================================
-// ANIMACIONES
-// =========================================
-@keyframes fadeIn {
+@keyframes appFadeUp {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(12px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
-.contenedor>div {
-  animation: fadeIn 0.4s ease-out;
-}
+// =============================================================================
+// CABECERA MODERNA MOBILE-FIRST
+// =============================================================================
+.page-header {
+  margin-bottom: 4px;
 
-// =========================================
-// RESPONSIVE AVANZADO
-// =========================================
-@media (max-width: 480px) {
-  .contenedor {
-    padding: 0.5rem;
-  }
-
-  .btn-agregar {
+  .page-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
     width: 100%;
-    justify-content: center;
+    flex-wrap: wrap;
   }
 
-  .acciones-actividad {
-    flex-direction: column;
+  .page-header-titles {
+    flex: 1;
+    min-width: 260px;
 
-    .btn-eliminar,
-    .btn-actualizar,
-    .btn-ver-archivos {
-      width: 100%;
+    .page-kicker {
+      margin: 0 0 4px 0;
+      color: var(--app-primary, #0284c7);
+      font-size: 0.78rem;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      i {
+        font-size: 0.85rem;
+      }
+    }
+
+    .page-title {
+      margin: 0 0 6px 0;
+      color: var(--app-ink, #0f172a);
+      font-size: clamp(1.6rem, 3.8vw, 2.6rem);
+      font-weight: 850;
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+    }
+
+    .page-subtitle {
+      margin: 0;
+      color: var(--app-text-muted, #64748b);
+      font-size: 0.92rem;
+      line-height: 1.45;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+
+      .separador-bullet {
+        color: #94a3b8;
+      }
+
+      i {
+        color: #0284c7;
+      }
+    }
+  }
+
+  .header-action-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    margin-top: 4px;
+
+    .action-icon-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
       justify-content: center;
+      cursor: pointer;
+      border: 1.5px solid var(--app-border, #e2e8f0);
+      background: rgba(255, 255, 255, 0.95);
+      color: var(--app-ink, #0f172a);
+      position: relative;
+      text-decoration: none;
+      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+      }
+
+      &:active {
+        transform: scale(0.94);
+      }
+
+      &.btn-back {
+        color: #475569;
+        &:hover {
+          color: #0284c7;
+          border-color: #0284c7;
+        }
+      }
+
+      &.btn-add {
+        background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+        border: none;
+        color: #ffffff;
+        font-size: 1.15rem;
+        box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+
+        &:hover {
+          box-shadow: 0 6px 18px rgba(2, 132, 199, 0.48);
+        }
+      }
+    }
+  }
+}
+
+// =============================================================================
+// BARRA DE HERRAMIENTAS AIRBNB: SELECTOR DE VISTAS (GRID / LINEAL)
+// =============================================================================
+.airbnb-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+
+  .toolbar-info {
+    .trip-count-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #475569;
+      background: rgba(255, 255, 255, 0.8);
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid #e2e8f0;
+
+      i {
+        color: #0284c7;
+      }
     }
   }
 
-  .contenedor>div:has(h3:contains("Actualizar Actividad")) form {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "nombre"
-      "descripcion"
-      "horaInicio"
-      "horaFin"
-      "botones";
+  .view-switcher-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #f1f5f9;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 3px;
 
-    .btn-guardar,
-    .btn-cancelar {
+    .switch-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: #64748b;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+      i {
+        font-size: 0.95rem;
+      }
+
+      &:hover:not(.active) {
+        color: #1e293b;
+        background: rgba(255, 255, 255, 0.6);
+      }
+
+      &.active {
+        background: #ffffff;
+        color: #0f172a;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+    }
+  }
+}
+
+// =============================================================================
+// ESTADO DE CARGA Y ESTADO VACÍO
+// =============================================================================
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  gap: 16px;
+  color: #64748b;
+  font-weight: 600;
+
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3.5px solid #e2e8f0;
+    border-top-color: #0284c7;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  background: #ffffff;
+  border-radius: 24px;
+  border: 1.5px dashed #cbd5e1;
+  gap: 14px;
+
+  .empty-icon-wrap {
+    width: 72px;
+    height: 72px;
+    border-radius: 20px;
+    background: #f0f9ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0284c7;
+    font-size: 2rem;
+  }
+
+  h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1.35rem;
+    font-weight: 800;
+  }
+
+  p {
+    margin: 0;
+    color: #64748b;
+    max-width: 440px;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+
+  .app-btn-primary {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+    color: #ffffff;
+    font-weight: 750;
+    padding: 10px 22px;
+    border-radius: 12px;
+    text-decoration: none;
+    box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+    transition: all 0.2s;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(2, 132, 199, 0.45);
+    }
+  }
+}
+
+// =============================================================================
+// CONTENEDOR DE TARJETAS DE ACTIVIDADES: ESTILO AIRBNB (GRID Y LINEAL)
+// =============================================================================
+.actividades-airbnb-container {
+  width: 100%;
+  transition: all 0.3s ease;
+
+  // 🔲 MODO CUADRÍCULA (GRID)
+  &.vista-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 28px;
+
+    @media (max-width: 640px) {
+      grid-template-columns: 1fr;
+      gap: 22px;
+    }
+  }
+
+  // 📋 MODO LINEAL (LISTA)
+  &.vista-lineal {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+
+    .airbnb-card {
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      gap: 24px;
+      padding: 16px;
+
+      @media (max-width: 768px) {
+        flex-direction: column;
+        gap: 14px;
+        padding: 12px;
+      }
+
+      .card-media {
+        width: 320px;
+        min-width: 320px;
+        height: 230px;
+        aspect-ratio: auto;
+
+        @media (max-width: 768px) {
+          width: 100%;
+          min-width: 100%;
+          height: 210px;
+        }
+      }
+
+      .card-body {
+        padding: 4px 6px 4px 0;
+        justify-content: center;
+      }
+    }
+  }
+}
+
+// =============================================================================
+// TARJETA DE ACTIVIDAD ESTILO AIRBNB
+// =============================================================================
+.airbnb-card {
+  background: #ffffff;
+  border-radius: 22px;
+  overflow: visible;
+  border: 1.5px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.08);
+    border-color: #cbd5e1;
+
+    .card-media .card-img {
+      transform: scale(1.05);
+    }
+
+    .card-tap-hint {
+      opacity: 1;
+      transform: scale(1.08);
+    }
+  }
+
+  &.card-activa {
+    border-color: #0284c7;
+    box-shadow: 0 10px 32px rgba(2, 132, 199, 0.16);
+
+    .card-tap-hint {
+      background: #0284c7;
+      color: #ffffff;
+    }
+  }
+
+  // 🖼️ FOTO PRINCIPAL Y PLACEHOLDER
+  .card-media {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border-radius: 16px;
+    background: #f1f5f9;
+
+    .card-img {
       width: 100%;
-      margin-bottom: 0.5rem;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .card-img-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 50%, #94a3b8 100%);
+      position: relative;
+
+      .ph-gradient {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at center, rgba(255, 255, 255, 0.35) 0%, transparent 70%);
+      }
+
+      .ph-icon {
+        font-size: 3rem;
+        filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15));
+        position: relative;
+        z-index: 1;
+      }
+
+      .ph-text {
+        font-size: 0.95rem;
+        font-weight: 750;
+        color: #334155;
+        text-align: center;
+        padding: 0 16px;
+        position: relative;
+        z-index: 1;
+        max-width: 90%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .card-floating-badges {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 2;
+      pointer-events: none;
+      flex-wrap: wrap;
+
+      .badge-index {
+        background: rgba(15, 23, 42, 0.75);
+        backdrop-filter: blur(8px);
+        color: #ffffff;
+        font-size: 0.72rem;
+        font-weight: 800;
+        padding: 3px 10px;
+        border-radius: 999px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .badge-motivo {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        color: #0f172a;
+        font-size: 0.78rem;
+        font-weight: 800;
+        padding: 4px 11px;
+        border-radius: 999px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .badge-salud {
+        background: rgba(239, 68, 68, 0.92);
+        color: #ffffff;
+        font-size: 0.74rem;
+        font-weight: 800;
+        padding: 3px 9px;
+        border-radius: 999px;
+        margin-left: auto;
+        box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+    }
+
+    .card-tap-hint {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(6px);
+      color: #334155;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      font-size: 0.95rem;
+      transition: all 0.22s ease;
+      z-index: 2;
+    }
+  }
+
+  // 📝 CUERPO DE LA TARJETA
+  .card-body {
+    padding: 12px 4px 4px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    flex: 1;
+
+    .card-category-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+
+      .category-tag {
+        font-size: 0.78rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+
+        .tag-label {
+          color: #64748b;
+          font-weight: 600;
+        }
+
+        .tag-value {
+          color: #0284c7;
+          font-weight: 800;
+        }
+      }
+
+      .media-count-badge {
+        font-size: 0.74rem;
+        font-weight: 700;
+        color: #059669;
+        background: #d1fae5;
+        padding: 2px 8px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: auto;
+      }
+
+      .speed-tag {
+        font-size: 0.74rem;
+        font-weight: 700;
+        color: #7c3aed;
+        background: #ede9fe;
+        padding: 2px 8px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 1.22rem;
+      font-weight: 850;
+      color: #0f172a;
+      line-height: 1.25;
+      letter-spacing: -0.015em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    // ⚡ MÉTRICAS DE RENDIMIENTO CONSOLIDADAS
+    .card-metrics-grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 7px;
+      margin-top: 4px;
+
+      .metric-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        border-radius: 9px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #334155;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        text-align: left;
+        outline: none;
+
+        small {
+          font-size: 0.72rem;
+          font-weight: 500;
+          color: #64748b;
+        }
+
+        &.metric-km {
+          i.fa-route {
+            color: #0284c7;
+          }
+        }
+
+        &.metric-time {
+          i {
+            color: #f59e0b;
+          }
+        }
+
+        &.metric-steps {
+          i {
+            color: #10b981;
+          }
+        }
+
+        .metric-tag-walking {
+          font-size: 0.65rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          padding: 1px 5px;
+          border-radius: 4px;
+          background: rgba(16, 185, 129, 0.12);
+          color: #047857;
+        }
+      }
+    }
+
+    .card-desc {
+      font-size: 0.82rem;
+      color: #64748b;
+      line-height: 1.45;
+      margin: 3px 0 0 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    // Botones rápidos de acceso directo sobre la tarjeta
+    .card-quick-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+
+      .btn-quick-archivos,
+      .btn-quick-gpx {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 8px 12px;
+        border-radius: 12px;
+        font-size: 0.82rem;
+        font-weight: 750;
+        cursor: pointer;
+        transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+
+        .acts-badge {
+          padding: 1px 7px;
+          border-radius: 999px;
+          font-size: 0.72rem;
+          font-weight: 800;
+        }
+
+        &:hover {
+          transform: translateY(-1px);
+        }
+      }
+
+      .btn-quick-archivos {
+        background: #f0fdf4;
+        border: 1.5px solid #bbf7d0;
+        color: #16a34a;
+
+        .acts-badge {
+          background: #16a34a;
+          color: #ffffff;
+        }
+
+        &:hover {
+          background: #16a34a;
+          border-color: #16a34a;
+          color: #ffffff;
+          box-shadow: 0 4px 12px rgba(22, 163, 74, 0.25);
+
+          .acts-badge {
+            background: #ffffff;
+            color: #16a34a;
+          }
+        }
+      }
+
+      .btn-quick-gpx {
+        background: #f0f9ff;
+        border: 1.5px solid #bae6fd;
+        color: #0284c7;
+
+        &:hover {
+          background: #0284c7;
+          border-color: #0284c7;
+          color: #ffffff;
+          box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+        }
+      }
+    }
+
+    // 🚀 PANEL DE ACCIONES INTERACTIVO (REVELADO AL PULSAR)
+    .card-actions-drawer {
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      pointer-events: none;
+      transform: translateY(8px);
+      transition: max-height 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.28s ease,
+                  transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                  margin-top 0.3s ease;
+
+      &.abierto {
+        max-height: 400px;
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1.5px solid #f1f5f9;
+      }
+
+      .drawer-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+
+        .drawer-title {
+          font-size: 0.74rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: #64748b;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+
+          i {
+            color: #0284c7;
+          }
+        }
+
+        .btn-drawer-close {
+          background: none;
+          border: none;
+          color: #94a3b8;
+          cursor: pointer;
+          padding: 3px 6px;
+          border-radius: 6px;
+          font-size: 0.95rem;
+          transition: color 0.2s;
+
+          &:hover {
+            color: #0f172a;
+          }
+        }
+      }
+
+      .drawer-buttons-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 7px;
+
+        @media (max-width: 640px) {
+          grid-template-columns: repeat(3, 1fr);
+          gap: 6px;
+        }
+
+        @media (max-width: 420px) {
+          grid-template-columns: repeat(2, 1fr);
+          gap: 5px;
+        }
+
+        .drawer-btn {
+          border: none;
+          border-radius: 12px;
+          padding: 8px 4px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 5px;
+          cursor: pointer;
+          transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+          font-size: 0.72rem;
+          font-weight: 750;
+
+          i {
+            font-size: 1.05rem;
+          }
+
+          span {
+            line-height: 1;
+            white-space: nowrap;
+          }
+
+          &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+          }
+
+          &:active {
+            transform: scale(0.95);
+          }
+
+          &.btn-archivos {
+            background: #ecfdf5;
+            color: #059669;
+            &:hover { background: #d1fae5; }
+          }
+
+          &.btn-gpx {
+            background: #eff6ff;
+            color: #2563eb;
+            &:hover { background: #dbeafe; }
+          }
+
+          &.btn-animacion {
+            background: #fff7ed;
+            color: #ea580c;
+            &:hover { background: #ffedd5; }
+          }
+
+          &.btn-guiado {
+            background: #f5f3ff;
+            color: #7c3aed;
+            &:hover { background: #ede9fe; }
+          }
+
+          &.btn-edit-track {
+            background: #eef2ff;
+            color: #4f46e5;
+            &:hover { background: #e0e7ff; }
+          }
+
+          &.btn-video {
+            background: #fdf2f8;
+            color: #db2777;
+            &:hover { background: #fce7f3; }
+            &:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
+            }
+          }
+
+          &.btn-mapa {
+            background: #f0fdfa;
+            color: #0d9488;
+            &:hover { background: #ccfbf1; }
+          }
+
+          &.btn-stats {
+            background: #f8fafc;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+            &:hover { background: #f1f5f9; color: #0f172a; }
+          }
+
+          &.btn-salud {
+            background: #fef2f2;
+            color: #dc2626;
+            &:hover { background: #fee2e2; }
+            &.activo {
+              box-shadow: inset 0 0 0 1.5px #ef4444;
+            }
+          }
+
+          &.btn-edit {
+            background: #fefce8;
+            color: #ca8a04;
+            &:hover { background: #fef9c3; }
+          }
+
+          &.btn-delete {
+            background: #fff1f2;
+            color: #e11d48;
+            &:hover {
+              background: #e11d48;
+              color: #ffffff;
+            }
+          }
+        }
+      }
     }
   }
 }
-
-// =========================================
-// MEJORAS DE ACCESIBILIDAD
-// =========================================
-.btn-eliminar:focus,
-.btn-actualizar:focus,
-.btn-ver-archivos:focus,
-.btn-guardar:focus,
-.btn-cancelar:focus,
-.btn-agregar:focus {
-  outline: 3px solid rgba($color-primario, 0.3);
-  outline-offset: 2px;
-}
-
-input:focus,
-textarea:focus {
-  box-shadow: 0 0 0 3px rgba($color-primario, 0.1);
-}
-
-// =========================================
-// ✨ NUEVOS BOTONES PARA VER ARCHIVOS
-// =========================================
-
-.btn-gpx {
-  background: linear-gradient(135deg, #9b59b6, color.adjust(#9b59b6, $lightness: -10%));
-  color: $color-blanco;
-
-  &:hover {
-    box-shadow: 0 4px 15px rgba(#9b59b6, 0.3);
-  }
-
-  &:focus {
-    outline: 3px solid rgba(#9b59b6, 0.3);
-    outline-offset: 2px;
-  }
-}
-
-.btn-animacion {
-  background: linear-gradient(135deg, #e67e22, color.adjust(#e67e22, $lightness: -10%));
-  color: $color-blanco;
-
-  &:hover {
-    box-shadow: 0 4px 15px rgba(#e67e22, 0.3);
-  }
-
-  &:focus {
-    outline: 3px solid rgba(#e67e22, 0.3);
-    outline-offset: 2px;
-  }
-}
-
-.btn-recorrido-guiado {
-  background: linear-gradient(135deg, #8b5cf6, color.adjust(#8b5cf6, $lightness: -10%));
-  color: $color-blanco;
-
-  &:hover {
-    box-shadow: 0 4px 15px rgba(#8b5cf6, 0.4);
-    transform: translateY(-2px);
-  }
-
-  &:focus {
-    outline: 3px solid rgba(#8b5cf6, 0.3);
-    outline-offset: 2px;
-  }
-}
-
-.btn-mapa {
-  background: linear-gradient(135deg, #1abc9c, color.adjust(#1abc9c, $lightness: -10%));
-  color: $color-blanco;
-
-  &:hover {
-    box-shadow: 0 4px 15px rgba(#1abc9c, 0.3);
-  }
-
-  &:focus {
-    outline: 3px solid rgba(#1abc9c, 0.3);
-    outline-offset: 2px;
-  }
-}
-
-.btn-estadisticas {
-  background: linear-gradient(135deg, #16a085, color.adjust(#16a085, $lightness: -10%));
-  color: $color-blanco;
-
-  &:hover {
-    box-shadow: 0 4px 15px rgba(#16a085, 0.3);
-  }
-
-  &:focus {
-    outline: 3px solid rgba(#16a085, 0.3);
-    outline-offset: 2px;
-  }
-}
-
 // =========================================
 // ✨ MODALES
 // =========================================

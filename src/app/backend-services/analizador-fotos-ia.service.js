@@ -153,8 +153,8 @@ class AnalizadorFotosIAService {
       throw new Error('No se ha configurado GEMINI_API_KEY. Introduce tu clave en la modal de análisis.');
     }
 
-    // Cambiar los modelos antiguos por el modelo activo recomendado por Google (2026)
-    const modelos = ['gemini-3.6-flash'];
+    // Modelos con cascada de respaldo ante cuota
+    const modelos = ['gemini-3.6-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
     const promptText = `Analiza detalladamente esta foto de viaje y describe lo que se ve físicamente en ella (objetos, personas, entorno). 
 Devuelve la respuesta estrictamente como un array de texto en JSON, donde cada elemento sea una descripción corta siguiendo el formato: [Lugar o Elemento principal] / [Perspectiva o Acción de lo que ocurre]. 
@@ -334,6 +334,10 @@ Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
    * - Backoff exponencial con Jitter ante error 429 / 503
    */
   async llamarGeminiLoteMultimodal(loteFotos, contextoGeo, apiKey, job, contextoViajeros) {
+    // 🛡️ 1. Retardo preventivo obligatorio (4.5s) antes de contactar a Gemini para espaciar peticiones y no saturar TPM
+    console.log(`[Gemini Batch] Pausa preventiva de 4.5s antes de contactar a Gemini (${loteFotos.length} fotos en lote)...`);
+    await new Promise(r => setTimeout(r, 4500));
+
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) {
       const msg = 'No se ha configurado GEMINI_API_KEY. Introduce tu clave en la modal de análisis antes de iniciar.';
@@ -346,15 +350,9 @@ Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
       throw new Error(msg);
     }
 
-    const modelo = 'gemini-3.6-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`;
-
-    try {
-      fs.appendFileSync(
-        path.join(process.cwd(), 'gemini_debug.log'),
-        `\n[${new Date().toISOString()}] >>> INICIANDO LOTE: Modelo=${modelo}, ${loteFotos.length} fotos, Key=${key.substring(0, 6)}... (Contexto viajeros: "${contextoViajeros || 'ninguno'}")\n`
-      );
-    } catch (e) {}
+    // Cascada de modelos: primero 3.6-flash, si agota cuota pasa a 2.0-flash y luego a 1.5-flash
+    const listaModelos = ['gemini-3.6-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const idxModeloInicio = (job && job.indiceModeloActivo !== undefined) ? job.indiceModeloActivo : 0;
 
     // Construcción entrelazada de Parts (Texto con ID + WebP 768px inlineData)
     const parts = [];
@@ -375,7 +373,7 @@ Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
       }
     }
 
-    // Prompt Maestro al final del lote con personalización de viajeros
+    // Prompt Maestro al final del lote con personalización de viajeros (con restricción concisa de max 12 palabras)
     const promptMaestro = `INDICACIONES DE IDENTIDAD Y ESTILO NARRATIVO:
 - Contexto personalizado del viaje y sus integrantes: ${contextoViajeros || 'Una pareja de viajeros realizando turismo.'}. 
 - Si identificas visualmente a las personas descritas en el contexto anterior dentro de una imagen, utiliza sus nombres propios reales (ej: Víctor, Belén) en lugar de términos genéricos como "un hombre", "una mujer" o "una pareja".
@@ -408,111 +406,126 @@ Devuelve la respuesta mapeando el array JSON respetando los IDs proporcionados.`
       }
     };
 
-    const maxIntentos = 4;
     let ultimoError = null;
 
-    for (let intento = 1; intento <= maxIntentos; intento++) {
-      try {
-        const res = await axios.post(url, payloadConSchema, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 45000
-        });
+    // Iterar a través de la cascada de modelos
+    for (let m = idxModeloInicio; m < listaModelos.length; m++) {
+      const modelo = listaModelos[m];
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`;
 
-        const texto = res.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-        const parseado = this.parsearRespuestaLote(texto);
-        if (parseado && parseado.length > 0) {
+      try {
+        fs.appendFileSync(
+          path.join(process.cwd(), 'gemini_debug.log'),
+          `\n[${new Date().toISOString()}] >>> INICIANDO LOTE: Modelo=${modelo}, ${loteFotos.length} fotos, Key=${key.substring(0, 6)}... (Contexto viajeros: "${contextoViajeros || 'ninguno'}")\n`
+        );
+      } catch (e) {}
+
+      const maxIntentos = 3;
+      let cambiarDeModelo = false;
+
+      for (let intento = 1; intento <= maxIntentos; intento++) {
+        try {
+          const res = await axios.post(url, payloadConSchema, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 45000
+          });
+
+          const texto = res.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          const parseado = this.parsearRespuestaLote(texto);
+          if (parseado && parseado.length > 0) {
+            try {
+              fs.appendFileSync(
+                path.join(process.cwd(), 'gemini_debug.log'),
+                `\n[${new Date().toISOString()}] BATCH ÉXITO: ${parseado.length} descripciones devueltas por ${modelo}.\n`
+              );
+            } catch (e) {}
+            // Recordar el modelo activo para no volver a intentar modelos sin cuota en los siguientes lotes
+            if (job) job.indiceModeloActivo = m;
+            return parseado;
+          }
+
+          throw new Error(`Respuesta no contiene array JSON válido: ${texto.substring(0, 120)}`);
+        } catch (error) {
+          const status = error.response?.status;
+          const errorData = error.response?.data || error.message;
+          const errorStr = typeof errorData === 'object' ? JSON.stringify(errorData, null, 2) : errorData;
+          ultimoError = errorStr;
+
+          console.error(`[Gemini Batch Error] Modelo ${modelo} Intento ${intento}/${maxIntentos} (Status: ${status}):`, errorStr.substring(0, 200));
+
           try {
             fs.appendFileSync(
               path.join(process.cwd(), 'gemini_debug.log'),
-              `\n[${new Date().toISOString()}] BATCH ÉXITO: ${parseado.length} descripciones devueltas por ${modelo}.\n`
+              `\n[${new Date().toISOString()}] BATCH (${modelo}) INTENTO ${intento} (Status: ${status}):\n${errorStr}\n`
             );
           } catch (e) {}
-          return parseado;
-        }
 
-        throw new Error(`Respuesta no contiene array JSON válido: ${texto.substring(0, 120)}`);
-      } catch (error) {
-        const status = error.response?.status;
-        const errorData = error.response?.data || error.message;
-        const errorStr = typeof errorData === 'object' ? JSON.stringify(errorData, null, 2) : errorData;
-        ultimoError = errorStr;
-
-        console.error(`[Gemini Batch Error] Intento ${intento}/${maxIntentos} (Status: ${status}):`, errorStr.substring(0, 200));
-
-        // Registro en log de debug
-        try {
-          fs.appendFileSync(
-            path.join(process.cwd(), 'gemini_debug.log'),
-            `\n[${new Date().toISOString()}] BATCH INTENTO ${intento} (Status: ${status}):\n${errorStr}\n`
-          );
-        } catch (e) {}
-
-        // Si falló por 400 (incompatibilidad con responseSchema), intentar sin schema
-        if (status === 400 && intento === 1) {
-          try {
-            console.log('[Gemini Batch] Reintentando sin responseSchema estricto...');
-            const payloadSinSchema = {
-              ...payloadConSchema,
-              generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 2048,
-                responseMimeType: 'application/json'
+          // Si falló por 400 (incompatibilidad con responseSchema), intentar sin schema
+          if (status === 400 && intento === 1) {
+            try {
+              console.log(`[Gemini Batch] Reintentando ${modelo} sin responseSchema estricto...`);
+              const payloadSinSchema = {
+                ...payloadConSchema,
+                generationConfig: {
+                  temperature: 0.2,
+                  maxOutputTokens: 2048,
+                  responseMimeType: 'application/json'
+                }
+              };
+              const res2 = await axios.post(url, payloadSinSchema, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 45000
+              });
+              const texto2 = res2.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+              const parseado2 = this.parsearRespuestaLote(texto2);
+              if (parseado2 && parseado2.length > 0) {
+                if (job) job.indiceModeloActivo = m;
+                return parseado2;
               }
-            };
-            const res2 = await axios.post(url, payloadSinSchema, {
-              headers: { 'Content-Type': 'application/json' },
-              timeout: 45000
+            } catch (retry400Err) {
+              console.error(`[Gemini Batch] Reintento sin schema en ${modelo} también falló:`, retry400Err.message);
+            }
+          }
+
+          // 🛑 Si es 429 (Cuota agotada) o 503 y tenemos un modelo de respaldo siguiente
+          if ((status === 429 || status === 503) && m + 1 < listaModelos.length) {
+            const sigModelo = listaModelos[m + 1];
+            console.warn(`[Gemini Batch] Cuota o congestión en ${modelo}. Cambiando automáticamente a modelo de respaldo: ${sigModelo}...`);
+            this.emitirEvento(job, 'cambio_modelo', {
+              mensaje: `Cuota de ${modelo} agotada. Cambiando automáticamente a ${sigModelo}...`
             });
-            const texto2 = res2.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-            const parseado2 = this.parsearRespuestaLote(texto2);
-            if (parseado2 && parseado2.length > 0) {
-              return parseado2;
-            }
-          } catch (retry400Err) {
-            console.error('[Gemini Batch] Reintento sin schema también falló:', retry400Err.message);
-          }
-        }
-
-        // Manejo de Rate Limit (429) o Spikes temporales (503) con Backoff Exponencial + Jitter
-        if (status === 429 || status === 503) {
-          let segundosEspera = 0;
-
-          // Verificar si Google envía retryDelay
-          const violations = error.response?.data?.error?.details || [];
-          for (const d of violations) {
-            if (d.retryDelay) {
-              const segs = parseInt(String(d.retryDelay).replace('s', ''), 10);
-              if (!isNaN(segs) && segs > 0) {
-                segundosEspera = segs + 2; // margen de seguridad
-                break;
-              }
-            }
+            if (job) job.indiceModeloActivo = m + 1;
+            cambiarDeModelo = true;
+            break; // Romper intentos para pasar de inmediato al siguiente modelo
           }
 
-          if (segundosEspera <= 0) {
-            // Backoff exponencial: 4s, 8s, 16s... con jitter aleatorio
-            segundosEspera = Math.min(45, Math.pow(2, intento + 1) + Math.floor(Math.random() * 3) + 2);
+          // Si estamos en el último modelo de la lista y da 429/503: reintentar con backoff
+          if (status === 429 || status === 503) {
+            const TOPE_MAX_ESPERA_SEGUNDOS = 20;
+            let segundosEspera = Math.min(TOPE_MAX_ESPERA_SEGUNDOS, Math.pow(2, intento + 1) + 2);
+            if (intento >= maxIntentos) break;
+
+            this.emitirEvento(job, 'esperando_cuota', {
+              intento,
+              segundosEspera,
+              mensaje: `Esperando cuota de API (${segundosEspera}s) en ${modelo}...`
+            });
+            await new Promise(r => setTimeout(r, segundosEspera * 1000));
+            continue;
           }
 
-          console.warn(`[Gemini Batch 429/503] Saturación de cuota. Esperando ${segundosEspera}s antes de reintentar (intento ${intento}/${maxIntentos})...`);
-          this.emitirEvento(job, 'esperando_cuota', {
-            intento,
-            segundosEspera,
-            mensaje: `Esperando cuota de API (${segundosEspera}s) para continuar...`
-          });
-
-          await new Promise(r => setTimeout(r, segundosEspera * 1000));
-          continue; // Reintentar siguiente iteración del bucle
+          if (intento < maxIntentos) {
+            await new Promise(r => setTimeout(r, 2000));
+          }
         }
+      }
 
-        // Si es otro error y quedan intentos, pausa corta
-        if (intento < maxIntentos) {
-          await new Promise(r => setTimeout(r, 2000));
-        }
+      if (cambiarDeModelo) {
+        continue;
       }
     }
 
-    throw new Error(`Error en lote tras ${maxIntentos} intentos: ${typeof ultimoError === 'object' ? JSON.stringify(ultimoError) : ultimoError}`);
+    throw new Error(`Error en lote tras agotar modelos de Gemini (Cuota saturada o error de red): ${typeof ultimoError === 'object' ? JSON.stringify(ultimoError) : ultimoError}`);
   }
 
   /**
@@ -910,8 +923,14 @@ Devuelve la respuesta mapeando el array JSON respetando los IDs proporcionados.`
             );
           } catch (e) {}
 
-          // Si falta la API Key o es inválida, abortar el job de inmediato con error visible en UI
-          if (loteErr.message && (loteErr.message.includes('GEMINI_API_KEY') || loteErr.message.includes('API_KEY_INVALID') || loteErr.message.includes('API key not valid'))) {
+          // Si falta la API Key o se agotaron todos los modelos por cuota, abortar el job con error visible en UI
+          if (loteErr.message && (
+            loteErr.message.includes('GEMINI_API_KEY') || 
+            loteErr.message.includes('API_KEY_INVALID') || 
+            loteErr.message.includes('API key not valid') ||
+            loteErr.message.includes('agotar modelos de Gemini') ||
+            loteErr.message.includes('Cuota de Gemini saturada')
+          )) {
             job.estado = 'ERROR';
             job.error = loteErr.message;
             this.emitirEvento(job, 'error', { error: loteErr.message });
