@@ -1,14 +1,25 @@
 <div class="card-container" [class.gallery-mode]="modoGaleria" [class.seleccionado-video]="estaSeleccionadoVideo()">
   
+  <!-- SECCIÓN DE VISTA PREVIA (THUMBNAIL + BADGES FLOTANTES) -->
   <div class="preview-section">
-    <!-- Tick flotante de selección para vídeo (visible en Galería y sobre el archivo en Lista) -->
+    <!-- Badge de tipo flotante -->
+    <span class="badge-tipo-flotante">
+      <i class="fa-solid" 
+        [class.fa-image]="archivo.tipo === 'foto' || archivo.tipo === 'imagen'"
+        [class.fa-video]="archivo.tipo === 'video'"
+        [class.fa-microphone]="archivo.tipo === 'audio'"
+        [class.fa-file-lines]="archivo.tipo !== 'foto' && archivo.tipo !== 'imagen' && archivo.tipo !== 'video' && archivo.tipo !== 'audio'"></i>
+      <span class="txt-tipo">{{ archivo.tipo }}</span>
+    </span>
+
+    <!-- Tick flotante de selección para vídeo -->
     <button type="button" 
             class="btn-tick-video" 
             [class.seleccionado]="estaSeleccionadoVideo()" 
             (click)="onToggleSeleccionVideo($event)"
             [title]="estaSeleccionadoVideo() ? 'Archivo seleccionado para el vídeo MP4 y recorrido (Click para desmarcar)' : 'Marcar archivo para el vídeo MP4 y recorrido'">
-      <i class="fa" [class.fa-check-circle]="estaSeleccionadoVideo()" [class.fa-circle]="!estaSeleccionadoVideo()"></i>
-      <span class="lbl-tick-video">{{ estaSeleccionadoVideo() ? 'Vídeo' : 'Vídeo' }}</span>
+      <i class="fa-solid" [class.fa-circle-check]="estaSeleccionadoVideo()" [class.fa-film]="!estaSeleccionadoVideo()"></i>
+      <span class="lbl-tick-video">{{ estaSeleccionadoVideo() ? 'En vídeo' : '+ Vídeo' }}</span>
     </button>
 
     <app-archivo-thumbnail 
@@ -19,95 +30,194 @@
     </app-archivo-thumbnail>
   </div>
 
-  <!-- MODO LISTA: Información completa -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- MODO LISTA: Información completa y estructurada                          -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
   <div class="info-section" *ngIf="!modoGaleria">
     <div class="info-header-row">
-      <h3>{{ archivo.nombreArchivo }}</h3>
+      <h3 class="archivo-nombre" (click)="onPreview()" title="Clic para vista previa">{{ archivo.nombreArchivo }}</h3>
       <span class="badge-en-video" *ngIf="estaSeleccionadoVideo()">
-        <i class="fa fa-film"></i> Seleccionado para vídeo
+        <i class="fa-solid fa-film"></i> Seleccionado para vídeo
       </span>
     </div>
-    <div class="meta-data">
-      <p><strong>Tipo:</strong> {{ archivo.tipo }}</p>
-      <p><strong>Descripción:</strong> {{ archivo.descripcion || 'Sin descripción' }}</p>
-      <p><strong>Hora:</strong> {{ archivo.horaCaptura || 'No especificada' }}</p>
-      <p class="ubicacion">
-        <strong>📍 Ubicación:</strong>
-        <span>{{ direccionDisplay }}</span>
-      </p>
-      <p><strong>Creación:</strong> {{ archivo.fechaCreacion | date:'dd/MM/yyyy' }}</p>
+
+    <!-- Descripción narrativa -->
+    <p class="archivo-descripcion" [class.sin-desc]="!archivo.descripcion">
+      <i class="fa-regular fa-comment-dots"></i>
+      <span>{{ archivo.descripcion || 'Sin descripción narrativa asignada' }}</span>
+    </p>
+
+    <!-- Ubicación geográfica -->
+    <p class="archivo-ubicacion" *ngIf="direccionDisplay && direccionDisplay !== 'No disponible'">
+      <i class="fa-solid fa-location-dot"></i>
+      <span class="txt-ubicacion">{{ direccionDisplay }}</span>
+    </p>
+
+    <!-- Chips de metadatos -->
+    <div class="meta-chips-row">
+      <span class="meta-chip chip-hora" *ngIf="archivo.horaCaptura">
+        <i class="fa-regular fa-clock"></i> {{ archivo.horaCaptura }}
+      </span>
+      <span class="meta-chip chip-fecha" *ngIf="archivo.fechaCreacion">
+        <i class="fa-regular fa-calendar"></i> {{ archivo.fechaCreacion | date:'dd/MM/yyyy' }}
+      </span>
+      <span class="meta-chip chip-asoc-audio" *ngIf="tieneArchivoAsociado('audio')">
+        <i class="fa-solid fa-volume-high"></i> Audio asociado
+      </span>
+      <span class="meta-chip chip-asoc-gpx" *ngIf="tieneArchivoAsociado('gpx')">
+        <i class="fa-solid fa-route"></i> GPX disponible
+      </span>
     </div>
   </div>
 
-  <!-- MODO GALERÍA: Información minimalista -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- MODO GALERÍA: Información estilo tarjeta Airbnb                          -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
   <div class="gallery-info" *ngIf="modoGaleria">
-    <div class="gallery-destino">
-      <i class="fa fa-map-marker-alt"></i> {{ direccionDisplay }}
+    <h4 class="gallery-nombre" (click)="onPreview()" title="Clic para vista previa">
+      {{ archivo.nombreArchivo }}
+    </h4>
+
+    <div class="gallery-destino" *ngIf="direccionDisplay && direccionDisplay !== 'No disponible'">
+      <i class="fa-solid fa-location-dot"></i>
+      <span class="txt-destino">{{ direccionDisplay }}</span>
     </div>
+
     <div class="gallery-meta">
-      <span>{{ archivo.fechaCreacion | date:'dd/MM/yyyy' }} · {{ archivo.horaCaptura || '--:--' }}</span>
-      <span class="gallery-badge-video" *ngIf="estaSeleccionadoVideo()">
-        <i class="fa fa-film"></i>
+      <span class="gallery-date">
+        <i class="fa-regular fa-calendar"></i>
+        {{ archivo.fechaCreacion | date:'dd/MM/yyyy' }} · {{ archivo.horaCaptura || '--:--' }}
       </span>
+      <span class="gallery-badge-video" *ngIf="estaSeleccionadoVideo()">
+        <i class="fa-solid fa-film"></i>
+      </span>
+    </div>
+
+    <!-- Barra de acciones rápidas en Galería -->
+    <div class="gallery-quick-actions">
+      <!-- Toggle de vídeo -->
+      <button type="button" 
+              class="quick-btn btn-quick-video" 
+              [class.activo]="estaSeleccionadoVideo()"
+              (click)="onToggleSeleccionVideo($event)" 
+              [title]="estaSeleccionadoVideo() ? 'Quitar de vídeo' : 'Añadir a vídeo'">
+        <i class="fa-solid" [class.fa-film]="!estaSeleccionadoVideo()" [class.fa-check]="estaSeleccionadoVideo()"></i>
+      </button>
+
+      <!-- Audio principal o asociado -->
+      <button type="button" class="quick-btn btn-quick-audio" *ngIf="archivo.tipo === 'audio'"
+              (click)="onPlayAudioPrincipal()" title="Reproducir audio">
+        <i class="fa-solid fa-volume-high"></i>
+      </button>
+      <button type="button" class="quick-btn btn-quick-audio" *ngIf="tieneArchivoAsociado('audio')"
+              (click)="onOpenAssociated('audio')" title="Audio asociado">
+        <i class="fa-solid fa-volume-high"></i>
+      </button>
+
+      <!-- Transcribir IA -->
+      <button type="button" class="quick-btn btn-quick-transcribir" *ngIf="esTranscribible()"
+              (click)="onTranscribe()" title="Transcribir con IA">
+        <i class="fa-solid fa-microphone"></i>
+      </button>
+
+      <!-- Ruta GPX -->
+      <button type="button" class="quick-btn btn-quick-gpx" *ngIf="tieneArchivoAsociado('gpx')"
+              (click)="onOpenAssociated('gpx')" title="Ver mapa de ruta GPX">
+        <i class="fa-solid fa-route"></i>
+      </button>
+
+      <!-- Buscar asociados si no tiene -->
+      <button type="button" class="quick-btn btn-quick-buscar" *ngIf="!tieneArchivosAsociados()"
+              (click)="onSearchAudio()" title="Buscar en AudioPhotoApp">
+        <i class="fa-solid fa-folder-open"></i>
+      </button>
+
+      <!-- Descargar -->
+      <button type="button" class="quick-btn btn-quick-descargar" (click)="onDownload()" title="Descargar">
+        <i class="fa-solid fa-download"></i>
+      </button>
+
+      <!-- Editar -->
+      <a class="quick-btn btn-quick-editar" [routerLink]="[
+          '/viajes-previstos', viajePrevistoId, 'itinerarios', itinerarioId, 'actividades', actividadId, 'archivos', 'editar', archivo.id
+        ]" title="Editar archivo">
+        <i class="fa-solid fa-pen-to-square"></i>
+      </a>
+
+      <!-- Eliminar -->
+      <button type="button" class="quick-btn btn-quick-eliminar" (click)="onDelete()" title="Eliminar">
+        <i class="fa-solid fa-trash-can"></i>
+      </button>
     </div>
   </div>
 
-  <!-- ACCIONES: Solo visibles en modo lista -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- ACCIONES EN MODO LISTA: Agrupadas y con estilo premium Airbnb            -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
   <div class="actions-section" *ngIf="!modoGaleria">
-    <!-- Botones asociados -->
+    <!-- Grupo de acciones multimedia y asociadas -->
     <div class="associated-actions">
-      <!-- Botón de selección para vídeo/recorrido en modo lista -->
-      <button type="button" class="btn-asociado btn-toggle-video"
+      <!-- Botón de selección para vídeo/recorrido -->
+      <button type="button" class="btn-card-action btn-toggle-video"
               [class.seleccionado]="estaSeleccionadoVideo()"
               (click)="onToggleSeleccionVideo($event)"
-              [title]="estaSeleccionadoVideo() ? 'Archivo seleccionado para vídeo y recorrido (Click para desmarcar)' : 'Incluir archivo en vídeo y recorrido'">
-        <i class="fa" [class.fa-check-circle]="estaSeleccionadoVideo()" [class.fa-film]="!estaSeleccionadoVideo()"></i>
+              [title]="estaSeleccionadoVideo() ? 'Archivo incluido en vídeo y recorrido (Clic para desmarcar)' : 'Incluir archivo en vídeo y recorrido'">
+        <i class="fa-solid" [class.fa-circle-check]="estaSeleccionadoVideo()" [class.fa-film]="!estaSeleccionadoVideo()"></i>
         <span>{{ estaSeleccionadoVideo() ? 'En vídeo' : '+ Vídeo' }}</span>
       </button>
 
-      <button class="btn-asociado btn-audio" *ngIf="archivo.tipo === 'audio'"
+      <!-- Audio principal -->
+      <button type="button" class="btn-card-action btn-audio" *ngIf="archivo.tipo === 'audio'"
               (click)="onPlayAudioPrincipal()" title="Reproducir audio">
-        <i class="fa fa-volume-up"></i>
+        <i class="fa-solid fa-volume-high"></i>
       </button>
 
-      <button class="btn-asociado btn-audio" *ngIf="tieneArchivoAsociado('audio')"
+      <!-- Audio asociado -->
+      <button type="button" class="btn-card-action btn-audio" *ngIf="tieneArchivoAsociado('audio')"
               (click)="onOpenAssociated('audio')" title="Audio asociado">
-        <i class="fa fa-volume-up"></i>
+        <i class="fa-solid fa-volume-high"></i>
       </button>
 
-      <button class="btn-asociado btn-transcribir" *ngIf="esTranscribible()"
-              (click)="onTranscribe()" title="Transcribir a texto (IA)">
-        <i class="fa fa-microphone"></i>
+      <!-- Transcribir IA -->
+      <button type="button" class="btn-card-action btn-transcribir" *ngIf="esTranscribible()"
+              (click)="onTranscribe()" title="Transcribir a texto con IA">
+        <i class="fa-solid fa-microphone"></i>
       </button>
 
-      <button class="btn-asociado btn-gpx" *ngIf="tieneArchivoAsociado('gpx')"
-              (click)="onOpenAssociated('gpx')" title="Ver ruta GPX">
-        <i class="fa fa-map-marked-alt"></i>
+      <!-- Ver ruta GPX -->
+      <button type="button" class="btn-card-action btn-gpx" *ngIf="tieneArchivoAsociado('gpx')"
+              (click)="onOpenAssociated('gpx')" title="Ver mapa de ruta GPX">
+        <i class="fa-solid fa-route"></i>
       </button>
 
-      <button class="btn-asociado btn-buscar-audio" *ngIf="!tieneArchivosAsociados()"
-              (click)="onSearchAudio()" title="Buscar asociados">
-        <i class="fa fa-folder-open"></i>
+      <!-- Buscar en AudioPhotoApp si no tiene -->
+      <button type="button" class="btn-card-action btn-buscar-audio" *ngIf="!tieneArchivosAsociados()"
+              (click)="onSearchAudio()" title="Buscar archivos asociados en AudioPhotoApp">
+        <i class="fa-solid fa-folder-open"></i>
       </button>
     </div>
 
-    <span class="separador"></span>
+    <span class="separador-acciones"></span>
 
-    <!-- Botones de gestión -->
+    <!-- Grupo de acciones de gestión -->
     <div class="management-actions">
-      <button class="btn-descargar" (click)="onDownload()" title="Descargar">
-        <i class="fa fa-download"></i>
+      <!-- Descargar -->
+      <button type="button" class="btn-card-action btn-descargar" (click)="onDownload()" title="Descargar archivo">
+        <i class="fa-solid fa-download"></i>
       </button>
 
-      <button class="btn-eliminar" (click)="onDelete()" title="Eliminar">
-        <i class="fa fa-trash"></i>
-      </button>
-
-      <button class="btn-actualizar" [routerLink]="[
+      <!-- Editar -->
+      <a class="btn-card-action btn-actualizar" [routerLink]="[
           '/viajes-previstos', viajePrevistoId, 'itinerarios', itinerarioId, 'actividades', actividadId, 'archivos', 'editar', archivo.id
-        ]" title="Editar">
-        <i class="fa fa-edit"></i>
+        ]" title="Editar metadatos del archivo">
+        <i class="fa-solid fa-pen-to-square"></i>
+      </a>
+
+      <!-- Eliminar -->
+      <button type="button" class="btn-card-action btn-eliminar" (click)="onDelete()" title="Eliminar archivo">
+        <i class="fa-solid fa-trash-can"></i>
       </button>
     </div>
   </div>
+
 </div>

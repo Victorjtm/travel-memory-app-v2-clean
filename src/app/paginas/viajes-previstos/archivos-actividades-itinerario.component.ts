@@ -28,7 +28,6 @@ import { TranscripcionModalComponent } from './componentes/transcripcion-modal/t
     RouterModule,
     HttpClientModule,
     FormsModule,
-    ArchivoThumbnailComponent,
     ArchivoActividadCardComponent,
     TranscripcionModalComponent
   ],
@@ -47,6 +46,8 @@ export class ArchivosComponent implements OnInit, OnDestroy {
   targetScrollId: number | null = null;
   modoGaleria = false; // ✨ NUEVA PROPIEDAD PARA VISTA GALERÍA
   filtroSoloSeleccionadasVideo = false; // 🎬 Filtro para ver únicamente fotos seleccionadas para vídeo
+  actividad: Actividad | null = null; // ✨ Cabecera estilo Airbnb
+  itinerario: Itinerario | null = null; // ✨ Cabecera estilo Airbnb
 
   // 📍 Modo Asignación de Localización por Proximidad Temporal
   modoAsignandoLocalizacion = false;
@@ -152,6 +153,7 @@ export class ArchivosComponent implements OnInit, OnDestroy {
     const actividadIdParam = params.get('actividadId');
     if (actividadIdParam) {
       this.actividadId = Number(actividadIdParam);
+      this.cargarDetallesCabecera();
       this.cargarArchivos();
     } else {
       console.error('actividadId no proporcionado en la ruta');
@@ -668,9 +670,36 @@ export class ArchivosComponent implements OnInit, OnDestroy {
     return archivo.id;
   }
 
+  setVista(esGaleria: boolean): void {
+    this.modoGaleria = esGaleria;
+    this.cdr.detectChanges();
+  }
+
   toggleVista(): void {
     this.modoGaleria = !this.modoGaleria;
     this.cdr.detectChanges();
+  }
+
+  cargarDetallesCabecera(): void {
+    if (this.actividadId) {
+      this.actividadService.getActividadPorId(this.actividadId).subscribe({
+        next: (act) => {
+          this.actividad = act;
+          this.cdr.detectChanges();
+        },
+        error: (err) => console.warn('No se pudo cargar la actividad para la cabecera:', err)
+      });
+    }
+
+    if (this.itinerarioId) {
+      this.itinerarioService.getById(this.itinerarioId).subscribe({
+        next: (itin) => {
+          this.itinerario = itin;
+          this.cdr.detectChanges();
+        },
+        error: (err) => console.warn('No se pudo cargar el itinerario para la cabecera:', err)
+      });
+    }
   }
 
 

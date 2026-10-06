@@ -1,84 +1,182 @@
-<!-- ════════════════════════════════════════════════════════════════════════════ -->
-<!-- 📋 CONTENEDOR PRINCIPAL - Gestión de Archivos por Actividad -->
-<!-- ════════════════════════════════════════════════════════════════════════════ -->
+<section class="archivos-page">
+  <!-- CABECERA MODERNA MOBILE-FIRST ESTILO AIRBNB -->
+  <div class="page-header">
+    <div class="page-header-row">
+      <div class="page-header-titles">
+        <p class="page-kicker">
+          <i class="fa-solid fa-photo-film"></i> Archivos multimedia · {{ actividad?.nombre || ('Actividad #' + actividadId) }}
+        </p>
+        <h1 class="page-title">
+          {{ actividad?.nombre || ('Archivos de la Actividad #' + actividadId) }}
+        </h1>
+        <p class="page-subtitle">
+          <i class="fa-regular fa-calendar-days"></i>
+          <span *ngIf="itinerario?.fechaInicio">{{ itinerario?.fechaInicio | date:'dd/MM/yyyy' }}</span>
+          <span class="separador-bullet" *ngIf="itinerario?.fechaInicio">•</span>
+          {{ archivos.length }} {{ archivos.length === 1 ? 'archivo registrado' : 'archivos registrados' }}
+          <ng-container *ngIf="totalFotosSeleccionadasVideo > 0">
+            <span class="separador-bullet">•</span>
+            <span class="badge-sel-video-sub">
+              <i class="fa-solid fa-film"></i> {{ totalFotosSeleccionadasVideo }} seleccionados para vídeo
+            </span>
+          </ng-container>
+        </p>
+      </div>
 
-<div class="contenedor">
+      <!-- Hilera de acciones principales alineada a la derecha -->
+      <div class="header-action-row" aria-label="Acciones principales">
+        <!-- Volver a actividades -->
+        <button 
+          type="button" 
+          class="action-icon-btn btn-back" 
+          (click)="volverAItinerario()" 
+          title="Volver a actividades por itinerario" 
+          aria-label="Volver">
+          <i class="fa-solid fa-arrow-left"></i>
+        </button>
 
-  <!-- ════════════════════════════════════════════════════════════════════════════ -->
-  <!-- 📌 ENCABEZADO -->
-  <!-- ════════════════════════════════════════════════════════════════════════════ -->
-  <h2 *ngIf="actividadId">Archivos para la Actividad {{ actividadId }}</h2>
+        <!-- Ver en libro -->
+        <button 
+          type="button" 
+          class="action-icon-btn btn-book" 
+          (click)="verEnFormatoLibro()" 
+          title="Ver en formato libro / álbum" 
+          aria-label="Ver en libro">
+          <i class="fa-solid fa-book-open"></i>
+        </button>
 
-  <!-- Botón para añadir nuevo archivo -->
-  <button [routerLink]="[
-    '/viajes-previstos',
-    viajePrevistoId,
-    'itinerarios',
-    itinerarioId,
-    'actividades',
-    actividadId,
-    'archivos',
-    'nuevo'
-  ]" class="btn-agregar" title="Añadir nuevo archivo a esta actividad">
-    <i class="fa fa-plus-circle"></i> Añadir Archivo
-  </button>
-
-  <!-- ✅ NUEVO BOTÓN: Corregir fechas automáticamente -->
-  <button (click)="corregirFechasDesdeNombre()" class="btn-corregir-fechas"
-    [disabled]="!archivos || archivos.length === 0"
-    title="Extrae fechas de los nombres de archivo y actualiza automáticamente el itinerario y viaje">
-    <i class="fa fa-calendar-check"></i> Corregir Fechas Auto
-  </button>
-
-  <!-- ✨ NUEVO BOTÓN: Separar por días -->
-  <button (click)="separarPorDias()" class="btn-separar-dias" [disabled]="!archivos || archivos.length === 0 || modoAsignandoLocalizacion"
-    title="Crea un itinerario y actividad por cada día detectado en los archivos">
-    <i class="fa fa-calendar-day"></i> Separar por Días
-  </button>
-
-  <!-- 📍 NUEVO BOTÓN: Asignar localización automáticamente -->
-  <button (click)="asignarLocalizacionAuto()" class="btn-asignar-localizacion"
-    [disabled]="!archivos || archivos.length === 0 || modoAsignandoLocalizacion || modoAsignandoDescripciones"
-    title="Asigna coordenadas GPS a fotos sin localización basándose en la foto más cercana en el tiempo">
-    <i class="fa fa-map-marker-alt"></i> Asignar Localización
-  </button>
-
-  <!-- 📋 NUEVO BOTÓN: Importar Descripciones (JSON) -->
-  <button (click)="abrirModalImportarDescripciones()" class="btn-importar-descripciones"
-    [disabled]="!archivos || archivos.length === 0 || modoAsignandoDescripciones"
-    title="Pega un JSON con las descripciones identificadas para aplicarlas a las fotos">
-    <i class="fa fa-clipboard-list"></i> Importar Descripciones (JSON)
-  </button>
-
-  <!-- ✨ BOTÓN: Analizar Fotos con IA (Foto Testigo) -->
-  <button (click)="abrirModalAnalisisIA('testigo')" class="btn-analizar-ia"
-    [disabled]="!archivos || archivos.length === 0 || modoAsignandoDescripciones || analizandoConIA"
-    title="Analiza fotos usando Gemini Vision con clustering geo-temporal y foto testigo">
-    <i class="fa fa-wand-magic-sparkles"></i> Analizar Fotos con IA (Foto Testigo)
-  </button>
-
-  <!-- 👁️ NUEVO BOTÓN: Analizar Fotos con IA (Visión Total - Lotes) -->
-  <button (click)="abrirModalAnalisisIA('batch_total')" class="btn-analizar-ia-total"
-    [disabled]="!archivos || archivos.length === 0 || modoAsignandoDescripciones || analizandoConIA"
-    title="Analiza el 100% de las fotos reales en lotes de 5 imágenes directamente con Gemini Vision">
-    <i class="fa fa-eye"></i> Analizar Fotos con IA (Visión Total - Lotes)
-  </button>
-
-  <!-- 🎨 SELECTOR DE VISTA: Lista / Galería -->
-  <div class="selector-vista" *ngIf="archivos && archivos.length > 0">
-    <button (click)="toggleVista()" [class.active]="!modoGaleria" title="Vista de Lista Detallada">
-      <i class="fa fa-list"></i> Lista
-    </button>
-    <button (click)="toggleVista()" [class.active]="modoGaleria" title="Vista de Galería Visual">
-      <i class="fa fa-th"></i> Galería
-    </button>
+        <!-- Añadir archivo -->
+        <a 
+          [routerLink]="[
+            '/viajes-previstos',
+            viajePrevistoId,
+            'itinerarios',
+            itinerarioId,
+            'actividades',
+            actividadId,
+            'archivos',
+            'nuevo'
+          ]" 
+          class="action-icon-btn btn-add" 
+          title="Añadir nuevo archivo a esta actividad" 
+          aria-label="Añadir archivo">
+          <i class="fa-solid fa-plus"></i>
+        </a>
+      </div>
+    </div>
   </div>
 
-  <!-- 🎬 BARRA DE GESTIÓN Y SELECCIÓN PARA VÍDEO Y RECORRIDO -->
+  <!-- BARRA DE HERRAMIENTAS AIRBNB: CONTEO, CHIPS DE ACCIÓN Y SELECTOR DE VISTAS -->
+  <div class="airbnb-toolbar">
+    <div class="toolbar-left">
+      <!-- Badge de conteo de archivos -->
+      <span class="trip-count-badge">
+        <i class="fa-solid fa-photo-film"></i>
+        {{ archivos.length }} {{ archivos.length === 1 ? 'archivo' : 'archivos' }}
+      </span>
+
+      <!-- Grupo IA & Análisis -->
+      <div class="chips-group ia-group" role="group" aria-label="Herramientas de Inteligencia Artificial">
+        <!-- Analizar Fotos con IA (Visión Total - Lotes) -->
+        <button 
+          type="button" 
+          class="airbnb-chip chip-ai-primary" 
+          (click)="abrirModalAnalisisIA('batch_total')"
+          [disabled]="!archivos || archivos.length === 0 || modoAsignandoDescripciones || analizandoConIA"
+          title="Analiza el 100% de las fotos reales en lotes de 5 imágenes con Gemini Vision">
+          <i class="fa-solid fa-eye"></i>
+          <span>Visión Total (IA)</span>
+        </button>
+
+        <!-- Analizar Fotos con IA (Foto Testigo) -->
+        <button 
+          type="button" 
+          class="airbnb-chip chip-ai-secondary" 
+          (click)="abrirModalAnalisisIA('testigo')"
+          [disabled]="!archivos || archivos.length === 0 || modoAsignandoDescripciones || analizandoConIA"
+          title="Analiza fotos usando Gemini Vision con clustering y foto testigo">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          <span>Foto Testigo (IA)</span>
+        </button>
+
+        <!-- Importar Descripciones (JSON) -->
+        <button 
+          type="button" 
+          class="airbnb-chip chip-json" 
+          (click)="abrirModalImportarDescripciones()"
+          [disabled]="!archivos || archivos.length === 0 || modoAsignandoDescripciones"
+          title="Importar descripciones JSON para las fotos">
+          <i class="fa-solid fa-file-import"></i>
+          <span>Importar JSON</span>
+        </button>
+      </div>
+
+      <!-- Grupo Organización & GPS -->
+      <div class="chips-group org-group" role="group" aria-label="Herramientas de organización y localización">
+        <!-- Asignar localización automáticamente -->
+        <button 
+          type="button" 
+          class="airbnb-chip chip-gps" 
+          (click)="asignarLocalizacionAuto()"
+          [disabled]="!archivos || archivos.length === 0 || modoAsignandoLocalizacion || modoAsignandoDescripciones"
+          title="Asigna coordenadas GPS basándose en la proximidad temporal de las fotos">
+          <i class="fa-solid fa-location-dot"></i>
+          <span>Asignar GPS</span>
+        </button>
+
+        <!-- Corregir fechas automáticamente -->
+        <button 
+          type="button" 
+          class="airbnb-chip chip-fechas" 
+          (click)="corregirFechasDesdeNombre()"
+          [disabled]="!archivos || archivos.length === 0"
+          title="Extrae fechas de los nombres de archivo y actualiza itinerario y viaje">
+          <i class="fa-solid fa-calendar-check"></i>
+          <span>Fechas Auto</span>
+        </button>
+
+        <!-- Separar por días -->
+        <button 
+          type="button" 
+          class="airbnb-chip chip-dias" 
+          (click)="separarPorDias()"
+          [disabled]="!archivos || archivos.length === 0 || modoAsignandoLocalizacion"
+          title="Crea un itinerario y actividad por cada día detectado en los archivos">
+          <i class="fa-solid fa-calendar-day"></i>
+          <span>Separar Días</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Selector de vista Cuadrícula / Lista -->
+    <div class="view-switcher-pill" role="tablist" aria-label="Modo de visualización" *ngIf="archivos && archivos.length > 0">
+      <button 
+        type="button" 
+        class="switch-btn" 
+        [class.active]="modoGaleria"
+        (click)="setVista(true)"
+        title="Vista en galería visual">
+        <i class="fa-solid fa-grip"></i>
+        <span class="switch-label">Galería</span>
+      </button>
+
+      <button 
+        type="button" 
+        class="switch-btn" 
+        [class.active]="!modoGaleria"
+        (click)="setVista(false)"
+        title="Vista en lista detallada">
+        <i class="fa-solid fa-list-ul"></i>
+        <span class="switch-label">Lista</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 🎬 BARRA DE GESTIÓN Y SELECCIÓN PARA VÍDEO Y RECORRIDO (ESTILO AIRBNB LUXURY) -->
   <div class="barra-seleccion-video" *ngIf="archivos && archivos.length > 0">
     <div class="info-seleccion-video">
       <div class="icono-video-wrapper">
-        <i class="fa fa-film"></i>
+        <i class="fa-solid fa-film"></i>
       </div>
       <div class="textos-seleccion-video">
         <div class="titulo-seleccion-video">
@@ -97,26 +195,25 @@
     </div>
 
     <div class="botones-seleccion-video">
-      <button type="button" class="btn-sel-video" (click)="seleccionarTodasParaVideo(true)" title="Marcar todos los archivos multimedia (fotos, vídeos, audios) para el vídeo y recorrido">
-        <i class="fa fa-check-double"></i> Seleccionar todos
+      <button type="button" class="btn-video-action" (click)="seleccionarTodasParaVideo(true)" title="Marcar todos los archivos multimedia (fotos, vídeos, audios) para el vídeo y recorrido">
+        <i class="fa-solid fa-check-double"></i> Seleccionar todos
       </button>
-      <button type="button" class="btn-sel-video btn-desmarcar" (click)="seleccionarTodasParaVideo(false)" [disabled]="totalFotosSeleccionadasVideo === 0" title="Desmarcar todos los archivos multimedia">
-        <i class="fa fa-times"></i> Desmarcar todos
+      <button type="button" class="btn-video-action btn-desmarcar" (click)="seleccionarTodasParaVideo(false)" [disabled]="totalFotosSeleccionadasVideo === 0" title="Desmarcar todos los archivos multimedia">
+        <i class="fa-solid fa-xmark"></i> Desmarcar todos
       </button>
-      <button type="button" class="btn-sel-video btn-filtro-ver" [class.activo]="filtroSoloSeleccionadasVideo" (click)="toggleFiltroSoloVideo()" [disabled]="totalFotosSeleccionadasVideo === 0 && !filtroSoloSeleccionadasVideo" title="Filtrar vista para ver sólo los archivos multimedia que saldrán en el vídeo y recorrido">
-        <i class="fa" [class.fa-eye]="!filtroSoloSeleccionadasVideo" [class.fa-layer-group]="filtroSoloSeleccionadasVideo"></i>
+      <button type="button" class="btn-video-action btn-filtro-ver" [class.activo]="filtroSoloSeleccionadasVideo" (click)="toggleFiltroSoloVideo()" [disabled]="totalFotosSeleccionadasVideo === 0 && !filtroSoloSeleccionadasVideo" title="Filtrar vista para ver sólo los archivos multimedia que saldrán en el vídeo y recorrido">
+        <i class="fa-solid" [class.fa-eye]="!filtroSoloSeleccionadasVideo" [class.fa-layer-group]="filtroSoloSeleccionadasVideo"></i>
         {{ filtroSoloSeleccionadasVideo ? 'Mostrar todos' : 'Ver solo para vídeo' }}
       </button>
     </div>
   </div>
 
   <router-outlet></router-outlet>
-  <hr>
 
   <!-- 📍 BARRA DE CAMBIOS DE LOCALIZACIÓN PENDIENTES (PREVISUALIZACIÓN) -->
   <div class="banner-cambios-localizacion" *ngIf="modoAsignandoLocalizacion">
     <div class="banner-info">
-      <i class="fa fa-map-marker-alt"></i>
+      <i class="fa-solid fa-location-dot"></i>
       <div>
         <strong>Previsualizando asignación de localización:</strong>
         <p>{{ cambiosLocalizacionPendientes.length }} foto(s) sin coordenadas han recibido la ubicación de la foto más cercana en el tiempo.</p>
@@ -124,10 +221,10 @@
     </div>
     <div class="banner-actions">
       <button class="btn-guardar-loc" (click)="guardarCambiosLocalizacion()" [disabled]="guardandoLocalizacion">
-        <i class="fa fa-save"></i> {{ guardandoLocalizacion ? 'Guardando...' : 'Guardar Cambios' }}
+        <i class="fa-solid fa-floppy-disk"></i> {{ guardandoLocalizacion ? 'Guardando...' : 'Guardar Cambios' }}
       </button>
       <button class="btn-cancelar-loc" (click)="cancelarCambiosLocalizacion()" [disabled]="guardandoLocalizacion">
-        <i class="fa fa-undo"></i> Retroceder / Descartar
+        <i class="fa-solid fa-rotate-left"></i> Retroceder / Descartar
       </button>
     </div>
   </div>
@@ -135,7 +232,7 @@
   <!-- 📋 BARRA DE CAMBIOS DE DESCRIPCIONES PENDIENTES (PREVISUALIZACIÓN) -->
   <div class="banner-cambios-descripciones" *ngIf="modoAsignandoDescripciones">
     <div class="banner-info">
-      <i class="fa fa-clipboard-list"></i>
+      <i class="fa-solid fa-clipboard-list"></i>
       <div>
         <strong>Previsualizando actualización de descripciones:</strong>
         <p>{{ cambiosDescripcionesPendientes.length }} foto(s) recibirán nuevas descripciones asignadas desde el JSON.</p>
@@ -143,16 +240,37 @@
     </div>
     <div class="banner-actions">
       <button class="btn-guardar-desc" (click)="guardarCambiosDescripciones()" [disabled]="guardandoDescripciones">
-        <i class="fa fa-save"></i> {{ guardandoDescripciones ? 'Guardando...' : 'Guardar Cambios' }}
+        <i class="fa-solid fa-floppy-disk"></i> {{ guardandoDescripciones ? 'Guardando...' : 'Guardar Cambios' }}
       </button>
       <button class="btn-cancelar-desc" (click)="cancelarCambiosDescripciones()" [disabled]="guardandoDescripciones">
-        <i class="fa fa-undo"></i> Retroceder / Descartar
+        <i class="fa-solid fa-rotate-left"></i> Retroceder / Descartar
       </button>
     </div>
   </div>
 
-  <!-- 📁 LISTA DE ARCHIVOS O MENSAJE DE LISTA VACÍA -->
-  <div *ngIf="archivos && archivos.length > 0; else sinArchivos" 
+  <!-- ESTADO VACÍO ESTILO AIRBNB -->
+  <div class="empty-state" *ngIf="archivos && archivos.length === 0">
+    <div class="empty-icon-wrap">
+      <i class="fa-solid fa-images"></i>
+    </div>
+    <h3>No hay archivos registrados para esta actividad</h3>
+    <p>Añade fotos, vídeos, notas de voz o rutas GPX para documentar este momento de tu viaje.</p>
+    <a [routerLink]="[
+      '/viajes-previstos',
+      viajePrevistoId,
+      'itinerarios',
+      itinerarioId,
+      'actividades',
+      actividadId,
+      'archivos',
+      'nuevo'
+    ]" class="app-btn-primary">
+      <i class="fa-solid fa-plus"></i> Añadir Archivo
+    </a>
+  </div>
+
+  <!-- 📁 CONTENEDOR DE ARCHIVOS: ESTILO AIRBNB (GALERÍA / LISTA) -->
+  <div *ngIf="archivos && archivos.length > 0" 
        class="contenedor-archivos" 
        [class.modo-galeria]="modoGaleria">
 
@@ -179,13 +297,6 @@
 
   </div>
   <!-- FIN: Lista de archivos -->
-
-  <!-- Mensaje cuando no hay archivos -->
-  <ng-template #sinArchivos>
-    <p class="sin-archivos">
-      <em>No hay archivos registrados para esta actividad.</em>
-    </p>
-  </ng-template>
 
   <!-- ════════════════════════════════════════════════════════════════════════════ -->
   <!-- 🪟 MODAL 1: VISUALIZACIÓN AMPLIADA DE ARCHIVO (Foto/Video/Audio) -->
@@ -326,15 +437,15 @@
 
   <!-- ════════════════════════════════════════════════════════════════════════════ -->
   <!-- 🔘 BOTONES DE NAVEGACIÓN INFERIORES -->
-  <!-- ════════════════════════════════════════════════════════════════════════════ -->
+  <div class="bottom-nav-bar" *ngIf="archivos && archivos.length > 0">
+    <button class="btn-volver" (click)="volverAItinerario()" title="Volver a la lista de actividades">
+      <i class="fa-solid fa-arrow-left"></i> Volver a Actividades por Itinerario
+    </button>
 
-  <button class="btn-volver" (click)="volverAItinerario()" title="Volver a la lista de actividades">
-    <i class="fa fa-arrow-left"></i> Volver a Actividades por Itinerario
-  </button>
-
-  <button class="btn-libro" (click)="verEnFormatoLibro()" title="Ver en formato libro/álbum">
-    <i class="fas fa-book"></i> Ver en libro
-  </button>
+    <button class="btn-libro" (click)="verEnFormatoLibro()" title="Ver en formato libro/álbum">
+      <i class="fa-solid fa-book-open"></i> Ver en formato Libro
+    </button>
+  </div>
 
   <!-- ════════════════════════════════════════════════════════════════════════════ -->
   <!-- ✍️ MODAL 4: REVISIÓN DE TRANSCRIPCIÓN AI (STT) -->
@@ -574,5 +685,5 @@
   </div>
   <!-- FIN: Modal Análisis Automático con IA -->
 
-</div>
+</section>
 <!-- FIN: Contenedor principal -->

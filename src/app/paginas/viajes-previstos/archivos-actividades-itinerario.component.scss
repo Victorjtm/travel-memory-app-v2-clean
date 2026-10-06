@@ -1,37 +1,368 @@
-/* ==============================
-   View Selector & Layouts
-   ============================== */
-.selector-vista {
+// =============================================================================
+// CONTENEDOR PRINCIPAL ESTILO AIRBNB
+// =============================================================================
+.archivos-page {
+  width: min(var(--app-content, 1200px), calc(100vw - var(--app-page-pad, 24px) * 2));
+  margin: 0 auto;
+  padding: 1.5rem 0 3.5rem 0;
   display: flex;
-  gap: 10px;
-  margin: 1.5rem 0;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 20px;
+  animation: appFadeUp 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 
-  button {
-    background: #f0f0f0;
-    border: 1px solid #ddd;
-    padding: 8px 16px;
-    border-radius: 20px;
-    cursor: pointer;
+@keyframes appFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// =============================================================================
+// CABECERA MODERNA MOBILE-FIRST
+// =============================================================================
+.page-header {
+  margin-bottom: 2px;
+
+  .page-header-row {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 500;
-    color: #666;
-    transition: all 0.2s ease;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    width: 100%;
+    flex-wrap: wrap;
+  }
 
-    i { font-size: 14px; }
+  .page-header-titles {
+    flex: 1;
+    min-width: 260px;
 
-    &:hover {
-      background: #e9e9e9;
-      color: #3f51b5;
+    .page-kicker {
+      margin: 0 0 4px 0;
+      color: var(--app-primary, #0284c7);
+      font-size: 0.78rem;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      i {
+        font-size: 0.85rem;
+      }
     }
 
-    &.active {
-      background: #3f51b5;
-      color: white;
-      border-color: #3f51b5;
-      box-shadow: 0 2px 6px rgba(63, 81, 181, 0.3);
+    .page-title {
+      margin: 0 0 6px 0;
+      color: var(--app-ink, #0f172a);
+      font-size: clamp(1.6rem, 3.8vw, 2.5rem);
+      font-weight: 850;
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+    }
+
+    .page-subtitle {
+      margin: 0;
+      color: var(--app-text-muted, #64748b);
+      font-size: 0.92rem;
+      line-height: 1.45;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+
+      .separador-bullet {
+        color: #94a3b8;
+      }
+
+      i {
+        color: #0284c7;
+      }
+
+      .badge-sel-video-sub {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fde68a;
+        padding: 2px 9px;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        font-weight: 700;
+
+        i {
+          color: #d97706;
+          font-size: 0.75rem;
+        }
+      }
+    }
+  }
+
+  .header-action-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    margin-top: 4px;
+
+    .action-icon-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: 1.5px solid var(--app-border, #e2e8f0);
+      background: rgba(255, 255, 255, 0.95);
+      color: var(--app-ink, #0f172a);
+      position: relative;
+      text-decoration: none;
+      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+      }
+
+      &:active {
+        transform: scale(0.94);
+      }
+
+      &.btn-back {
+        color: #475569;
+        &:hover {
+          color: #0284c7;
+          border-color: #0284c7;
+          background: #f0f9ff;
+        }
+      }
+
+      &.btn-book {
+        color: #7c3aed;
+        &:hover {
+          color: #6d28d9;
+          border-color: #c4b5fd;
+          background: #f5f3ff;
+        }
+      }
+
+      &.btn-add {
+        background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+        border: none;
+        color: #ffffff;
+        font-size: 1.15rem;
+        box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+
+        &:hover {
+          box-shadow: 0 6px 18px rgba(2, 132, 199, 0.48);
+        }
+      }
+    }
+  }
+}
+
+// =============================================================================
+// BARRA DE HERRAMIENTAS AIRBNB: CHIPS CATEGORIZADOS Y SELECTOR DE VISTAS
+// =============================================================================
+.airbnb-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+
+  .toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+
+    .trip-count-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #475569;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+
+      i {
+        color: #0284c7;
+      }
+    }
+
+    .chips-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .airbnb-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 13px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+      background: #ffffff;
+      border: 1.5px solid #e2e8f0;
+      color: #334155;
+
+      i {
+        font-size: 0.88rem;
+      }
+
+      &:hover:not(:disabled) {
+        transform: translateY(-1.5px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      }
+
+      &:active:not(:disabled) {
+        transform: scale(0.96);
+      }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
+      }
+
+      // Grupo IA
+      &.chip-ai-primary {
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        border-color: #7dd3fc;
+        color: #0369a1;
+
+        i { color: #0284c7; }
+
+        &:hover:not(:disabled) {
+          border-color: #0284c7;
+          background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+        }
+      }
+
+      &.chip-ai-secondary {
+        background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+        border-color: #d8b4fe;
+        color: #6b21a8;
+
+        i { color: #9333ea; }
+
+        &:hover:not(:disabled) {
+          border-color: #9333ea;
+          background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
+        }
+      }
+
+      &.chip-json {
+        background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+        border-color: #c7d2fe;
+        color: #3730a3;
+
+        i { color: #4f46e5; }
+
+        &:hover:not(:disabled) {
+          border-color: #4f46e5;
+        }
+      }
+
+      // Grupo Organización
+      &.chip-gps {
+        background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+        border-color: #6ee7b7;
+        color: #065f46;
+
+        i { color: #059669; }
+
+        &:hover:not(:disabled) {
+          border-color: #059669;
+        }
+      }
+
+      &.chip-fechas {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border-color: #cbd5e1;
+        color: #1e293b;
+
+        i { color: #2563eb; }
+
+        &:hover:not(:disabled) {
+          border-color: #2563eb;
+          color: #2563eb;
+        }
+      }
+
+      &.chip-dias {
+        background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+        border-color: #fed7aa;
+        color: #9a3412;
+
+        i { color: #ea580c; }
+
+        &:hover:not(:disabled) {
+          border-color: #ea580c;
+        }
+      }
+    }
+  }
+
+  .view-switcher-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #f1f5f9;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 3px;
+
+    .switch-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: #64748b;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+      i {
+        font-size: 0.95rem;
+      }
+
+      &:hover:not(.active) {
+        color: #1e293b;
+        background: rgba(255, 255, 255, 0.6);
+      }
+
+      &.active {
+        background: #ffffff;
+        color: #0f172a;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
     }
   }
 }
@@ -45,11 +376,11 @@
   justify-content: space-between;
   gap: 16px;
   background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-  border: 1px solid #fde68a;
-  border-radius: 12px;
-  padding: 12px 18px;
-  margin: 1rem 0 1.5rem 0;
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.08);
+  border: 1.5px solid #fde68a;
+  border-radius: 16px;
+  padding: 14px 20px;
+  margin: 0.5rem 0 1rem 0;
+  box-shadow: 0 3px 12px rgba(217, 119, 6, 0.08);
 
   @media (max-width: 900px) {
     flex-direction: column;
@@ -59,20 +390,20 @@
   .info-seleccion-video {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
 
     .icono-video-wrapper {
-      width: 40px;
-      height: 40px;
-      border-radius: 10px;
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
       background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
       color: white;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.1rem;
+      font-size: 1.15rem;
       flex-shrink: 0;
-      box-shadow: 0 2px 6px rgba(217, 119, 6, 0.3);
+      box-shadow: 0 3px 10px rgba(217, 119, 6, 0.28);
     }
 
     .textos-seleccion-video {
@@ -84,7 +415,8 @@
 
         strong {
           color: #78350f;
-          font-size: 0.95rem;
+          font-size: 0.96rem;
+          font-weight: 750;
         }
 
         .badge-contador-video {
@@ -92,21 +424,22 @@
           color: #854d0e;
           border: 1px solid #facc15;
           font-size: 0.75rem;
-          font-weight: 700;
-          padding: 2px 8px;
-          border-radius: 12px;
+          font-weight: 750;
+          padding: 2px 9px;
+          border-radius: 999px;
 
           &.destacado {
             background: #d97706;
             color: #ffffff;
             border-color: #b45309;
+            box-shadow: 0 2px 6px rgba(217, 119, 6, 0.25);
           }
         }
       }
 
       .detalle-seleccion-video {
         margin: 2px 0 0 0;
-        font-size: 0.82rem;
+        font-size: 0.83rem;
         color: #92400e;
 
         &.con-filtro {
@@ -123,29 +456,31 @@
     gap: 8px;
     flex-wrap: wrap;
 
-    .btn-sel-video {
-      background: white;
-      border: 1px solid #fcd34d;
+    .btn-video-action {
+      background: #ffffff;
+      border: 1.5px solid #fcd34d;
       color: #92400e;
-      padding: 6px 12px;
-      border-radius: 8px;
+      padding: 7px 14px;
+      border-radius: 10px;
       font-size: 0.82rem;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      transition: all 0.2s ease;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 
       &:hover:not(:disabled) {
         background: #fef3c7;
         color: #78350f;
         border-color: #f59e0b;
         transform: translateY(-1px);
+        box-shadow: 0 3px 8px rgba(217, 119, 6, 0.15);
       }
 
       &:disabled {
-        opacity: 0.5;
+        opacity: 0.45;
         cursor: not-allowed;
       }
 
@@ -156,6 +491,7 @@
         &:hover:not(:disabled) {
           background: #fee2e2;
           color: #991b1b;
+          border-color: #ef4444;
         }
       }
 
@@ -166,32 +502,157 @@
 
         &.activo {
           background: #d97706;
-          color: white;
+          color: #ffffff;
           border-color: #b45309;
-          box-shadow: 0 2px 6px rgba(217, 119, 6, 0.3);
+          box-shadow: 0 2px 8px rgba(217, 119, 6, 0.35);
         }
       }
     }
   }
 }
 
+// =============================================================================
+// ESTADO VACÍO ESTILO AIRBNB
+// =============================================================================
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  background: #ffffff;
+  border-radius: 24px;
+  border: 1.5px dashed #cbd5e1;
+  gap: 14px;
+  margin: 1.5rem 0;
+
+  .empty-icon-wrap {
+    width: 72px;
+    height: 72px;
+    border-radius: 20px;
+    background: #f0f9ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0284c7;
+    font-size: 2rem;
+  }
+
+  h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1.35rem;
+    font-weight: 800;
+  }
+
+  p {
+    margin: 0;
+    color: #64748b;
+    max-width: 440px;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+
+  .app-btn-primary {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+    color: #ffffff;
+    font-weight: 750;
+    padding: 10px 22px;
+    border-radius: 12px;
+    text-decoration: none;
+    box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+    transition: all 0.2s;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(2, 132, 199, 0.45);
+    }
+  }
+}
+
+// =============================================================================
+// CONTENEDOR DE ARCHIVOS (LISTA / GALERÍA)
+// =============================================================================
 .contenedor-archivos {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+  width: 100%;
 
   &.modo-galeria {
     display: grid;
-    grid-template-columns: repeat(4, 1fr); // Máximo 4 en escritorio
-    gap: 15px;
-    
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+
     @media (max-width: 1200px) {
-      grid-template-columns: repeat(3, 1fr); // 3 en tablets/portátiles
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
     }
 
-    @media (max-width: 768px) {
-      grid-template-columns: repeat(2, 1fr); // 2 en móviles
-      gap: 10px;
+    @media (max-width: 860px) {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+
+    @media (max-width: 520px) {
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+  }
+}
+
+// =============================================================================
+// NAVEGACIÓN INFERIOR
+// =============================================================================
+.bottom-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .btn-volver {
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    color: #475569;
+
+    &:hover {
+      background: #f8fafc;
+      border-color: #0284c7;
+      color: #0284c7;
+      transform: translateY(-1px);
+    }
+  }
+
+  .btn-libro {
+    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+    border: none;
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(124, 58, 237, 0.48);
     }
   }
 }
