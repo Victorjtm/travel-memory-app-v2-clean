@@ -235,8 +235,9 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
           // Continuar
         }
 
+        let actDistM = (actStats?.distancia?.metros || 0);
+
         if (actStats) {
-          totalDistanciaMetros += (actStats.distancia?.metros || 0);
           totalCalorias += (actStats.energia?.calorias || 0);
           totalPasos += (actStats.energia?.pasos || 0);
 
@@ -280,6 +281,7 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
           }
         }
 
+        let puntosActDistM = 0;
         if (gpxXml) {
           const puntosAct = this.parseGpxXml(gpxXml, act, actStats);
           if (puntosAct.length > 0) {
@@ -290,8 +292,34 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
             for (const p of puntosAct) {
               this.coordenadasGPX.push([p.lat, p.lng]);
             }
+            for (let i = 1; i < puntosAct.length; i++) {
+              puntosActDistM += this.calcularDistanciaMetros(puntosAct[i - 1].lat, puntosAct[i - 1].lng, puntosAct[i].lat, puntosAct[i].lng);
+            }
           }
         }
+
+        // Si la distancia medida en los puntos del GPX difiere notablemente de actDistM (> 500m),
+        // prevalece la distancia real de los puntos GPS dibujados en el mapa
+        if (puntosActDistM > 0 && (!actDistM || Math.abs(puntosActDistM - actDistM) > 500)) {
+          console.log(`📏 [MapaViaje] Corrigiendo distancia actividad ${act.id} desde GPX real: ${(puntosActDistM / 1000).toFixed(2)} km (era ${(actDistM / 1000).toFixed(2)} km)`);
+          actDistM = Math.round(puntosActDistM);
+
+          const modos = Object.keys(desgloseMap);
+          if (modos.length === 1) {
+            desgloseMap[modos[0]].distanciaMetros = actDistM;
+          }
+
+          this.http.put(`${environment.apiUrl}/actividades/${act.id}/sincronizar-distancia-canonico`, {
+            distanciaKm: parseFloat((puntosActDistM / 1000).toFixed(2)),
+            distanciaMetros: Math.round(puntosActDistM),
+            duracionSegundos: actStats?.duracion?.segundos || 0
+          }).subscribe({
+            next: () => console.log(`✅ [MapaViaje] Distancia canónica sincronizada en BD para actividad ${act.id}`),
+            error: (err) => console.warn('⚠️ [MapaViaje] Error sincronizando distancia:', err)
+          });
+        }
+
+        totalDistanciaMetros += actDistM;
       }
 
       // 5. Finalizar cálculo de estadísticas agregadas
@@ -364,6 +392,16 @@ export class MapaViajeGpxComponent implements OnInit, AfterViewInit, OnDestroy {
   // ==========================================
   // PARSEO DE GPX Y TRANSPORTE
   // ==========================================
+
+  private calcularDistanciaMetros(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371e3;
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const dphi = ((lat2 - lat1) * Math.PI) / 180;
+    const dlam = ((lon2 - lon1) * Math.PI) / 180;
+    const a = Math.sin(dphi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlam / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
 
   private parseGpxXml(gpxText: string, actividad: any, estadisticas: any): PuntoGPXConModo[] {
     const puntos: PuntoGPXConModo[] = [];

@@ -882,6 +882,11 @@ export class ActividadesItinerariosComponent implements OnInit {
           console.log(`📏 [parseGPX] Actualizando distancia total mostrada para incluir todos los tramos (tierra, mar, aire): ${totalTrackKm} km (era ${currentStatsKm} km)`);
           this.estadisticasGPX.distanciaKm = totalTrackKm.toFixed(2);
           this.estadisticasGPX.distanciaMetros = Math.round(totalTrackMeters);
+
+          const actId = this.actividadSeleccionada;
+          if (actId) {
+            this.sincronizarDistanciaCanonico(actId, totalTrackKm, Math.round(totalTrackMeters));
+          }
         }
       }
 
@@ -1019,6 +1024,25 @@ export class ActividadesItinerariosComponent implements OnInit {
       console.error('❌ Excepción atrapada en parseGPX:', e);
       this.coordenadasGPX = [];
     }
+  }
+
+  private sincronizarDistanciaCanonico(actividadId: number, distKm: number, distMetros: number): void {
+    const durSecs = this.estadisticasGPX?.duracion?.segundos || 0;
+    this.http.put(`${environment.apiUrl}/actividades/${actividadId}/sincronizar-distancia-canonico`, {
+      distanciaKm: distKm,
+      distanciaMetros: distMetros,
+      duracionSegundos: durSecs
+    }).subscribe({
+      next: () => {
+        console.log(`✅ [Sincronización] Distancia canónica persistida en BD para actividad ${actividadId}: ${distKm} km`);
+        const act = this.actividades?.find(a => a.id === actividadId);
+        if (act) {
+          act.distanciaKm = distKm;
+          act.distanciaMetros = distMetros;
+        }
+      },
+      error: (e) => console.warn('⚠️ No se pudo sincronizar distancia canónica con BD:', e)
+    });
   }
 
   // Inicializar mapa Leaflet con satélite y fotos
@@ -2589,7 +2613,11 @@ export class ActividadesItinerariosComponent implements OnInit {
     // Cargar archivos principales y asociados para calibración de tiempo en el editor
     this.http.get<any[]>(`${environment.apiUrl}/archivos?actividadId=${actividadId}`).subscribe({
       next: (files) => {
-        const principales = files || [];
+        const principales = (files || []).slice();
+        principales.sort((a, b) => this.obtenerTimestampCronologico(a) - this.obtenerTimestampCronologico(b));
+        principales.forEach((p, idx) => {
+          if (!p.numeroSecuencial) p.numeroSecuencial = idx + 1;
+        });
         this.http.get<any[]>(`${environment.apiUrl}/archivos-asociados`).subscribe({
           next: (asociados) => {
             this.archivosActividadActual = [...principales, ...(asociados || [])];

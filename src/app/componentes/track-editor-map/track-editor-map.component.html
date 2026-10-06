@@ -239,7 +239,7 @@
         <span class="dot green"></span>
         <div class="info">
           <strong>Punto A (Inicio)</strong>
-          <span *ngIf="anchorA">{{ anchorA.time ? (anchorA.time | date:'HH:mm:ss':'UTC') : 'Lat: ' + anchorA.lat.toFixed(4) }}</span>
+          <span *ngIf="anchorA">{{ anchorA.time ? (anchorA.time | date:'HH:mm:ss') : 'Lat: ' + anchorA.lat.toFixed(4) }}</span>
           <span *ngIf="!anchorA">Haz clic en la ruta</span>
         </div>
       </div>
@@ -250,7 +250,7 @@
         <span class="dot red"></span>
         <div class="info">
           <strong>Punto B (Fin)</strong>
-          <span *ngIf="anchorB">{{ anchorB.time ? (anchorB.time | date:'HH:mm:ss':'UTC') : 'Lat: ' + anchorB.lat.toFixed(4) }}</span>
+          <span *ngIf="anchorB">{{ anchorB.time ? (anchorB.time | date:'HH:mm:ss') : 'Lat: ' + anchorB.lat.toFixed(4) }}</span>
           <span *ngIf="!anchorB">Haz clic en la ruta</span>
         </div>
       </div>
@@ -495,7 +495,7 @@
         <span class="dot green"></span>
         <div class="info">
           <strong>{{ (activeFlow === 'NEW_ROUTE' || activeFlow === 'NEW_ROUTE_MANUAL') ? 'Salida (A)' : 'Punto A' }}</strong>
-          <span *ngIf="insertAnchorA">{{ insertAnchorA.time ? (insertAnchorA.time | date:'HH:mm:ss':'UTC') : ((insertAnchorA.lat | number:'1.2-2') + ', ' + (insertAnchorA.lng | number:'1.2-2')) }}</span>
+          <span *ngIf="insertAnchorA">{{ insertAnchorA.time ? (insertAnchorA.time | date:'HH:mm:ss') : ((insertAnchorA.lat | number:'1.2-2') + ', ' + (insertAnchorA.lng | number:'1.2-2')) }}</span>
           <span *ngIf="!insertAnchorA">Esperando clic...</span>
         </div>
       </div>
@@ -506,7 +506,7 @@
         <span class="dot red"></span>
         <div class="info">
           <strong>{{ (activeFlow === 'NEW_ROUTE' || activeFlow === 'NEW_ROUTE_MANUAL') ? 'Llegada (B)' : 'Punto B' }}</strong>
-          <span *ngIf="insertAnchorB">{{ insertAnchorB.time ? (insertAnchorB.time | date:'HH:mm:ss':'UTC') : ((insertAnchorB.lat | number:'1.2-2') + ', ' + (insertAnchorB.lng | number:'1.2-2')) }}</span>
+          <span *ngIf="insertAnchorB">{{ insertAnchorB.time ? (insertAnchorB.time | date:'HH:mm:ss') : ((insertAnchorB.lat | number:'1.2-2') + ', ' + (insertAnchorB.lng | number:'1.2-2')) }}</span>
           <span *ngIf="!insertAnchorB">Esperando clic...</span>
         </div>
       </div>

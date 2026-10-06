@@ -2576,6 +2576,43 @@ function obtenerSegundosActividad(act) {
 }
 
 /**
+ * 📏 Extrae la distancia métrica real y duración precisa directamente de los puntos trkpt de un XML GPX
+ */
+function calcularMetricasDesdeGpxContenido(gpxContent) {
+  if (!gpxContent || typeof gpxContent !== 'string') return null;
+  const matches = [...gpxContent.matchAll(/lat=[\"']([-0-9.]+)[\"']\s+lon=[\"']([-0-9.]+)[\"']/g)];
+  if (matches.length < 2) return null;
+  let totalMetros = 0;
+  function calcDist(lat1, lon1, lat2, lon2) {
+    const R = 6371e3;
+    const p1 = (lat1 * Math.PI) / 180;
+    const p2 = (lat2 * Math.PI) / 180;
+    const dp = ((lat2 - lat1) * Math.PI) / 180;
+    const dl = ((lon2 - lon1) * Math.PI) / 180;
+    const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+  for (let i = 1; i < matches.length; i++) {
+    totalMetros += calcDist(parseFloat(matches[i - 1][1]), parseFloat(matches[i - 1][2]), parseFloat(matches[i][1]), parseFloat(matches[i][2]));
+  }
+  const timeMatches = [...gpxContent.matchAll(/<time>([^<]+)<\/time>/g)].map(m => m[1]);
+  let duracionSegundos = 0;
+  if (timeMatches.length >= 2) {
+    const tStart = new Date(timeMatches[0]).getTime();
+    const tEnd = new Date(timeMatches[timeMatches.length - 1]).getTime();
+    if (!isNaN(tStart) && !isNaN(tEnd) && tEnd > tStart) {
+      duracionSegundos = Math.round((tEnd - tStart) / 1000);
+    }
+  }
+  return {
+    puntos: matches.length,
+    distanciaMetros: Math.round(totalMetros),
+    distanciaKm: parseFloat((totalMetros / 1000).toFixed(2)),
+    duracionSegundos
+  };
+}
+
+/**
  * 🚀 Calcula el desglose completo de kilómetros por medio de transporte (coche, barco, bus, a pie),
  * el desglose detallado por actividad individual, y extrae estrictamente las métricas activas a pie
  * a partir de un listado de actividades.
@@ -5118,6 +5155,67 @@ app.put('/actividades/:id', (req, res) => {
 });
 
 console.log('✅ Endpoints GET /actividades/:id y PUT /actividades/:id registrados correctamente');
+
+// Sincronizar distancia canónica detectada desde GPX (reloj / trazado real) y recalcular viaje
+app.put(['/actividades/:id/sincronizar-distancia-canonico', '/api/actividades/:id/sincronizar-distancia-canonico'], async (req, res) => {
+  const actId = parseInt(req.params.id, 10);
+  const { distanciaKm, distanciaMetros, duracionSegundos } = req.body;
+  if (isNaN(actId) || distanciaKm === undefined || distanciaKm === null) {
+    return res.status(400).json({ error: 'Parámetros inválidos' });
+  }
+
+  try {
+    const act = await dbQuery.get('SELECT * FROM actividades WHERE id = ?', [actId]);
+    if (!act) return res.status(404).json({ error: 'Actividad no encontrada' });
+
+    const distKmNum = parseFloat(Number(distanciaKm).toFixed(2));
+    const distMetrosNum = parseInt(distanciaMetros, 10) || Math.round(distKmNum * 1000);
+    const durSecs = parseInt(duracionSegundos, 10) || act.duracionSegundos || 0;
+    const velMedia = durSecs > 0 ? parseFloat((distKmNum / (durSecs / 3600)).toFixed(2)) : act.velocidadMediaKmh;
+
+    let nuevaDesc = act.descripcion || '';
+    if (nuevaDesc.includes('Distancia:')) {
+      nuevaDesc = nuevaDesc.replace(/Distancia:\s*[\d\.]+\s*km/i, `Distancia: ${distKmNum} km`);
+      if (velMedia > 0) {
+        nuevaDesc = nuevaDesc.replace(/Velocidad media:\s*[\d\.]+\s*km\/h/i, `Velocidad media: ${velMedia} km/h`);
+      }
+    }
+
+    await dbQuery.run(`
+      UPDATE actividades 
+      SET distanciaKm = ?, distanciaMetros = ?, velocidadMediaKmh = ?, descripcion = ?
+      WHERE id = ?
+    `, [distKmNum, distMetrosNum, velMedia, nuevaDesc, actId]);
+
+    // Actualizar nombre y descripción del viaje si contiene la distancia antigua
+    if (act.viajePrevistoId) {
+      const viaje = await dbQuery.get('SELECT * FROM viajes WHERE id = ?', [act.viajePrevistoId]);
+      if (viaje && viaje.nombre) {
+        const nuevoNombre = viaje.nombre.replace(/-\s*[\d\.]+\s*km$/i, `- ${distKmNum} km`);
+        const nuevaDescViaje = (viaje.descripcion || '').replace(/-\s*[\d\.]+\s*km\s*-/i, `- ${distKmNum} km -`);
+        await dbQuery.run('UPDATE viajes SET nombre = ?, descripcion = ? WHERE id = ?', [nuevoNombre, nuevaDescViaje, act.viajePrevistoId]);
+      }
+
+      // Actualizar descripción de itinerario si corresponde
+      if (act.itinerarioId) {
+        const iti = await dbQuery.get('SELECT * FROM ItinerarioGeneral WHERE id = ?', [act.itinerarioId]);
+        if (iti && iti.descripcionGeneral) {
+          const nuevaDescIti = iti.descripcionGeneral.replace(/Recorrido de\s*[\d\.]+\s*km/i, `Recorrido de ${distKmNum} km`);
+          await dbQuery.run('UPDATE ItinerarioGeneral SET descripcionGeneral = ? WHERE id = ?', [nuevaDescIti, act.itinerarioId]);
+        }
+      }
+
+      // Actualizar estadísticas agregadas del viaje (desglose_transporte, total_km_caminando, etc.)
+      await actualizarEstadisticasTotalesViaje(act.viajePrevistoId);
+    }
+
+    console.log(`✅ [SYNC CANÓNICO] Actividad ${actId} y Viaje ${act.viajePrevistoId} sincronizados a ${distKmNum} km (${distMetrosNum} m)`);
+    res.json({ success: true, distanciaKm: distKmNum, distanciaMetros: distMetrosNum });
+  } catch (err) {
+    console.error('❌ Error sincronizando distancia canónica:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // DELETE eliminar actividad
 app.delete('/actividades/:id', async (req, res) => {
@@ -9047,9 +9145,43 @@ app.post('/import-tracking', (req, res, next) => {
     console.log('📝 FECHA DEL RECORRIDO:', fechaRecorridoReal);
     console.log('📍 DESTINO COMPLETO FINAL:', destinoCompleto);
 
+    // ========================================================================
+    // 3.5. INSPECCIÓN Y CÁLCULO DE MÉTRICAS CANÓNICAS DE GPX (RELOJ > GENERAL)
+    // ========================================================================
+    const watchGpxUploaded = req.files ? req.files.find(f => {
+      const b = path.basename(decodeURIComponent(f.originalname));
+      return b === 'recorrido_reloj.gpx' || b === 'recorrido_mifitness.gpx';
+    }) : null;
+    const regularGpxUploaded = req.files ? req.files.find(f => path.basename(decodeURIComponent(f.originalname)) === 'recorrido.gpx') : null;
+
+    let metricasGpxCanonico = null;
+    if (watchGpxUploaded && watchGpxUploaded.path && fs.existsSync(watchGpxUploaded.path)) {
+      try {
+        const rawContent = fs.readFileSync(watchGpxUploaded.path, 'utf8');
+        metricasGpxCanonico = calcularMetricasDesdeGpxContenido(rawContent);
+        if (metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0) {
+          console.log(`⌚ [GPX RELOJ] Métricas de alta precisión detectadas: ${metricasGpxCanonico.distanciaKm} km (${metricasGpxCanonico.distanciaMetros} m), ${metricasGpxCanonico.puntos} puntos.`);
+        }
+      } catch (e) {
+        console.warn('⚠️ Error midiendo GPX del reloj:', e.message);
+      }
+    } else if (regularGpxUploaded && regularGpxUploaded.path && fs.existsSync(regularGpxUploaded.path)) {
+      try {
+        const rawContent = fs.readFileSync(regularGpxUploaded.path, 'utf8');
+        metricasGpxCanonico = calcularMetricasDesdeGpxContenido(rawContent);
+        if (metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0) {
+          console.log(`🗺️ [GPX GENERAL] Métricas del recorrido GPX: ${metricasGpxCanonico.distanciaKm} km (${metricasGpxCanonico.distanciaMetros} m), ${metricasGpxCanonico.puntos} puntos.`);
+        }
+      } catch (e) {
+        console.warn('⚠️ Error midiendo GPX general:', e.message);
+      }
+    }
+
     const [año, mes, dia] = (fechaRecorridoReal || new Date().toISOString().split('T')[0]).split('-');
     const fechaFormateada = `${dia}/${mes}/${año}`;
-    const distKmViaje = (manifestData.estadisticas && manifestData.estadisticas.distancia_km !== undefined) ? manifestData.estadisticas.distancia_km : (extraStatsData.km || 0);
+    const distKmViaje = (metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0)
+      ? metricasGpxCanonico.distanciaKm
+      : ((manifestData.estadisticas && manifestData.estadisticas.distancia_km !== undefined) ? manifestData.estadisticas.distancia_km : (extraStatsData.km || 0));
     const duracionViaje = (manifestData.estadisticas && manifestData.estadisticas.duracion_formateada) ? manifestData.estadisticas.duracion_formateada : (extraStatsData.tiempoEmpleado || '00:00:00');
     const nombreViaje = `${destinoCompleto} - ${fechaFormateada} - ${distKmViaje} km`;
 
@@ -9214,16 +9346,20 @@ app.post('/import-tracking', (req, res, next) => {
     };
 
     // Extraer datos con prioridades y alias
-    const distKm = parseNum(getDeepStat(['km', 'distancia_km', 'distanciaKm', 'distancia_recorrida']));
+    const rawDistKm = parseNum(getDeepStat(['km', 'distancia_km', 'distanciaKm', 'distancia_recorrida']));
+    const distKm = (metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0) ? metricasGpxCanonico.distanciaKm : rawDistKm;
     const duracionFmt = getDeepStat(['tiempoEmpleado', 'duracion_formateada', 'duracionFormateada', 'duracion_total', 'tiempo_total']) || '00:00:00';
-    const velMedia = parseNum(getDeepStat(['velocidadMedia', 'velocidad_media_kmh', 'velocidadMediaKmh', 'velocidad_media', 'v_media']));
+    const rawVelMedia = parseNum(getDeepStat(['velocidadMedia', 'velocidad_media_kmh', 'velocidadMediaKmh', 'velocidad_media', 'v_media']));
     const velMax = parseNum(getDeepStat(['velocidadMaxima', 'velocidad_maxima_kmh', 'velocidadMaximaKmh', 'velocidad_maxima', 'v_maxima']));
     const velMin = parseNum(getDeepStat(['velocidadMinima', 'velocidad_minima_kmh', 'velocidadMinimaKmh', 'velocidad_minima', 'v_minima']));
     const cals = parseInt(parseNum(getDeepStat(['calorias', 'calories', 'cals']))) || 0;
     const pasos = parseInt(getDeepStat(['pasos', 'pasos_estimados', 'pasosEstimados', 'num_pasos'])) || 0;
-    const distMetros = parseInt(getDeepStat(['distanciaMetros', 'distancia_metros'])) || (distKm * 1000);
-    const duracionSegs = parseInt(getDeepStat(['duracionSegundos', 'duracion_segundos', 'duracionEfectivaSegundos', 'segundos_totales'])) || 0;
-    const ptsGPS = parseInt(getDeepStat(['numeroPuntos', 'puntosGPS', 'puntos_gps', 'numero_puntos', 'num_puntos'])) || 0;
+    const distMetros = (metricasGpxCanonico && metricasGpxCanonico.distanciaMetros > 0) ? metricasGpxCanonico.distanciaMetros : (parseInt(getDeepStat(['distanciaMetros', 'distancia_metros'])) || Math.round(distKm * 1000));
+    const duracionSegs = (metricasGpxCanonico && metricasGpxCanonico.duracionSegundos > 0) ? metricasGpxCanonico.duracionSegundos : (parseInt(getDeepStat(['duracionSegundos', 'duracion_segundos', 'duracionEfectivaSegundos', 'segundos_totales'])) || 0);
+    const velMedia = (metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0 && duracionSegs > 0)
+      ? parseFloat((distKm / (duracionSegs / 3600)).toFixed(2))
+      : rawVelMedia;
+    const ptsGPS = (metricasGpxCanonico && metricasGpxCanonico.puntos > 0) ? metricasGpxCanonico.puntos : (parseInt(getDeepStat(['numeroPuntos', 'puntosGPS', 'puntos_gps', 'numero_puntos', 'num_puntos'])) || 0);
 
     // ✨ Perfil de transporte (puede ser objeto o ID)
     const rawTransporte = getDeepStat(['perfilTransporte', 'perfil_transporte']);
@@ -9871,7 +10007,46 @@ app.post('/import-tracking', (req, res, next) => {
     if (watchGpxFile) {
       const watchGpxDest = path.join(actividadPath, 'gpx', 'recorrido_reloj.gpx');
       fs.renameSync(watchGpxFile.path, watchGpxDest);
+      rutaGpxCompleto = path.relative(uploadsPath, watchGpxDest).replace(/\\/g, '/');
       console.log('⌚ GPX de alta precisión del reloj procesado (guardado en actividades/gpx/recorrido_reloj.gpx)');
+
+      // 🕒 Normalización automática de marcas temporales de Mi Fitness / Reloj Xiaomi
+      try {
+        const gpxContent = fs.readFileSync(watchGpxDest, 'utf8');
+        const matchTrkptTime = gpxContent.match(/<trkpt[\s\S]*?<time>(.*?)<\/time>/);
+        if (matchTrkptTime && matchTrkptTime[1] && horaInicioActividad) {
+          const ptIso = matchTrkptTime[1];
+          const mTime = ptIso.match(/T(\d{2}):(\d{2})/);
+          const mAct = horaInicioActividad.match(/(\d{1,2}):(\d{2})/);
+          if (mTime && mAct) {
+            const ptHours = parseInt(mTime[1], 10);
+            const ptMins = parseInt(mTime[2], 10);
+            const actHours = parseInt(mAct[1], 10);
+            const actMins = parseInt(mAct[2], 10);
+            const ptTotal = ptHours * 60 + ptMins;
+            const actTotal = actHours * 60 + actMins;
+            // Si el tiempo en ISO coincide con la hora local (diferencia < 15 min),
+            // pero el GPX se etiquetó con 'Z', la hora en UTC real debe ser UTC = local - tzOffset
+            if (Math.abs(ptTotal - actTotal) <= 15) {
+              const testDt = fechaRecorridoReal ? new Date(fechaRecorridoReal + 'T12:00:00') : new Date();
+              const tzOffsetHours = Math.round(-testDt.getTimezoneOffset() / 60);
+              if (tzOffsetHours > 0) {
+                const shiftMs = -tzOffsetHours * 3600 * 1000;
+                let countFixed = 0;
+                const fixedContent = gpxContent.replace(/(<trkpt[\s\S]*?<time>)([\d\-]+T[\d:]+(?:\.\d+)?Z?)(<\/time>)/g, (match, pre, tStr, suf) => {
+                  countFixed++;
+                  const dt = new Date(tStr);
+                  return pre + new Date(dt.getTime() + shiftMs).toISOString() + suf;
+                });
+                fs.writeFileSync(watchGpxDest, fixedContent, 'utf8');
+                console.log(`🕒 [IMPORT GPX RELOJ] Corregido desfase local->UTC de Mi Fitness: ${countFixed} puntos desplazados -${tzOffsetHours}h a UTC real`);
+              }
+            }
+          }
+        }
+      } catch (errNorm) {
+        console.warn('⚠️ Error normalizando GPX del reloj:', errNorm.message);
+      }
     }
 
     // GPX COMPLETO - SOLO en actividades
@@ -9879,7 +10054,9 @@ app.post('/import-tracking', (req, res, next) => {
     if (gpxFile) {
       const gpxDest = path.join(actividadPath, 'gpx', 'recorrido.gpx');
       fs.renameSync(gpxFile.path, gpxDest);
-      rutaGpxCompleto = path.relative(uploadsPath, gpxDest).replace(/\\/g, '/');
+      if (!rutaGpxCompleto) {
+        rutaGpxCompleto = path.relative(uploadsPath, gpxDest).replace(/\\/g, '/');
+      }
       console.log('✅ GPX del recorrido procesado (guardado en actividades)');
     }
 
@@ -9906,11 +10083,16 @@ app.post('/import-tracking', (req, res, next) => {
       rutaEstadisticas = path.relative(uploadsPath, statsDest).replace(/\\/g, '/');
       console.log('✅ Estadísticas procesadas (guardado en actividades)');
 
-      // 🚀 Fase 3: Sincronización Canónica (Sobrescribir cálculos del servidor con datos del móvil)
+      // 🚀 Fase 3: Sincronización Canónica (Sobrescribir cálculos del servidor con datos del móvil preservando GPX real)
       try {
         const statsData = JSON.parse(fs.readFileSync(statsDest, 'utf8'));
         if (statsData.v === "1.0") {
           console.log('💎 [Fase 3] Contrato Canónico v1.0 detectado. Sincronizando datos...');
+          const finalDistKm = (metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0) ? metricasGpxCanonico.distanciaKm : statsData.distancia_km;
+          const finalDistM = (metricasGpxCanonico && metricasGpxCanonico.distanciaMetros > 0) ? metricasGpxCanonico.distanciaMetros : statsData.distancia_m;
+          const finalDurSecs = Math.round(statsData.tiempo_marcha_ms / 1000);
+          const finalVel = (finalDurSecs > 0 && finalDistKm > 0) ? parseFloat((finalDistKm / (finalDurSecs / 3600)).toFixed(2)) : statsData.velocidad_media_kmh;
+
           await new Promise((resolve, reject) => {
             db.run(
               `UPDATE actividades SET 
@@ -9923,11 +10105,11 @@ app.post('/import-tracking', (req, res, next) => {
                 calorias = ?
               WHERE id = ?`,
               [
-                statsData.distancia_km,
-                statsData.distancia_m,
-                Math.round(statsData.tiempo_marcha_ms / 1000),
+                finalDistKm,
+                finalDistM,
+                finalDurSecs,
                 statsData.duracion_ui,
-                statsData.velocidad_media_kmh,
+                finalVel,
                 statsData.pasos_totales,
                 statsData.calorias_kcal,
                 actividadId
@@ -9935,7 +10117,7 @@ app.post('/import-tracking', (req, res, next) => {
               (err) => err ? reject(err) : resolve()
             );
           });
-          console.log('✅ [Fase 3] Base de datos actualizada con la Verdad Canónica del móvil');
+          console.log(`✅ [Fase 3] Base de datos actualizada con la Verdad Canónica sincronizada (${finalDistKm} km, ${finalDistM} m)`);
         }
       } catch (err) {
         console.warn('⚠️ Error en Sincronización Canónica:', err.message);

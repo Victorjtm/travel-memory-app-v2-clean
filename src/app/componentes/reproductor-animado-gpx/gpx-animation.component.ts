@@ -433,6 +433,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     }
 
     this.points = this.animationService.parseGpx(this.gpxText);
+    this.normalizarTimestampsGpxConActividad();
     this.stats = this.animationService.getStats(this.points);
 
     if (this.modoRecorridoGuiado) {
@@ -482,6 +483,69 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
           this.togglePlay();
         }
       }, 350);
+    }
+  }
+
+  /**
+   * 🕒 Sincronización Automática de Zona Horaria (Resolución de Desfases UTC / Reloj Xiaomi)
+   * Detecta si los puntos del GPX fueron grabados con hora local etiquetada como UTC (ej. exportaciones Mi Fitness),
+   * lo cual causa un doble desfase horario (ej. +2h en España) al formatearse en el navegador.
+   * Si la hora de inicio del GPX discrepa de la hora local de la actividad o de las fotos por un múltiplo de horas
+   * coincidente con la zona horaria, reajusta las marcas temporales en memoria para sincronización perfecta.
+   */
+  private normalizarTimestampsGpxConActividad(): void {
+    if (!this.points || this.points.length === 0) return;
+
+    const p0 = this.points.find(p => p.time && !isNaN(p.time.getTime()));
+    if (!p0 || !p0.time) return;
+
+    // 1. Obtener la hora local esperada desde actividadActual o primera foto multimedia
+    let targetHours: number | null = null;
+    let targetMinutes: number | null = null;
+
+    if (this.actividadActual?.horaInicio) {
+      const match = this.actividadActual.horaInicio.match(/(\d{1,2}):(\d{2})/);
+      if (match) {
+        targetHours = parseInt(match[1], 10);
+        targetMinutes = parseInt(match[2], 10);
+      }
+    }
+
+    if (targetHours === null && this.multimedia && this.multimedia.length > 0) {
+      const primerMedia = this.multimedia.find(m => m.horaCaptura);
+      if (primerMedia && primerMedia.horaCaptura) {
+        const match = primerMedia.horaCaptura.match(/(\d{1,2}):(\d{2})/);
+        if (match) {
+          targetHours = parseInt(match[1], 10);
+          targetMinutes = parseInt(match[2], 10);
+        }
+      }
+    }
+
+    if (targetHours === null) return;
+
+    const targetTotalMinutes = targetHours * 60 + targetMinutes!;
+    const gpxLocalHours = p0.time.getHours();
+    const gpxLocalMinutes = p0.time.getMinutes();
+    const gpxTotalMinutes = gpxLocalHours * 60 + gpxLocalMinutes;
+
+    const diffMinutes = gpxTotalMinutes - targetTotalMinutes;
+    // Si la diferencia es de ~1 hora (~60 min) o ~2 horas (~120 min) o múltiplo horario (+/- 15 min de margen)
+    const nearestHour = Math.round(diffMinutes / 60);
+
+    if (nearestHour !== 0 && Math.abs(diffMinutes - nearestHour * 60) <= 15) {
+      const shiftMs = nearestHour * 3600 * 1000;
+      console.log(`🕒 [GpxAnimation] Corrigiendo desfase horario del GPX: detectado desfase de ${nearestHour}h (${diffMinutes} min) vs hora esperada (${targetHours}:${String(targetMinutes).padStart(2, '0')}). Ajustando ${this.points.length} puntos por ${-nearestHour}h...`);
+
+      for (let i = 0; i < this.points.length; i++) {
+        if (this.points[i].time) {
+          this.points[i].time = new Date(this.points[i].time!.getTime() - shiftMs);
+        }
+      }
+
+      if (this.currentPointTime) {
+        this.currentPointTime = new Date(this.currentPointTime.getTime() - shiftMs);
+      }
     }
   }
 
@@ -578,6 +642,7 @@ export class GpxAnimationComponent implements OnInit, OnChanges, AfterViewInit, 
     console.log('📊 [GpxAnimationComponent] Datos de transporte recibidos:', this.transportSegments);
 
     this.points = this.animationService.parseGpx(this.gpxText);
+    this.normalizarTimestampsGpxConActividad();
 
     if (this.modoRecorridoGuiado) {
       this.sincronizarEventosGuiados();

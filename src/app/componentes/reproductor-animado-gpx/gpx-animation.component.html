@@ -15,8 +15,8 @@
   <div class="hud-overlay" *ngIf="stats">
     <!-- NUEVO: Registro de Tiempo Real -->
     <div class="hud-card time-display" *ngIf="currentPointTime">
-      <div class="time-header">📅 {{ currentPointTime | date:'dd/MM/yyyy':'UTC' }}</div>
-      <div class="time-value">🕒 {{ currentPointTime | date:'HH:mm:ss':'UTC' }}</div>
+      <div class="time-header">📅 {{ currentPointTime | date:'dd/MM/yyyy' }}</div>
+      <div class="time-value">🕒 {{ currentPointTime | date:'HH:mm:ss' }}</div>
     </div>
 
     <div class="hud-card detailed">
@@ -209,11 +209,11 @@
               <div class="meta-row meta-date-time" *ngIf="archivo.fechaCalculada">
                 <div class="meta-sub">
                   <span class="meta-icon">📅</span>
-                  <span class="meta-text">{{ archivo.fechaCalculada | date:'dd/MM/yyyy':'UTC' }}</span>
+                  <span class="meta-text">{{ archivo.fechaCalculada | date:'dd/MM/yyyy' }}</span>
                 </div>
                 <div class="meta-sub">
                   <span class="meta-icon">🕒</span>
-                  <span class="meta-text">{{ archivo.fechaCalculada | date:'HH:mm:ss':'UTC' }}</span>
+                  <span class="meta-text">{{ archivo.fechaCalculada | date:'HH:mm:ss' }}</span>
                 </div>
               </div>
             </div>

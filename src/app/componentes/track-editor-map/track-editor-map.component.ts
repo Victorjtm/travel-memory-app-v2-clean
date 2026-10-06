@@ -892,16 +892,16 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       if (startPt && startPt.time) {
         const dt = new Date(startPt.time as any);
         if (!isNaN(dt.getTime())) {
-          const hh = dt.getUTCHours().toString().padStart(2, '0');
-          const mm = dt.getUTCMinutes().toString().padStart(2, '0');
+          const hh = dt.getHours().toString().padStart(2, '0');
+          const mm = dt.getMinutes().toString().padStart(2, '0');
           horaInicio = `${hh}:${mm}`;
         }
       }
       if (endPt && endPt.time) {
         const dt = new Date(endPt.time as any);
         if (!isNaN(dt.getTime())) {
-          const hh = dt.getUTCHours().toString().padStart(2, '0');
-          const mm = dt.getUTCMinutes().toString().padStart(2, '0');
+          const hh = dt.getHours().toString().padStart(2, '0');
+          const mm = dt.getMinutes().toString().padStart(2, '0');
           horaFin = `${hh}:${mm}`;
         }
       }
@@ -1742,7 +1742,7 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
     const endMs = startMs + (durSec * 1000);
 
     const dtEnd = new Date(endMs);
-    return dtEnd.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC' });
+    return dtEnd.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
   public onAssignDistance(mode: 'auto' | 'manual' = 'auto'): void {
@@ -3673,18 +3673,48 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       }
 
       if (lat !== null && lng !== null && !isNaN(Number(lat)) && !isNaN(Number(lng)) && Number(lat) !== 0 && Number(lng) !== 0) {
+        // Obtener número secuencial/hito real (de la foto, de los grupos de medios del mapa o del hito)
+        let seqNum = item.numeroSecuencial ?? item.numeroVisual ?? item.orden;
+        if (!seqNum && this.mediaGroups && this.mediaGroups.length > 0) {
+          const matchGroup = this.mediaGroups.find(g =>
+            (g.archivos && g.archivos.some((a: any) => (a.archivo?.id === item.id || a.id === item.id || a.nombreArchivo === filename))) ||
+            (Math.abs(g.lat - Number(lat)) < 0.0001 && Math.abs(g.lng - Number(lng)) < 0.0001)
+          );
+          if (matchGroup && (matchGroup.numeroSecuencial || matchGroup.numeroVisual)) {
+            seqNum = matchGroup.numeroSecuencial ?? matchGroup.numeroVisual;
+          }
+        }
+
         candidatos.push({
           lat: Number(lat),
           lng: Number(lng),
           timeMs: timeMs || 0,
-          originalIndex: item.numeroSecuencial ?? item.numeroVisual ?? item.orden ?? (itemIdx + 1),
+          originalIndex: seqNum || 0,
           nombre: filename
         });
       }
     }
 
+    // Ordenar inicialmente los candidatos mediante la táctica mixta antes de interpolar tiempos
+    candidatos.sort((a, b) => {
+      const timeA = a.timeMs || 0;
+      const timeB = b.timeMs || 0;
+      const idxA = a.originalIndex || 0;
+      const idxB = b.originalIndex || 0;
+
+      if (timeA > 0 && timeB > 0 && Math.abs(timeA - timeB) > 1000) {
+        return timeA - timeB;
+      }
+      if (idxA > 0 && idxB > 0 && idxA !== idxB) {
+        return idxA - idxB;
+      }
+      if (timeA > 0 && timeB === 0) return -1;
+      if (timeA === 0 && timeB > 0) return 1;
+      return 0;
+    });
+
     // Resolver candidatos que hayan quedado con timeMs === 0 interpolando entre fotos válidas (sin saltar ciegamente a Date.now())
-    const validTimes = candidatos.filter(c => c.timeMs > 0).map(c => c.timeMs);
+    const validTimes = candidatos.filter(c => c.timeMs > 0).map(c => c.timeMs).sort((a, b) => a - b);
     if (validTimes.length > 0) {
       let lastValid = validTimes[0];
       for (let c of candidatos) {
@@ -3727,14 +3757,25 @@ export class TrackEditorMapComponent implements OnInit, AfterViewInit, OnDestroy
       return;
     }
 
-    // 2. Ordenar cronológicamente
+    // 2. Ordenar cronológicamente y por hitos (Táctica Mixta)
     fotosValidas.sort((a, b) => {
-      const idxA = (a as any).originalIndex ?? 0;
-      const idxB = (b as any).originalIndex ?? 0;
+      const timeA = a.timeMs || 0;
+      const timeB = b.timeMs || 0;
+      const idxA = (a as any).originalIndex || 0;
+      const idxB = (b as any).originalIndex || 0;
+
+      // Nivel 1: Tiempo cronológico de captura si ambas fotos tienen marca válida (> 1 seg de diferencia)
+      if (timeA > 0 && timeB > 0 && Math.abs(timeA - timeB) > 1000) {
+        return timeA - timeB;
+      }
+
+      // Nivel 2: Desempate o fotos sin tiempo válido -> usar número de hito / orden secuencial
       if (idxA > 0 && idxB > 0 && idxA !== idxB) {
         return idxA - idxB;
       }
-      return a.timeMs - b.timeMs;
+
+      // Nivel 3: Fallback a milisegundos restantes
+      return timeA - timeB;
     });
 
     // 3. Agrupar waypoints consecutivos cercanos (< 25 metros)
