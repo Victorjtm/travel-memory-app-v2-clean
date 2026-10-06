@@ -153,8 +153,8 @@ class AnalizadorFotosIAService {
       throw new Error('No se ha configurado GEMINI_API_KEY. Introduce tu clave en la modal de análisis.');
     }
 
-    // Modelos con cascada de respaldo ante cuota
-    const modelos = ['gemini-3.6-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    // Modelos activos recomendados por Google
+    const modelos = ['gemini-3.8-flash', 'gemini-3.6-flash'];
 
     const promptText = `Analiza detalladamente esta foto de viaje y describe lo que se ve físicamente en ella (objetos, personas, entorno). 
 Devuelve la respuesta estrictamente como un array de texto en JSON, donde cada elemento sea una descripción corta siguiendo el formato: [Lugar o Elemento principal] / [Perspectiva o Acción de lo que ocurre]. 
@@ -328,6 +328,49 @@ Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
   }
 
   /**
+   * Consulta dinámicamente qué modelos soportan generateContent para esta API Key
+   */
+  async obtenerModelosDisponibles(key) {
+    try {
+      const resp = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`, { timeout: 10000 });
+      const models = resp.data?.models || [];
+      const validos = models
+        .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+        .map(m => m.name.replace(/^models\//, ''));
+
+      console.log(`[Gemini Models] ${validos.length} modelos compatibles:`, validos.join(', '));
+      try {
+        fs.appendFileSync(
+          path.join(process.cwd(), 'gemini_debug.log'),
+          `\n[${new Date().toISOString()}] Modelos disponibles en cuenta: ${JSON.stringify(validos)}\n`
+        );
+      } catch (e) {}
+
+      // Priorizar gemini-3.8-flash (recomendado por Google), seguido de 3.6-flash y otros flash
+      const preferidos = ['gemini-3.8-flash', 'gemini-3.6-flash'];
+      const ordenados = [];
+      for (const p of preferidos) {
+        if (validos.includes(p)) ordenados.push(p);
+      }
+      for (const v of validos) {
+        if (!ordenados.includes(v) && v.includes('flash') && !v.includes('audio') && !v.includes('image')) {
+          ordenados.push(v);
+        }
+      }
+      for (const v of validos) {
+        if (!ordenados.includes(v) && !v.includes('embedding') && !v.includes('imagen') && !v.includes('aqa')) {
+          ordenados.push(v);
+        }
+      }
+
+      return ordenados.length > 0 ? ordenados : ['gemini-3.8-flash', 'gemini-3.6-flash'];
+    } catch (err) {
+      console.warn('[Gemini Models] Error consultando ListModels:', err.message);
+      return ['gemini-3.8-flash', 'gemini-3.6-flash'];
+    }
+  }
+
+  /**
    * Inferencia Multimodal en Lote (5 fotos por petición) con Gemini Vision
    * - Payload entrelazado (texto con ID + imagen WebP)
    * - Schema estricto { id, descripcion }
@@ -350,8 +393,15 @@ Contexto geográfico para ayudarte: ${contextoGeo || 'Ruta de viaje'}.`;
       throw new Error(msg);
     }
 
-    // Cascada de modelos: primero 3.6-flash, si agota cuota pasa a 2.0-flash y luego a 1.5-flash
-    const listaModelos = ['gemini-3.6-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    // Resolver modelos dinámicamente si aún no se han consultado
+    if (job && (!job.modelosDisponibles || job.modelosDisponibles.length === 0)) {
+      job.modelosDisponibles = await this.obtenerModelosDisponibles(key);
+    }
+
+    // Cascada de modelos activos (3.8-flash recomendado por Google primero)
+    const listaModelos = (job && job.modelosDisponibles && job.modelosDisponibles.length > 0)
+      ? job.modelosDisponibles
+      : ['gemini-3.8-flash', 'gemini-3.6-flash'];
     const idxModeloInicio = (job && job.indiceModeloActivo !== undefined) ? job.indiceModeloActivo : 0;
 
     // Construcción entrelazada de Parts (Texto con ID + WebP 768px inlineData)
@@ -487,16 +537,23 @@ Devuelve la respuesta mapeando el array JSON respetando los IDs proporcionados.`
             }
           }
 
-          // 🛑 Si es 429 (Cuota agotada) o 503 y tenemos un modelo de respaldo siguiente
-          if ((status === 429 || status === 503) && m + 1 < listaModelos.length) {
+          // 🛑 Si es 429 (Cuota agotada), 503 (Sobrecarga) o 404 (No disponible) y tenemos un modelo de respaldo siguiente
+          if ((status === 429 || status === 503 || status === 404) && m + 1 < listaModelos.length) {
             const sigModelo = listaModelos[m + 1];
-            console.warn(`[Gemini Batch] Cuota o congestión en ${modelo}. Cambiando automáticamente a modelo de respaldo: ${sigModelo}...`);
+            const razon = status === 404 ? 'no disponible' : (status === 429 ? 'cuota agotada' : 'sobrecarga');
+            console.warn(`[Gemini Batch] Modelo ${modelo} (${razon}). Cambiando automáticamente a modelo de respaldo: ${sigModelo}...`);
             this.emitirEvento(job, 'cambio_modelo', {
-              mensaje: `Cuota de ${modelo} agotada. Cambiando automáticamente a ${sigModelo}...`
+              mensaje: `Modelo ${modelo} (${razon}). Cambiando a ${sigModelo}...`
             });
             if (job) job.indiceModeloActivo = m + 1;
             cambiarDeModelo = true;
             break; // Romper intentos para pasar de inmediato al siguiente modelo
+          }
+
+          // Si es 404 en el último modelo, abortar de inmediato sin reintentos inútiles
+          if (status === 404) {
+            console.error(`[Gemini Batch] Modelo ${modelo} devolvió 404 (no disponible).`);
+            break;
           }
 
           // Si estamos en el último modelo de la lista y da 429/503: reintentar con backoff
