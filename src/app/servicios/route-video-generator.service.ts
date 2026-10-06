@@ -1570,31 +1570,8 @@ export class RouteVideoGeneratorService {
         }
       }
 
-      // Placa / Cabecera superior elegante del mapa
-      ctx.save();
-      const bannerW = width * 0.82;
-      const bannerH = 110;
-      const bannerX = (width - bannerW) / 2;
-      const bannerY = 40;
-
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-      ctx.fillRect(bannerX, bannerY, bannerW, bannerH);
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 2.5;
-      ctx.strokeRect(bannerX, bannerY, bannerW, bannerH);
-
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 34px "Cinzel", Georgia, serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(titulo.toUpperCase(), width / 2, bannerY + 45);
-
-      const subTexto = subtitulo || (distanciaKm ? `Distancia total del recorrido: ${distanciaKm.toFixed(1)} km` : '');
-      if (subTexto) {
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = '600 20px "Cinzel", Georgia, serif';
-        ctx.fillText(subTexto, width / 2, bannerY + 85);
-      }
-      ctx.restore();
+      // La cabecera visual y badges de telemetría son gestionados de forma dinámica
+      // y responsiva por la barra HTML del componente, por lo que no se queman textos estáticos en la imagen.
 
     } catch (err) {
       console.warn('⚠️ Error generando snapshot mapa:', err);

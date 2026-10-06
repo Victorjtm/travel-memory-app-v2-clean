@@ -297,4 +297,37 @@ export class MapaResumenSpreadComponent implements OnInit, AfterViewInit, OnDest
       this.inicializarMapa();
     }, 60);
   }
+
+  obtenerTextoFechas(): string {
+    const diasStr = this.duracionDias ? `${this.duracionDias} ${this.duracionDias === 1 ? 'día' : 'días'}` : '';
+    let fechasStr = '';
+
+    if (this.fechaInicio) {
+      const fIni = this.formatearFechaCorta(this.fechaInicio);
+      if (this.fechaFin && this.fechaFin !== this.fechaInicio) {
+        const fFin = this.formatearFechaCorta(this.fechaFin);
+        fechasStr = `${fIni} – ${fFin}`;
+      } else {
+        fechasStr = fIni;
+      }
+    }
+
+    if (diasStr && fechasStr) {
+      return `${diasStr} (${fechasStr})`;
+    }
+    return diasStr || fechasStr;
+  }
+
+  private formatearFechaCorta(fechaStr: string): string {
+    try {
+      const d = new Date(fechaStr);
+      if (!isNaN(d.getTime())) {
+        const dia = String(d.getDate()).padStart(2, '0');
+        const mes = String(d.getMonth() + 1).padStart(2, '0');
+        const anio = d.getFullYear();
+        return `${dia}/${mes}/${anio}`;
+      }
+    } catch {}
+    return fechaStr;
+  }
 }

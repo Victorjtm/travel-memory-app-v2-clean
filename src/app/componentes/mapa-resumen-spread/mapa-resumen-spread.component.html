@@ -27,7 +27,7 @@
       <!-- Días / Fechas -->
       <div class="badge-chip chip-dias" *ngIf="duracionDias || fechaInicio">
         <i class="fas fa-calendar-alt"></i>
-        <span>{{ duracionDias ? (duracionDias + ' ' + (duracionDias === 1 ? 'día' : 'días')) : (fechaInicio | date:'dd/MM/yyyy') }}</span>
+        <span>{{ obtenerTextoFechas() }}</span>
       </div>
 
       <!-- Número de Itinerarios (sólo en mapa general) -->

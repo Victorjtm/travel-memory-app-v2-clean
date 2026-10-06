@@ -41,6 +41,7 @@ interface PaginaMedia {
   titulo: string;
   descripcion: string;
   fecha: string;
+  fechaFin?: string;
   fechaOriginal?: string;
   tipoMedia: TipoMedia;
   mimeType: string;
@@ -116,6 +117,7 @@ interface InfoViaje {
   fechaFin?: string;
   imagen?: string;
   audio?: string;
+  totalKm?: number;
 }
 
 interface CoordenadaDMS {
@@ -343,14 +345,32 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   get distanciaTotalKm(): number {
+    // 1. Prioridad oficial según el contexto para sincronización canónica:
+    // Si estamos a nivel de viaje completo (sin itinerario ni actividad seleccionados):
+    if (!this.contextoViaje?.actividadId && !this.contextoViaje?.itinerarioId && this.infoViaje?.totalKm && this.infoViaje.totalKm > 0) {
+      return parseFloat(Number(this.infoViaje.totalKm).toFixed(2));
+    }
+
+    // Si estamos a nivel de itinerario específico:
+    if (this.contextoViaje?.itinerarioId && !this.contextoViaje?.actividadId && this.listaItinerarios?.length > 0) {
+      const itActual = this.listaItinerarios.find(i => i.id === this.contextoViaje?.itinerarioId);
+      const itKm = itActual?.total_km || itActual?.totalKm || itActual?.distanciaKm;
+      if (itKm && Number(itKm) > 0) {
+        return parseFloat(Number(itKm).toFixed(2));
+      }
+    }
+
     if (!this.paginas || this.paginas.length === 0) return 29.8;
+
+    let maxDist = 0;
     const mapaGeneral = this.paginas.find(p => p.esMapaGeneral && p.distanciaTramoKm && p.distanciaTramoKm > 0);
     if (mapaGeneral && mapaGeneral.distanciaTramoKm) {
-      return parseFloat(mapaGeneral.distanciaTramoKm.toFixed(2));
+      maxDist = Math.max(maxDist, parseFloat(mapaGeneral.distanciaTramoKm.toFixed(2)));
     }
     const sumaSubtramos = this.paginas
       .filter(p => !p.esMapaGeneral && !p.esMapaItinerario && p.distanciaTramoKm && p.distanciaTramoKm > 0)
       .reduce((acc, p) => acc + (p.distanciaTramoKm || 0), 0);
+    maxDist = Math.max(maxDist, sumaSubtramos);
 
     let gpxSumKm = 0;
     if (this.cacheDatosActividadGpx && this.cacheDatosActividadGpx.size > 0) {
@@ -361,9 +381,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         }
       });
     }
+    maxDist = Math.max(maxDist, gpxSumKm);
 
-    const total = Math.max(sumaSubtramos, gpxSumKm);
-    return total > 0 ? parseFloat(total.toFixed(2)) : 29.8;
+    // Asegurar que el total sea como mínimo la mayor distancia acumulada alcanzada en el álbum
+    const maxPaginaKm = this.paginas.reduce((acc, p) => Math.max(acc, p.distanciaAcumuladaKm || 0), 0);
+    maxDist = Math.max(maxDist, maxPaginaKm);
+
+    return maxDist > 0 ? parseFloat(maxDist.toFixed(2)) : 29.8;
   }
 
   /**
@@ -530,15 +554,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
     let fecha = '';
     if (this.infoViaje?.fechaInicio) {
-      try {
-        const d = new Date(this.infoViaje.fechaInicio);
-        if (!isNaN(d.getTime())) {
-          const dia = String(d.getDate()).padStart(2, '0');
-          const mes = String(d.getMonth() + 1).padStart(2, '0');
-          const anio = d.getFullYear();
-          fecha = `${dia}/${mes}/${anio}`;
-        }
-      } catch (e) {}
+      const fIni = this.formatearFechaCorta(this.infoViaje.fechaInicio);
+      if (this.infoViaje.fechaFin && this.infoViaje.fechaFin !== this.infoViaje.fechaInicio) {
+        const fFin = this.formatearFechaCorta(this.infoViaje.fechaFin);
+        fecha = `${fIni} – ${fFin}`;
+      } else {
+        fecha = fIni;
+      }
     }
     const dist = this.distanciaTotalKm > 0 ? `${this.distanciaTotalKm.toFixed(2)} KM` : '';
 
@@ -568,7 +590,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     if (ts && ts > 0) {
       const dt = new Date(ts);
       if (dt.getUTCHours() !== 0 || dt.getUTCMinutes() !== 0 || dt.getUTCSeconds() !== 0) {
-        return dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        return dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
       }
     }
     return fallback;
@@ -677,14 +699,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         if (pts[0].time) {
           const dt0 = new Date(pts[0].time);
           if (dt0.getUTCHours() !== 0 || dt0.getUTCMinutes() !== 0 || dt0.getUTCSeconds() !== 0) {
-            hIni = dt0.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            hIni = dt0.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
             tsIni = dt0.getTime();
           }
         }
         if (lastPt?.time) {
           const dtLast = new Date(lastPt.time);
           if (dtLast.getUTCHours() !== 0 || dtLast.getUTCMinutes() !== 0 || dtLast.getUTCSeconds() !== 0) {
-            hFin = dtLast.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            hFin = dtLast.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
             tsFin = dtLast.getTime();
           }
         }
@@ -709,7 +731,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             const dt = new Date(pt.time);
             ts = dt.getTime();
             if (dt.getUTCHours() !== 0 || dt.getUTCMinutes() !== 0 || dt.getUTCSeconds() !== 0) {
-              hStr = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+              hStr = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
             }
             if (ts < minTimestamp) minTimestamp = ts;
             if (ts > maxTimestamp) maxTimestamp = ts;
@@ -751,7 +773,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                 const dt = new Date(pt.time);
                 ts = dt.getTime();
                 if (dt.getUTCHours() !== 0 || dt.getUTCMinutes() !== 0 || dt.getUTCSeconds() !== 0) {
-                  hStr = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                  hStr = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
                 }
               }
               fotoGpxMap.set(p.archivo.id, { distKm: dKm, horaStr: hStr, timestamp: ts });
@@ -896,12 +918,18 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       if (p.esMapaGeneral) {
         // El mapa general muestra la visión panorámica del viaje completo desde el inicio
         p.distanciaInicioTramo = 0.0;
-        p.distanciaFinTramo = parseFloat((p.distanciaTramoKm || totalKm).toFixed(1));
+        p.distanciaFinTramo = totalKm > 0 ? totalKm : parseFloat((p.distanciaTramoKm || 0).toFixed(1));
         p.distanciaAcumuladaKm = 0.0;
+      } else if (p.esMapaItinerario) {
+        // El mapa de itinerario sitúa el inicio de ese bloque respecto al progreso total
+        const d = p.distanciaTramoKm || 0;
+        p.distanciaInicioTramo = parseFloat(Math.min(runningTramoKm, totalKm).toFixed(1));
+        p.distanciaFinTramo = parseFloat(Math.min(runningTramoKm + d, totalKm).toFixed(1));
+        p.distanciaAcumuladaKm = p.distanciaInicioTramo;
       } else if (p.esMapaAnimado) {
         const d = p.distanciaTramoKm || 0;
-        p.distanciaInicioTramo = parseFloat(runningTramoKm.toFixed(1));
-        runningTramoKm += d;
+        p.distanciaInicioTramo = parseFloat(Math.min(runningTramoKm, totalKm).toFixed(1));
+        runningTramoKm = Math.min(runningTramoKm + d, totalKm);
         p.distanciaFinTramo = parseFloat(runningTramoKm.toFixed(1));
         p.distanciaAcumuladaKm = p.distanciaFinTramo;
       }
@@ -925,7 +953,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         const info = fotoGpxMap.get(p.archivo.id)!;
         anclas.push({
           index: i,
-          distKm: info.distKm,
+          distKm: Math.min(info.distKm, totalKm > 0 ? totalKm : info.distKm),
           ts: info.timestamp || this.obtenerTimestampReal(p),
           hora: info.horaStr || (p.archivo?.horaCaptura ? p.archivo.horaCaptura.substring(0, 5) : '')
         });
@@ -937,9 +965,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           hora: this.itinerarioHoraInicio
         });
       } else if (p.esMapaAnimado) {
+        const distAncla = Math.min(p.distanciaFinTramo ?? p.distanciaInicioTramo ?? 0, totalKm > 0 ? totalKm : Infinity);
         anclas.push({
           index: i,
-          distKm: p.distanciaFinTramo ?? p.distanciaInicioTramo ?? 0,
+          distKm: distAncla,
           ts: this.obtenerTimestampReal(p),
           hora: p.horaFinTramo ? p.horaFinTramo.substring(0, 5) : (p.horaInicioTramo ? p.horaInicioTramo.substring(0, 5) : this.itinerarioHoraInicio)
         });
@@ -953,10 +982,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       hora: this.itinerarioHoraFin
     });
 
-    // Asegurar orden estrictamente monótono en las anclas
+    // Asegurar orden estrictamente monótono en las anclas sin superar jamás totalKm
     for (let a = 1; a < anclas.length; a++) {
       if (anclas[a].distKm < anclas[a - 1].distKm) {
         anclas[a].distKm = anclas[a - 1].distKm;
+      }
+      if (totalKm > 0 && anclas[a].distKm > totalKm) {
+        anclas[a].distKm = totalKm;
       }
     }
 
@@ -1002,7 +1034,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           } else if (pTs > 0) {
             const dt = new Date(pTs);
             if (dt.getUTCHours() !== 0 || dt.getUTCMinutes() !== 0 || dt.getUTCSeconds() !== 0) {
-              p.horaFormateada = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+              p.horaFormateada = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
             }
           }
 
@@ -1204,9 +1236,13 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // ==========================================
   // CONFIGURACIÓN DE MAPAS ANIMADOS Y VÍDEOS
   // ==========================================
-  incluirAnimacionesMapa: boolean = false;
-  distanciaMinimaAnimacionKm: number = 2.0;
-  distanciaMinimaMetros: number = 2000;
+  incluirAnimacionesMapa: boolean = localStorage.getItem('album_incluir_animaciones_mapa') !== 'false';
+  distanciaMinimaAnimacionKm: number = localStorage.getItem('album_distancia_animacion_km') !== null
+    ? Number(localStorage.getItem('album_distancia_animacion_km'))
+    : 0.5;
+  distanciaMinimaMetros: number = localStorage.getItem('album_distancia_animacion_km') !== null
+    ? Math.round(Number(localStorage.getItem('album_distancia_animacion_km')) * 1000)
+    : 500;
   modoDistanciaPersonalizada: boolean = false;
   reproducirVideosCompletos: boolean = false;
   limpiandoVideosAnimacion: boolean = false;
@@ -1228,6 +1264,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       const numKm = Number(val);
       this.distanciaMinimaAnimacionKm = numKm;
       this.distanciaMinimaMetros = Math.round(numKm * 1000);
+      localStorage.setItem('album_distancia_animacion_km', String(numKm));
       // Activar modo animado automáticamente al escoger distancia
       this.modoRutaImagen = false;
       localStorage.setItem('album_modo_ruta_imagen', 'false');
@@ -1238,6 +1275,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   onCambioDistanciaMetrosInput(): void {
     if (this.distanciaMinimaMetros !== null && this.distanciaMinimaMetros !== undefined && this.distanciaMinimaMetros >= 0) {
       this.distanciaMinimaAnimacionKm = this.distanciaMinimaMetros / 1000;
+      localStorage.setItem('album_distancia_animacion_km', String(this.distanciaMinimaAnimacionKm));
       // Activar modo animado automáticamente al configurar distancia personalizada
       this.modoRutaImagen = false;
       localStorage.setItem('album_modo_ruta_imagen', 'false');
@@ -2421,7 +2459,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         fechaInicio: viaje.fecha_inicio || viaje.fechaInicio || '',
         fechaFin: viaje.fecha_fin || viaje.fechaFin || '',
         imagen: viaje.imagen || '',
-        audio: viaje.audio || '' // 👈 AÑADIR ESTA LÍNEA
+        audio: viaje.audio || '',
+        totalKm: (viaje.total_km !== undefined && Number(viaje.total_km) > 0)
+          ? Number(viaje.total_km)
+          : (viaje.totalKm && Number(viaje.totalKm) > 0 ? Number(viaje.totalKm) : undefined)
       };
       console.log('📋 InfoViaje establecida:', this.infoViaje);
 
@@ -2435,7 +2476,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         fechaInicio: '',
         fechaFin: '',
         imagen: '',
-        audio: '' // 👈 AÑADIR ESTA LÍNEA
+        audio: '',
+        totalKm: undefined
       };
     }
   }
@@ -2808,6 +2850,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   async toggleAnimacionesMapa(): Promise<void> {
     this.incluirAnimacionesMapa = !this.incluirAnimacionesMapa;
+    localStorage.setItem('album_incluir_animaciones_mapa', String(this.incluirAnimacionesMapa));
     await this.actualizarConfiguracionAnimaciones();
   }
 
@@ -3812,10 +3855,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           }
         }
         if (ptInicio?.time instanceof Date && !isNaN(ptInicio.time.getTime()) && !horaInicioTramo) {
-          horaInicioTramo = ptInicio.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          horaInicioTramo = ptInicio.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
         }
         if (ptFin?.time instanceof Date && !isNaN(ptFin.time.getTime())) {
-          horaFinTramo = ptFin.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          horaFinTramo = ptFin.time.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
         }
         if (!timestampInicio) {
           let tp = horaInicioTramo || '00:00:00';
@@ -4661,10 +4704,15 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       paginaIntroViaje.fecha = fechaMinViaje;
     }
 
-    const tituloMapaGeneral = `MAPA GENERAL: ${this.obtenerTituloIntroLimpio()}`;
-    const descMapaGeneral = `Recorrido unificado y vista panorámica de ${this.obtenerTituloIntroLimpio()}`;
+    const nombreViajeLimpio = (this.infoViaje?.nombre || this.infoViaje?.destino || 'CRUCERO').trim().toUpperCase()
+      .replace(/\s*-\s*\d{2}\/\d{2}\/\d{4}.*$/i, '')
+      .replace(/\s*-\s*[\d.,]+\s*km$/i, '')
+      .trim();
+    const tituloMapaGeneral = `MAPA GENERAL: ${nombreViajeLimpio}`;
+    const descMapaGeneral = 'Recorrido unificado y vista panorámica del viaje completo';
 
     const puntosClaveGeneral = this.extraerPuntosClaveParaMapa(itinerariosOrdenados, mapaGpsPorItinerario);
+    const distOficialGeneral = this.distanciaTotalKm > 0 ? this.distanciaTotalKm : (this.infoViaje?.totalKm || distanciaTotalViajeKm);
 
     const paginaMapaGeneralViaje: PaginaMedia = {
       archivo: {} as Archivo,
@@ -4672,6 +4720,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       titulo: tituloMapaGeneral,
       descripcion: descMapaGeneral,
       fecha: fechaMinViaje || this.infoViaje?.fechaInicio || '',
+      fechaFin: fechaMaxViaje || this.infoViaje?.fechaFin || '',
       tipoMedia: 'mapa-animado',
       mimeType: '',
       cargado: true,
@@ -4679,7 +4728,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       esMapaGeneral: true,
       duracionDias: diasTotalesViaje,
       trackGpx: gpxGeneralViaje,
-      distanciaTramoKm: distanciaTotalViajeKm,
+      distanciaTramoKm: distOficialGeneral,
       multimedia: [],
       visualSessionData: null,
       puntosClave: puntosClaveGeneral
@@ -4703,7 +4752,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
                 gpxGeneralViaje,
                 tituloMapaGeneral,
                 descMapaGeneral,
-                distanciaTotalViajeKm,
+                distOficialGeneral,
                 'general',
                 undefined,
                 puntosClaveGeneral
@@ -6223,7 +6272,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
           horaFormateada = fechaObj.toLocaleTimeString('es-ES', {
             hour: '2-digit',
             minute: '2-digit',
-            hour12: false
+            hour12: false,
+            timeZone: 'UTC'
           });
         }
       }
@@ -8249,7 +8299,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         hora = fechaObj.toLocaleTimeString('es-ES', {
           hour: '2-digit',
           minute: '2-digit',
-          hour12: false
+          hour12: false,
+          timeZone: 'UTC'
         });
       }
 
