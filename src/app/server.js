@@ -2662,98 +2662,168 @@ async function calcularEstadisticasDesdeActividades(acts) {
 
   const modosMetros = {};
   let totalKmSum = 0;
+  let totalSegundosSum = 0;
   let segsCaminando = 0;
   let metrosCaminando = 0;
   let pasosCaminando = 0;
 
   for (const act of acts) {
     totalKmSum += (act.distanciaKm || 0);
+    const actSecs = obtenerSegundosActividad(act);
+    totalSegundosSum += actSecs;
 
-    const segRows = await dbQuery.all('SELECT * FROM segments WHERE actividadId = ? ORDER BY segmentOrder ASC', [act.id]);
-
-    let replayed = [];
-    if (segRows && segRows.length > 0) {
-      for (const seg of segRows) {
-        let pts = [];
-        try { pts = JSON.parse(seg.points_json || '[]'); } catch (e) {}
-        if (!pts || pts.length === 0) continue;
-        if (seg.source === 'original' || seg.source === 'user-append') {
-          replayed.push(...pts);
-        } else if (seg.source === 'user-prepend') {
-          replayed.unshift(...pts);
-        } else if (seg.source === 'user-override' || seg.source === 'user-insert') {
-          const idxA = resolveAnchorIdx(pts[0], replayed);
-          const idxB = resolveAnchorIdx(pts[pts.length - 1], replayed);
-          if (idxA !== -1 && idxB !== -1) {
-            replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1, ...pts);
+    // ✨ 1. Intentar obtener desglose de transporte rico desde estadisticas.json o descripción
+    let desgloseFromStats = null;
+    if (act.rutaEstadisticas) {
+      const statsPath = path.resolve(__dirname, 'uploads', act.rutaEstadisticas);
+      const statsPathCwd = path.resolve(process.cwd(), 'uploads', act.rutaEstadisticas);
+      const finalPath = fs.existsSync(statsPath) ? statsPath : (fs.existsSync(statsPathCwd) ? statsPathCwd : null);
+      if (finalPath) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(finalPath, 'utf8'));
+          if (raw.desgloseTransporte && Array.isArray(raw.desgloseTransporte) && raw.desgloseTransporte.length > 0) {
+            desgloseFromStats = raw.desgloseTransporte;
+          } else if (raw.desglose_transporte && Array.isArray(raw.desglose_transporte) && raw.desglose_transporte.length > 0) {
+            desgloseFromStats = raw.desglose_transporte;
           }
-        } else if (seg.source === 'user-delete') {
-          const idxA = resolveAnchorIdx(pts[0], replayed);
-          const idxB = resolveAnchorIdx(pts[1] || pts[pts.length - 1], replayed);
-          if (idxA !== -1 && idxB !== -1) {
-            replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1);
-          }
-        }
+        } catch (e) {}
       }
     }
 
-    if (replayed.length > 1) {
-      let curMode = normalizarModoTransporte(replayed[0]?.mode, act.velocidadMediaKmh);
-      let actWalkDistM = 0;
-      let actWalkSecs = 0;
-
-      for (let i = 1; i < replayed.length; i++) {
-        const d = calcDistM(replayed[i - 1].lat, replayed[i - 1].lng, replayed[i].lat, replayed[i].lng);
-        let m = normalizarModoTransporte(replayed[i].mode, act.velocidadMediaKmh);
-        if (!m || m === 'none') m = curMode;
-        modosMetros[m] = (modosMetros[m] || 0) + d;
-
-        let dt = 0;
-        if (replayed[i - 1].time && replayed[i].time) {
-          dt = Math.max(0, (new Date(replayed[i].time).getTime() - new Date(replayed[i - 1].time).getTime()) / 1000);
+    if (!desgloseFromStats && act.descripcion && act.descripcion.includes('Desglose transporte:')) {
+      const lines = act.descripcion.split('\n');
+      const parsedDesglose = [];
+      let inDesglose = false;
+      for (const line of lines) {
+        if (line.includes('Desglose transporte:')) { inDesglose = true; continue; }
+        if (inDesglose) {
+          const mMatch = line.match(/-\s*([^:]+):\s*([\d\.]+)\s*km/i);
+          if (mMatch) {
+            const rawNombre = mMatch[1].trim();
+            const dKm = parseFloat(mMatch[2]);
+            const modoKey = normalizarModoTransporte(rawNombre);
+            parsedDesglose.push({
+              tipo: modoKey,
+              nombre: rawNombre,
+              distanciaMetros: Math.round(dKm * 1000),
+              pasos: modoKey === 'walking' ? (act.pasosEstimados || 0) : 0
+            });
+          }
         }
+      }
+      if (parsedDesglose.length > 0) {
+        desgloseFromStats = parsedDesglose;
+      }
+    }
 
-        const esWalk = MODE_META[m]?.esCaminar ?? (m === 'walking');
+    if (desgloseFromStats && desgloseFromStats.length > 0) {
+      for (const item of desgloseFromStats) {
+        const itemMode = normalizarModoTransporte(item.tipo || item.id || item.nombre);
+        const itemDistM = item.distanciaMetros || (parseFloat(item.distanciaKm || item.km || 0) * 1000) || 0;
+        const itemSecs = item.duracionSegundos || item.duration || 0;
+        const itemPasos = item.pasos || 0;
+
+        modosMetros[itemMode] = (modosMetros[itemMode] || 0) + itemDistM;
+        const esWalk = MODE_META[itemMode]?.esCaminar ?? (itemMode === 'walking');
         if (esWalk) {
-          actWalkDistM += d;
-          actWalkSecs += dt;
+          metrosCaminando += itemDistM;
+          segsCaminando += itemSecs;
+          if (itemPasos > 0) {
+            pasosCaminando += itemPasos;
+          } else if (itemDistM > 0) {
+            pasosCaminando += Math.round(itemDistM / 0.75);
+          }
         }
-        curMode = m;
       }
-
-      // Rescatar duración si no había tiempos exactos entre puntos GPS
-      const actSecsFallback = obtenerSegundosActividad(act);
-      if (actWalkSecs === 0 && actSecsFallback > 0) {
-        actWalkSecs = actSecsFallback;
-      } else if (actSecsFallback > 0 && Math.abs(actSecsFallback - actWalkSecs) > 120 && curMode === 'walking') {
-        actWalkSecs = Math.max(actWalkSecs, actSecsFallback);
-      }
-
-      metrosCaminando += actWalkDistM;
-      segsCaminando += actWalkSecs;
-      if (actWalkDistM > 0) {
-        if (curMode === 'walking' && act.pasosEstimados > 0 && (act.pasosEstimados / (actWalkDistM / 1000)) < 2500) {
-          pasosCaminando += act.pasosEstimados;
-        } else {
-          pasosCaminando += Math.round(actWalkDistM / 0.75);
-        }
+      if (pasosCaminando === 0 && act.pasosEstimados > 0 && metrosCaminando > 0) {
+        pasosCaminando = act.pasosEstimados;
       }
     } else {
-      // Actividad sin segmentos detallados
-      const m = normalizarModoTransporte(act.perfilTransporte, act.velocidadMediaKmh);
-      const dM = (act.distanciaMetros && act.distanciaMetros > 0) ? act.distanciaMetros : ((act.distanciaKm || 0) * 1000);
-      modosMetros[m] = (modosMetros[m] || 0) + dM;
+      const segRows = await dbQuery.all('SELECT * FROM segments WHERE actividadId = ? ORDER BY segmentOrder ASC', [act.id]);
 
-      const actSecs = obtenerSegundosActividad(act);
-      const esWalk = MODE_META[m]?.esCaminar ?? (m === 'walking' || (!act.perfilTransporte && act.velocidadMediaKmh < 12));
-      if (esWalk) {
-        metrosCaminando += dM;
-        segsCaminando += actSecs;
-        const ratio = dM > 0 ? (act.pasosEstimados || 0) / (dM / 1000) : 0;
-        if (act.pasosEstimados > 0 && ratio > 200 && ratio < 2500) {
-          pasosCaminando += act.pasosEstimados;
-        } else if (dM > 0) {
-          pasosCaminando += Math.round(dM / 0.75);
+      let replayed = [];
+      if (segRows && segRows.length > 0) {
+        for (const seg of segRows) {
+          let pts = [];
+          try { pts = JSON.parse(seg.points_json || '[]'); } catch (e) {}
+          if (!pts || pts.length === 0) continue;
+          if (seg.source === 'original' || seg.source === 'user-append') {
+            replayed.push(...pts);
+          } else if (seg.source === 'user-prepend') {
+            replayed.unshift(...pts);
+          } else if (seg.source === 'user-override' || seg.source === 'user-insert') {
+            const idxA = resolveAnchorIdx(pts[0], replayed);
+            const idxB = resolveAnchorIdx(pts[pts.length - 1], replayed);
+            if (idxA !== -1 && idxB !== -1) {
+              replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1, ...pts);
+            }
+          } else if (seg.source === 'user-delete') {
+            const idxA = resolveAnchorIdx(pts[0], replayed);
+            const idxB = resolveAnchorIdx(pts[1] || pts[pts.length - 1], replayed);
+            if (idxA !== -1 && idxB !== -1) {
+              replayed.splice(Math.min(idxA, idxB), Math.abs(idxB - idxA) + 1);
+            }
+          }
+        }
+      }
+
+      if (replayed.length > 1) {
+        let curMode = normalizarModoTransporte(replayed[0]?.mode, act.velocidadMediaKmh);
+        let actWalkDistM = 0;
+        let actWalkSecs = 0;
+
+        for (let i = 1; i < replayed.length; i++) {
+          const d = calcDistM(replayed[i - 1].lat, replayed[i - 1].lng, replayed[i].lat, replayed[i].lng);
+          let m = normalizarModoTransporte(replayed[i].mode, act.velocidadMediaKmh);
+          if (!m || m === 'none') m = curMode;
+          modosMetros[m] = (modosMetros[m] || 0) + d;
+
+          let dt = 0;
+          if (replayed[i - 1].time && replayed[i].time) {
+            dt = Math.max(0, (new Date(replayed[i].time).getTime() - new Date(replayed[i - 1].time).getTime()) / 1000);
+          }
+
+          const esWalk = MODE_META[m]?.esCaminar ?? (m === 'walking');
+          if (esWalk) {
+            actWalkDistM += d;
+            actWalkSecs += dt;
+          }
+          curMode = m;
+        }
+
+        // Rescatar duración si no había tiempos exactos entre puntos GPS
+        const actSecsFallback = obtenerSegundosActividad(act);
+        if (actWalkSecs === 0 && actSecsFallback > 0) {
+          actWalkSecs = actSecsFallback;
+        } else if (actSecsFallback > 0 && Math.abs(actSecsFallback - actWalkSecs) > 120 && curMode === 'walking') {
+          actWalkSecs = Math.max(actWalkSecs, actSecsFallback);
+        }
+
+        metrosCaminando += actWalkDistM;
+        segsCaminando += actWalkSecs;
+        if (actWalkDistM > 0) {
+          if (curMode === 'walking' && act.pasosEstimados > 0 && (act.pasosEstimados / (actWalkDistM / 1000)) < 2500) {
+            pasosCaminando += act.pasosEstimados;
+          } else {
+            pasosCaminando += Math.round(actWalkDistM / 0.75);
+          }
+        }
+      } else {
+        // Actividad sin segmentos detallados
+        const m = normalizarModoTransporte(act.perfilTransporte, act.velocidadMediaKmh);
+        const dM = (act.distanciaMetros && act.distanciaMetros > 0) ? act.distanciaMetros : ((act.distanciaKm || 0) * 1000);
+        modosMetros[m] = (modosMetros[m] || 0) + dM;
+
+        const esWalk = MODE_META[m]?.esCaminar ?? (m === 'walking' || (!act.perfilTransporte && act.velocidadMediaKmh < 12));
+        if (esWalk) {
+          metrosCaminando += dM;
+          segsCaminando += actSecs;
+          const ratio = dM > 0 ? (act.pasosEstimados || 0) / (dM / 1000) : 0;
+          if (act.pasosEstimados > 0 && ratio > 200 && ratio < 2500) {
+            pasosCaminando += act.pasosEstimados;
+          } else if (dM > 0) {
+            pasosCaminando += Math.round(dM / 0.75);
+          }
         }
       }
     }
@@ -2815,8 +2885,32 @@ async function calcularEstadisticasDesdeActividades(acts) {
   const kmCaminando = parseFloat((metrosCaminando / 1000).toFixed(2));
   const finalTotalKm = parseFloat(totalKmSum.toFixed(2));
 
+  // Determinar modo de transporte principal (por metros recorridos)
+  let modoPrincipalKey = 'walking';
+  let maxMetros = 0;
+  for (const [mKey, mVal] of Object.entries(modosMetros)) {
+    if (mVal > maxMetros) {
+      maxMetros = mVal;
+      modoPrincipalKey = mKey;
+    }
+  }
+  const modoPrincipalMeta = MODE_META[modoPrincipalKey] || {
+    nombre: modoPrincipalKey.charAt(0).toUpperCase() + modoPrincipalKey.slice(1),
+    icono: 'fa-solid fa-person-walking',
+    emoji: '🚶',
+    esCaminar: true
+  };
+
   return {
     totalKm: finalTotalKm,
+    totalSegundos: Math.round(totalSegundosSum),
+    modoPrincipal: {
+      tipo: modoPrincipalKey,
+      nombre: modoPrincipalMeta.nombre,
+      icono: modoPrincipalMeta.icono,
+      emoji: modoPrincipalMeta.emoji,
+      esCaminar: modoPrincipalMeta.esCaminar
+    },
     desgloseTransporte: desgloseList,
     desgloseActividades: desgloseActividades,
     totalSegundosCaminando: Math.round(segsCaminando),
@@ -2980,7 +3074,21 @@ app.get('/viajes', (req, res) => {
 
       const segundosCaminando = (viaje.total_segundos_caminando !== undefined && viaje.total_segundos_caminando !== null && viaje.total_segundos_caminando > 0)
         ? viaje.total_segundos_caminando
-        : ((viaje.total_km > 0 && desglose.length === 0) ? viaje.total_segundos_raw : 0);
+        : 0;
+
+      const modoPrincipal = (desglose && desglose.length > 0)
+        ? {
+            tipo: desglose[0].tipo,
+            nombre: desglose[0].nombre,
+            icono: desglose[0].icono,
+            emoji: desglose[0].emoji,
+            esCaminar: MODE_META[desglose[0].tipo]?.esCaminar ?? (desglose[0].tipo === 'walking')
+          }
+        : { tipo: 'walking', nombre: 'A pie', icono: 'fa-solid fa-person-walking', emoji: '🚶', esCaminar: true };
+
+      const totalSegundos = (viaje.total_segundos_raw && viaje.total_segundos_raw > 0)
+        ? viaje.total_segundos_raw
+        : (viaje.total_segundos && viaje.total_segundos > 0 ? viaje.total_segundos : segundosCaminando);
 
       return {
         ...viaje,
@@ -2990,8 +3098,9 @@ app.get('/viajes', (req, res) => {
         audio_url: viaje.audio ? `${req.protocol}://${req.get('host')}/uploads/${viaje.audio}` : null,
         desglose_transporte: desglose,
         desglose_actividades: desgloseActs,
+        modo_principal: modoPrincipal,
         total_pasos: pasosCaminando,
-        total_segundos: segundosCaminando,
+        total_segundos: totalSegundos,
         total_pasos_caminando: pasosCaminando,
         total_segundos_caminando: segundosCaminando,
         total_km_caminando: viaje.total_km_caminando || 0
@@ -3070,7 +3179,21 @@ app.get('/viajes/:id', async (req, res) => {
 
     const segundosCaminando = (row.total_segundos_caminando !== undefined && row.total_segundos_caminando !== null && row.total_segundos_caminando > 0)
       ? row.total_segundos_caminando
-      : ((row.total_km > 0 && desglose.length === 0) ? row.total_segundos_raw : 0);
+      : 0;
+
+    const modoPrincipal = (desglose && desglose.length > 0)
+      ? {
+          tipo: desglose[0].tipo,
+          nombre: desglose[0].nombre,
+          icono: desglose[0].icono,
+          emoji: desglose[0].emoji,
+          esCaminar: MODE_META[desglose[0].tipo]?.esCaminar ?? (desglose[0].tipo === 'walking')
+        }
+      : { tipo: 'walking', nombre: 'A pie', icono: 'fa-solid fa-person-walking', emoji: '🚶', esCaminar: true };
+
+    const totalSegundos = (row.total_segundos_raw && row.total_segundos_raw > 0)
+      ? row.total_segundos_raw
+      : (row.total_segundos && row.total_segundos > 0 ? row.total_segundos : segundosCaminando);
 
     const viajeConImagenUrl = {
       ...row,
@@ -3080,8 +3203,9 @@ app.get('/viajes/:id', async (req, res) => {
       audio_url: row.audio ? `${req.protocol}://${req.get('host')}/uploads/${row.audio}` : null,
       desglose_transporte: desglose,
       desglose_actividades: desgloseActs,
+      modo_principal: modoPrincipal,
       total_pasos: pasosCaminando,
-      total_segundos: segundosCaminando,
+      total_segundos: totalSegundos,
       total_pasos_caminando: pasosCaminando,
       total_segundos_caminando: segundosCaminando,
       total_km_caminando: row.total_km_caminando || 0
@@ -4446,8 +4570,21 @@ app.get('/itinerarios', async (req, res) => {
       const imagenUrl = fotoUrl || mapaUrl;
 
       const totalKm = (stats && stats.totalKm > 0) ? stats.totalKm : (it.total_km_raw || 0);
-      const totalPasos = (stats && stats.totalPasosCaminando > 0) ? stats.totalPasosCaminando : (it.total_pasos_raw || 0);
-      const totalSegundos = (stats && stats.totalSegundosCaminando > 0) ? stats.totalSegundosCaminando : (it.total_segundos_raw || 0);
+      const totalPasos = (stats && stats.totalPasosCaminando > 0) ? stats.totalPasosCaminando : 0;
+      const totalSegundosCaminando = (stats && stats.totalSegundosCaminando > 0) ? stats.totalSegundosCaminando : 0;
+      const totalSegundos = (stats && stats.totalSegundos > 0) ? stats.totalSegundos : (it.total_segundos_raw || 0);
+
+      const modoPrincipal = (stats && stats.modoPrincipal)
+        ? stats.modoPrincipal
+        : ((stats && stats.desgloseTransporte && stats.desgloseTransporte.length > 0)
+            ? {
+                tipo: stats.desgloseTransporte[0].tipo,
+                nombre: stats.desgloseTransporte[0].nombre,
+                icono: stats.desgloseTransporte[0].icono,
+                emoji: stats.desgloseTransporte[0].emoji,
+                esCaminar: MODE_META[stats.desgloseTransporte[0].tipo]?.esCaminar ?? (stats.desgloseTransporte[0].tipo === 'walking')
+              }
+            : { tipo: 'walking', nombre: 'A pie', icono: 'fa-solid fa-person-walking', emoji: '🚶', esCaminar: true });
 
       return {
         ...it,
@@ -4459,8 +4596,9 @@ app.get('/itinerarios', async (req, res) => {
         total_pasos: totalPasos,
         total_pasos_caminando: totalPasos,
         total_segundos: totalSegundos,
-        total_segundos_caminando: totalSegundos,
+        total_segundos_caminando: totalSegundosCaminando,
         total_km_caminando: (stats && stats.totalKmCaminando > 0) ? stats.totalKmCaminando : 0,
+        modo_principal: modoPrincipal,
         desglose_transporte: stats ? stats.desgloseTransporte : [],
         desglose_actividades: stats ? stats.desgloseActividades : []
       };
@@ -4518,8 +4656,21 @@ app.get('/itinerarios/:id', async (req, res) => {
     const imagenUrl = fotoUrl || mapaUrl;
 
     const totalKm = (stats && stats.totalKm > 0) ? stats.totalKm : (row.total_km_raw || 0);
-    const totalPasos = (stats && stats.totalPasosCaminando > 0) ? stats.totalPasosCaminando : (row.total_pasos_raw || 0);
-    const totalSegundos = (stats && stats.totalSegundosCaminando > 0) ? stats.totalSegundosCaminando : (row.total_segundos_raw || 0);
+    const totalPasos = (stats && stats.totalPasosCaminando > 0) ? stats.totalPasosCaminando : 0;
+    const totalSegundosCaminando = (stats && stats.totalSegundosCaminando > 0) ? stats.totalSegundosCaminando : 0;
+    const totalSegundos = (stats && stats.totalSegundos > 0) ? stats.totalSegundos : (row.total_segundos_raw || 0);
+
+    const modoPrincipal = (stats && stats.modoPrincipal)
+      ? stats.modoPrincipal
+      : ((stats && stats.desgloseTransporte && stats.desgloseTransporte.length > 0)
+          ? {
+              tipo: stats.desgloseTransporte[0].tipo,
+              nombre: stats.desgloseTransporte[0].nombre,
+              icono: stats.desgloseTransporte[0].icono,
+              emoji: stats.desgloseTransporte[0].emoji,
+              esCaminar: MODE_META[stats.desgloseTransporte[0].tipo]?.esCaminar ?? (stats.desgloseTransporte[0].tipo === 'walking')
+            }
+          : { tipo: 'walking', nombre: 'A pie', icono: 'fa-solid fa-person-walking', emoji: '🚶', esCaminar: true });
 
     res.json({
       ...row,
@@ -4531,8 +4682,9 @@ app.get('/itinerarios/:id', async (req, res) => {
       total_pasos: totalPasos,
       total_pasos_caminando: totalPasos,
       total_segundos: totalSegundos,
-      total_segundos_caminando: totalSegundos,
+      total_segundos_caminando: totalSegundosCaminando,
       total_km_caminando: (stats && stats.totalKmCaminando > 0) ? stats.totalKmCaminando : 0,
+      modo_principal: modoPrincipal,
       desglose_transporte: stats ? stats.desgloseTransporte : [],
       desglose_actividades: stats ? stats.desgloseActividades : []
     });

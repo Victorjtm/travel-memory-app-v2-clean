@@ -86,20 +86,27 @@
         </div>
       </div>
 
-      <!-- TARJETA DE DIVERGENCIA CLAVE (Reloj vs GPS) -->
+      <!-- TARJETA DE DIVERGENCIA CLAVE (Reloj vs GPS: Distancia, Pasos y Veredicto) -->
       <div class="divergence-hero-card" *ngIf="datosActividad.actividad_distancia_gps">
         <div class="divergence-header">
           <span class="divergence-title">
             <i class="fa-solid fa-scale-balanced"></i> 
-            Comparativa de Distancia 
+            Comparativa de Distancia & Pasos 
             <span *ngIf="tramoActivoDetalle === 0">(Reloj Total vs GPS Itinerario)</span>
             <span *ngIf="tramoActivoDetalle > 0">(Tramo {{ tramoActivoDetalle }} vs GPS Total)</span>
           </span>
-          <span class="divergence-badge" [class.divergence-alert]="diferenciaDivergencia !== 0">
-            Diferencia: {{ diferenciaDivergencia > 0 ? '+' : '' }}{{ diferenciaDivergencia }} km
-          </span>
+          <div class="divergence-header-badges">
+            <span class="divergence-badge" [class.divergence-alert]="diferenciaDivergencia !== 0" title="Diferencia de kilometraje">
+              Distancia: {{ diferenciaDivergencia > 0 ? '+' : '' }}{{ diferenciaDivergencia }} km
+            </span>
+            <span class="divergence-badge badge-steps" [class.divergence-alert]="diferenciaPasos !== 0" *ngIf="pasosEstimadosGps > 0" title="Diferencia de pasos (Reloj vs GPS estimado)">
+              Pasos: {{ diferenciaPasos > 0 ? '+' : '' }}{{ diferenciaPasos | number }}
+            </span>
+          </div>
         </div>
-        <div class="divergence-metrics-row">
+
+        <!-- 1. Fila de Distancia (km) -->
+        <div class="divergence-metrics-row row-distance">
           <div class="divergence-item item-watch">
             <span class="d-label">
               <i class="fa-solid fa-stopwatch"></i> 
@@ -108,13 +115,91 @@
             <span class="d-val">{{ metricasActuales?.distance_km }} <small>km</small></span>
             <span class="d-note">{{ metricasActuales?.steps | number }} pasos podómetro</span>
           </div>
-          <div class="divergence-vs">VS</div>
+
+          <div class="divergence-vs">
+            <span class="vs-label">VS</span>
+            <span class="vs-diff-badge" [class.diff-neg]="diferenciaDivergencia < 0" [class.diff-pos]="diferenciaDivergencia > 0">
+              {{ diferenciaDivergencia > 0 ? '+' : '' }}{{ diferenciaDivergencia }} km
+            </span>
+          </div>
+
           <div class="divergence-item item-gps">
             <span class="d-label"><i class="fa-solid fa-location-crosshairs"></i> GPS Itinerario</span>
             <span class="d-val">{{ datosActividad.actividad_distancia_gps }} <small>km</small></span>
             <span class="d-note">Satélite continuo</span>
           </div>
         </div>
+
+        <!-- 2. Fila de Pasos (debajo de los kilómetros) -->
+        <div class="divergence-metrics-row row-steps" *ngIf="metricasActuales?.steps || pasosEstimadosGps > 0">
+          <div class="divergence-item item-watch">
+            <span class="d-label"><i class="fa-solid fa-shoe-prints"></i> Pasos Podómetro Reloj</span>
+            <span class="d-val d-val-steps">{{ (metricasActuales?.steps | number) || '--' }} <small>pasos</small></span>
+            <span class="d-note">Conteo podómetro del reloj</span>
+          </div>
+
+          <div class="divergence-vs">
+            <span class="vs-label">VS</span>
+            <span class="vs-diff-badge" [class.diff-neg]="diferenciaPasos < 0" [class.diff-pos]="diferenciaPasos > 0" *ngIf="pasosEstimadosGps > 0">
+              {{ diferenciaPasos > 0 ? '+' : '' }}{{ diferenciaPasos | number }} pasos
+            </span>
+          </div>
+
+          <div class="divergence-item item-gps">
+            <span class="d-label"><i class="fa-solid fa-shoe-prints"></i> Pasos Estimados GPS</span>
+            <span class="d-val d-val-steps">{{ (pasosEstimadosGps | number) || '--' }} <small>pasos</small></span>
+            <span class="d-note">Basados en distancia GPS y zancada</span>
+          </div>
+        </div>
+
+        <!-- 3. Veredicto / Diagnóstico Biomecánico & Realismo -->
+        <div class="veredicto-biomecanico-box" *ngIf="diagnosticoRealismo as diag">
+          <div class="veredicto-header">
+            <div class="veredicto-title">
+              <i class="fa-solid fa-brain"></i>
+              <span>¿Cuál se asemeja más a la realidad?</span>
+            </div>
+            <span class="veredicto-badge" [ngClass]="diag.badgeClase">
+              <i class="fa-solid fa-circle-check" *ngIf="diag.ganador === 'reloj'"></i>
+              <i class="fa-solid fa-satellite-dish" *ngIf="diag.ganador === 'gps'"></i>
+              <i class="fa-solid fa-handshake-angle" *ngIf="diag.ganador === 'ambos'"></i>
+              {{ diag.tituloGanador }}
+            </span>
+          </div>
+
+          <p class="veredicto-explicacion">{{ diag.explicacion }}</p>
+
+          <div class="veredicto-chips-grid">
+            <div class="v-chip" [class.chip-highlight]="diag.ganador === 'reloj'">
+              <span class="v-chip-label">Zancada Reloj</span>
+              <span class="v-chip-value">{{ diag.zancadaRelojCm }} cm</span>
+              <span class="v-chip-sub" [class.sub-ok]="diag.zancadaRelojCm >= 60 && diag.zancadaRelojCm <= 88">
+                {{ (diag.zancadaRelojCm >= 60 && diag.zancadaRelojCm <= 88) ? 'Fisiológica / Natural' : 'Desviada' }}
+              </span>
+            </div>
+
+            <div class="v-chip" [class.chip-warning]="diag.zancadaGpsCm > 95" [class.chip-highlight]="diag.ganador === 'gps'">
+              <span class="v-chip-label">Zancada Requerida GPS</span>
+              <span class="v-chip-value">{{ diag.zancadaGpsCm }} cm</span>
+              <span class="v-chip-sub" [class.sub-alert]="diag.zancadaGpsCm > 95" [class.sub-ok]="diag.zancadaGpsCm <= 90">
+                {{ diag.zancadaGpsCm > 95 ? 'Excesiva para paseo' : 'Rango Normal' }}
+              </span>
+            </div>
+
+            <div class="v-chip">
+              <span class="v-chip-label">Cadencia Media</span>
+              <span class="v-chip-value">{{ diag.cadenciaSpm || '--' }} spm</span>
+              <span class="v-chip-sub">Ritmo de paseo</span>
+            </div>
+
+            <div class="v-chip" *ngIf="diag.coherenciaCadenciaPct > 0">
+              <span class="v-chip-label">Coherencia Podómetro</span>
+              <span class="v-chip-value">{{ diag.coherenciaCadenciaPct }}%</span>
+              <span class="v-chip-sub sub-ok">Cadencia vs Pasos</span>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <!-- GRID DE MÉTRICAS CLAVE -->
@@ -201,10 +286,10 @@
       </div>
 
       <!-- TABLA DE SPLITS POR KILÓMETRO -->
-      <div class="splits-section" *ngIf="metricasActuales?.splits && metricasActuales.splits.length > 0">
+      <div class="splits-section" *ngIf="splitsOrdenados.length > 0">
         <h4 class="section-title">
-          <i class="fa-solid fa-flag-checkered"></i> Desglose de Ritmo por Kilómetro (Splits)
-          <span class="badge-count">{{ metricasActuales.splits.length }} km</span>
+          <i class="fa-solid fa-flag-checkered"></i> Desglose de Ritmo y Velocidad por Kilómetro (Splits)
+          <span class="badge-count">{{ splitsOrdenados.length }} km</span>
         </h4>
         
         <div class="splits-table-container">
@@ -213,12 +298,12 @@
               <tr>
                 <th>Kilómetro</th>
                 <th *ngIf="tramoActivoDetalle === 0 && datosActividad.tramos && datosActividad.tramos.length > 1">Tramo</th>
-                <th>Ritmo por Km</th>
-                <th>Rendimiento Visual</th>
+                <th>Ritmo / Velocidad</th>
+                <th>Rendimiento Visual (Velocidad Media)</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let split of metricasActuales.splits">
+              <tr *ngFor="let split of splitsOrdenados">
                 <td class="km-col">
                   <span class="km-badge">Km {{ split.km_number || split.km }}</span>
                 </td>
@@ -226,11 +311,20 @@
                   <span class="tramo-tag-pill" *ngIf="split.tramo">Tramo {{ split.tramo }}</span>
                 </td>
                 <td class="pace-col">
-                  <strong>{{ split.pace }}</strong> /km
+                  <div class="pace-val-wrap">
+                    <strong>{{ split.pace }}</strong> <small>/km</small>
+                    <span class="speed-pill"><i class="fa-solid fa-gauge-simple-high"></i> {{ obtenerVelocidadTexto(split.pace) }}</span>
+                  </div>
                 </td>
                 <td class="bar-col">
-                  <div class="pace-bar-track">
-                    <div class="pace-bar-fill" [style.width.%]="85"></div>
+                  <div class="pace-bar-wrapper">
+                    <div class="pace-bar-track">
+                      <div class="pace-bar-fill" 
+                           [style.width.%]="obtenerPorcentajeBarraSplit(split)"
+                           [style.background]="obtenerEstiloBarraSplit(split)">
+                      </div>
+                    </div>
+                    <span class="pace-bar-val-text">{{ obtenerVelocidadTexto(split.pace) }}</span>
                   </div>
                 </td>
               </tr>

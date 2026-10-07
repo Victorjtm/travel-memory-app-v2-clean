@@ -401,4 +401,246 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
     paces.sort();
     return paces[0] || '--:--';
   }
+
+  /**
+   * Zancada de referencia en metros (usa la zancada reportada por el reloj o la deduce de pasos/distancia)
+   */
+  get zancadaReferenciaMetros(): number {
+    const m = this.metricasActuales;
+    if (m?.stride_avg_cm && m.stride_avg_cm > 25) {
+      return m.stride_avg_cm / 100;
+    }
+    const relojKm = m?.distance_km || 0;
+    const pasos = m?.steps || 0;
+    if (relojKm > 0 && pasos > 0) {
+      return (relojKm * 1000) / pasos;
+    }
+    return 0.75; // Estándar promedio humano caminando: 75 cm
+  }
+
+  /**
+   * Pasos estimados que corresponden a la distancia registrada por el GPS
+   */
+  get pasosEstimadosGps(): number {
+    const gpsKm = this.datosActividad?.actividad_distancia_gps || 0;
+    if (gpsKm <= 0) return 0;
+    const zancada = this.zancadaReferenciaMetros;
+    return Math.round((gpsKm * 1000) / zancada);
+  }
+
+  /**
+   * Diferencia de pasos: Pasos Reloj - Pasos Estimados GPS
+   */
+  get diferenciaPasos(): number {
+    const m = this.metricasActuales;
+    const pasosReloj = m?.steps || 0;
+    const pasosGps = this.pasosEstimadosGps;
+    if (pasosReloj <= 0 || pasosGps <= 0) return 0;
+    return pasosReloj - pasosGps;
+  }
+
+  /**
+   * Diagnóstico de Realismo Biomecánico:
+   * Evalúa cuál de las dos mediciones (Reloj vs GPS) se asemeja más a la realidad
+   * cruzando distancia, pasos reales, cadencia y longitud de zancada fisiológica.
+   */
+  get diagnosticoRealismo(): {
+    ganador: 'reloj' | 'gps' | 'ambos';
+    tituloGanador: string;
+    badgeClase: string;
+    explicacion: string;
+    zancadaRelojCm: number;
+    zancadaGpsCm: number;
+    cadenciaSpm: number;
+    velocidadRelojKmH: number;
+    velocidadGpsKmH: number;
+    coherenciaCadenciaPct: number;
+  } {
+    const m = this.metricasActuales;
+    const relojKm = Number(m?.distance_km || 0);
+    const gpsKm = Number(this.datosActividad?.actividad_distancia_gps || 0);
+    const pasos = Number(m?.steps || 0);
+    const cadencia = Number(m?.cadence_avg_steps_min || m?.cadence_avg || 0);
+    const zancadaReportada = Number(m?.stride_avg_cm || 0);
+    const duracionStr = m?.duration_total || '';
+
+    const durSec = this.parseDurationToSeconds(duracionStr);
+    const durMin = durSec > 0 ? (durSec / 60) : 0;
+    const durHoras = durSec > 0 ? (durSec / 3600) : 0;
+
+    const velReloj = durHoras > 0 ? Number((relojKm / durHoras).toFixed(1)) : 0;
+    const velGps = durHoras > 0 ? Number((gpsKm / durHoras).toFixed(1)) : 0;
+
+    // Zancadas implícitas
+    const zRelojCm = pasos > 0 ? Number(((relojKm * 100000) / pasos).toFixed(1)) : (zancadaReportada || 75);
+    const zGpsCm = pasos > 0 ? Number(((gpsKm * 100000) / pasos).toFixed(1)) : 0;
+
+    // Coherencia cadencia * tiempo vs pasos podómetro
+    let coherenciaCadenciaPct = 100;
+    if (cadencia > 0 && durMin > 0 && pasos > 0) {
+      const pasosEstimadosCadencia = cadencia * durMin;
+      const error = Math.abs(pasos - pasosEstimadosCadencia) / pasos;
+      coherenciaCadenciaPct = Math.max(0, Math.min(100, Math.round((1 - error) * 100)));
+    }
+
+    const diffKm = Math.abs(relojKm - gpsKm);
+    const pctDiff = gpsKm > 0 ? (diffKm / gpsKm) * 100 : 0;
+
+    if (pctDiff <= 6) {
+      return {
+        ganador: 'ambos',
+        tituloGanador: 'Ambos coinciden (Alta Precisión)',
+        badgeClase: 'badge-ambos',
+        explicacion: `Tanto el reloj (${relojKm} km) como el GPS (${gpsKm} km) tienen una discrepancia mínima (${diffKm.toFixed(2)} km, ${pctDiff.toFixed(1)}%). La cadencia (${cadencia || '--'} spm) y zancada (${zRelojCm} cm) concuerdan plenamente con ambas mediciones.`,
+        zancadaRelojCm: zRelojCm,
+        zancadaGpsCm: zGpsCm,
+        cadenciaSpm: cadencia,
+        velocidadRelojKmH: velReloj,
+        velocidadGpsKmH: velGps,
+        coherenciaCadenciaPct
+      };
+    }
+
+    // Si la zancada requerida por el GPS es excesiva para caminata (> 95 cm) y el reloj es fisiológico (60-88 cm):
+    if (zGpsCm > 95 && zRelojCm >= 60 && zRelojCm <= 88) {
+      return {
+        ganador: 'reloj',
+        tituloGanador: `Más realista: Reloj Xiaomi (${relojKm} km)`,
+        badgeClase: 'badge-reloj',
+        explicacion: `A una cadencia media de ${cadencia || 73} spm (ritmo de paseo), la zancada de ${zRelojCm} cm registrada por el reloj es 100% natural y fisiológica (velocidad: ${velReloj} km/h). La distancia GPS (${gpsKm} km) exigiría una zancada irreal de ${zGpsCm} cm a ese ritmo lento, lo que indica deriva satelital acumulada durante pausas o en calles con edificios.`,
+        zancadaRelojCm: zRelojCm,
+        zancadaGpsCm: zGpsCm,
+        cadenciaSpm: cadencia,
+        velocidadRelojKmH: velReloj,
+        velocidadGpsKmH: velGps,
+        coherenciaCadenciaPct
+      };
+    }
+
+    // Si el reloj subestimó pasos (zancada anormalmente baja < 50 cm) y el GPS está en rango humano:
+    if (zRelojCm < 50 && zGpsCm >= 65 && zGpsCm <= 88) {
+      return {
+        ganador: 'gps',
+        tituloGanador: `Más realista: GPS Itinerario (${gpsKm} km)`,
+        badgeClase: 'badge-gps',
+        explicacion: `El podómetro del reloj registró pasos insuficientes para la distancia y tiempo (zancada implícita de solo ${zRelojCm} cm). La distancia satelital de ${gpsKm} km arroja una zancada mucho más lógica (${zGpsCm} cm) y es la más fiable.`,
+        zancadaRelojCm: zRelojCm,
+        zancadaGpsCm: zGpsCm,
+        cadenciaSpm: cadencia,
+        velocidadRelojKmH: velReloj,
+        velocidadGpsKmH: velGps,
+        coherenciaCadenciaPct
+      };
+    }
+
+    // Caso general por proximidad a zancada media humana (~75 cm)
+    const errReloj = Math.abs(zRelojCm - 75);
+    const errGps = Math.abs(zGpsCm - 75);
+
+    if (errReloj <= errGps) {
+      return {
+        ganador: 'reloj',
+        tituloGanador: `Más realista: Reloj Xiaomi (${relojKm} km)`,
+        badgeClase: 'badge-reloj',
+        explicacion: `La distancia del reloj (${relojKm} km) se ajusta mejor a tu biomecánica: su zancada (${zRelojCm} cm) y velocidad (${velReloj} km/h) son más coherentes con tu cadencia de ${cadencia || '--'} spm que los ${gpsKm} km del GPS (zancada requerida: ${zGpsCm} cm).`,
+        zancadaRelojCm: zRelojCm,
+        zancadaGpsCm: zGpsCm,
+        cadenciaSpm: cadencia,
+        velocidadRelojKmH: velReloj,
+        velocidadGpsKmH: velGps,
+        coherenciaCadenciaPct
+      };
+    } else {
+      return {
+        ganador: 'gps',
+        tituloGanador: `Más realista: GPS Itinerario (${gpsKm} km)`,
+        badgeClase: 'badge-gps',
+        explicacion: `La distancia del GPS (${gpsKm} km) es más coherente con tu desplazamiento continuo (${velGps} km/h). La lectura del reloj (${relojKm} km) presenta una desviación en la cadencia y longitud de paso.`,
+        zancadaRelojCm: zRelojCm,
+        zancadaGpsCm: zGpsCm,
+        cadenciaSpm: cadencia,
+        velocidadRelojKmH: velReloj,
+        velocidadGpsKmH: velGps,
+        coherenciaCadenciaPct
+      };
+    }
+  }
+
+  parseDurationToSeconds(durStr: string): number {
+    if (!durStr) return 0;
+    const parts = durStr.trim().split(':').map(p => parseInt(p, 10));
+    if (parts.length === 3) {
+      return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+    } else if (parts.length === 2) {
+      return (parts[0] || 0) * 60 + (parts[1] || 0);
+    }
+    return 0;
+  }
+
+  /**
+   * Splits ordenados secuencialmente de menor a mayor kilómetro
+   */
+  get splitsOrdenados(): any[] {
+    const splits = this.metricasActuales?.splits;
+    if (!splits || !Array.isArray(splits)) return [];
+    return [...splits].sort((a, b) => {
+      const kmA = Number(a.km_number || a.km || 0);
+      const kmB = Number(b.km_number || b.km || 0);
+      return kmA - kmB;
+    });
+  }
+
+  parsePaceToSeconds(paceStr: string): number {
+    if (!paceStr) return 0;
+    const clean = paceStr.replace(/[^0-9:]/g, '');
+    const parts = clean.split(':').map(p => parseInt(p, 10));
+    if (parts.length === 3) {
+      return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+    } else if (parts.length === 2) {
+      return (parts[0] || 0) * 60 + (parts[1] || 0);
+    }
+    return 0;
+  }
+
+  obtenerVelocidadKmH(paceStr: string): number {
+    const sec = this.parsePaceToSeconds(paceStr);
+    if (sec <= 0) return 0;
+    return Number((3600 / sec).toFixed(2));
+  }
+
+  obtenerVelocidadTexto(paceStr: string): string {
+    const v = this.obtenerVelocidadKmH(paceStr);
+    return v > 0 ? `${v.toFixed(1)} km/h` : '--';
+  }
+
+  obtenerPorcentajeBarraSplit(split: any): number {
+    const splits = this.splitsOrdenados;
+    if (!splits.length) return 50;
+
+    const vSplit = this.obtenerVelocidadKmH(split.pace);
+    if (vSplit <= 0) return 20;
+
+    const velocidades = splits.map(s => this.obtenerVelocidadKmH(s.pace)).filter(v => v > 0);
+    if (!velocidades.length) return 50;
+
+    const maxV = Math.max(...velocidades);
+    const minV = Math.min(...velocidades);
+
+    if (maxV === minV) return 75;
+
+    // Escala dinámica del 25% al 100% para visualizar diferencias reales entre kilómetros
+    const proporcion = (vSplit - minV) / (maxV - minV);
+    return Math.round(25 + (proporcion * 75));
+  }
+
+  obtenerEstiloBarraSplit(split: any): string {
+    const pct = this.obtenerPorcentajeBarraSplit(split);
+    if (pct >= 85) {
+      return 'linear-gradient(90deg, #10b981, #34d399)'; // Rápido / Verde esmeralda
+    } else if (pct >= 55) {
+      return 'linear-gradient(90deg, #38bdf8, #818cf8)'; // Medio / Azul celeste
+    } else {
+      return 'linear-gradient(90deg, #f59e0b, #fbbf24)'; // Lento / Ámbar
+    }
+  }
 }
