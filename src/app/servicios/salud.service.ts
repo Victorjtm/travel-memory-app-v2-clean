@@ -143,4 +143,8 @@ export class SaludService {
   deleteBodyMetric(id: number): Observable<any> {
     return this.http.delete(`${this.apiUrl}/body-metrics/${id}`);
   }
+
+  syncActivityWithHealth(activityId: number): Observable<any> {
+    return this.http.post(`${this.apiUrl}/sync-activity/${activityId}`, {});
+  }
 }

@@ -643,4 +643,30 @@ export class SaludUploadModalComponent implements OnInit, OnChanges {
       return 'linear-gradient(90deg, #f59e0b, #fbbf24)'; // Lento / Ámbar
     }
   }
+
+  aplicandoMetricas: boolean = false;
+  mensajeExitoFijado: string = '';
+
+  aplicarMetricasRelojAActividad(): void {
+    if (!this.activityId || this.aplicandoMetricas) return;
+    this.aplicandoMetricas = true;
+    this.mensajeExitoFijado = '';
+    this.saludService.syncActivityWithHealth(this.activityId).subscribe({
+      next: (res) => {
+        this.aplicandoMetricas = false;
+        if (this.datosActividad) {
+          this.datosActividad.actividad_distancia_gps = res.distanciaKm;
+        }
+        this.mensajeExitoFijado = `¡Kilometraje del reloj (${res.distanciaKm} km) fijado con éxito en la actividad y el viaje!`;
+        this.completado.emit(res);
+        setTimeout(() => {
+          this.mensajeExitoFijado = '';
+        }, 4000);
+      },
+      error: (err) => {
+        this.aplicandoMetricas = false;
+        alert('Error al aplicar métricas del reloj: ' + (err.error?.error || err.message));
+      }
+    });
+  }
 }
