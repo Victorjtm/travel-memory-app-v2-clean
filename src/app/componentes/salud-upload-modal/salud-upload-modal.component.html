@@ -198,6 +198,22 @@
               <span class="v-chip-sub sub-ok">Cadencia vs Pasos</span>
             </div>
           </div>
+
+          <!-- Botón de acción para fijar métricas del reloj -->
+          <div class="veredicto-action-row" *ngIf="datosActividad.distance_km">
+            <button 
+              type="button" 
+              class="btn-aplicar-veredicto" 
+              [class.aplicado]="datosActividad.distance_km === datosActividad.actividad_distancia_gps"
+              (click)="aplicarMetricasRelojAActividad()" 
+              [disabled]="aplicandoMetricas">
+              <i class="fa-solid" [class.fa-check-double]="!aplicandoMetricas && datosActividad.distance_km === datosActividad.actividad_distancia_gps" [class.fa-wand-magic-sparkles]="!aplicandoMetricas && datosActividad.distance_km !== datosActividad.actividad_distancia_gps" [class.fa-spinner]="aplicandoMetricas" [class.fa-spin]="aplicandoMetricas"></i>
+              <span>{{ aplicandoMetricas ? 'Aplicando métricas...' : (datosActividad.distance_km === datosActividad.actividad_distancia_gps ? ('Fijado en Viaje (' + datosActividad.distance_km + ' km)') : ('Fijar ' + datosActividad.distance_km + ' km en la Actividad y Viaje')) }}</span>
+            </button>
+            <span class="action-feedback-msg" *ngIf="mensajeExitoFijado">
+              <i class="fa-solid fa-circle-check"></i> {{ mensajeExitoFijado }}
+            </span>
+          </div>
         </div>
 
       </div>
@@ -342,6 +358,17 @@
       </button>
 
       <div class="footer-right-actions">
+        <button 
+          class="btn-fijar-reloj" 
+          *ngIf="datosActividad.distance_km"
+          [class.ya-fijado]="datosActividad.distance_km === datosActividad.actividad_distancia_gps"
+          (click)="aplicarMetricasRelojAActividad()" 
+          [disabled]="aplicandoMetricas" 
+          title="Fijar y sincronizar métricas del reloj con la actividad y el viaje">
+          <i class="fa-solid" [class.fa-check-double]="!aplicandoMetricas && datosActividad.distance_km === datosActividad.actividad_distancia_gps" [class.fa-cloud-arrow-up]="!aplicandoMetricas && datosActividad.distance_km !== datosActividad.actividad_distancia_gps" [class.fa-spinner]="aplicandoMetricas" [class.fa-spin]="aplicandoMetricas"></i>
+          <span>{{ aplicandoMetricas ? 'Fijando...' : (datosActividad.distance_km === datosActividad.actividad_distancia_gps ? ('Fijado en Viaje (' + datosActividad.distance_km + ' km)') : ('Fijar ' + datosActividad.distance_km + ' km en Viaje')) }}</span>
+        </button>
+
         <button class="btn-resubir" (click)="irASubida()">
           <i class="fa-solid fa-arrow-rotate-right"></i> Actualizar Capturas con IA
         </button>
