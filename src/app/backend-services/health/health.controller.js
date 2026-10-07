@@ -342,6 +342,11 @@ class HealthController {
           const healthActivityId = this.lastID;
           console.log(`✅ Actividad de salud insertada con ID: ${healthActivityId}`);
 
+          // 🔄 Sincronizar y fijar automáticamente la distancia y pasos del reloj en la actividad y el viaje
+          if (activity_id && data.distance_km) {
+            HealthController.ejecutarSincronizacionActividad(db, activity_id, data);
+          }
+
           const splits = data.splits || [];
           if (splits.length === 0) {
             return res.status(201).json({
@@ -628,6 +633,104 @@ class HealthController {
     db.run(`DELETE FROM user_body_metrics WHERE id = ?`, [id], function (err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ message: 'Métrica corporal eliminada con éxito', deletedId: id });
+    });
+  }
+
+  /**
+   * 🔄 Sincroniza y fija las métricas del reloj (distancia y pasos) en la actividad e itinerario/viaje padre
+   */
+  static ejecutarSincronizacionActividad(db, activityId, healthData) {
+    if (!activityId || !healthData || !healthData.distance_km) return;
+    const distKm = Number(healthData.distance_km);
+    const distM = Math.round(distKm * 1000);
+    const pasos = healthData.steps || 0;
+    const cals = healthData.calories_active || healthData.calories_total || 0;
+
+    db.get('SELECT * FROM actividades WHERE id = ?', [activityId], (actErr, act) => {
+      if (actErr || !act) return;
+      const durSecs = act.duracionSegundos || 1;
+      const velMedia = parseFloat((distKm / (durSecs / 3600)).toFixed(2));
+
+      db.run(
+        `UPDATE actividades SET 
+          distanciaKm = ?, 
+          distanciaMetros = ?, 
+          pasosEstimados = ?, 
+          velocidadMediaKmh = ?,
+          calorias = COALESCE(NULLIF(?, 0), calorias),
+          fechaActualizacion = ?
+        WHERE id = ?`,
+        [distKm, distM, pasos, velMedia, cals, new Date().toISOString(), activityId],
+        function (updErr) {
+          if (updErr) {
+            console.error('❌ Error sincronizando actividad con reloj:', updErr.message);
+            return;
+          }
+          console.log(`✅ [HealthAutoSync] Actividad #${activityId} fijada con métricas del reloj: ${distKm} km, ${pasos} pasos.`);
+
+          const vId = act.viajePrevistoId;
+          if (vId && global.actualizarEstadisticasTotalesViaje) {
+            global.actualizarEstadisticasTotalesViaje(vId);
+          }
+        }
+      );
+    });
+  }
+
+  /**
+   * ⚡ Endpoint manual para sincronizar / fijar las métricas del reloj en la actividad y el viaje
+   */
+  static async syncActivityWithHealth(req, res) {
+    const { activityId } = req.params;
+    const db = getDbConnection();
+    db.get('SELECT * FROM travel_health_activity WHERE activity_id = ? ORDER BY id DESC LIMIT 1', [activityId], (err, health) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!health || !health.distance_km) {
+        return res.status(404).json({ error: 'No se encontraron datos de salud registrados para esta actividad' });
+      }
+
+      const distKm = Number(health.distance_km);
+      const distM = Math.round(distKm * 1000);
+      const pasos = health.steps || 0;
+      const cals = health.calories_active || health.calories_total || 0;
+
+      db.get('SELECT * FROM actividades WHERE id = ?', [activityId], (actErr, act) => {
+        if (actErr || !act) return res.status(404).json({ error: 'Actividad no encontrada' });
+
+        const durSecs = act.duracionSegundos || 1;
+        const velMedia = parseFloat((distKm / (durSecs / 3600)).toFixed(2));
+
+        db.run(
+          `UPDATE actividades SET 
+            distanciaKm = ?, 
+            distanciaMetros = ?, 
+            pasosEstimados = ?, 
+            velocidadMediaKmh = ?,
+            calorias = COALESCE(NULLIF(?, 0), calorias),
+            fechaActualizacion = ?
+          WHERE id = ?`,
+          [distKm, distM, pasos, velMedia, cals, new Date().toISOString(), activityId],
+          async function (updErr) {
+            if (updErr) return res.status(500).json({ error: updErr.message });
+
+            console.log(`✅ [HealthManualSync] Actividad #${activityId} fijada con métricas del reloj: ${distKm} km, ${pasos} pasos.`);
+
+            const vId = act.viajePrevistoId;
+            if (vId && global.actualizarEstadisticasTotalesViaje) {
+              await global.actualizarEstadisticasTotalesViaje(vId);
+            }
+
+            return res.json({
+              success: true,
+              message: `Métricas del reloj aplicadas con éxito (${distKm} km, ${pasos} pasos)`,
+              activityId,
+              distanciaKm: distKm,
+              distanciaMetros: distM,
+              pasos: pasos
+            });
+          }
+        );
+      });
     });
   }
 }
