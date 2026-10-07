@@ -1392,16 +1392,16 @@
         <!-- Opciones Principales -->
         <div class="opciones-principales">
 
-          <!-- Modo Vintage 3D en la película -->
+          <!-- Modo Vintage en la película -->
           <div class="config-checkbox">
             <input type="checkbox" id="mantener-estilo" [(ngModel)]="configuracionExportacion.mantenerEstiloAlbum"
               (ngModelChange)="configuracionExportacion.esModoVintage = configuracionExportacion.mantenerEstiloAlbum">
             <label for="mantener-estilo">
-              <i class="fas fa-book-open"></i> Modo Álbum Vintage 3D (marcos de oro y fondo ambiental desenfocado)
+              <i class="fas fa-book-open"></i> Modo Álbum Vintage (libro abierto en mesa con páginas, marcos y texturas)
             </label>
           </div>
 
-          <div class="config-checkbox" *ngIf="audioViaje">
+          <div class="config-checkbox" *ngIf="audioViaje || audioDisponible || infoViaje?.audio || getAudioUrlParaItinerario()">
             <input type="checkbox" id="incluir-audio" [(ngModel)]="configuracionExportacion.incluirAudio">
             <label for="incluir-audio">
               <i class="fas fa-music"></i> Incluir música ambiental del viaje

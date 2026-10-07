@@ -7851,7 +7851,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.configuracionExportacion.esModoVintage = this.modoAlbumVintage;
     this.configuracionExportacion.tipoIntro = this.tipoIntro;
     this.configuracionExportacion.distanciaMinimaAnimacionKm = this.distanciaMinimaAnimacionKm;
-    this.configuracionExportacion.incluirAudio = !this.videoMuted && (this.audioViaje != null);
+    const tieneMusica = !!(this.audioViaje || this.audioDisponible || this.infoViaje?.audio || this.getAudioUrlParaItinerario());
+    this.configuracionExportacion.incluirAudio = !this.videoMuted && tieneMusica;
 
     this.actualizarEstadoAnimacionesRuta();
     this.verificarEstadoIntroVideo();
@@ -8125,10 +8126,14 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
   /**
    * Construye la secuencia fiel de escenas para el vídeo basándose EXACTAMENTE
-   * en lo que el usuario ve en las páginas del álbum (incluyendo 3D intro, cartas, mapas y marcos de lujo).
+   * en lo que el usuario ve en el álbum y en su configuración:
+   * - Si es Modo Vintage: Pliegos del libro abierto (Spread 0 portada, fotos/vídeos en dípticos, mapas panorámicos).
+   * - Si es Modo Vídeo: Pantalla completa moderna 16:9 con fondos ambientales desenfocados y subtítulos elegantes.
+   * - Respeta estrictamente los archivos marcados con la pestaña de vídeo ('seleccionado_video').
    */
   private construirSecuenciaEscenas(): EscenaMultimedia[] {
     const secuencia: EscenaMultimedia[] = [];
+    const esVintage = this.configuracionExportacion.esModoVintage !== false && this.configuracionExportacion.mantenerEstiloAlbum !== false;
 
     // 1. Escena 1: INTRO SEGÚN SELECCIÓN DEL USUARIO (Vídeo MP4 cinemático o 3D interactiva)
     const viajeId = this.infoViaje?.id || this.contextoViaje?.viajeId;
@@ -8151,27 +8156,156 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       esIntro3D: true
     });
 
-    // 2. Páginas del álbum en orden
+    // 2. Filtrar páginas válidas respetando estrictamente 'seleccionado_video' si hay selección personalizada
+    const paginasFiltradas = (this.paginas || [])
+      .filter(p => !p.esIndice)
+      .filter(p => {
+        if (this.haySeleccionVideoPersonalizada && p.archivo && this.esArchivoMultimedia(p.archivo)) {
+          return Number(p.archivo.seleccionado_video) === 1 || (p.archivo as any).seleccionado_video === true;
+        }
+        return true;
+      });
+
+    console.log(`🎬 [ConstruirSecuencia] Modo Vintage: ${esVintage}. Páginas seleccionadas para exportar: ${paginasFiltradas.length}`);
+
     let currentItinerarioId: number | undefined = this.contextoViaje?.itinerarioId;
 
-    this.paginas
-      .filter(p => !p.esIndice)
-      .forEach((p, index) => {
-        if (p.itinerarioId) {
-          currentItinerarioId = p.itinerarioId;
-        } else if (p.archivo?.itinerarioId) {
-          currentItinerarioId = p.archivo.itinerarioId;
+    if (esVintage) {
+      // ==========================================
+      // CONSTRUCCIÓN EN MODO ÁLBUM VINTAGE (PLIEGOS)
+      // ==========================================
+      // Pliego 0: Portada / Introducción del libro
+      secuencia.push({
+        id: 'spread-intro-0',
+        tipo: 'spread_intro',
+        url: '',
+        duracion: 4.5,
+        titulo: this.infoViaje?.nombre || this.getTituloContextual() || 'Mi Viaje',
+        descripcion: this.getDescripcionContextual() || 'Diario de viaje y memorias',
+        fechaInicio: this.infoViaje?.fechaInicio,
+        fechaFin: this.infoViaje?.fechaFin,
+        totalRecuerdos: this.totalRecuerdosDisplay,
+        totalItinerarios: this.listaItinerarios.length || 1,
+        paginaDerecha: paginasFiltradas[0] ? this.serializarPaginaParaSpread(paginasFiltradas[0], 1) : null
+      });
+
+      // Procesar resto de páginas emparejadas en pliegos de dos páginas
+      let i = paginasFiltradas[0] ? 1 : 0;
+      let numeroPagina = 2;
+
+      while (i < paginasFiltradas.length) {
+        const p = paginasFiltradas[i];
+        if (p.itinerarioId) currentItinerarioId = p.itinerarioId;
+        else if (p.archivo?.itinerarioId) currentItinerarioId = p.archivo.itinerarioId;
+        const itinId = p.itinerarioId || p.archivo?.itinerarioId || currentItinerarioId;
+
+        if (p.esMapaAnimado) {
+          if (p.urlVideoAnimacion && p.urlVideoAnimacion.trim() !== '') {
+            const dur = p.distanciaTramoKm ? this.routeVideoGeneratorService.calcularDuracionDinamica(p.distanciaTramoKm) : 5;
+            secuencia.push({
+              id: `spread-mapa-${i}`,
+              tipo: 'spread_mapa',
+              url: p.urlVideoAnimacion,
+              duracion: dur,
+              titulo: p.titulo || `Recorrido Parada #${p.idParadaOrigen} ➔ #${p.idParadaDestino}`,
+              descripcion: p.descripcion,
+              distanciaKm: p.distanciaTramoKm,
+              tipoTransporte: p.tipoTransporteTramo || 'driving',
+              esMapaAnimado: true,
+              itinerarioId: itinId
+            });
+          }
+          i++;
+        } else if (p.esMapaGeneral || p.esMapaItinerario) {
+          const mapaUrl = p.urlMapaRenderizado || p.url;
+          if (mapaUrl && mapaUrl.trim().length > 0) {
+            secuencia.push({
+              id: `spread-mapa-resumen-${i}`,
+              tipo: 'spread_mapa',
+              url: mapaUrl,
+              duracion: 5,
+              titulo: p.titulo || (p.esMapaGeneral ? `MAPA GENERAL: ${this.infoViaje?.nombre || 'Mi Viaje'}` : 'MAPA DEL ITINERARIO'),
+              descripcion: p.descripcion || '',
+              distanciaKm: p.distanciaTramoKm,
+              tipoTransporte: 'general',
+              esMapaAnimado: false,
+              itinerarioId: itinId
+            });
+          }
+          i++;
+        } else if (p.esCartaManuscrita) {
+          const desc = (p.descripcion || '').trim();
+          const tit = (p.titulo || '').trim().toLowerCase();
+          if (desc.length >= 15 && desc.toLowerCase() !== 'itinerario' && tit !== 'itinerario') {
+            secuencia.push({
+              id: `spread-carta-${i}`,
+              tipo: 'spread_carta',
+              url: '',
+              duracion: 5,
+              titulo: p.titulo || 'Diario de Viaje',
+              descripcion: desc,
+              fecha: this.obtenerFechaHoraSeparadas(p).fecha,
+              hora: this.obtenerFechaHoraSeparadas(p).hora,
+              itinerarioId: itinId
+            });
+          }
+          i++;
+        } else {
+          // Es foto, vídeo o audio
+          const pIzq = p;
+          let pDer: PaginaMedia | null = null;
+          let durSpread = 4;
+
+          const esVideoIzq = pIzq.tipoMedia === 'video' || /\.(mp4|mov|webm)$/i.test(pIzq.url || pIzq.archivo?.rutaArchivo || '');
+          if (esVideoIzq && (pIzq.archivo as any)?.duracion) {
+            durSpread = Math.max(durSpread, Number((pIzq.archivo as any).duracion));
+          }
+
+          if (i + 1 < paginasFiltradas.length) {
+            const candidataDer = paginasFiltradas[i + 1];
+            if (!candidataDer.esMapaAnimado && !candidataDer.esMapaGeneral && !candidataDer.esMapaItinerario && !candidataDer.esCartaManuscrita) {
+              pDer = candidataDer;
+              const esVideoDer = pDer.tipoMedia === 'video' || /\.(mp4|mov|webm)$/i.test(pDer.url || pDer.archivo?.rutaArchivo || '');
+              if (esVideoDer && (pDer.archivo as any)?.duracion) {
+                durSpread = Math.max(durSpread, Number((pDer.archivo as any).duracion));
+              }
+              i += 2;
+            } else {
+              i += 1;
+            }
+          } else {
+            i += 1;
+          }
+
+          secuencia.push({
+            id: `spread-fotos-${numeroPagina}`,
+            tipo: 'spread_fotos',
+            url: '',
+            duracion: durSpread,
+            paginaIzquierda: this.serializarPaginaParaSpread(pIzq, numeroPagina),
+            paginaDerecha: pDer ? this.serializarPaginaParaSpread(pDer, numeroPagina + 1) : null,
+            itinerarioId: itinId
+          });
+
+          numeroPagina += pDer ? 2 : 1;
         }
+      }
+
+    } else {
+      // ==========================================
+      // CONSTRUCCIÓN EN MODO VÍDEO (PANTALLA COMPLETA 16:9)
+      // ==========================================
+      paginasFiltradas.forEach((p, index) => {
+        if (p.itinerarioId) currentItinerarioId = p.itinerarioId;
+        else if (p.archivo?.itinerarioId) currentItinerarioId = p.archivo.itinerarioId;
         const itinIdEscena = p.itinerarioId || p.archivo?.itinerarioId || currentItinerarioId;
 
         const fechaHora = this.obtenerFechaHoraSeparadas(p);
         const badge = this.obtenerBadgeOrden(p, index);
-        const marco = this.obtenerClaseMarco(p, index);
 
         if (p.esCartaManuscrita) {
           const desc = (p.descripcion || '').trim();
           const tit = (p.titulo || '').trim().toLowerCase();
-          // Omitir cartas sin contenido descriptivo real o páginas que sólo digan 'Itinerario'
           if (desc.length >= 15 && desc.toLowerCase() !== 'itinerario' && tit !== 'itinerario') {
             secuencia.push({
               id: p.archivo?.id || `carta-${index}`,
@@ -8186,40 +8320,22 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               itinerarioId: itinIdEscena
             });
           }
-
-        } else if (p.esMapaGeneral) {
+        } else if (p.esMapaGeneral || p.esMapaItinerario) {
           const mapaUrl = p.urlMapaRenderizado || p.url;
           if (mapaUrl && mapaUrl.trim().length > 0) {
             secuencia.push({
-              id: `mapa-general-${index}`,
+              id: `mapa-${index}`,
               tipo: 'mapa_resumen',
               url: mapaUrl,
               duracion: 5,
-              titulo: p.titulo || `MAPA GENERAL: ${this.infoViaje?.nombre || 'Mi Viaje'}`,
-              descripcion: p.descripcion || 'Recorrido unificado y panorámica completa del viaje',
-              trackGpx: p.trackGpx,
-              distanciaKm: p.distanciaTramoKm,
-              badgeOrden: 'Mapa Viaje'
-            });
-          }
-
-        } else if (p.esMapaItinerario) {
-          const mapaUrl = p.urlMapaRenderizado || p.url;
-          if (mapaUrl && mapaUrl.trim().length > 0) {
-            secuencia.push({
-              id: `mapa-itinerario-${index}`,
-              tipo: 'mapa_resumen',
-              url: mapaUrl,
-              duracion: 5,
-              titulo: p.titulo || 'MAPA DEL ITINERARIO',
+              titulo: p.titulo || (p.esMapaGeneral ? `MAPA GENERAL: ${this.infoViaje?.nombre || 'Mi Viaje'}` : 'MAPA DEL ITINERARIO'),
               descripcion: p.descripcion || '',
               trackGpx: p.trackGpx,
               distanciaKm: p.distanciaTramoKm,
-              badgeOrden: 'Mapa Itin',
+              badgeOrden: p.esMapaGeneral ? 'Mapa Viaje' : 'Mapa Itin',
               itinerarioId: itinIdEscena
             });
           }
-
         } else if (p.esMapaAnimado) {
           if (p.urlVideoAnimacion && p.urlVideoAnimacion.trim() !== '') {
             secuencia.push({
@@ -8236,7 +8352,6 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               itinerarioId: itinIdEscena
             });
           }
-
         } else {
           const esAudio = p.tipoMedia === 'audio' || /\.(aac|mp3|m4a|wav|ogg)$/i.test(p.url || p.archivo?.rutaArchivo || '');
           const esVideo = p.tipoMedia === 'video' || /\.(mp4|mov|webm|avi|mkv)$/i.test(p.url || p.archivo?.rutaArchivo || '');
@@ -8274,19 +8389,19 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               id: p.archivo?.id || `foto-${index}`,
               tipo: 'imagen',
               url: p.url,
-              duracion: 4,
+              duracion: 3.5,
               archivo: p.archivo,
               titulo: p.titulo,
               descripcion: p.descripcion,
               fecha: fechaHora.fecha,
               hora: fechaHora.hora,
               badgeOrden: badge,
-              claseMarco: marco,
               itinerarioId: itinIdEscena
             });
           }
         }
       });
+    }
 
     // 3. Escena Final: OUTRO 3D CINEMÁTICA EN MP4 A 60 FPS
     // Cierre del libro de recuerdos y colocación en la Estantería de los Recuerdos
@@ -8305,6 +8420,23 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     });
 
     return secuencia;
+  }
+
+  private serializarPaginaParaSpread(p: PaginaMedia, numPag: number): any {
+    const fh = this.obtenerFechaHoraSeparadas(p);
+    const esVid = p.tipoMedia === 'video' || /\.(mp4|mov|webm)$/i.test(p.url || p.archivo?.rutaArchivo || '');
+    const esAud = p.tipoMedia === 'audio' || /\.(aac|mp3|m4a|wav|ogg)$/i.test(p.url || p.archivo?.rutaArchivo || '');
+    return {
+      id: p.archivo?.id || (p as any).id || numPag,
+      url: p.url,
+      tipoMedia: esVid ? 'video' : (esAud ? 'audio' : 'imagen'),
+      titulo: p.titulo,
+      descripcion: p.descripcion,
+      fecha: fh.fecha,
+      hora: fh.hora,
+      numeroPagina: numPag,
+      archivo: p.archivo
+    };
   }
 
   private obtenerFechaHoraSeparadas(p: PaginaMedia): { fecha: string, hora: string } {

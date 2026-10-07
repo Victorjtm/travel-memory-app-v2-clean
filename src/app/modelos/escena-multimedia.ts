@@ -1,6 +1,6 @@
 import { Archivo } from './archivo';
 
-export type TipoEscena = 'imagen' | 'video' | 'carta' | 'titulo' | 'mapa_resumen' | 'intro_3d' | 'audio';
+export type TipoEscena = 'imagen' | 'video' | 'carta' | 'titulo' | 'mapa_resumen' | 'intro_3d' | 'audio' | 'spread_intro' | 'spread_fotos' | 'spread_mapa' | 'spread_carta';
 
 export interface EscenaMultimedia {
   id: string | number;
@@ -22,8 +22,15 @@ export interface EscenaMultimedia {
   esMapaAnimado?: boolean;
   trackGpx?: string;
   distanciaKm?: number;
+  tipoTransporte?: string;
   subtitulo?: string;
   destino?: string;
+  fechaInicio?: string;
+  fechaFin?: string;
+  totalRecuerdos?: number | string;
+  totalItinerarios?: number | string;
+  paginaIzquierda?: any;
+  paginaDerecha?: any;
 }
 
 export interface ConfiguracionExportacion {
