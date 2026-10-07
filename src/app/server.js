@@ -2668,7 +2668,54 @@ async function calcularEstadisticasDesdeActividades(acts) {
   let pasosCaminando = 0;
 
   for (const act of acts) {
-    totalKmSum += (act.distanciaKm || 0);
+    // 💡 Prioridad 1: Comprobar si la actividad tiene registro biométrico/reloj (travel_health_activity)
+    let healthRow = null;
+    try {
+      healthRow = await dbQuery.get('SELECT distance_km, steps, duration_total, calories_active FROM travel_health_activity WHERE activity_id = ? ORDER BY id DESC LIMIT 1', [act.id]);
+    } catch (eH) {}
+
+    let distKmAct = act.distanciaKm || 0;
+    let distMAct = act.distanciaMetros || Math.round(distKmAct * 1000);
+    let pasosAct = act.pasosEstimados || 0;
+
+    if (healthRow && healthRow.distance_km > 0) {
+      // Prioridad 1: Reloj inteligente
+      distKmAct = Number(healthRow.distance_km);
+      distMAct = Math.round(distKmAct * 1000);
+      pasosAct = healthRow.steps || pasosAct;
+      if (Math.abs((act.distanciaKm || 0) - distKmAct) > 0.05) {
+        act.distanciaKm = distKmAct;
+        act.distanciaMetros = distMAct;
+        act.pasosEstimados = pasosAct;
+        try {
+          await dbQuery.run('UPDATE actividades SET distanciaKm = ?, distanciaMetros = ?, pasosEstimados = ? WHERE id = ?', [distKmAct, distMAct, pasosAct, act.id]);
+        } catch (eUpd) {}
+      }
+    } else if (act.rutaEstadisticas) {
+      // Prioridad 2: App Móvil (estadisticas.json) si se detecta que el GPX infló la distancia por deriva
+      const statsPath = path.resolve(__dirname, 'uploads', act.rutaEstadisticas);
+      const statsPathCwd = path.resolve(process.cwd(), 'uploads', act.rutaEstadisticas);
+      const finalPath = fs.existsSync(statsPath) ? statsPath : (fs.existsSync(statsPathCwd) ? statsPathCwd : null);
+      if (finalPath) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(finalPath, 'utf8'));
+          const rawAppKm = parseFloat(raw.distanciaKm || raw.distancia_km || raw.km || 0);
+          if (rawAppKm > 0 && Math.abs((act.distanciaKm || 0) - rawAppKm) > 0.4) {
+            distKmAct = rawAppKm;
+            distMAct = parseInt(raw.distanciaMetros || raw.distancia_metros) || Math.round(rawAppKm * 1000);
+            pasosAct = parseInt(raw.pasos || raw.pasos_estimados) || pasosAct;
+            act.distanciaKm = distKmAct;
+            act.distanciaMetros = distMAct;
+            act.pasosEstimados = pasosAct;
+            try {
+              await dbQuery.run('UPDATE actividades SET distanciaKm = ?, distanciaMetros = ?, pasosEstimados = ? WHERE id = ?', [distKmAct, distMAct, pasosAct, act.id]);
+            } catch (eUpd2) {}
+          }
+        } catch (eS) {}
+      }
+    }
+
+    totalKmSum += distKmAct;
     const actSecs = obtenerSegundosActividad(act);
     totalSegundosSum += actSecs;
 
@@ -2706,7 +2753,7 @@ async function calcularEstadisticasDesdeActividades(acts) {
               tipo: modoKey,
               nombre: rawNombre,
               distanciaMetros: Math.round(dKm * 1000),
-              pasos: modoKey === 'walking' ? (act.pasosEstimados || 0) : 0
+              pasos: modoKey === 'walking' ? pasosAct : 0
             });
           }
         }
@@ -2719,9 +2766,15 @@ async function calcularEstadisticasDesdeActividades(acts) {
     if (desgloseFromStats && desgloseFromStats.length > 0) {
       for (const item of desgloseFromStats) {
         const itemMode = normalizarModoTransporte(item.tipo || item.id || item.nombre);
-        const itemDistM = item.distanciaMetros || (parseFloat(item.distanciaKm || item.km || 0) * 1000) || 0;
+        let itemDistM = item.distanciaMetros || (parseFloat(item.distanciaKm || item.km || 0) * 1000) || 0;
         const itemSecs = item.duracionSegundos || item.duration || 0;
-        const itemPasos = item.pasos || 0;
+        let itemPasos = item.pasos || 0;
+
+        // Si la actividad fue sincronizada con el reloj y es modo caminar (o único modo), reflejar la métrica del reloj
+        if (healthRow && healthRow.distance_km > 0 && (itemMode === 'walking' || desgloseFromStats.length === 1)) {
+          itemDistM = distMAct;
+          itemPasos = pasosAct;
+        }
 
         modosMetros[itemMode] = (modosMetros[itemMode] || 0) + itemDistM;
         const esWalk = MODE_META[itemMode]?.esCaminar ?? (itemMode === 'walking');
@@ -2735,8 +2788,8 @@ async function calcularEstadisticasDesdeActividades(acts) {
           }
         }
       }
-      if (pasosCaminando === 0 && act.pasosEstimados > 0 && metrosCaminando > 0) {
-        pasosCaminando = act.pasosEstimados;
+      if (pasosCaminando === 0 && pasosAct > 0 && metrosCaminando > 0) {
+        pasosCaminando = pasosAct;
       }
     } else {
       const segRows = await dbQuery.all('SELECT * FROM segments WHERE actividadId = ? ORDER BY segmentOrder ASC', [act.id]);
@@ -2979,6 +3032,24 @@ async function actualizarEstadisticasTotalesViaje(viajeId) {
       viajeId
     ]);
 
+    // Corregir automáticamente el título o descripción del viaje si tenían el kilometraje inflado anterior
+    try {
+      const viajeRow = await dbQuery.get('SELECT nombre, descripcion FROM viajes WHERE id = ?', [viajeId]);
+      if (viajeRow && stats.totalKm > 0) {
+        let nuevoNombre = viajeRow.nombre;
+        let nuevaDesc = viajeRow.descripcion;
+        if (nuevoNombre && /-\s*[\d\.,]+\s*km/i.test(nuevoNombre)) {
+          nuevoNombre = nuevoNombre.replace(/-\s*[\d\.,]+\s*km/i, `- ${stats.totalKm} km`);
+        }
+        if (nuevaDesc && /[\d\.,]+\s*km/i.test(nuevaDesc)) {
+          nuevaDesc = nuevaDesc.replace(/[\d\.,]+\s*km/i, `${stats.totalKm} km`);
+        }
+        if (nuevoNombre !== viajeRow.nombre || nuevaDesc !== viajeRow.descripcion) {
+          await dbQuery.run('UPDATE viajes SET nombre = ?, descripcion = ? WHERE id = ?', [nuevoNombre, nuevaDesc, viajeId]);
+        }
+      }
+    } catch (eCorr) {}
+
     console.log(`✅ [STATS VIAJE] Viaje #${viajeId}: Total ${stats.totalKm} km (${stats.desgloseActividades.length} acts) | Caminando: ${stats.totalKmCaminando} km, ${stats.totalPasosCaminando} pasos, ${Math.floor(stats.totalSegundosCaminando/3600)}h ${Math.floor((stats.totalSegundosCaminando%3600)/60)}m`);
     return stats;
   } catch (err) {
@@ -2986,6 +3057,7 @@ async function actualizarEstadisticasTotalesViaje(viajeId) {
     return null;
   }
 }
+global.actualizarEstadisticasTotalesViaje = actualizarEstadisticasTotalesViaje;
 
 // Sincronizar automáticamente estadísticas de viajes y actividades importados en segundo plano
 setTimeout(async () => {
@@ -6275,6 +6347,41 @@ app.post(['/viajes/:id/generar-pelicula-servidor', '/api/viajes/:id/generar-peli
   }
 });
 
+app.post(['/viajes/:id/comprimir-whatsapp', '/api/viajes/:id/comprimir-whatsapp'], express.json({ limit: '10mb' }), async (req, res) => {
+  const viajeId = req.params.id;
+  const { urlVideo } = req.body;
+
+  try {
+    if (!urlVideo) return res.status(400).json({ error: 'Falta urlVideo para comprimir' });
+    try {
+      delete require.cache[require.resolve('./backend-services/generador-pelicula-ffmpeg.service')];
+    } catch (e) {}
+    generadorPeliculaFFmpegService = require('./backend-services/generador-pelicula-ffmpeg.service');
+
+    const localVideo = generadorPeliculaFFmpegService.resolverRutaLocal(urlVideo);
+    if (!localVideo || !fs.existsSync(localVideo)) {
+      return res.status(404).json({ error: 'Archivo de vídeo no encontrado en el servidor' });
+    }
+
+    const carpetaViaje = path.join(__dirname, '../../uploads', String(viajeId));
+    if (!fs.existsSync(carpetaViaje)) fs.mkdirSync(carpetaViaje, { recursive: true });
+
+    const outName = `pelicula_whatsapp_${viajeId}_${Date.now()}.mp4`;
+    const outPath = path.join(carpetaViaje, outName);
+
+    const resultado = await generadorPeliculaFFmpegService.comprimirPeliculaParaWhatsApp(localVideo, outPath);
+    res.json({
+      success: true,
+      url: `/uploads/${viajeId}/${outName}`,
+      tamanoBytes: resultado.tamanoBytes,
+      tamanoMB: resultado.tamanoMB
+    });
+  } catch (error) {
+    console.error('❌ [WhatsApp Compresión] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 5. DELETE eliminar todos los vídeos de subtramos de un itinerario (para regeneración limpia)
 app.delete(['/itinerarios/:id/subtramos/videos', '/api/itinerarios/:id/subtramos/videos'], async (req, res) => {
   const itinerarioId = req.params.id;
@@ -9332,9 +9439,10 @@ app.post('/import-tracking', (req, res, next) => {
 
     const [año, mes, dia] = (fechaRecorridoReal || new Date().toISOString().split('T')[0]).split('-');
     const fechaFormateada = `${dia}/${mes}/${año}`;
-    const distKmViaje = (metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0)
-      ? metricasGpxCanonico.distanciaKm
-      : ((manifestData.estadisticas && manifestData.estadisticas.distancia_km !== undefined) ? manifestData.estadisticas.distancia_km : (extraStatsData.km || 0));
+    const rawMobileKm = parseNum((manifestData.estadisticas && manifestData.estadisticas.distancia_km !== undefined) ? manifestData.estadisticas.distancia_km : (extraStatsData.km || extraStatsData.distanciaKm || extraStatsData.distancia_km || 0));
+    const distKmViaje = (rawMobileKm > 0)
+      ? rawMobileKm
+      : ((metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0) ? metricasGpxCanonico.distanciaKm : 0);
     const duracionViaje = (manifestData.estadisticas && manifestData.estadisticas.duracion_formateada) ? manifestData.estadisticas.duracion_formateada : (extraStatsData.tiempoEmpleado || '00:00:00');
     const nombreViaje = `${destinoCompleto} - ${fechaFormateada} - ${distKmViaje} km`;
 

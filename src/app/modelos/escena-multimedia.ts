@@ -42,5 +42,8 @@ export interface ConfiguracionExportacion {
   esModoVintage?: boolean;
   tipoIntro?: 'video-mp4' | '3d-interactiva';
   distanciaMinimaAnimacionKm?: number;
+  zoomAutomatico?: boolean;
+  tipoMapa?: 'satelite' | 'calles';
+  maxDuracionAudioSegundos?: number;
 }
 

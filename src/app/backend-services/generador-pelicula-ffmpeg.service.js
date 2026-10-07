@@ -404,32 +404,93 @@ async function renderizarPliegoFotosVintage(baseBookBuf, pIzq, pDer, pagIzqNum, 
 }
 
 /**
- * Renderiza el Pliego de Mapa Panorámico (Doble página unificada con contenedor de mapa y badge)
+ * Genera el SVG del marco de mapa con su cabecera completa (Título, Subtítulo, Distancia km y fecha)
  */
-async function renderizarPliegoMapaPanoramico(baseBookBuf, titulo = 'Itinerario de Ruta', distanciaKm = null, modoTransporte = 'driving') {
-  const tit = escapeXml(titulo);
-  const badgeDist = distanciaKm ? `${parseFloat(distanciaKm).toFixed(1)} km` : '';
-  const badgeTexto = escapeXml(`🛣️ ${tit}${badgeDist ? ' · ' + badgeDist : ''}`);
+function generarSvgHeaderMapa(titulo = 'Itinerario de Ruta', subtitulo = '', distanciaKm = null, fecha = '', esVintage = true) {
+  const tit = escapeXml(titulo || 'Itinerario').toUpperCase();
+  const sub = escapeXml(subtitulo || '');
+  const distNum = parseFloat(distanciaKm);
+  const badgeDist = (!isNaN(distNum) && distNum > 0) ? `${distNum.toFixed(1)} km` : '';
+  const fechaTexto = escapeXml(fecha || '');
 
+  if (esVintage) {
+    return `
+      <svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="mapBarShadow" x="-5%" y="-5%" width="110%" height="110%">
+            <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.5"/>
+          </filter>
+        </defs>
+
+        <!-- Marco dorado perimetral del mapa -->
+        <rect x="136" y="106" width="1648" height="868" rx="6" fill="none" stroke="#bfa15f" stroke-width="3"/>
+
+        <!-- Pliegue central del lomo del libro sobre el mapa -->
+        <rect x="948" y="108" width="24" height="864" fill="black" opacity="0.22"/>
+        <line x1="960" y1="108" x2="960" y2="972" stroke="#5a3a1c" stroke-width="1.5" stroke-dasharray="4,8" opacity="0.6"/>
+
+        <!-- Barra superior de telemetría y título -->
+        <g filter="url(#mapBarShadow)">
+          <rect x="156" y="120" width="1608" height="66" rx="10" fill="#140e0a" fill-opacity="0.94" stroke="#dfc488" stroke-width="1.8"/>
+
+          <!-- Título del recorrido -->
+          <text x="185" y="152" fill="#ffffff" font-family="Cinzel, Georgia, serif" font-size="22" font-weight="bold">${tit}</text>
+          ${sub ? `<text x="185" y="173" fill="#c4a572" font-family="Georgia, serif" font-size="14">${sub}</text>` : ''}
+
+          <!-- Badge de Distancia en km -->
+          ${badgeDist ? `
+            <g transform="translate(1530, 131)">
+              <rect x="0" y="0" width="210" height="44" rx="22" fill="#2a1c12" stroke="#dfc488" stroke-width="1.5"/>
+              <text x="105" y="28" fill="#facc15" font-family="Cinzel, Georgia, serif" font-size="18" font-weight="bold" text-anchor="middle">🛣️ ${badgeDist}</text>
+            </g>
+          ` : ''}
+
+          <!-- Fecha si existe -->
+          ${fechaTexto ? `
+            <text x="${badgeDist ? 1510 : 1730}" y="158" fill="#dfc488" font-family="Georgia, serif" font-size="16" text-anchor="end">${fechaTexto}</text>
+          ` : ''}
+        </g>
+      </svg>
+    `;
+  } else {
+    // Modo moderno 16:9
+    return `
+      <svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="headerGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="rgba(0,0,0,0.88)"/>
+            <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="1920" height="180" fill="url(#headerGrad)"/>
+        <g transform="translate(80, 50)">
+          <text x="0" y="36" fill="#ffffff" font-family="Segoe UI, Roboto, sans-serif" font-size="32" font-weight="bold">${tit}</text>
+          ${sub ? `<text x="0" y="68" fill="#e2e8f0" font-family="Segoe UI, Roboto, sans-serif" font-size="20">${sub}</text>` : ''}
+          ${badgeDist ? `
+            <g transform="translate(1540, 0)">
+              <rect x="0" y="0" width="220" height="48" rx="24" fill="#0f172a" stroke="#00D2FF" stroke-width="2"/>
+              <text x="110" y="31" fill="#00D2FF" font-family="Segoe UI, Roboto, sans-serif" font-size="20" font-weight="bold" text-anchor="middle">🛣️ ${badgeDist}</text>
+            </g>
+          ` : ''}
+        </g>
+      </svg>
+    `;
+  }
+}
+
+/**
+ * Renderiza la base del Pliego de Mapa Panorámico (Doble página unificada con hueco para el mapa)
+ */
+async function renderizarPliegoMapaPanoramicoBase(baseBookBuf) {
   const overlaySvg = Buffer.from(`
     <svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
-      <!-- Contenedor del mapa sobre ambas páginas con marco dorado -->
       <rect x="136" y="106" width="1648" height="868" rx="6" fill="#14110e" stroke="#bfa15f" stroke-width="3"/>
-
-      <!-- Pliegue central sutil del lomo sobre el mapa -->
-      <rect x="948" y="108" width="24" height="864" fill="black" opacity="0.22"/>
-      <line x1="960" y1="108" x2="960" y2="972" stroke="#5a3a1c" stroke-width="1.5" stroke-dasharray="4,8" opacity="0.6"/>
-
-      <!-- Pastilla superior de información de ruta -->
-      <g>
-        <rect x="160" y="126" width="460" height="42" rx="21" fill="#1e140e" fill-opacity="0.9" stroke="#dfc488" stroke-width="1.5"/>
-        <text x="185" y="153" fill="#dfc488" font-family="Cinzel, Georgia, serif" font-size="16" font-weight="bold">${badgeTexto}</text>
-      </g>
     </svg>
   `);
 
   return await sharp(baseBookBuf).composite([{ input: overlaySvg, top: 0, left: 0 }]).jpeg({ quality: 92 }).toBuffer();
 }
+
 
 /**
  * Renderiza el Pliego de Carta Manuscrita
@@ -653,17 +714,34 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
           const spreadImg = path.join(tmpDir, `spread_base_${globalIdx}.jpg`);
           fs.writeFileSync(spreadImg, spreadBuf);
 
-          // Si ninguna de las dos páginas es vídeo: imagen estática fluida
+          // Si ninguna de las dos páginas es vídeo: imagen estática fluida con zoom cinemático opcional
           if (!esVidIzq && !esVidDer) {
             const dur = esc.duracion || 4;
-            await runFFmpeg([
-              '-y',
-              '-loop', '1', '-t', String(dur), '-i', spreadImg,
-              '-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=44100:cl=stereo',
-              '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
-              '-c:a', 'aac', '-ar', '44100', '-ac', '2',
-              segPath
-            ]);
+            const aplicarZoom = configuracion.zoomAutomatico !== false && configuracion.modoZoomCinematico !== false;
+
+            if (aplicarZoom) {
+              const frames = Math.round(dur * 30);
+              const vf = `zoompan=z='min(zoom+0.00065,1.08)':d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=30`;
+              await runFFmpeg([
+                '-y',
+                '-i', spreadImg,
+                '-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=44100:cl=stereo',
+                '-vf', vf,
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                '-t', String(dur),
+                segPath
+              ]);
+            } else {
+              await runFFmpeg([
+                '-y',
+                '-loop', '1', '-t', String(dur), '-i', spreadImg,
+                '-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=44100:cl=stereo',
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                segPath
+              ]);
+            }
             segmentosGenerados.push({ index: globalIdx, path: segPath, esc, tieneAudioPropio: false });
             return;
           }
@@ -719,9 +797,14 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
         // CASO D: PLIEGO DE MAPA PANORÁMICO VINTAGE (DOBLE PÁGINA)
         // ===============================================================
         if (esc.tipo === 'spread_mapa') {
-          const mapBaseBuf = await renderizarPliegoMapaPanoramico(baseBookBuf, esc.titulo, esc.distanciaKm, esc.tipoTransporte);
+          const mapBaseBuf = await renderizarPliegoMapaPanoramicoBase(baseBookBuf);
           const mapBaseImg = path.join(tmpDir, `spread_map_base_${globalIdx}.jpg`);
           fs.writeFileSync(mapBaseImg, mapBaseBuf);
+
+          const headerSvgStr = generarSvgHeaderMapa(esc.titulo, esc.descripcion, esc.distanciaKm, esc.fecha, true);
+          const headerSvgBuf = Buffer.from(headerSvgStr);
+          const headerSvgPath = path.join(tmpDir, `spread_map_hdr_${globalIdx}.png`);
+          await sharp(headerSvgBuf).png().toFile(headerSvgPath);
 
           let localMedia = resolverRutaLocal(esc.url);
           const dur = esc.duracion || 5;
@@ -737,23 +820,27 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
                 '-y',
                 '-loop', '1', '-t', String(durFinal), '-i', mapBaseImg,
                 '-i', localMedia,
-                '-filter_complex', '[1:v]scale=1648:868:force_original_aspect_ratio=decrease,pad=1648:868:(ow-iw)/2:(oh-ih)/2:color=black[fg];[0:v][fg]overlay=136:106[v]',
+                '-i', headerSvgPath,
+                '-filter_complex', '[1:v]scale=1648:868:force_original_aspect_ratio=decrease,pad=1648:868:(ow-iw)/2:(oh-ih)/2:color=black[mapfg];[0:v][mapfg]overlay=136:106[bgmap];[bgmap][2:v]overlay=0:0[v]',
                 '-map', '[v]',
                 '-f', 'lavfi', '-t', String(durFinal), '-i', 'anullsrc=r=44100:cl=stereo',
-                '-map', '2:a',
+                '-map', '3:a',
                 '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac', '-ar', '44100', '-ac', '2',
                 '-t', String(durFinal),
                 segPath
               ]);
             } else {
-              // Imagen estática de mapa dentro del marco
+              // Imagen estática de mapa dentro del marco con la cabecera enriquecida encima
               const imgMapaResized = await sharp(localMedia).resize(1648, 868, { fit: 'inside' }).toBuffer({ resolveWithObject: true });
               const mX = 136 + Math.round((1648 - imgMapaResized.info.width) / 2);
               const mY = 106 + Math.round((868 - imgMapaResized.info.height) / 2);
 
               const compositeMapBuf = await sharp(mapBaseImg)
-                .composite([{ input: imgMapaResized.data, top: mY, left: mX }])
+                .composite([
+                  { input: imgMapaResized.data, top: mY, left: mX },
+                  { input: headerSvgBuf, top: 0, left: 0 }
+                ])
                 .jpeg({ quality: 90 })
                 .toBuffer();
 
@@ -770,10 +857,17 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
               ]);
             }
           } else {
-            // Marco de mapa sin archivo renderizado
+            // Marco de mapa sin archivo renderizado pero con la cabecera visible
+            const emptyMapBuf = await sharp(mapBaseImg)
+              .composite([{ input: headerSvgBuf, top: 0, left: 0 }])
+              .jpeg({ quality: 90 })
+              .toBuffer();
+            const emptyMapImg = path.join(tmpDir, `map_empty_${globalIdx}.jpg`);
+            fs.writeFileSync(emptyMapImg, emptyMapBuf);
+
             await runFFmpeg([
               '-y',
-              '-loop', '1', '-t', String(dur), '-i', mapBaseImg,
+              '-loop', '1', '-t', String(dur), '-i', emptyMapImg,
               '-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=44100:cl=stereo',
               '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
               '-c:a', 'aac', '-ar', '44100', '-ac', '2',
@@ -853,6 +947,7 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
           }
 
           const dur = esc.duracion || 3.5;
+          const aplicarZoom = configuracion.zoomAutomatico !== false && configuracion.modoZoomCinematico !== false;
           let imgFrameBuf = null;
 
           if (sharp) {
@@ -867,14 +962,29 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
             const frameImgPath = path.join(tmpDir, `modern_frame_${globalIdx}.jpg`);
             fs.writeFileSync(frameImgPath, imgFrameBuf);
 
-            await runFFmpeg([
-              '-y',
-              '-loop', '1', '-t', String(dur), '-i', frameImgPath,
-              '-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=44100:cl=stereo',
-              '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
-              '-c:a', 'aac', '-ar', '44100', '-ac', '2',
-              segPath
-            ]);
+            if (aplicarZoom) {
+              const frames = Math.round(dur * 30);
+              const vf = `zoompan=z='min(zoom+0.001,1.12)':d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=30`;
+              await runFFmpeg([
+                '-y',
+                '-i', frameImgPath,
+                '-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=44100:cl=stereo',
+                '-vf', vf,
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                '-t', String(dur),
+                segPath
+              ]);
+            } else {
+              await runFFmpeg([
+                '-y',
+                '-loop', '1', '-t', String(dur), '-i', frameImgPath,
+                '-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=44100:cl=stereo',
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                segPath
+              ]);
+            }
           } else {
             // Fallback con FFmpeg directo
             const vf = 'split[main][bg];[bg]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=25:5[bgblur];[main]scale=1600:900:force_original_aspect_ratio=decrease[fg];[bgblur][fg]overlay=(W-w)/2:(H-h)/2';
@@ -893,18 +1003,27 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
           return;
         }
 
-        // F.3 MAPA RESUMEN ESTRUCTURAL EN MODO VÍDEO
+        // F.3 MAPA RESUMEN ESTRUCTURAL EN MODO VÍDEO CON CABECERA SUPERIOR
         if (esc.tipo === 'mapa_resumen') {
           if (!localMedia || !fs.existsSync(localMedia)) return;
           const dur = esc.duracion || 5;
 
+          const headerSvgStr = generarSvgHeaderMapa(esc.titulo, esc.descripcion, esc.distanciaKm, esc.fecha, false);
+          const headerSvgBuf = Buffer.from(headerSvgStr);
+          const headerPath = path.join(tmpDir, `modern_map_hdr_${globalIdx}.png`);
+          await sharp(headerSvgBuf).png().toFile(headerPath);
+
           await runFFmpeg([
             '-y',
             '-loop', '1', '-t', String(dur), '-i', localMedia,
+            '-i', headerPath,
             '-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=44100:cl=stereo',
-            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black',
+            '-filter_complex', '[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black[bg];[bg][1:v]overlay=0:0[v]',
+            '-map', '[v]',
+            '-map', '2:a',
             '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+            '-t', String(dur),
             segPath
           ]);
 
@@ -912,21 +1031,24 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
           return;
         }
 
-        // F.4 NOTA DE VOZ (AUDIO)
+        // F.4 NOTA DE VOZ (AUDIO CON LÍMITE DE DURACIÓN DE SEGURIDAD)
         if (esc.tipo === 'audio') {
           if (!localMedia || !fs.existsSync(localMedia)) return;
-          const dur = await obtenerDuracionAudio(localMedia);
-          const durFinal = Math.max(3.5, dur);
+          const durReal = await obtenerDuracionAudio(localMedia);
+          const maxDurAudio = configuracion.maxDuracionAudioSegundos || 30;
+          const durFinal = Math.min(Math.max(3.5, durReal), maxDurAudio);
+          const fadeStart = Math.max(0, durFinal - 1.5);
 
           await runFFmpeg([
             '-y',
             '-f', 'lavfi', '-t', String(durFinal), '-i', `color=c=0x18120e:s=1920x1080:d=${durFinal}`,
             '-i', localMedia,
-            '-filter_complex', '[1:a]showwaves=s=1600x260:mode=cline:colors=0xdfc488:scale=cbrt[waves];[0:v][waves]overlay=160:H-360[v]',
+            '-filter_complex', `[1:a]atrim=0:${durFinal},afade=t=out:st=${fadeStart.toFixed(2)}:d=1.5,asplit=2[a1][a2];[a2]showwaves=s=1600x260:mode=cline:colors=0xdfc488:scale=cbrt[waves];[0:v][waves]overlay=160:H-360[v]`,
             '-map', '[v]',
-            '-map', '1:a',
+            '-map', '[a1]',
             '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-shortest',
+            '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+            '-t', String(durFinal),
             segPath
           ]);
 
@@ -981,21 +1103,9 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
 
     console.log(`🎬 [PeliculaServer] ${segmentosGenerados.length} segmentos codificados con éxito.`);
 
-    // 4. Concatenar segmentos en archivo de vídeo continuo
-    const concatFile = path.join(tmpDir, 'concat_list.txt');
-    const concatContent = segmentosGenerados
-      .map(s => `file '${s.path.replace(/\\/g, '/')}'`)
-      .join('\n');
-    fs.writeFileSync(concatFile, concatContent);
-
+    // 4. Ensamblar escenas con transiciones cinemáticas (Paso de página en álbum vintage)
     const peliculaConcatenada = path.join(tmpDir, 'pelicula_concatenada.mp4');
-    await runFFmpeg([
-      '-y',
-      '-f', 'concat', '-safe', '0', '-i', concatFile,
-      '-c:v', 'copy',
-      '-c:a', 'copy',
-      peliculaConcatenada
-    ]);
+    await ensamblarPeliculaConTransiciones(segmentosGenerados, tmpDir, esVintage, peliculaConcatenada);
 
     // 5. Destino final en la carpeta del viaje
     const carpetaViaje = path.join(UPLOADS_DIR, String(viajeId));
@@ -1212,7 +1322,140 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
   }
 }
 
+/**
+ * Ensambla los segmentos de vídeo aplicando transiciones suaves:
+ * - En Álbum Vintage: Transición de paso de página de derecha a izquierda (smoothleft de 0.75s).
+ * - En Modo Vídeo moderno: Fundido cruzado suave (fade de 0.5s).
+ * - Intro 3D y Outro 3D: Fundido suave cinematográfico (fade).
+ */
+async function ensamblarPeliculaConTransiciones(segmentos, tmpDir, esVintage, outPath) {
+  if (!segmentos || segmentos.length === 0) throw new Error('No hay segmentos para ensamblar.');
+  if (segmentos.length === 1) {
+    fs.copyFileSync(segmentos[0].path, outPath);
+    return;
+  }
+
+  console.log(`🎬 [PeliculaServer] Ensamblando ${segmentos.length} escenas con transiciones cinemáticas (${esVintage ? 'Paso de página 3D suave (smoothleft)' : 'Fundido cruzado'})...`);
+
+  for (const seg of segmentos) {
+    const dur = await obtenerDuracionAudio(seg.path);
+    seg.dur = dur > 0 ? dur : 3.5;
+  }
+
+  const BATCH_SIZE = 6;
+  try {
+    if (segmentos.length <= BATCH_SIZE) {
+      await ejecutarXfadeLote(segmentos, tmpDir, esVintage, outPath);
+    } else {
+      let subReels = [];
+      let i = 0;
+      let reelIdx = 0;
+      while (i < segmentos.length) {
+        const chunk = segmentos.slice(i, i + BATCH_SIZE);
+        const subOut = path.join(tmpDir, `subreel_${reelIdx}.mp4`);
+        await ejecutarXfadeLote(chunk, tmpDir, esVintage, subOut);
+        const subDur = await obtenerDuracionAudio(subOut);
+        subReels.push({ path: subOut, dur: subDur, esc: chunk[chunk.length - 1].esc });
+        reelIdx++;
+        i += BATCH_SIZE;
+      }
+
+      if (subReels.length === 1) {
+        fs.copyFileSync(subReels[0].path, outPath);
+      } else {
+        await ejecutarXfadeLote(subReels, tmpDir, esVintage, outPath);
+      }
+    }
+    console.log(`✅ [PeliculaServer] Transiciones ensambladas con éxito.`);
+  } catch (errXfade) {
+    console.warn(`⚠️ [PeliculaServer] Fallback a concatenación directa por error en transiciones:`, errXfade.message);
+    const concatFile = path.join(tmpDir, 'concat_list_fallback.txt');
+    fs.writeFileSync(concatFile, segmentos.map(s => `file '${s.path.replace(/\\/g, '/')}'`).join('\n'));
+    await runFFmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', concatFile, '-c:v', 'copy', '-c:a', 'copy', outPath]);
+  }
+}
+
+async function ejecutarXfadeLote(clips, tmpDir, esVintage, outPath) {
+  if (clips.length === 1) {
+    fs.copyFileSync(clips[0].path, outPath);
+    return;
+  }
+
+  const transDur = 0.75;
+  const inputs = [];
+  clips.forEach(c => { inputs.push('-i', c.path); });
+
+  let filterV = '';
+  let filterA = '';
+  let prevV = '0:v';
+  let prevA = '0:a';
+  let curOffset = Math.max(0.1, clips[0].dur - transDur);
+
+  for (let i = 1; i < clips.length; i++) {
+    const nextV = i === clips.length - 1 ? 'vout' : `v${i}`;
+    const nextA = i === clips.length - 1 ? 'aout' : `a${i}`;
+    const esIntroOOutro = clips[i - 1].esc?.esIntro3D || clips[i].esc?.esOutro3D;
+    const transTipo = esIntroOOutro ? 'fade' : (esVintage ? 'smoothleft' : 'fade');
+
+    filterV += `[${prevV}][${i}:v]xfade=transition=${transTipo}:duration=${transDur}:offset=${curOffset.toFixed(2)}[${nextV}];`;
+    filterA += `[${prevA}][${i}:a]acrossfade=d=${transDur}[${nextA}];`;
+    prevV = nextV;
+    prevA = nextA;
+    if (i < clips.length - 1) {
+      curOffset += Math.max(0.1, clips[i].dur - transDur);
+    }
+  }
+
+  const filterComplex = filterV + filterA.slice(0, -1);
+  await runFFmpeg([
+    '-y',
+    ...inputs,
+    '-filter_complex', filterComplex,
+    '-map', '[vout]',
+    '-map', '[aout]',
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac',
+    outPath
+  ]);
+}
+
+/**
+ * Comprime un archivo de vídeo MP4 para adaptarlo a WhatsApp:
+ * - Resolución: 720p H.264 compatible
+ * - Bitrate controlado (~1100 kbps de vídeo + 96 kbps de audio)
+ * - CRF 28 para máxima reducción de tamaño con nitidez en pantallas móviles
+ */
+async function comprimirPeliculaParaWhatsApp(inputPath, outputPath) {
+  const args = [
+    '-y',
+    '-i', inputPath,
+    '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black',
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '28',
+    '-maxrate', '1100k',
+    '-bufsize', '1500k',
+    '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac',
+    '-ar', '44100',
+    '-ac', '2',
+    '-b:a', '96k',
+    '-movflags', '+faststart',
+    outputPath
+  ];
+  await runFFmpeg(args);
+  const st = fs.statSync(outputPath);
+  return {
+    tamanoBytes: st.size,
+    tamanoMB: (st.size / 1024 / 1024).toFixed(2)
+  };
+}
+
 module.exports = {
   generarPeliculaViaje,
+  comprimirPeliculaParaWhatsApp,
   resolverRutaLocal
 };
+

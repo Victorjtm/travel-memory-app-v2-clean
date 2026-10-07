@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, HostListener, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, ChangeDetectorRef, NgZone, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ArchivoService } from '../../../../servicios/archivo.service';
 import { ViajesPrevistosService } from '../../../../servicios/viajes-previstos.service';
@@ -141,6 +141,8 @@ interface CoordenadasDMS {
   styleUrls: ['./album-libro.component.scss']
 })
 export class AlbumLibroComponent implements OnInit, OnDestroy {
+
+  @ViewChild(MapaResumenSpreadComponent) mapaResumenSpread?: MapaResumenSpreadComponent;
 
   // ==========================================
   // PROPIEDADES DE ESTADO DEL ÁLBUM
@@ -7806,7 +7808,10 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     incluirTexto: true,
     incluirDescripcion: true,
     calidad: 'whatsapp',
-    mantenerEstiloAlbum: true
+    mantenerEstiloAlbum: true,
+    zoomAutomatico: true,
+    tipoMapa: 'satelite',
+    maxDuracionAudioSegundos: 30
   };
 
   // Mantener por compatibilidad temporal con el servicio actual si fuera necesario
@@ -7851,6 +7856,9 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     this.configuracionExportacion.esModoVintage = this.modoAlbumVintage;
     this.configuracionExportacion.tipoIntro = this.tipoIntro;
     this.configuracionExportacion.distanciaMinimaAnimacionKm = this.distanciaMinimaAnimacionKm;
+    this.configuracionExportacion.zoomAutomatico = this.modoZoomCinematico;
+    this.configuracionExportacion.tipoMapa = (this.mapaResumenSpread && this.mapaResumenSpread.capaActual) ? this.mapaResumenSpread.capaActual : 'satelite';
+    this.configuracionExportacion.maxDuracionAudioSegundos = 30;
     const tieneMusica = !!(this.audioViaje || this.audioDisponible || this.infoViaje?.audio || this.getAudioUrlParaItinerario());
     this.configuracionExportacion.incluirAudio = !this.videoMuted && tieneMusica;
 
@@ -7993,6 +8001,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
             const tipo = p.esMapaGeneral ? 'general' : 'itinerario';
             const tituloMapa = p.titulo || (p.esMapaGeneral ? `MAPA GENERAL: ${this.infoViaje?.nombre || 'Mi Viaje'}` : 'MAPA DEL ITINERARIO');
             const subTexto = p.descripcion || (p.distanciaTramoKm ? `Recorrido total: ${p.distanciaTramoKm.toFixed(1)} km` : '');
+            const tipoEstiloMapa = this.configuracionExportacion.tipoMapa || 'satelite';
             const urlSnapshot = await this.routeVideoGeneratorService.generarYSubirSnapshotMapa(
               viajeId,
               p.trackGpx || '',
@@ -8001,7 +8010,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               p.distanciaTramoKm,
               tipo,
               p.itinerarioId,
-              p.puntosClave
+              p.puntosClave,
+              tipoEstiloMapa
             );
             const urlCompleta = urlSnapshot.startsWith('http') ? urlSnapshot : `${environment.apiUrl || 'http://localhost:3000'}${urlSnapshot.startsWith('/') ? '' : '/'}${urlSnapshot}`;
             p.urlMapaRenderizado = urlCompleta;
@@ -8090,8 +8100,43 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   }
 
   async compartirVideoPorWhatsApp(): Promise<void> {
-    if (!this.blobVideoGenerado) return;
-    const archivo = new File([this.blobVideoGenerado], this.nombreArchivoVideoGenerado, { type: 'video/mp4' });
+    if (!this.blobVideoGenerado && !this.urlVideoGenerado) return;
+
+    let blobParaCompartir = this.blobVideoGenerado;
+    let nombreArchivo = this.nombreArchivoVideoGenerado;
+
+    // Si el vídeo generado pesa más de 16MB o si se comparte para WhatsApp,
+    // optimizar y reducir tamaño automáticamente con el perfil móvil
+    const tamanoMB = blobParaCompartir ? (blobParaCompartir.size / (1024 * 1024)) : 0;
+    if (tamanoMB > 16 && this.urlVideoGenerado) {
+      try {
+        console.log(`📱 [WhatsApp] Vídeo actual: ${tamanoMB.toFixed(1)} MB. Comprimiendo automáticamente para WhatsApp...`);
+        const backendUrl = environment.apiUrl || 'http://localhost:3000';
+        const viajeId = this.infoViaje?.id || this.contextoViaje?.viajeId || 0;
+        const res = await fetch(`${backendUrl}/api/viajes/${viajeId}/comprimir-whatsapp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urlVideo: this.urlVideoGenerado })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.url) {
+            const urlFull = data.url.startsWith('http') ? data.url : `${backendUrl}${data.url.startsWith('/') ? '' : '/'}${data.url}`;
+            const blobResp = await fetch(urlFull);
+            if (blobResp.ok) {
+              blobParaCompartir = await blobResp.blob();
+              nombreArchivo = `viaje-whatsapp-${viajeId}.mp4`;
+              console.log(`✅ [WhatsApp] Vídeo comprimido listo: ${(blobParaCompartir.size / (1024 * 1024)).toFixed(1)} MB`);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('⚠️ No se pudo comprimir para WhatsApp, usando vídeo original:', err);
+      }
+    }
+
+    if (!blobParaCompartir) return;
+    const archivo = new File([blobParaCompartir], nombreArchivo, { type: 'video/mp4' });
 
     if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
       try {
@@ -8108,8 +8153,16 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     }
 
     // Fallback escritorio
-    this.descargarVideoGenerado();
-    const textoMsg = encodeURIComponent(`🎬 ¡Aquí tienes la película de nuestro viaje "${this.infoViaje?.nombre || 'Mi Viaje'}"! Adjunto el vídeo descargado.`);
+    const urlDescarga = URL.createObjectURL(blobParaCompartir);
+    const a = document.createElement('a');
+    a.href = urlDescarga;
+    a.download = nombreArchivo;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(urlDescarga), 30000);
+
+    const textoMsg = encodeURIComponent(`🎬 ¡Aquí tienes la película de nuestro viaje "${this.infoViaje?.nombre || 'Mi Viaje'}"! Adjunto el vídeo optimizado para WhatsApp.`);
     window.open(`https://api.whatsapp.com/send?text=${textoMsg}`, '_blank');
   }
 

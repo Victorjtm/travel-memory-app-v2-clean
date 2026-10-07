@@ -1422,6 +1422,22 @@
             </label>
           </div>
 
+          <!-- Zoom cinemático automático en fotos (Ken Burns) -->
+          <div class="config-checkbox">
+            <input type="checkbox" id="zoom-automatico" [(ngModel)]="configuracionExportacion.zoomAutomatico">
+            <label for="zoom-automatico">
+              <i class="fas fa-search-plus"></i> Zoom cinemático en fotos (efecto dinámico Ken Burns)
+            </label>
+          </div>
+
+          <div class="config-item-select">
+            <label for="tipo-mapa-export">Estilo de mapas estáticos / resumen:</label>
+            <select id="tipo-mapa-export" [(ngModel)]="configuracionExportacion.tipoMapa">
+              <option value="satelite">Satélite (vista aérea satelital)</option>
+              <option value="calles">Callejero / Carreteras (OpenStreetMap)</option>
+            </select>
+          </div>
+
           <div class="config-item-select">
             <label for="calidad-export">Perfil de exportación:</label>
             <select id="calidad-export" [(ngModel)]="configuracionExportacion.calidad">

@@ -31,6 +31,7 @@ export interface RouteVideoOptions {
   fecha?: string;
   horaSalida?: string;
   horaLlegada?: string;
+  tipoMapa?: 'satelite' | 'calles';
 }
 
 export interface ProgresoRenderizadoRuta {
@@ -347,8 +348,8 @@ export class RouteVideoGeneratorService {
       distAcum: p.distAcum
     }));
 
-    // 2. Pre-cargar tiles cartográficos OpenStreetMap nativos centrados en la ruta
-    await this.cargarTilesFondo(ctx, centerWorld, bestZoom, width, height);
+    // 2. Pre-cargar tiles cartográficos (Satélite o Callejero según configuración) centrados en la ruta
+    await this.cargarTilesFondo(ctx, centerWorld, bestZoom, width, height, options.tipoMapa || 'satelite');
 
     // Guardar imagen de fondo estática para redibujado instantáneo de cada frame
     const fondoCanvas = document.createElement('canvas');
@@ -1123,7 +1124,8 @@ export class RouteVideoGeneratorService {
     centerWorld: { x: number; y: number },
     zoom: number,
     width: number,
-    height: number
+    height: number,
+    tipoMapa: 'satelite' | 'calles' = 'satelite'
   ): Promise<void> {
     // Fondo de pergamino de seguridad
     ctx.fillStyle = '#f7efe0';
@@ -1145,9 +1147,16 @@ export class RouteVideoGeneratorService {
           const wrappedX = ((tx % numTiles) + numTiles) % numTiles;
           const sub = subdomains[Math.abs(wrappedX + ty) % subdomains.length];
 
-          // Satélite Esri (CORS abierto, nítido y de alta definición) con fallback a OpenStreetMap
-          const primaryUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ty}/${wrappedX}`;
-          const fallbackUrl = `https://${sub}.tile.openstreetmap.org/${zoom}/${wrappedX}/${ty}.png`;
+          // Selección dinámica según estilo: Satélite Esri o Callejero OpenStreetMap
+          let primaryUrl: string;
+          let fallbackUrl: string;
+          if (tipoMapa === 'calles') {
+            primaryUrl = `https://${sub}.tile.openstreetmap.org/${zoom}/${wrappedX}/${ty}.png`;
+            fallbackUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ty}/${wrappedX}`;
+          } else {
+            primaryUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ty}/${wrappedX}`;
+            fallbackUrl = `https://${sub}.tile.openstreetmap.org/${zoom}/${wrappedX}/${ty}.png`;
+          }
 
           const tileScreenX = Math.round(width / 2 + (tx * 256 - centerWorld.x));
           const tileScreenY = Math.round(height / 2 + (ty * 256 - centerWorld.y));
@@ -1273,14 +1282,15 @@ export class RouteVideoGeneratorService {
     distanciaKm?: number,
     tipo: 'general' | 'itinerario' = 'general',
     itinerarioId?: number,
-    puntosClave?: PuntoClaveMapa[]
+    puntosClave?: PuntoClaveMapa[],
+    tipoMapa: 'satelite' | 'calles' = 'satelite'
   ): Promise<string> {
     const canvas = document.createElement('canvas');
     canvas.width = 1920;
     canvas.height = 1080;
     const ctx = canvas.getContext('2d')!;
 
-    await this.renderizarSnapshotMapaEnCanvas(canvas, ctx, trackGpx, titulo, subtitulo, distanciaKm, 1920, 1080, puntosClave);
+    await this.renderizarSnapshotMapaEnCanvas(canvas, ctx, trackGpx, titulo, subtitulo, distanciaKm, 1920, 1080, puntosClave, tipoMapa);
 
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((b) => {
@@ -1333,7 +1343,8 @@ export class RouteVideoGeneratorService {
     distanciaKm?: number,
     width: number = 1920,
     height: number = 1080,
-    puntosClave?: PuntoClaveMapa[]
+    puntosClave?: PuntoClaveMapa[],
+    tipoMapa: 'satelite' | 'calles' = 'satelite'
   ): Promise<void> {
     // Fondo pergamino inicial
     ctx.fillStyle = '#0a1128';
@@ -1418,7 +1429,7 @@ export class RouteVideoGeneratorService {
         };
       };
 
-      await this.cargarTilesFondo(ctx, centerWorld, bestZoom, width, height);
+      await this.cargarTilesFondo(ctx, centerWorld, bestZoom, width, height, tipoMapa);
 
       if (rawPoints.length > 1) {
         ctx.save();
