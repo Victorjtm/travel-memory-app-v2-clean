@@ -64,7 +64,8 @@ export interface ProgresoVideo {
     infoViaje: any,
     configuracion: ConfiguracionExportacion,
     audioViaje?: HTMLAudioElement | null,
-    onProgress?: (progreso: ProgresoVideo) => void
+    onProgress?: (progreso: ProgresoVideo) => void,
+    itinerariosAudio?: { [itinerarioId: number]: string }
   ): Promise<Blob> {
     let viajeId = infoViaje?.id || 0;
     if (!viajeId && secuencia && secuencia.length > 0) {
@@ -79,7 +80,13 @@ export interface ProgresoVideo {
     try {
       onProgress?.({ fase: 'cargando', porcentaje: 5, mensaje: 'Conectando con el motor de renderizado FFmpeg...' });
 
-      const audioViajeUrl = (configuracion.incluirAudio && audioViaje && audioViaje.src) ? audioViaje.src : null;
+      const backendUrl = environment.apiUrl || 'http://localhost:3000';
+      let audioViajeUrl = (configuracion.incluirAudio && audioViaje && audioViaje.src) ? audioViaje.src : null;
+      if (!audioViajeUrl && configuracion.incluirAudio && infoViaje?.audio) {
+        audioViajeUrl = infoViaje.audio.startsWith('http')
+          ? infoViaje.audio
+          : `${backendUrl}/uploads/${infoViaje.audio.split(/[\\/]/).pop()}`;
+      }
 
       let pct = 10;
       const progressTimer = setInterval(() => {
@@ -94,7 +101,6 @@ export interface ProgresoVideo {
 
       onProgress?.({ fase: 'generando', porcentaje: 15, mensaje: 'Procesando secuencia de viaje en servidor...' });
 
-      const backendUrl = environment.apiUrl || 'http://localhost:3000';
       const endpoint = `${backendUrl}/api/viajes/${viajeId}/generar-pelicula-servidor`;
 
       console.log('🎬 [VideoGenerator] Enviando solicitud a servidor FFmpeg:', endpoint);
@@ -105,7 +111,8 @@ export interface ProgresoVideo {
           secuencia,
           configuracion,
           infoViaje,
-          audioViajeUrl
+          audioViajeUrl,
+          itinerariosAudio
         })
       });
 
@@ -135,7 +142,7 @@ export interface ProgresoVideo {
 
     } catch (serverError: any) {
       console.warn('⚠️ [VideoGenerator] Falló generación en servidor, ejecutando fallback local:', serverError);
-      return this.generarVideoClienteFallback(secuencia, infoViaje, configuracion, audioViaje, onProgress);
+      return this.generarVideoClienteFallback(secuencia, infoViaje, configuracion, audioViaje, onProgress, itinerariosAudio);
     }
   }
 
@@ -144,7 +151,8 @@ export interface ProgresoVideo {
     infoViaje: any,
     configuracion: ConfiguracionExportacion,
     audioViaje?: HTMLAudioElement | null,
-    onProgress?: (progreso: ProgresoVideo) => void
+    onProgress?: (progreso: ProgresoVideo) => void,
+    itinerariosAudio?: { [itinerarioId: number]: string }
   ): Promise<Blob> {
     try {
       // 1. Configuración inicial
@@ -156,6 +164,7 @@ export interface ProgresoVideo {
       let audioCtx: AudioContext | null = null;
       let masterDest: MediaStreamAudioDestinationNode | null = null;
       let localSilencer: GainNode | null = null;
+      let viajeGain: GainNode | null = null;
       let audioViajeExportacion: HTMLAudioElement | null = null;
 
       try {
@@ -205,7 +214,7 @@ export interface ProgresoVideo {
           source.connect(localSilencer);
 
           // Mixer maestro
-          const viajeGain = audioCtx.createGain();
+          viajeGain = audioCtx.createGain();
           viajeGain.gain.value = 1.0;
           source.connect(viajeGain);
           viajeGain.connect(masterDest);
@@ -294,7 +303,7 @@ export interface ProgresoVideo {
           porcentaje: 40 + (pct * 0.5),
           mensaje: `Generando vídeo... ${Math.round(pct)}%`
         });
-      });
+      }, viajeGain);
 
       this.mediaRecorder.stop();
       if (audioViajeExportacion) {
@@ -488,7 +497,8 @@ export interface ProgresoVideo {
     config: ConfiguracionExportacion,
     audioCtx: AudioContext | null,
     masterDest: MediaStreamAudioDestinationNode | null,
-    onProgress: (pct: number) => void
+    onProgress: (pct: number) => void,
+    viajeGain?: GainNode | null
   ): Promise<void> {
     const startTime = performance.now();
     let ultimoEscenaIndex = -1;
@@ -575,6 +585,21 @@ export interface ProgresoVideo {
             ultimoEscenaIndex = escenaIndex;
 
             const escenaActual = timeline[escenaIndex];
+
+            // 🎚️ DUCKING DINÁMICO: Si la escena actual tiene audio (vídeo de usuario o nota de voz), atenuar música
+            if (viajeGain && audioCtx) {
+              const t = audioCtx.currentTime;
+              const tieneSonidoPropio = (escenaActual?.tipo === 'audio') ||
+                (escenaActual?.tipo === 'video' && !escenaActual.esIntro3D && !escenaActual.esOutro3D && !escenaActual.esMapaAnimado);
+              viajeGain.gain.cancelScheduledValues(t);
+              viajeGain.gain.setValueAtTime(viajeGain.gain.value, t);
+              if (tieneSonidoPropio) {
+                console.log(`🎚️ [Mixer Ducking] Bajando volumen de música para escena con audio: ${escenaActual.id}`);
+                viajeGain.gain.linearRampToValueAtTime(0.05, t + 0.35);
+              } else {
+                viajeGain.gain.linearRampToValueAtTime(1.0, t + 0.6);
+              }
+            }
             if (escenaActual?.tipo === 'video' && escenaActual.data?.video) {
               const video = escenaActual.data.video as HTMLVideoElement;
               if (escenaActual.esIntro3D || escenaActual.esOutro3D || escenaActual.esMapaAnimado) {

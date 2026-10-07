@@ -8026,9 +8026,23 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
 
       console.log('🎬 Secuencia de vídeo construida:', secuencia.length, 'escenas');
 
-      const incluirMusica = !!(this.configuracionExportacion.incluirAudio && this.audioViaje);
-      const audioParaExportacion = incluirMusica ? this.audioViaje! : null;
-      console.log('🎵 Opción de exportación: incluir música =', incluirMusica);
+      const incluirMusica = !!(this.configuracionExportacion.incluirAudio);
+      const audioGeneralUrl = this.getAudioUrlParaItinerario();
+      const audioParaExportacion = incluirMusica ? (this.audioViaje || (audioGeneralUrl ? new Audio(audioGeneralUrl) : null)) : null;
+
+      // Recopilar mapa de música por cada itinerario con fallback a la música general del viaje
+      const itinerariosAudio: { [id: number]: string } = {};
+      if (incluirMusica && this.listaItinerarios && this.listaItinerarios.length > 0) {
+        for (const it of this.listaItinerarios) {
+          if (it.id) {
+            const audioItin = this.getAudioUrlParaItinerario(it.id);
+            if (audioItin) {
+              itinerariosAudio[it.id] = audioItin;
+            }
+          }
+        }
+      }
+      console.log('🎵 Opción de exportación: incluir música =', incluirMusica, 'Itinerarios con audio configurado:', Object.keys(itinerariosAudio).length);
 
       const videoBlob = await this.videoGeneratorService.generarVideoDesdeSecuencia(
         secuencia,
@@ -8038,7 +8052,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         (progreso) => {
           this.progresoVideo = progreso;
           this.cdr.detectChanges();
-        }
+        },
+        itinerariosAudio
       );
 
       this.blobVideoGenerado = videoBlob;
@@ -8137,9 +8152,18 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
     });
 
     // 2. Páginas del álbum en orden
+    let currentItinerarioId: number | undefined = this.contextoViaje?.itinerarioId;
+
     this.paginas
       .filter(p => !p.esIndice)
       .forEach((p, index) => {
+        if (p.itinerarioId) {
+          currentItinerarioId = p.itinerarioId;
+        } else if (p.archivo?.itinerarioId) {
+          currentItinerarioId = p.archivo.itinerarioId;
+        }
+        const itinIdEscena = p.itinerarioId || p.archivo?.itinerarioId || currentItinerarioId;
+
         const fechaHora = this.obtenerFechaHoraSeparadas(p);
         const badge = this.obtenerBadgeOrden(p, index);
         const marco = this.obtenerClaseMarco(p, index);
@@ -8158,7 +8182,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               descripcion: desc,
               fecha: fechaHora.fecha,
               hora: fechaHora.hora,
-              badgeOrden: badge
+              badgeOrden: badge,
+              itinerarioId: itinIdEscena
             });
           }
 
@@ -8190,7 +8215,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               descripcion: p.descripcion || '',
               trackGpx: p.trackGpx,
               distanciaKm: p.distanciaTramoKm,
-              badgeOrden: 'Mapa Itin'
+              badgeOrden: 'Mapa Itin',
+              itinerarioId: itinIdEscena
             });
           }
 
@@ -8206,7 +8232,8 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               fecha: fechaHora.fecha,
               hora: fechaHora.hora,
               esMapaAnimado: true,
-              badgeOrden: 'Ruta'
+              badgeOrden: 'Ruta',
+              itinerarioId: itinIdEscena
             });
           }
 
@@ -8226,7 +8253,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               fecha: fechaHora.fecha,
               hora: fechaHora.hora,
               badgeOrden: badge,
-              itinerarioId: p.archivo?.itinerarioId
+              itinerarioId: itinIdEscena
             });
           } else if (esAudio) {
             secuencia.push({
@@ -8240,7 +8267,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               fecha: fechaHora.fecha,
               hora: fechaHora.hora,
               badgeOrden: badge,
-              itinerarioId: p.archivo?.itinerarioId
+              itinerarioId: itinIdEscena
             });
           } else {
             secuencia.push({
@@ -8255,7 +8282,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
               hora: fechaHora.hora,
               badgeOrden: badge,
               claseMarco: marco,
-              itinerarioId: p.archivo?.itinerarioId
+              itinerarioId: itinIdEscena
             });
           }
         }

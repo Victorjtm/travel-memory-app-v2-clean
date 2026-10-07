@@ -84,9 +84,49 @@ function obtenerDuracionAudio(filePath) {
 }
 
 /**
+ * Genera la curva de volumen dinámica (ducking) en FFmpeg
+ * Reduce el volumen de la música de fondo durante los vídeos con audio y notas de voz,
+ * con rampas de transición suaves de entrada y salida.
+ */
+function construirExpresionVolumenDucking(intervalos, vNormal = 0.22, vDucked = 0.04, rampDown = 0.5, rampUp = 0.8) {
+  if (!intervalos || intervalos.length === 0) return '' + vNormal;
+  const ordenados = [...intervalos].sort((a, b) => a.start - b.start);
+  const fusionados = [];
+  let actual = { ...ordenados[0] };
+  for (let i = 1; i < ordenados.length; i++) {
+    const sig = ordenados[i];
+    if (sig.start <= actual.end + 1.2) {
+      actual.end = Math.max(actual.end, sig.end);
+    } else {
+      fusionados.push(actual);
+      actual = { ...sig };
+    }
+  }
+  fusionados.push(actual);
+
+  let expr = '' + vNormal;
+  for (let i = fusionados.length - 1; i >= 0; i--) {
+    const { start: s, end: e } = fusionados[i];
+    const s0 = Math.max(0, s - rampDown).toFixed(2);
+    const s1 = s.toFixed(2);
+    const e1 = e.toFixed(2);
+    const e2 = (e + rampUp).toFixed(2);
+    const deltaV = (vNormal - vDucked).toFixed(3);
+    const rDown = (rampDown).toFixed(2);
+    const rUp = (rampUp).toFixed(2);
+
+    const rampDownExpr = `${vNormal}-${deltaV}*(t-${s0})/${rDown}`;
+    const rampUpExpr = `${vDucked}+${deltaV}*(t-${e1})/${rUp}`;
+
+    expr = `if(between(t,${s0},${s1}),${rampDownExpr},if(between(t,${s1},${e1}),${vDucked},if(between(t,${e1},${e2}),${rampUpExpr},${expr})))`;
+  }
+  return expr;
+}
+
+/**
  * Genera la película completa del viaje usando FFmpeg en servidor
  */
-async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, infoViaje = {}, audioViajeUrl = null) {
+async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, infoViaje = {}, audioViajeUrl = null, itinerariosAudio = {}) {
   console.log(`🎬 [PeliculaServer] Iniciando generación para Viaje ID: ${viajeId}. Total escenas recibidas: ${secuencia?.length || 0}`);
   const t0 = Date.now();
 
@@ -180,7 +220,12 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
           }
 
           await runFFmpeg(args);
-          segmentosGenerados.push({ index: globalIdx, path: segPath });
+          segmentosGenerados.push({
+            index: globalIdx,
+            path: segPath,
+            esc,
+            tieneAudioPropio: (tieneAudio && !esc.esIntro3D && !esc.esOutro3D && !esc.esMapaAnimado)
+          });
           return;
         }
 
@@ -212,7 +257,12 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
             segPath
           ]);
 
-          segmentosGenerados.push({ index: globalIdx, path: segPath });
+          segmentosGenerados.push({
+            index: globalIdx,
+            path: segPath,
+            esc,
+            tieneAudioPropio: true
+          });
           return;
         }
 
@@ -235,7 +285,12 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
             segPath
           ]);
 
-          segmentosGenerados.push({ index: globalIdx, path: segPath });
+          segmentosGenerados.push({
+            index: globalIdx,
+            path: segPath,
+            esc,
+            tieneAudioPropio: false
+          });
           return;
         }
 
@@ -297,7 +352,12 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
           segPath
         ]);
 
-        segmentosGenerados.push({ index: globalIdx, path: segPath });
+        segmentosGenerados.push({
+          index: globalIdx,
+          path: segPath,
+          esc,
+          tieneAudioPropio: false
+        });
       }));
     }
 
@@ -335,28 +395,168 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
     const nombreFinal = `pelicula_viaje_${viajeId}_${Date.now()}.mp4`;
     const rutaPeliculaFinal = path.join(carpetaViaje, nombreFinal);
 
-    // 6. Mezclar música de fondo si se solicitó y existe
-    const localAudioViaje = resolverRutaLocal(audioViajeUrl);
-    if (configuracion.incluirAudio !== false && localAudioViaje && fs.existsSync(localAudioViaje)) {
-      console.log(`🎵 [PeliculaServer] Mezclando música de fondo del viaje...`);
+    // 6. Mezclar música de fondo con soporte multi-itinerario, transiciones suavizadas y ducking
+    if (configuracion.incluirAudio !== false) {
+      console.log(`🎵 [PeliculaServer] Analizando pistas de música por itinerario y ducking dinámico...`);
       try {
-        await runFFmpeg([
-          '-y',
-          '-i', peliculaConcatenada,
-          '-stream_loop', '-1', '-i', localAudioViaje,
-          '-filter_complex', '[0:a]volume=1.0[a0];[1:a]volume=0.22[a1];[a0][a1]amix=inputs=2:duration=first[aout]',
-          '-map', '0:v',
-          '-map', '[aout]',
-          '-c:v', 'copy',
-          '-c:a', 'aac', '-ar', '44100', '-ac', '2',
-          '-movflags', '+faststart',
-          rutaPeliculaFinal
-        ]);
+        // 6.a Calcular tiempos exactos de la línea temporal
+        let tActual = 0;
+        const duckIntervals = [];
+
+        for (const seg of segmentosGenerados) {
+          seg.startTime = tActual;
+          const dur = await obtenerDuracionAudio(seg.path);
+          seg.duration = dur > 0 ? dur : 3.5;
+          seg.endTime = seg.startTime + seg.duration;
+          tActual = seg.endTime;
+
+          if (seg.tieneAudioPropio) {
+            duckIntervals.push({ start: seg.startTime, end: seg.endTime });
+          }
+        }
+
+        const duracionTotalPelicula = tActual;
+        console.log(`⏱️ [PeliculaServer] Duración total: ${duracionTotalPelicula.toFixed(2)}s. Clips con audio para ducking: ${duckIntervals.length}`);
+
+        // 6.b Asignar ruta de audio a cada segmento según su itinerario o viaje general
+        const localAudioViajeGeneral = resolverRutaLocal(audioViajeUrl);
+
+        for (const seg of segmentosGenerados) {
+          let rutaAudioSeg = null;
+          const itinId = seg.esc?.itinerarioId;
+          if (itinId && itinerariosAudio && itinerariosAudio[itinId]) {
+            const resItin = resolverRutaLocal(itinerariosAudio[itinId]);
+            if (resItin && fs.existsSync(resItin)) {
+              rutaAudioSeg = resItin;
+            }
+          }
+          // Si el itinerario no tiene música propia, suena la música del viaje
+          if (!rutaAudioSeg && localAudioViajeGeneral && fs.existsSync(localAudioViajeGeneral)) {
+            rutaAudioSeg = localAudioViajeGeneral;
+          }
+
+          seg.audioPath = rutaAudioSeg;
+        }
+
+        const hayMusica = segmentosGenerados.some(s => !!s.audioPath);
+
+        if (hayMusica) {
+          // 6.c Agrupar segmentos consecutivos en bloques de itinerario
+          const bloquesMusica = [];
+          let bloqueActual = null;
+
+          for (const seg of segmentosGenerados) {
+            const itinId = seg.esc?.itinerarioId;
+            const claveItin = itinId ? `itin_${itinId}` : (seg.esc?.esIntro3D ? 'intro' : (seg.esc?.esOutro3D ? 'outro' : 'general'));
+
+            if (!bloqueActual) {
+              bloqueActual = {
+                clave: claveItin,
+                itinerarioId: itinId,
+                audioPath: seg.audioPath,
+                startTime: seg.startTime,
+                endTime: seg.endTime
+              };
+            } else {
+              // Unificar si es el mismo itinerario y mismo audio
+              if (bloqueActual.clave === claveItin && bloqueActual.audioPath === seg.audioPath) {
+                bloqueActual.endTime = seg.endTime;
+              } else {
+                bloquesMusica.push(bloqueActual);
+                bloqueActual = {
+                  clave: claveItin,
+                  itinerarioId: itinId,
+                  audioPath: seg.audioPath,
+                  startTime: seg.startTime,
+                  endTime: seg.endTime
+                };
+              }
+            }
+          }
+          if (bloqueActual) {
+            bloquesMusica.push(bloqueActual);
+          }
+
+          console.log(`🎶 [PeliculaServer] ${bloquesMusica.length} bloques de música creados:`);
+          bloquesMusica.forEach((b, idx) => {
+            console.log(`   [Bloque #${idx}] ${b.clave} | ${b.startTime.toFixed(1)}s -> ${b.endTime.toFixed(1)}s (${(b.endTime - b.startTime).toFixed(1)}s) | ${b.audioPath ? path.basename(b.audioPath) : 'Silencio'}`);
+          });
+
+          // 6.d Generar archivos de audio para cada bloque con fade-in y fade-out suavizados
+          const listaArchivosBloques = [];
+          for (let bIdx = 0; bIdx < bloquesMusica.length; bIdx++) {
+            const b = bloquesMusica[bIdx];
+            const durBloque = Math.max(0.1, b.endTime - b.startTime);
+            const outWav = path.join(tmpDir, `bloque_audio_${String(bIdx).padStart(3, '0')}.wav`);
+
+            if (!b.audioPath || !fs.existsSync(b.audioPath)) {
+              await runFFmpeg([
+                '-y',
+                '-f', 'lavfi', '-t', String(durBloque), '-i', 'anullsrc=r=44100:cl=stereo',
+                '-c:a', 'pcm_s16le',
+                outWav
+              ]);
+            } else {
+              // Transición suavizada: fade-in y fade-out de 2.5s (o 1/3 si el bloque es corto)
+              const fadeDur = Math.min(2.5, Math.max(0.4, durBloque / 3));
+              const fadeFilters = [
+                `afade=t=in:st=0:d=${fadeDur.toFixed(2)}`,
+                `afade=t=out:st=${Math.max(0, durBloque - fadeDur).toFixed(2)}:d=${fadeDur.toFixed(2)}`
+              ].join(',');
+
+              await runFFmpeg([
+                '-y',
+                '-stream_loop', '-1', '-i', b.audioPath,
+                '-t', String(durBloque),
+                '-af', fadeFilters,
+                '-c:a', 'pcm_s16le', '-ar', '44100', '-ac', '2',
+                outWav
+              ]);
+            }
+            listaArchivosBloques.push(outWav);
+          }
+
+          // 6.e Concatenar todos los bloques de música
+          const concatAudioList = path.join(tmpDir, 'concat_audio_list.txt');
+          fs.writeFileSync(concatAudioList, listaArchivosBloques.map(p => `file '${p.replace(/\\/g, '/')}'`).join('\n'));
+
+          const musicaCompletaWav = path.join(tmpDir, 'musica_timeline_completa.wav');
+          await runFFmpeg([
+            '-y',
+            '-f', 'concat', '-safe', '0', '-i', concatAudioList,
+            '-c:a', 'pcm_s16le',
+            musicaCompletaWav
+          ]);
+
+          // 6.f Mezclar con ducking dinámico para vídeos y notas de voz
+          console.log(`🎚️ [PeliculaServer] Mezclando audio con ducking dinámico para vídeos...`);
+          const exprVolumen = construirExpresionVolumenDucking(duckIntervals, 0.22, 0.04, 0.5, 0.8);
+          const filterComplex = `[0:a]volume=1.0[speech];[1:a]volume='${exprVolumen}':eval=frame[music_ducked];[speech][music_ducked]amix=inputs=2:duration=first:dropout_transition=2[aout]`;
+
+          await runFFmpeg([
+            '-y',
+            '-i', peliculaConcatenada,
+            '-i', musicaCompletaWav,
+            '-filter_complex', filterComplex,
+            '-map', '0:v',
+            '-map', '[aout]',
+            '-c:v', 'copy',
+            '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-b:a', '192k',
+            '-movflags', '+faststart',
+            rutaPeliculaFinal
+          ]);
+          console.log(`✅ [PeliculaServer] Mezcla de audio y ducking completada con éxito.`);
+
+        } else {
+          console.log('ℹ️ [PeliculaServer] No hay pistas de música válidas, conservando audio original de escenas.');
+          fs.copyFileSync(peliculaConcatenada, rutaPeliculaFinal);
+        }
       } catch (errMusic) {
-        console.warn('⚠️ [PeliculaServer] Error mezclando música, usando película sin música:', errMusic.message);
+        console.warn('⚠️ [PeliculaServer] Error en mezcla avanzada de música, usando película sin banda sonora:', errMusic.message);
         fs.copyFileSync(peliculaConcatenada, rutaPeliculaFinal);
       }
     } else {
+      console.log('ℹ️ [PeliculaServer] Música desactivada en configuración.');
       fs.copyFileSync(peliculaConcatenada, rutaPeliculaFinal);
     }
 

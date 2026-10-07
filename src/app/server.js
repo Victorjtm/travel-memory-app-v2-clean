@@ -6101,7 +6101,7 @@ try {
 
 app.post(['/viajes/:id/generar-pelicula-servidor', '/api/viajes/:id/generar-pelicula-servidor'], express.json({ limit: '50mb' }), async (req, res) => {
   const viajeId = req.params.id;
-  const { secuencia, configuracion, infoViaje, audioViajeUrl } = req.body;
+  const { secuencia, configuracion, infoViaje, audioViajeUrl, itinerariosAudio } = req.body;
 
   try {
     try {
@@ -6113,7 +6113,8 @@ app.post(['/viajes/:id/generar-pelicula-servidor', '/api/viajes/:id/generar-peli
       secuencia,
       configuracion,
       infoViaje,
-      audioViajeUrl
+      audioViajeUrl,
+      itinerariosAudio
     );
     res.json(resultado);
   } catch (error) {
