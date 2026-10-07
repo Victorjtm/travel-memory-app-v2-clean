@@ -42,6 +42,9 @@ router.get('/activities/:id', HealthController.getActivityDetails);
 router.get('/by-activity/:activityId', HealthController.getActivityByActivityId);
 router.get('/body-metrics', HealthController.getBodyMetrics);
 
+// 🔄 Sincronización de métricas del reloj con la actividad y el viaje
+router.post('/sync-activity/:activityId', HealthController.syncActivityWithHealth);
+
 // 🗑️ Eliminaciones
 router.delete('/activities/:id', HealthController.deleteActivity);
 router.delete('/body-metrics/:id', HealthController.deleteBodyMetric);
