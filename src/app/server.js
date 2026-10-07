@@ -9608,16 +9608,17 @@ app.post('/import-tracking', (req, res, next) => {
 
     // Extraer datos con prioridades y alias
     const rawDistKm = parseNum(getDeepStat(['km', 'distancia_km', 'distanciaKm', 'distancia_recorrida']));
-    const distKm = (metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0) ? metricasGpxCanonico.distanciaKm : rawDistKm;
+    // Dar prioridad a la distancia filtrada del móvil sobre la suma bruta del GPX (evita inflar kilometraje por deriva GPS en pausas)
+    const distKm = (rawDistKm && rawDistKm > 0) ? rawDistKm : ((metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0) ? metricasGpxCanonico.distanciaKm : 0);
     const duracionFmt = getDeepStat(['tiempoEmpleado', 'duracion_formateada', 'duracionFormateada', 'duracion_total', 'tiempo_total']) || '00:00:00';
     const rawVelMedia = parseNum(getDeepStat(['velocidadMedia', 'velocidad_media_kmh', 'velocidadMediaKmh', 'velocidad_media', 'v_media']));
     const velMax = parseNum(getDeepStat(['velocidadMaxima', 'velocidad_maxima_kmh', 'velocidadMaximaKmh', 'velocidad_maxima', 'v_maxima']));
     const velMin = parseNum(getDeepStat(['velocidadMinima', 'velocidad_minima_kmh', 'velocidadMinimaKmh', 'velocidad_minima', 'v_minima']));
     const cals = parseInt(parseNum(getDeepStat(['calorias', 'calories', 'cals']))) || 0;
     const pasos = parseInt(getDeepStat(['pasos', 'pasos_estimados', 'pasosEstimados', 'num_pasos'])) || 0;
-    const distMetros = (metricasGpxCanonico && metricasGpxCanonico.distanciaMetros > 0) ? metricasGpxCanonico.distanciaMetros : (parseInt(getDeepStat(['distanciaMetros', 'distancia_metros'])) || Math.round(distKm * 1000));
+    const distMetros = (rawDistKm && rawDistKm > 0) ? (parseInt(getDeepStat(['distanciaMetros', 'distancia_metros'])) || Math.round(distKm * 1000)) : ((metricasGpxCanonico && metricasGpxCanonico.distanciaMetros > 0) ? metricasGpxCanonico.distanciaMetros : Math.round(distKm * 1000));
     const duracionSegs = (metricasGpxCanonico && metricasGpxCanonico.duracionSegundos > 0) ? metricasGpxCanonico.duracionSegundos : (parseInt(getDeepStat(['duracionSegundos', 'duracion_segundos', 'duracionEfectivaSegundos', 'segundos_totales'])) || 0);
-    const velMedia = (metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0 && duracionSegs > 0)
+    const velMedia = (distKm > 0 && duracionSegs > 0)
       ? parseFloat((distKm / (duracionSegs / 3600)).toFixed(2))
       : rawVelMedia;
     const ptsGPS = (metricasGpxCanonico && metricasGpxCanonico.puntos > 0) ? metricasGpxCanonico.puntos : (parseInt(getDeepStat(['numeroPuntos', 'puntosGPS', 'puntos_gps', 'numero_puntos', 'num_puntos'])) || 0);
