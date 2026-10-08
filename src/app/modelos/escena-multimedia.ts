@@ -29,6 +29,8 @@ export interface EscenaMultimedia {
   fechaFin?: string;
   totalRecuerdos?: number | string;
   totalItinerarios?: number | string;
+  distanciaTotalKm?: number;
+  totalPaginas?: number;
   paginaIzquierda?: any;
   paginaDerecha?: any;
 }

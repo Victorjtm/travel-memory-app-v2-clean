@@ -8233,18 +8233,20 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
         tipo: 'spread_intro',
         url: '',
         duracion: 4.5,
-        titulo: this.infoViaje?.nombre || this.getTituloContextual() || 'Mi Viaje',
+        titulo: this.obtenerTituloIntroLimpio ? this.obtenerTituloIntroLimpio() : (this.infoViaje?.nombre || this.getTituloContextual() || 'Mi Viaje'),
         descripcion: this.getDescripcionContextual() || 'Diario de viaje y memorias',
         fechaInicio: this.infoViaje?.fechaInicio,
         fechaFin: this.infoViaje?.fechaFin,
         totalRecuerdos: this.totalRecuerdosDisplay,
         totalItinerarios: this.listaItinerarios.length || 1,
-        paginaDerecha: paginasFiltradas[0] ? this.serializarPaginaParaSpread(paginasFiltradas[0], 1) : null
+        distanciaTotalKm: this.distanciaTotalKm,
+        totalPaginas: this.paginas?.length ? Math.max(1, this.paginas.length - 1) : 15,
+        paginaDerecha: null
       });
 
       // Procesar resto de páginas emparejadas en pliegos de dos páginas
-      let i = paginasFiltradas[0] ? 1 : 0;
-      let numeroPagina = 2;
+      let i = 0;
+      let numeroPagina = 1;
 
       while (i < paginasFiltradas.length) {
         const p = paginasFiltradas[i];
@@ -8348,6 +8350,22 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
       // ==========================================
       // CONSTRUCCIÓN EN MODO VÍDEO (PANTALLA COMPLETA 16:9)
       // ==========================================
+      secuencia.push({
+        id: 'modern-intro-0',
+        tipo: 'spread_intro',
+        url: '',
+        duracion: 4.0,
+        titulo: this.obtenerTituloIntroLimpio ? this.obtenerTituloIntroLimpio() : (this.infoViaje?.nombre || this.getTituloContextual() || 'Mi Viaje'),
+        descripcion: this.getDescripcionContextual() || 'Diario de viaje y memorias',
+        fechaInicio: this.infoViaje?.fechaInicio,
+        fechaFin: this.infoViaje?.fechaFin,
+        totalRecuerdos: this.totalRecuerdosDisplay,
+        totalItinerarios: this.listaItinerarios.length || 1,
+        distanciaTotalKm: this.distanciaTotalKm,
+        totalPaginas: this.paginas?.length ? Math.max(1, this.paginas.length - 1) : 15,
+        paginaDerecha: null
+      });
+
       paginasFiltradas.forEach((p, index) => {
         if (p.itinerarioId) currentItinerarioId = p.itinerarioId;
         else if (p.archivo?.itinerarioId) currentItinerarioId = p.archivo.itinerarioId;

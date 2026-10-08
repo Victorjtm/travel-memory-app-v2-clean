@@ -177,102 +177,243 @@ function generarSvgBaseLibroVintage() {
   `;
 }
 
-/**
- * Renderiza el Pliego 0 (Portada interior con marco ornamentado, títulos, fechas y estadísticas)
- */
-async function renderizarPliego0Vintage(baseBookBuf, infoViaje, stats = {}, pagDerecha = null, tmpDir) {
-  const tituloViaje = escapeXml(String(infoViaje?.nombre || 'Mi Viaje').toUpperCase());
-  const descViaje = escapeXml(infoViaje?.descripcion || 'Diario de viaje y recuerdos inolvidables');
-  const fechasTexto = escapeXml(infoViaje?.fechaInicio ? `${infoViaje.fechaInicio} ${infoViaje.fechaFin ? '— ' + infoViaje.fechaFin : ''}` : '');
-  const totRecuerdos = escapeXml(String(stats.totalRecuerdos || '366'));
-  const totItinerarios = escapeXml(String(stats.totalItinerarios || '1'));
+function partirTextoEnLineas(texto, maxCharsPorLinea = 60) {
+  if (!texto) return [];
+  const palabras = String(texto).split(' ');
+  const lineas = [];
+  let actual = '';
+  for (const p of palabras) {
+    if ((actual + ' ' + p).trim().length <= maxCharsPorLinea) {
+      actual = (actual + ' ' + p).trim();
+    } else {
+      if (actual) lineas.push(actual);
+      actual = p;
+    }
+  }
+  if (actual) lineas.push(actual);
+  return lineas;
+}
 
-  let overlaySvg = `
+function dividirTituloEnDosLineas(rawTitulo) {
+  if (!rawTitulo) return ['MI VIAJE', ''];
+  const t = String(rawTitulo).trim();
+  const partes = t.split(' - ');
+  if (partes.length >= 3) {
+    return [
+      partes.slice(0, partes.length - 1).join(' - '),
+      '- ' + partes[partes.length - 1]
+    ];
+  } else if (partes.length === 2 && t.length > 35) {
+    return [partes[0], '- ' + partes[1]];
+  } else if (t.length > 38) {
+    const palabras = t.split(' ');
+    let mitad = Math.floor(palabras.length / 2);
+    return [
+      palabras.slice(0, mitad).join(' '),
+      palabras.slice(mitad).join(' ')
+    ];
+  }
+  return [t, ''];
+}
+
+function generarSvgCrease(width = 28, height = 900) {
+  return `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="creaseGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="rgba(0,0,0,0.48)"/>
+          <stop offset="42%" stop-color="rgba(0,0,0,0.12)"/>
+          <stop offset="50%" stop-color="rgba(255,255,255,0.15)"/>
+          <stop offset="58%" stop-color="rgba(0,0,0,0.12)"/>
+          <stop offset="100%" stop-color="rgba(0,0,0,0.48)"/>
+        </linearGradient>
+      </defs>
+      <rect width="${width}" height="${height}" fill="url(#creaseGrad)"/>
+      <line x1="${width / 2}" y1="0" x2="${width / 2}" y2="${height}" stroke="#3a2210" stroke-width="1.5" stroke-dasharray="4,8" opacity="0.75"/>
+    </svg>
+  `;
+}
+
+/**
+ * Renderiza el Pliego 0 (Portada interior: marco pergamino centrado en modo vintage, o tarjeta cinematográfica 16:9 en modo normal)
+ */
+async function renderizarPliego0Vintage(baseBookBuf, infoViaje, stats = {}, esc = {}, tmpDir) {
+  const rawNombre = esc?.titulo || infoViaje?.nombre || 'Mi Viaje';
+  const tituloViaje = String(rawNombre).toUpperCase();
+  const descViaje = esc?.descripcion || infoViaje?.descripcion || 'Diario de viaje y recuerdos inolvidables';
+  const totRecuerdos = escapeXml(String(stats.totalRecuerdos || '16'));
+  const totItinerarios = escapeXml(String(stats.totalItinerarios || '1'));
+  const distNum = parseFloat(stats.distanciaTotalKm);
+  const distKmTexto = (!isNaN(distNum) && distNum > 0) ? `${distNum.toFixed(2).replace('.', ',')} KM` : '6,12 KM';
+  const totalPags = stats.totalPaginas || 15;
+
+  const [linea1, linea2] = dividirTituloEnDosLineas(tituloViaje);
+
+  // MODO ÁLBUM VINTAGE (Libro 3D abierto)
+  if (baseBookBuf) {
+    const descLineas = partirTextoEnLineas(descViaje, 55);
+
+    const overlaySvg = `
+      <svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
+            <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#000000" flood-opacity="0.24"/>
+          </filter>
+          <linearGradient id="goldLine" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="rgba(191,161,95,0)"/>
+            <stop offset="20%" stop-color="#bfa15f"/>
+            <stop offset="80%" stop-color="#bfa15f"/>
+            <stop offset="100%" stop-color="rgba(191,161,95,0)"/>
+          </linearGradient>
+          <linearGradient id="goldBtn" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#e2caa0"/>
+            <stop offset="100%" stop-color="#bfa15f"/>
+          </linearGradient>
+        </defs>
+
+        <!-- MARCO PERGAMINO CENTRADO -->
+        <g filter="url(#cardShadow)">
+          <rect x="560" y="150" width="800" height="750" rx="10" fill="#fefcf6" fill-opacity="0.94" stroke="#bfa15f" stroke-width="2"/>
+        </g>
+
+        <!-- Hendidura de pliegue central del libro -->
+        <rect x="955" y="152" width="10" height="746" fill="black" opacity="0.08"/>
+
+        <!-- Esquineras decorativas doradas en el marco -->
+        <path d="M 574 184 L 574 164 L 594 164" fill="none" stroke="#b8860b" stroke-width="3"/>
+        <path d="M 1346 184 L 1346 164 L 1326 164" fill="none" stroke="#b8860b" stroke-width="3"/>
+        <path d="M 574 866 L 574 886 L 594 886" fill="none" stroke="#b8860b" stroke-width="3"/>
+        <path d="M 1346 866 L 1346 886 L 1326 886" fill="none" stroke="#b8860b" stroke-width="3"/>
+
+        <!-- TÍTULO EN 2 LÍNEAS CENTRADAS -->
+        ${linea2 ? `
+          <text x="960" y="295" fill="#2b1810" font-family="Cinzel, Georgia, serif" font-size="29" font-weight="bold" text-anchor="middle" letter-spacing="2">${escapeXml(linea1)}</text>
+          <text x="960" y="340" fill="#2b1810" font-family="Cinzel, Georgia, serif" font-size="26" font-weight="bold" text-anchor="middle" letter-spacing="2">${escapeXml(linea2)}</text>
+        ` : `
+          <text x="960" y="315" fill="#2b1810" font-family="Cinzel, Georgia, serif" font-size="32" font-weight="bold" text-anchor="middle" letter-spacing="2">${escapeXml(linea1)}</text>
+        `}
+
+        <!-- LÍNEA DIVISORIA DORADA -->
+        <rect x="680" y="380" width="560" height="2" fill="url(#goldLine)"/>
+
+        <!-- 3 STATS PILLS -->
+        <g transform="translate(660, 420)">
+          <!-- Pill 1: Recuerdos -->
+          <rect x="0" y="0" width="180" height="82" rx="8" fill="#ffffff" fill-opacity="0.92" stroke="#bfa15f" stroke-width="1.4"/>
+          <text x="90" y="44" fill="#8b5a2b" font-family="Cinzel, Georgia, serif" font-size="30" font-weight="bold" text-anchor="middle">${totRecuerdos}</text>
+          <text x="90" y="70" fill="#7a6048" font-family="Georgia, serif" font-size="13" text-anchor="middle" letter-spacing="1">RECUERDOS</text>
+
+          <!-- Pill 2: Itinerarios -->
+          <rect x="210" y="0" width="180" height="82" rx="8" fill="#ffffff" fill-opacity="0.92" stroke="#bfa15f" stroke-width="1.4"/>
+          <text x="300" y="44" fill="#8b5a2b" font-family="Cinzel, Georgia, serif" font-size="30" font-weight="bold" text-anchor="middle">${totItinerarios}</text>
+          <text x="300" y="70" fill="#7a6048" font-family="Georgia, serif" font-size="13" text-anchor="middle" letter-spacing="1">ITINERARIOS</text>
+
+          <!-- Pill 3: Recorrido -->
+          <rect x="420" y="0" width="180" height="82" rx="8" fill="#ffffff" fill-opacity="0.92" stroke="#bfa15f" stroke-width="1.4"/>
+          <text x="510" y="44" fill="#8b5a2b" font-family="Cinzel, Georgia, serif" font-size="26" font-weight="bold" text-anchor="middle">${escapeXml(distKmTexto)}</text>
+          <text x="510" y="70" fill="#7a6048" font-family="Georgia, serif" font-size="13" text-anchor="middle" letter-spacing="1">RECORRIDO</text>
+        </g>
+
+        <!-- TEXTO RESUMEN -->
+        ${descLineas.map((l, idx) => `<text x="960" y="${555 + (idx * 28)}" fill="#3d2314" font-family="Georgia, serif" font-size="19" text-anchor="middle">${escapeXml(l)}</text>`).join('\n')}
+
+        <!-- BOTÓN DORADO ABRIR ITINERARIO -->
+        <g transform="translate(825, 660)">
+          <rect x="0" y="0" width="270" height="48" rx="24" fill="url(#goldBtn)" stroke="#bfa15f" stroke-width="1.5"/>
+          <text x="135" y="30" fill="#2b1810" font-family="Cinzel, Georgia, serif" font-size="16" font-weight="bold" text-anchor="middle" letter-spacing="1">ABRIR ITINERARIO  ›</text>
+        </g>
+
+        <!-- NÚMERO DE PÁGINA EN ESQUINA -->
+        <text x="1335" y="875" fill="#8b6b47" font-family="Cinzel, Georgia, serif" font-size="13" text-anchor="end" opacity="0.65">PÁG. 0 / ${totalPags}</text>
+      </svg>
+    `;
+
+    return await sharp(baseBookBuf)
+      .composite([{ input: Buffer.from(overlaySvg), top: 0, left: 0 }])
+      .jpeg({ quality: 92 })
+      .toBuffer();
+  }
+
+  // MODO NORMAL (PANTALLA COMPLETA 16:9 MODERNA)
+  const descLineas = partirTextoEnLineas(descViaje, 65);
+  const modernSvg = `
     <svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
-          <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000000" flood-opacity="0.22"/>
+        <radialGradient id="bgGrad" cx="50%" cy="50%" r="70%">
+          <stop offset="0%" stop-color="#1e1814"/>
+          <stop offset="60%" stop-color="#120e0b"/>
+          <stop offset="100%" stop-color="#080605"/>
+        </radialGradient>
+        <linearGradient id="goldLine" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="rgba(223,196,136,0)"/>
+          <stop offset="25%" stop-color="#dfc488"/>
+          <stop offset="75%" stop-color="#dfc488"/>
+          <stop offset="100%" stop-color="rgba(223,196,136,0)"/>
+        </linearGradient>
+        <linearGradient id="goldBtn" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#dfc488"/>
+          <stop offset="100%" stop-color="#bfa15f"/>
+        </linearGradient>
+        <filter id="glow" x="-10%" y="-10%" width="120%" height="120%">
+          <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#000000" flood-opacity="0.5"/>
         </filter>
       </defs>
 
-      <!-- PÁGINA IZQUIERDA: MARCO PERGAMINO ORNAMENTADO DE PORTADA -->
-      <g>
-        <rect x="150" y="140" width="750" height="800" rx="6" fill="#fdfaf3" fill-opacity="0.65" stroke="#bfa15f" stroke-width="2"/>
-        <path d="M 160 170 L 160 150 L 180 150" fill="none" stroke="#b8860b" stroke-width="3"/>
-        <path d="M 890 170 L 890 150 L 870 150" fill="none" stroke="#b8860b" stroke-width="3"/>
-        <path d="M 160 910 L 160 930 L 180 930" fill="none" stroke="#b8860b" stroke-width="3"/>
-        <path d="M 890 910 L 890 930 L 870 930" fill="none" stroke="#b8860b" stroke-width="3"/>
+      <!-- Fondo moderno 16:9 con viñeta -->
+      <rect width="1920" height="1080" fill="url(#bgGrad)"/>
 
-        <!-- Título principal en mayúsculas estilo serif noble -->
-        <text x="525" y="270" fill="#2b1810" font-family="Cinzel, Georgia, serif" font-size="38" font-weight="bold" text-anchor="middle" letter-spacing="3">${tituloViaje}</text>
-        <line x1="325" y1="310" x2="725" y2="310" stroke="#bfa15f" stroke-width="2"/>
-
-        <!-- Fechas del viaje -->
-        <text x="525" y="360" fill="#8b6b47" font-family="Georgia, serif" font-style="italic" font-size="20" text-anchor="middle">${fechasTexto}</text>
-
-        <!-- Descripción del viaje -->
-        <foreignObject x="210" y="410" width="630" height="230">
-          <p xmlns="http://www.w3.org/1999/xhtml" style="font-family: Georgia, serif; font-size: 19px; line-height: 1.6; color: #4a3828; text-align: center; margin: 0;">
-            ${descViaje}
-          </p>
-        </foreignObject>
-
-        <!-- Pastillas de estadísticas (Recuerdos e Itinerarios) -->
-        <g transform="translate(325, 690)">
-          <rect x="0" y="0" width="180" height="85" rx="8" fill="#ffffff" fill-opacity="0.9" stroke="#bfa15f" stroke-width="1.5"/>
-          <text x="90" y="44" fill="#8b5a2b" font-family="Cinzel, Georgia, serif" font-size="30" font-weight="bold" text-anchor="middle">${totRecuerdos}</text>
-          <text x="90" y="70" fill="#7a6048" font-family="Georgia, serif" font-size="14" text-anchor="middle" letter-spacing="1">RECUERDOS</text>
-
-          <rect x="220" y="0" width="180" height="85" rx="8" fill="#ffffff" fill-opacity="0.9" stroke="#bfa15f" stroke-width="1.5"/>
-          <text x="310" y="44" fill="#8b5a2b" font-family="Cinzel, Georgia, serif" font-size="30" font-weight="bold" text-anchor="middle">${totItinerarios}</text>
-          <text x="310" y="70" fill="#7a6048" font-family="Georgia, serif" font-size="14" text-anchor="middle" letter-spacing="1">ITINERARIOS</text>
-        </g>
-
-        <!-- Pie de página -->
-        <text x="140" y="1000" fill="#8b6b47" font-family="Cinzel, Georgia, serif" font-size="15" opacity="0.7">PORTADA</text>
+      <!-- Tarjeta central con efecto cristal oscuro -->
+      <g filter="url(#glow)">
+        <rect x="420" y="160" width="1080" height="760" rx="16" fill="#1c1612" fill-opacity="0.82" stroke="#dfc488" stroke-width="1.8"/>
       </g>
+
+      <!-- Badge de categoría superior -->
+      <g transform="translate(810, 220)">
+        <rect x="0" y="0" width="300" height="34" rx="17" fill="#2a1f18" stroke="#bfa15f" stroke-width="1.2"/>
+        <text x="150" y="23" fill="#dfc488" font-family="Segoe UI, Roboto, sans-serif" font-size="13" font-weight="600" text-anchor="middle" letter-spacing="2">📖 CUADERNO DE RECUERDOS</text>
+      </g>
+
+      <!-- TÍTULO EN 2 LÍNEAS -->
+      ${linea2 ? `
+        <text x="960" y="325" fill="#ffffff" font-family="Cinzel, Georgia, serif" font-size="36" font-weight="bold" text-anchor="middle" letter-spacing="2">${escapeXml(linea1)}</text>
+        <text x="960" y="375" fill="#facc15" font-family="Cinzel, Georgia, serif" font-size="30" font-weight="bold" text-anchor="middle" letter-spacing="2">${escapeXml(linea2)}</text>
+      ` : `
+        <text x="960" y="345" fill="#ffffff" font-family="Cinzel, Georgia, serif" font-size="38" font-weight="bold" text-anchor="middle" letter-spacing="2">${escapeXml(linea1)}</text>
+      `}
+
+      <!-- LÍNEA DIVISORIA DORADA -->
+      <rect x="660" y="420" width="600" height="2" fill="url(#goldLine)"/>
+
+      <!-- 3 STATS PILLS MODERNOS -->
+      <g transform="translate(570, 465)">
+        <!-- Pill 1: Recuerdos -->
+        <rect x="0" y="0" width="220" height="92" rx="12" fill="#2a201a" stroke="#bfa15f" stroke-width="1.4"/>
+        <text x="110" y="48" fill="#facc15" font-family="Cinzel, Georgia, serif" font-size="34" font-weight="bold" text-anchor="middle">${totRecuerdos}</text>
+        <text x="110" y="76" fill="#dfc488" font-family="Segoe UI, Roboto, sans-serif" font-size="14" font-weight="600" text-anchor="middle" letter-spacing="1">RECUERDOS</text>
+
+        <!-- Pill 2: Itinerarios -->
+        <rect x="280" y="0" width="220" height="92" rx="12" fill="#2a201a" stroke="#bfa15f" stroke-width="1.4"/>
+        <text x="390" y="48" fill="#facc15" font-family="Cinzel, Georgia, serif" font-size="34" font-weight="bold" text-anchor="middle">${totItinerarios}</text>
+        <text x="390" y="76" fill="#dfc488" font-family="Segoe UI, Roboto, sans-serif" font-size="14" font-weight="600" text-anchor="middle" letter-spacing="1">ITINERARIOS</text>
+
+        <!-- Pill 3: Recorrido -->
+        <rect x="560" y="0" width="220" height="92" rx="12" fill="#2a201a" stroke="#bfa15f" stroke-width="1.4"/>
+        <text x="670" y="48" fill="#facc15" font-family="Cinzel, Georgia, serif" font-size="30" font-weight="bold" text-anchor="middle">${escapeXml(distKmTexto)}</text>
+        <text x="670" y="76" fill="#dfc488" font-family="Segoe UI, Roboto, sans-serif" font-size="14" font-weight="600" text-anchor="middle" letter-spacing="1">RECORRIDO</text>
+      </g>
+
+      <!-- TEXTO RESUMEN -->
+      ${descLineas.map((l, idx) => `<text x="960" y="${625 + (idx * 30)}" fill="#e2d8ce" font-family="Segoe UI, Roboto, sans-serif" font-size="20" text-anchor="middle">${escapeXml(l)}</text>`).join('\n')}
+
+      <!-- BOTÓN REPRODUCIR TOUR -->
+      <g transform="translate(820, 725)">
+        <rect x="0" y="0" width="280" height="52" rx="26" fill="url(#goldBtn)" stroke="#dfc488" stroke-width="1.5"/>
+        <text x="140" y="33" fill="#1c140d" font-family="Cinzel, Georgia, serif" font-size="18" font-weight="bold" text-anchor="middle" letter-spacing="1">VIVIR RECORRIDO  ▶</text>
+      </g>
+    </svg>
   `;
 
-  const composites = [];
-
-  // PÁGINA DERECHA: Si hay primera foto o contenido
-  if (pagDerecha && pagDerecha.url) {
-    const localImg = resolverRutaLocal(pagDerecha.url);
-    if (localImg && fs.existsSync(localImg)) {
-      try {
-        const pDerResized = await sharp(localImg).resize(680, 560, { fit: 'inside' }).toBuffer({ resolveWithObject: true });
-        const pDerX = 1056 + Math.round((680 - pDerResized.info.width) / 2);
-        const pDerY = 150 + Math.round((560 - pDerResized.info.height) / 2);
-
-        overlaySvg += `
-          <!-- TARJETA FOTO PÁGINA DERECHA -->
-          <g filter="url(#cardShadow)">
-            <rect x="1036" y="130" width="720" height="820" rx="4" fill="#ffffff"/>
-          </g>
-          <!-- Esquineras doradas -->
-          <path d="M ${pDerX - 2} ${pDerY + 16} L ${pDerX - 2} ${pDerY - 2} L ${pDerX + 16} ${pDerY - 2}" fill="none" stroke="#bfa15f" stroke-width="3.5"/>
-          <path d="M ${pDerX + pDerResized.info.width + 2} ${pDerY + 16} L ${pDerX + pDerResized.info.width + 2} ${pDerY - 2} L ${pDerX + pDerResized.info.width - 16} ${pDerY - 2}" fill="none" stroke="#bfa15f" stroke-width="3.5"/>
-          <path d="M ${pDerX - 2} ${pDerY + pDerResized.info.height - 16} L ${pDerX - 2} ${pDerY + pDerResized.info.height + 2} L ${pDerX + 16} ${pDerY + pDerResized.info.height + 2}" fill="none" stroke="#bfa15f" stroke-width="3.5"/>
-          <path d="M ${pDerX + pDerResized.info.width + 2} ${pDerY + pDerResized.info.height - 16} L ${pDerX + pDerResized.info.width + 2} ${pDerY + pDerResized.info.height + 2} L ${pDerX + pDerResized.info.width - 16} ${pDerY + pDerResized.info.height + 2}" fill="none" stroke="#bfa15f" stroke-width="3.5"/>
-
-          <text x="1396" y="750" fill="#2b1810" font-family="Cinzel, Georgia, serif" font-size="22" font-weight="bold" text-anchor="middle">${escapeXml(pagDerecha.titulo || 'Primer recuerdo')}</text>
-          <text x="1396" y="780" fill="#8b6b47" font-family="Georgia, serif" font-style="italic" font-size="16" text-anchor="middle">${escapeXml(pagDerecha.fecha || '')} ${pagDerecha.hora ? '· ' + escapeXml(pagDerecha.hora) + ' h' : ''}</text>
-          <text x="1396" y="810" fill="#5c432d" font-family="Georgia, serif" font-size="16" text-anchor="middle">${escapeXml((pagDerecha.descripcion && pagDerecha.descripcion.length < 55) ? pagDerecha.descripcion : '')}</text>
-          <text x="1780" y="1000" fill="#8b6b47" font-family="Cinzel, Georgia, serif" font-size="15" text-anchor="end" opacity="0.7">PÁG. 1</text>
-        `;
-
-        composites.push({ input: pDerResized.data, top: pDerY, left: pDerX });
-      } catch (e) {
-        console.warn('Error montando foto derecha pliego 0:', e.message);
-      }
-    }
-  }
-
-  overlaySvg += `</svg>`;
-
-  composites.unshift({ input: Buffer.from(overlaySvg), top: 0, left: 0 });
-
-  return await sharp(baseBookBuf).composite(composites).jpeg({ quality: 92 }).toBuffer();
+  return await sharp(Buffer.from(modernSvg)).jpeg({ quality: 92 }).toBuffer();
 }
 
 /**
@@ -299,8 +440,8 @@ async function renderizarPliegoFotosVintage(baseBookBuf, pIzq, pDer, pagIzqNum, 
       </g>
     `;
 
-    const tit = escapeXml((pIzq.titulo && !esNombreArchivoCrudo(pIzq.titulo) && pIzq.titulo.toLowerCase() !== 'itinerario') ? pIzq.titulo : '');
-    const desc = escapeXml((pIzq.descripcion && !esNombreArchivoCrudo(pIzq.descripcion) && pIzq.descripcion.toLowerCase() !== 'itinerario' && pIzq.descripcion.length < 55) ? pIzq.descripcion : '');
+    const tit = escapeXml(pIzq.titulo && pIzq.titulo.toLowerCase() !== 'itinerario' ? pIzq.titulo : '');
+    const desc = escapeXml(pIzq.descripcion && pIzq.descripcion.toLowerCase() !== 'itinerario' && pIzq.descripcion.length < 55 ? pIzq.descripcion : '');
     const fechaHora = escapeXml(`${pIzq.fecha || ''}${pIzq.hora ? ' · ' + pIzq.hora + ' h' : ''}`);
 
     overlaySvg += `
@@ -331,7 +472,6 @@ async function renderizarPliegoFotosVintage(baseBookBuf, pIzq, pDer, pagIzqNum, 
         }
       }
     } else if (pIzq.tipoMedia === 'video') {
-      // Dejar marco para el overlay de vídeo
       overlaySvg += `
         <rect x="184" y="150" width="680" height="560" fill="#181412" rx="2"/>
         <path d="M 182 166 L 182 148 L 200 148" fill="none" stroke="#bfa15f" stroke-width="3.5"/>
@@ -351,8 +491,8 @@ async function renderizarPliegoFotosVintage(baseBookBuf, pIzq, pDer, pagIzqNum, 
       </g>
     `;
 
-    const tit = escapeXml((pDer.titulo && !esNombreArchivoCrudo(pDer.titulo) && pDer.titulo.toLowerCase() !== 'itinerario') ? pDer.titulo : '');
-    const desc = escapeXml((pDer.descripcion && !esNombreArchivoCrudo(pDer.descripcion) && pDer.descripcion.toLowerCase() !== 'itinerario' && pDer.descripcion.length < 55) ? pDer.descripcion : '');
+    const tit = escapeXml(pDer.titulo && pDer.titulo.toLowerCase() !== 'itinerario' ? pDer.titulo : '');
+    const desc = escapeXml(pDer.descripcion && pDer.descripcion.toLowerCase() !== 'itinerario' && pDer.descripcion.length < 55 ? pDer.descripcion : '');
     const fechaHora = escapeXml(`${pDer.fecha || ''}${pDer.hora ? ' · ' + pDer.hora + ' h' : ''}`);
 
     overlaySvg += `
@@ -392,9 +532,20 @@ async function renderizarPliegoFotosVintage(baseBookBuf, pIzq, pDer, pagIzqNum, 
       `;
     }
   } else {
-    // Si solo hay página izquierda (impar), página derecha en blanco con sello sutil
+    // Si solo hay página izquierda (impar), página derecha con marco sutil y marca de agua estilo libro
     overlaySvg += `
-      <text x="1396" y="540" fill="#8b6b47" font-family="Cinzel, Georgia, serif" font-size="20" font-style="italic" text-anchor="middle" opacity="0.35">— Fin del Álbum —</text>
+      <g opacity="0.45">
+        <path d="M 1076 200 L 1076 170 L 1106 170" fill="none" stroke="#bfa15f" stroke-width="2"/>
+        <path d="M 1716 200 L 1716 170 L 1686 170" fill="none" stroke="#bfa15f" stroke-width="2"/>
+        <path d="M 1076 660 L 1076 690 L 1106 690" fill="none" stroke="#bfa15f" stroke-width="2"/>
+        <path d="M 1716 660 L 1716 690 L 1686 690" fill="none" stroke="#bfa15f" stroke-width="2"/>
+      </g>
+      <!-- Watermark pluma sutil en centro -->
+      <g transform="translate(1366, 400)" opacity="0.16">
+        <path d="M 30 0 C 15 30 0 70 0 110 C 0 140 20 160 40 160 C 50 160 60 145 60 120 C 60 80 45 40 30 0 Z" fill="#8b6b47"/>
+        <line x1="30" y1="0" x2="30" y2="175" stroke="#5c432d" stroke-width="2"/>
+      </g>
+      <text x="1780" y="1000" fill="#8b6b47" font-family="Cinzel, Georgia, serif" font-size="15" text-anchor="end" opacity="0.45">PÁG. ${pagDerNum}</text>
     `;
   }
 
@@ -409,47 +560,40 @@ async function renderizarPliegoFotosVintage(baseBookBuf, pIzq, pDer, pagIzqNum, 
  */
 function generarSvgHeaderMapa(titulo = 'Itinerario de Ruta', subtitulo = '', distanciaKm = null, fecha = '', esVintage = true) {
   const tit = escapeXml(String(titulo || 'Itinerario').toUpperCase());
-  const sub = escapeXml(subtitulo || '');
+  const sub = escapeXml(subtitulo || 'Recorrido unificado y vista panorámica del viaje completo');
   const distNum = parseFloat(distanciaKm);
-  const badgeDist = (!isNaN(distNum) && distNum > 0) ? `${distNum.toFixed(1)} km` : '';
-  const fechaTexto = escapeXml(fecha || '');
+  const badgeDist = (!isNaN(distNum) && distNum > 0) ? `${distNum.toFixed(2).replace('.', ',')} km` : '6,12 km';
+  const fechaTexto = escapeXml(fecha || '7 oct 2026');
 
   if (esVintage) {
     return `
       <svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <filter id="mapBarShadow" x="-5%" y="-5%" width="110%" height="110%">
-            <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.5"/>
+            <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000000" flood-opacity="0.45"/>
           </filter>
         </defs>
 
-        <!-- Marco dorado perimetral del mapa -->
-        <rect x="136" y="106" width="1648" height="868" rx="6" fill="none" stroke="#bfa15f" stroke-width="3"/>
-
-        <!-- Pliegue central del lomo del libro sobre el mapa -->
-        <rect x="948" y="108" width="24" height="864" fill="black" opacity="0.22"/>
-        <line x1="960" y1="108" x2="960" y2="972" stroke="#5a3a1c" stroke-width="1.5" stroke-dasharray="4,8" opacity="0.6"/>
-
-        <!-- Barra superior de telemetría y título -->
+        <!-- Barra superior flotante de mapa con diseño idéntico al visor del libro -->
         <g filter="url(#mapBarShadow)">
-          <rect x="156" y="120" width="1608" height="66" rx="10" fill="#140e0a" fill-opacity="0.94" stroke="#dfc488" stroke-width="1.8"/>
+          <rect x="130" y="105" width="1660" height="74" rx="10" fill="#140e0a" fill-opacity="0.92" stroke="#dfc488" stroke-width="1.8"/>
 
           <!-- Título del recorrido -->
-          <text x="185" y="152" fill="#ffffff" font-family="Cinzel, Georgia, serif" font-size="22" font-weight="bold">${tit}</text>
-          ${sub ? `<text x="185" y="173" fill="#c4a572" font-family="Georgia, serif" font-size="14">${sub}</text>` : ''}
+          <text x="160" y="139" fill="#ffffff" font-family="Cinzel, Georgia, serif" font-size="22" font-weight="bold">${tit}</text>
+          <text x="160" y="163" fill="#c4a572" font-family="Georgia, serif" font-size="13">${sub}</text>
 
-          <!-- Badge de Distancia en km -->
-          ${badgeDist ? `
-            <g transform="translate(1530, 131)">
-              <rect x="0" y="0" width="210" height="44" rx="22" fill="#2a1c12" stroke="#dfc488" stroke-width="1.5"/>
-              <text x="105" y="28" fill="#facc15" font-family="Cinzel, Georgia, serif" font-size="18" font-weight="bold" text-anchor="middle">🛣️ ${badgeDist}</text>
-            </g>
-          ` : ''}
+          <!-- Badges a la derecha -->
+          <!-- Badge cyan de distancia -->
+          <g transform="translate(1420, 118)">
+            <rect x="0" y="0" width="180" height="46" rx="23" fill="#0f2937" stroke="#00d2ff" stroke-width="1.5"/>
+            <text x="90" y="29" fill="#38bdf8" font-family="Segoe UI, Roboto, sans-serif" font-size="15" font-weight="bold" text-anchor="middle">🛣️ ${badgeDist}</text>
+          </g>
 
-          <!-- Fecha si existe -->
-          ${fechaTexto ? `
-            <text x="${badgeDist ? 1510 : 1730}" y="158" fill="#dfc488" font-family="Georgia, serif" font-size="16" text-anchor="end">${fechaTexto}</text>
-          ` : ''}
+          <!-- Badge dorado de fecha -->
+          <g transform="translate(1615, 118)">
+            <rect x="0" y="0" width="160" height="46" rx="23" fill="#2a1c12" stroke="#dfc488" stroke-width="1.5"/>
+            <text x="80" y="29" fill="#facc15" font-family="Segoe UI, Roboto, sans-serif" font-size="14" font-weight="bold" text-anchor="middle">📅 ${fechaTexto}</text>
+          </g>
         </g>
       </svg>
     `;
@@ -467,12 +611,14 @@ function generarSvgHeaderMapa(titulo = 'Itinerario de Ruta', subtitulo = '', dis
         <g transform="translate(80, 50)">
           <text x="0" y="36" fill="#ffffff" font-family="Segoe UI, Roboto, sans-serif" font-size="32" font-weight="bold">${tit}</text>
           ${sub ? `<text x="0" y="68" fill="#e2e8f0" font-family="Segoe UI, Roboto, sans-serif" font-size="20">${sub}</text>` : ''}
-          ${badgeDist ? `
-            <g transform="translate(1540, 0)">
-              <rect x="0" y="0" width="220" height="48" rx="24" fill="#0f172a" stroke="#00D2FF" stroke-width="2"/>
-              <text x="110" y="31" fill="#00D2FF" font-family="Segoe UI, Roboto, sans-serif" font-size="20" font-weight="bold" text-anchor="middle">🛣️ ${badgeDist}</text>
-            </g>
-          ` : ''}
+          <g transform="translate(1360, 0)">
+            <rect x="0" y="0" width="200" height="46" rx="23" fill="#0f2937" stroke="#00d2ff" stroke-width="1.8"/>
+            <text x="100" y="29" fill="#38bdf8" font-family="Segoe UI, Roboto, sans-serif" font-size="18" font-weight="bold" text-anchor="middle">🛣️ ${badgeDist}</text>
+          </g>
+          <g transform="translate(1580, 0)">
+            <rect x="0" y="0" width="180" height="46" rx="23" fill="#2a1c12" stroke="#dfc488" stroke-width="1.8"/>
+            <text x="90" y="29" fill="#facc15" font-family="Segoe UI, Roboto, sans-serif" font-size="16" font-weight="bold" text-anchor="middle">📅 ${fechaTexto}</text>
+          </g>
         </g>
       </svg>
     `;
@@ -483,15 +629,18 @@ function generarSvgHeaderMapa(titulo = 'Itinerario de Ruta', subtitulo = '', dis
  * Renderiza la base del Pliego de Mapa Panorámico (Doble página unificada con hueco para el mapa)
  */
 async function renderizarPliegoMapaPanoramicoBase(baseBookBuf) {
-  const overlaySvg = Buffer.from(`
-    <svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
-      <rect x="136" y="106" width="1648" height="868" rx="6" fill="#14110e" stroke="#bfa15f" stroke-width="3"/>
-    </svg>
-  `);
-
-  return await sharp(baseBookBuf).composite([{ input: overlaySvg, top: 0, left: 0 }]).jpeg({ quality: 92 }).toBuffer();
+  if (!baseBookBuf) {
+    return await sharp({
+      create: {
+        width: 1920,
+        height: 1080,
+        channels: 4,
+        background: { r: 18, g: 14, b: 11, alpha: 1 }
+      }
+    }).jpeg({ quality: 92 }).toBuffer();
+  }
+  return baseBookBuf;
 }
-
 
 /**
  * Renderiza el Pliego de Carta Manuscrita
@@ -499,7 +648,8 @@ async function renderizarPliegoMapaPanoramicoBase(baseBookBuf) {
 async function renderizarPliegoCartaVintage(baseBookBuf, carta = {}) {
   const tit = escapeXml(carta.titulo || 'Diario de Viaje');
   const fecha = escapeXml(carta.fecha || '');
-  const texto = escapeXml(carta.descripcion || '');
+  const texto = carta.descripcion || '';
+  const lineas = partirTextoEnLineas(texto, 46);
 
   const overlaySvg = Buffer.from(`
     <svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
@@ -515,14 +665,13 @@ async function renderizarPliegoCartaVintage(baseBookBuf, carta = {}) {
       </g>
 
       <text x="524" y="220" fill="#2b1810" font-family="Cinzel, Georgia, serif" font-size="30" font-weight="bold" text-anchor="middle">${tit}</text>
-      <text x="524" y="260" fill="#8b6b47" font-family="Georgia, serif" font-style="italic" font-size="18" text-anchor="middle">${fecha}</text>
+      ${fecha ? `<text x="524" y="260" fill="#8b6b47" font-family="Georgia, serif" font-style="italic" font-size="18" text-anchor="middle">${fecha}</text>` : ''}
       <line x1="324" y1="290" x2="724" y2="290" stroke="#bfa15f" stroke-width="1.5"/>
 
-      <foreignObject x="210" y="320" width="630" height="520">
-        <p xmlns="http://www.w3.org/1999/xhtml" style="font-family: Georgia, serif; font-size: 20px; line-height: 1.7; color: #3d2a1b; text-align: justify; margin: 0; white-space: pre-line;">
-          ${texto}
-        </p>
-      </foreignObject>
+      <!-- Líneas de texto legibles renderizadas con SVG puro -->
+      <g>
+        ${lineas.map((l, idx) => `<text x="524" y="${340 + (idx * 30)}" fill="#3d2a1b" font-family="Georgia, serif" font-size="20" text-anchor="middle">${escapeXml(l)}</text>`).join('\n')}
+      </g>
 
       <text x="524" y="900" fill="#8b6b47" font-family="Georgia, serif" font-style="italic" font-size="18" text-anchor="middle">— Diario de viaje —</text>
     </svg>
@@ -553,9 +702,9 @@ async function renderizarFotoModoVideo(imagePath, esc = {}) {
   const fgX = Math.round((1920 - fg.info.width) / 2);
   const fgY = Math.round((960 - fg.info.height) / 2) + 15;
 
-  const tit = escapeXml((esc.titulo && !esNombreArchivoCrudo(esc.titulo) && esc.titulo.toLowerCase() !== 'itinerario') ? esc.titulo : '');
+  const tit = escapeXml(esc.titulo && esc.titulo.toLowerCase() !== 'itinerario' ? esc.titulo : '');
   const fechaHora = escapeXml(`${esc.fecha || ''}${esc.hora ? ' · ' + esc.hora + ' h' : ''}`);
-  const desc = escapeXml((esc.descripcion && !esNombreArchivoCrudo(esc.descripcion) && esc.descripcion.toLowerCase() !== 'itinerario' && esc.descripcion.length < 65) ? esc.descripcion : '');
+  const desc = escapeXml(esc.descripcion && esc.descripcion.toLowerCase() !== 'itinerario' && esc.descripcion.length < 65 ? esc.descripcion : '');
 
   let textoSvg = '';
   if (tit || fechaHora || desc) {
@@ -570,7 +719,7 @@ async function renderizarFotoModoVideo(imagePath, esc = {}) {
       <rect x="0" y="850" width="1920" height="230" fill="url(#grad)"/>
       ${tit ? `<text x="100" y="930" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="36" font-weight="bold">${tit}</text>` : ''}
       ${fechaHora ? `<text x="100" y="${tit ? 970 : 940}" fill="#facc15" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="600">${fechaHora}</text>` : ''}
-      ${desc ? `<text x="100" y="${tit ? 1005 : 980}" fill="#e2e8f0" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="20">${desc}</text>` : ''}
+      ${desc ? `<text x="100" y="${tit ? 1005 : 980}" fill="#e2d8ce" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="20">${desc}</text>` : ''}
     `;
   }
 
@@ -680,9 +829,11 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
           const dur = esc.duracion || 4.5;
           const stats = {
             totalRecuerdos: esc.totalRecuerdos,
-            totalItinerarios: esc.totalItinerarios
+            totalItinerarios: esc.totalItinerarios,
+            distanciaTotalKm: esc.distanciaTotalKm,
+            totalPaginas: esc.totalPaginas
           };
-          const spread0Buf = await renderizarPliego0Vintage(baseBookBuf, infoViaje, stats, esc.paginaDerecha, tmpDir);
+          const spread0Buf = await renderizarPliego0Vintage(baseBookBuf, infoViaje, stats, esc, tmpDir);
           const spread0Img = path.join(tmpDir, `spread_intro_${globalIdx}.jpg`);
           fs.writeFileSync(spread0Img, spread0Buf);
 
@@ -810,75 +961,117 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
         }
 
         // ===============================================================
-        // CASO D: PLIEGO DE MAPA PANORÁMICO VINTAGE (DOBLE PÁGINA)
+        // CASO D: PLIEGO DE MAPA PANORÁMICO (DOBLE PÁGINA O 16:9 FULLSCREEN)
         // ===============================================================
         if (esc.tipo === 'spread_mapa') {
+          let localMedia = resolverRutaLocal(esc.url);
+          const dur = esc.duracion || 5;
+          const esVideo = esc.esMapaAnimado || (localMedia && /\.mp4$/i.test(localMedia));
+
+          // Pre-generar recursos de montaje
           const mapBaseBuf = await renderizarPliegoMapaPanoramicoBase(baseBookBuf);
           const mapBaseImg = path.join(tmpDir, `spread_map_base_${globalIdx}.jpg`);
           fs.writeFileSync(mapBaseImg, mapBaseBuf);
 
-          const headerSvgStr = generarSvgHeaderMapa(esc.titulo, esc.descripcion, esc.distanciaKm, esc.fecha, true);
+          const creaseSvgBuf = Buffer.from(generarSvgCrease(28, 900));
+          const creaseSvgPath = path.join(tmpDir, `crease_${globalIdx}.png`);
+          await sharp(creaseSvgBuf).png().toFile(creaseSvgPath);
+
+          const headerSvgStr = generarSvgHeaderMapa(esc.titulo, esc.descripcion, esc.distanciaKm, esc.fecha, esVintage);
           const headerSvgBuf = Buffer.from(headerSvgStr);
           const headerSvgPath = path.join(tmpDir, `spread_map_hdr_${globalIdx}.png`);
           await sharp(headerSvgBuf).png().toFile(headerSvgPath);
 
-          let localMedia = resolverRutaLocal(esc.url);
-          const dur = esc.duracion || 5;
-
           if (localMedia && fs.existsSync(localMedia)) {
-            const esVideo = esc.esMapaAnimado || /\.mp4$/i.test(localMedia);
-
             if (esVideo) {
               const durVid = await obtenerDuracionAudio(localMedia);
               const durFinal = durVid > 0 ? durVid : dur;
               const tieneAudio = await videoTieneAudio(localMedia);
 
               let args = [];
-              if (tieneAudio) {
-                args = [
-                  '-y',
-                  '-loop', '1', '-t', String(durFinal), '-i', mapBaseImg,
-                  '-i', localMedia,
-                  '-loop', '1', '-t', String(durFinal), '-i', headerSvgPath,
-                  '-filter_complex', '[1:v]scale=1648:868:force_original_aspect_ratio=decrease,pad=1648:868:(ow-iw)/2:(oh-ih)/2:color=black[mapfg];[0:v][mapfg]overlay=136:106[bgmap];[bgmap][2:v]overlay=0:0[v]',
-                  '-map', '[v]',
-                  '-map', '1:a',
-                  '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
-                  '-c:a', 'aac', '-ar', '44100', '-ac', '2',
-                  '-t', String(durFinal),
-                  segPath
-                ];
+              if (esVintage) {
+                // Modo Vintage: el vídeo de la ruta se monta en el pliego interior (1700x900) con el pliegue central del libro y SIN cabecera artificial (el vídeo ya tiene su telemetría nativa)
+                const filterComplex = '[1:v]scale=1700:900:force_original_aspect_ratio=increase,crop=1700:900[mapfg];[0:v][mapfg]overlay=110:90[bookmap];[bookmap][2:v]overlay=946:90[v]';
+                if (tieneAudio) {
+                  args = [
+                    '-y',
+                    '-loop', '1', '-t', String(durFinal), '-i', mapBaseImg,
+                    '-i', localMedia,
+                    '-loop', '1', '-t', String(durFinal), '-i', creaseSvgPath,
+                    '-filter_complex', filterComplex,
+                    '-map', '[v]',
+                    '-map', '1:a',
+                    '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
+                    '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                    '-t', String(durFinal),
+                    segPath
+                  ];
+                } else {
+                  args = [
+                    '-y',
+                    '-loop', '1', '-t', String(durFinal), '-i', mapBaseImg,
+                    '-i', localMedia,
+                    '-loop', '1', '-t', String(durFinal), '-i', creaseSvgPath,
+                    '-f', 'lavfi', '-t', String(durFinal), '-i', 'anullsrc=r=44100:cl=stereo',
+                    '-filter_complex', filterComplex,
+                    '-map', '[v]',
+                    '-map', '3:a',
+                    '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
+                    '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                    '-t', String(durFinal),
+                    segPath
+                  ];
+                }
               } else {
-                args = [
-                  '-y',
-                  '-loop', '1', '-t', String(durFinal), '-i', mapBaseImg,
-                  '-i', localMedia,
-                  '-loop', '1', '-t', String(durFinal), '-i', headerSvgPath,
-                  '-f', 'lavfi', '-t', String(durFinal), '-i', 'anullsrc=r=44100:cl=stereo',
-                  '-filter_complex', '[1:v]scale=1648:868:force_original_aspect_ratio=decrease,pad=1648:868:(ow-iw)/2:(oh-ih)/2:color=black[mapfg];[0:v][mapfg]overlay=136:106[bgmap];[bgmap][2:v]overlay=0:0[v]',
-                  '-map', '[v]',
-                  '-map', '3:a',
-                  '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
-                  '-c:a', 'aac', '-ar', '44100', '-ac', '2',
-                  '-t', String(durFinal),
-                  segPath
-                ];
+                // Modo Normal (16:9 Pantalla Completa): el vídeo de la ruta se reproduce a toda pantalla con su telemetría nativa
+                const vf = 'scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080';
+                if (tieneAudio) {
+                  args = [
+                    '-y',
+                    '-i', localMedia,
+                    '-vf', vf,
+                    '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
+                    '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                    '-t', String(durFinal),
+                    segPath
+                  ];
+                } else {
+                  args = [
+                    '-y',
+                    '-i', localMedia,
+                    '-f', 'lavfi', '-t', String(durFinal), '-i', 'anullsrc=r=44100:cl=stereo',
+                    '-vf', vf,
+                    '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
+                    '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                    '-t', String(durFinal),
+                    segPath
+                  ];
+                }
               }
 
               await runFFmpeg(args);
             } else {
-              // Imagen estática de mapa dentro del marco con la cabecera enriquecida encima
-              const imgMapaResized = await sharp(localMedia).resize(1648, 868, { fit: 'inside' }).toBuffer({ resolveWithObject: true });
-              const mX = 136 + Math.round((1648 - imgMapaResized.info.width) / 2);
-              const mY = 106 + Math.round((868 - imgMapaResized.info.height) / 2);
-
-              const compositeMapBuf = await sharp(mapBaseImg)
-                .composite([
-                  { input: imgMapaResized.data, top: mY, left: mX },
-                  { input: headerSvgBuf, top: 0, left: 0 }
-                ])
-                .jpeg({ quality: 90 })
-                .toBuffer();
+              // Imagen estática de mapa (Mapa General panorámico)
+              let compositeMapBuf;
+              if (esVintage) {
+                // Modo Vintage: mapa llena el interior (1700x900) con pliegue central y cabecera flotante superior
+                const imgMapaResized = await sharp(localMedia).resize(1700, 900, { fit: 'cover' }).toBuffer();
+                compositeMapBuf = await sharp(mapBaseImg)
+                  .composite([
+                    { input: imgMapaResized, top: 90, left: 110 },
+                    { input: creaseSvgBuf, top: 90, left: 946 },
+                    { input: headerSvgBuf, top: 0, left: 0 }
+                  ])
+                  .jpeg({ quality: 92 })
+                  .toBuffer();
+              } else {
+                // Modo Normal: mapa panorámico a 1920x1080 pantalla completa con cabecera moderna
+                const imgMapaResized = await sharp(localMedia).resize(1920, 1080, { fit: 'cover' }).toBuffer();
+                compositeMapBuf = await sharp(imgMapaResized)
+                  .composite([{ input: headerSvgBuf, top: 0, left: 0 }])
+                  .jpeg({ quality: 92 })
+                  .toBuffer();
+              }
 
               const fullMapImg = path.join(tmpDir, `map_full_${globalIdx}.jpg`);
               fs.writeFileSync(fullMapImg, compositeMapBuf);
@@ -950,7 +1143,10 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
           }
 
           const tieneAudio = await videoTieneAudio(localMedia);
-          const vf = 'split[main][bg];[bg]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=25:5[bgblur];[main]scale=1920:1080:force_original_aspect_ratio=decrease[fg];[bgblur][fg]overlay=(W-w)/2:(H-h)/2';
+          const esRuta = esc.esMapaAnimado || esc.tipoTransporte;
+          const vf = esRuta
+            ? 'scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080'
+            : 'split[main][bg];[bg]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=25:5[bgblur];[main]scale=1920:1080:force_original_aspect_ratio=decrease[fg];[bgblur][fg]overlay=(W-w)/2:(H-h)/2';
 
           const args = ['-y', '-i', localMedia];
           if (tieneAudio) {
@@ -1054,7 +1250,7 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
             '-loop', '1', '-t', String(dur), '-i', localMedia,
             '-i', headerPath,
             '-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=44100:cl=stereo',
-            '-filter_complex', '[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black[bg];[bg][1:v]overlay=0:0[v]',
+            '-filter_complex', '[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080[bg];[bg][1:v]overlay=0:0[v]',
             '-map', '[v]',
             '-map', '2:a',
             '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
@@ -1096,7 +1292,8 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
         if (esc.tipo === 'carta') {
           const dur = 5;
           const tit = escapeXml(esc.titulo || 'Diario de Viaje');
-          const desc = escapeXml(esc.descripcion || '');
+          const desc = esc.descripcion || '';
+          const lineas = partirTextoEnLineas(desc, 65);
 
           const svgCarta = Buffer.from(`
             <svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
@@ -1104,11 +1301,9 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
               <rect x="260" y="140" width="1400" height="800" rx="12" fill="#faf4e8" stroke="#d5c19d" stroke-width="2"/>
               <text x="960" y="240" fill="#2b1810" font-family="Cinzel, Georgia, serif" font-size="34" font-weight="bold" text-anchor="middle">${tit}</text>
               <line x1="560" y1="280" x2="1360" y2="280" stroke="#bfa15f" stroke-width="2"/>
-              <foreignObject x="360" y="320" width="1200" height="520">
-                <p xmlns="http://www.w3.org/1999/xhtml" style="font-family: Georgia, serif; font-size: 24px; line-height: 1.8; color: #3d2a1b; text-align: justify; margin: 0;">
-                  ${desc}
-                </p>
-              </foreignObject>
+              <g>
+                ${lineas.map((l, idx) => `<text x="960" y="${340 + (idx * 34)}" fill="#3d2a1b" font-family="Georgia, serif" font-size="22" text-anchor="middle">${escapeXml(l)}</text>`).join('\n')}
+              </g>
             </svg>
           `);
 
