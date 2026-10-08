@@ -1997,7 +1997,7 @@ export class AlbumLibroComponent implements OnInit, OnDestroy {
   // MÉTODOS PARA GESTIÓN DEL AUDIO DEL VIAJE
   // ==========================================
 
-  private getAudioUrlParaItinerario(itinerarioId?: number): string | null {
+  getAudioUrlParaItinerario(itinerarioId?: number): string | null {
     if (itinerarioId && this.listaItinerarios && this.listaItinerarios.length > 0) {
       const itin = this.listaItinerarios.find(it => it.id === itinerarioId);
       if (itin?.audio) {

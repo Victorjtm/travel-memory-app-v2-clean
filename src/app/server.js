@@ -9191,6 +9191,34 @@ app.post('/import-tracking', (req, res, next) => {
       }
     }
 
+    // ✨ Fusión profunda y selectores inteligentes para estadísticas
+    // Buscamos en: 1. estadisticas.json (si existe), 2. manifest.estadisticas, 3. manifest (raíz)
+    const getDeepStat = (keys) => {
+      const sources = [
+        extraStatsData,
+        manifestData.estadisticas || {},
+        manifestData
+      ];
+      for (const source of sources) {
+        for (const key of keys) {
+          if (source && source[key] !== undefined && source[key] !== null && source[key] !== '') {
+            return source[key];
+          }
+        }
+      }
+      return null;
+    };
+
+    // Limpiador numérico (quita " km/h", " kcal", etc.)
+    const parseNum = (val) => {
+      if (val === undefined || val === null) return 0;
+      if (typeof val === 'string') {
+        const cleaned = val.replace(/[^\d.]/g, '');
+        return parseFloat(cleaned) || 0;
+      }
+      return parseFloat(val) || 0;
+    };
+
     // ========================================================================
     // 3. CALCULAR FECHA REAL DEL RECORRIDO Y EXTRAER UBICACIÓN DESDE GPS
     // ========================================================================
@@ -9439,11 +9467,11 @@ app.post('/import-tracking', (req, res, next) => {
 
     const [año, mes, dia] = (fechaRecorridoReal || new Date().toISOString().split('T')[0]).split('-');
     const fechaFormateada = `${dia}/${mes}/${año}`;
-    const rawMobileKm = parseNum((manifestData.estadisticas && manifestData.estadisticas.distancia_km !== undefined) ? manifestData.estadisticas.distancia_km : (extraStatsData.km || extraStatsData.distanciaKm || extraStatsData.distancia_km || 0));
+    const rawMobileKm = parseNum(getDeepStat(['km', 'distancia_km', 'distanciaKm', 'distancia_recorrida']));
     const distKmViaje = (rawMobileKm > 0)
       ? rawMobileKm
       : ((metricasGpxCanonico && metricasGpxCanonico.distanciaKm > 0) ? metricasGpxCanonico.distanciaKm : 0);
-    const duracionViaje = (manifestData.estadisticas && manifestData.estadisticas.duracion_formateada) ? manifestData.estadisticas.duracion_formateada : (extraStatsData.tiempoEmpleado || '00:00:00');
+    const duracionViaje = getDeepStat(['tiempoEmpleado', 'duracion_formateada', 'duracionFormateada', 'duracion_total', 'tiempo_total']) || '00:00:00';
     const nombreViaje = `${destinoCompleto} - ${fechaFormateada} - ${distKmViaje} km`;
 
 
@@ -9577,34 +9605,6 @@ app.post('/import-tracking', (req, res, next) => {
     // 6. CREAR ACTIVIDAD
     // ========================================================================
     console.log('\n🏃 Creando actividad...');
-
-    // ✨ MEJORADO: Fusión profunda y selectores inteligentes para estadísticas
-    // Buscamos en: 1. estadisticas.json (si existe), 2. manifest.estadisticas, 3. manifest (raíz)
-    const getDeepStat = (keys) => {
-      const sources = [
-        extraStatsData,
-        manifestData.estadisticas || {},
-        manifestData
-      ];
-      for (const source of sources) {
-        for (const key of keys) {
-          if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
-            return source[key];
-          }
-        }
-      }
-      return null;
-    };
-
-    // Limpiador numérico (quita " km/h", " kcal", etc.)
-    const parseNum = (val) => {
-      if (val === undefined || val === null) return 0;
-      if (typeof val === 'string') {
-        const cleaned = val.replace(/[^\d.]/g, '');
-        return parseFloat(cleaned) || 0;
-      }
-      return parseFloat(val) || 0;
-    };
 
     // Extraer datos con prioridades y alias
     const rawDistKm = parseNum(getDeepStat(['km', 'distancia_km', 'distanciaKm', 'distancia_recorrida']));

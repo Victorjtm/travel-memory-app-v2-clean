@@ -91,7 +91,8 @@ function escapeXml(unsafe) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+    .replace(/'/g, '&apos;')
+    .replace(/&(amp|lt|gt|quot|apos);/gi, (m) => m.toLowerCase());
 }
 
 function esNombreArchivoCrudo(t) {
@@ -180,7 +181,7 @@ function generarSvgBaseLibroVintage() {
  * Renderiza el Pliego 0 (Portada interior con marco ornamentado, títulos, fechas y estadísticas)
  */
 async function renderizarPliego0Vintage(baseBookBuf, infoViaje, stats = {}, pagDerecha = null, tmpDir) {
-  const tituloViaje = escapeXml(infoViaje?.nombre || 'Mi Viaje').toUpperCase();
+  const tituloViaje = escapeXml(String(infoViaje?.nombre || 'Mi Viaje').toUpperCase());
   const descViaje = escapeXml(infoViaje?.descripcion || 'Diario de viaje y recuerdos inolvidables');
   const fechasTexto = escapeXml(infoViaje?.fechaInicio ? `${infoViaje.fechaInicio} ${infoViaje.fechaFin ? '— ' + infoViaje.fechaFin : ''}` : '');
   const totRecuerdos = escapeXml(String(stats.totalRecuerdos || '366'));
@@ -407,7 +408,7 @@ async function renderizarPliegoFotosVintage(baseBookBuf, pIzq, pDer, pagIzqNum, 
  * Genera el SVG del marco de mapa con su cabecera completa (Título, Subtítulo, Distancia km y fecha)
  */
 function generarSvgHeaderMapa(titulo = 'Itinerario de Ruta', subtitulo = '', distanciaKm = null, fecha = '', esVintage = true) {
-  const tit = escapeXml(titulo || 'Itinerario').toUpperCase();
+  const tit = escapeXml(String(titulo || 'Itinerario').toUpperCase());
   const sub = escapeXml(subtitulo || '');
   const distNum = parseFloat(distanciaKm);
   const badgeDist = (!isNaN(distNum) && distNum > 0) ? `${distNum.toFixed(1)} km` : '';
@@ -759,19 +760,34 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
 
             const filterComplex = `[1:v]scale=680:560:force_original_aspect_ratio=decrease,pad=680:560:(ow-iw)/2:(oh-ih)/2:color=black[fg];[0:v][fg]overlay=${overlayX}:${overlayY}[v]`;
 
-            const args = [
-              '-y',
-              '-loop', '1', '-t', String(dur), '-i', spreadImg,
-              '-i', localVid,
-              '-filter_complex', filterComplex,
-              '-map', '[v]',
-              '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p'
-            ];
-
+            let args = [];
             if (tieneAudio) {
-              args.push('-map', '1:a', '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-t', String(dur), segPath);
+              args = [
+                '-y',
+                '-loop', '1', '-t', String(dur), '-i', spreadImg,
+                '-i', localVid,
+                '-filter_complex', filterComplex,
+                '-map', '[v]',
+                '-map', '1:a',
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                '-t', String(dur),
+                segPath
+              ];
             } else {
-              args.push('-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=44100:cl=stereo', '-map', '2:a', '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-t', String(dur), segPath);
+              args = [
+                '-y',
+                '-loop', '1', '-t', String(dur), '-i', spreadImg,
+                '-i', localVid,
+                '-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=r=44100:cl=stereo',
+                '-filter_complex', filterComplex,
+                '-map', '[v]',
+                '-map', '2:a',
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                '-t', String(dur),
+                segPath
+              ];
             }
 
             await runFFmpeg(args);
@@ -815,21 +831,41 @@ async function generarPeliculaViaje(viajeId, secuencia, configuracion = {}, info
             if (esVideo) {
               const durVid = await obtenerDuracionAudio(localMedia);
               const durFinal = durVid > 0 ? durVid : dur;
+              const tieneAudio = await videoTieneAudio(localMedia);
 
-              await runFFmpeg([
-                '-y',
-                '-loop', '1', '-t', String(durFinal), '-i', mapBaseImg,
-                '-i', localMedia,
-                '-i', headerSvgPath,
-                '-filter_complex', '[1:v]scale=1648:868:force_original_aspect_ratio=decrease,pad=1648:868:(ow-iw)/2:(oh-ih)/2:color=black[mapfg];[0:v][mapfg]overlay=136:106[bgmap];[bgmap][2:v]overlay=0:0[v]',
-                '-map', '[v]',
-                '-f', 'lavfi', '-t', String(durFinal), '-i', 'anullsrc=r=44100:cl=stereo',
-                '-map', '3:a',
-                '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
-                '-c:a', 'aac', '-ar', '44100', '-ac', '2',
-                '-t', String(durFinal),
-                segPath
-              ]);
+              let args = [];
+              if (tieneAudio) {
+                args = [
+                  '-y',
+                  '-loop', '1', '-t', String(durFinal), '-i', mapBaseImg,
+                  '-i', localMedia,
+                  '-loop', '1', '-t', String(durFinal), '-i', headerSvgPath,
+                  '-filter_complex', '[1:v]scale=1648:868:force_original_aspect_ratio=decrease,pad=1648:868:(ow-iw)/2:(oh-ih)/2:color=black[mapfg];[0:v][mapfg]overlay=136:106[bgmap];[bgmap][2:v]overlay=0:0[v]',
+                  '-map', '[v]',
+                  '-map', '1:a',
+                  '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
+                  '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                  '-t', String(durFinal),
+                  segPath
+                ];
+              } else {
+                args = [
+                  '-y',
+                  '-loop', '1', '-t', String(durFinal), '-i', mapBaseImg,
+                  '-i', localMedia,
+                  '-loop', '1', '-t', String(durFinal), '-i', headerSvgPath,
+                  '-f', 'lavfi', '-t', String(durFinal), '-i', 'anullsrc=r=44100:cl=stereo',
+                  '-filter_complex', '[1:v]scale=1648:868:force_original_aspect_ratio=decrease,pad=1648:868:(ow-iw)/2:(oh-ih)/2:color=black[mapfg];[0:v][mapfg]overlay=136:106[bgmap];[bgmap][2:v]overlay=0:0[v]',
+                  '-map', '[v]',
+                  '-map', '3:a',
+                  '-c:v', 'libx264', '-preset', 'ultrafast', '-r', '30', '-pix_fmt', 'yuv420p',
+                  '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                  '-t', String(durFinal),
+                  segPath
+                ];
+              }
+
+              await runFFmpeg(args);
             } else {
               // Imagen estática de mapa dentro del marco con la cabecera enriquecida encima
               const imgMapaResized = await sharp(localMedia).resize(1648, 868, { fit: 'inside' }).toBuffer({ resolveWithObject: true });

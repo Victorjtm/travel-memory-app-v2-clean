@@ -388,6 +388,41 @@ export interface ProgresoVideo {
             data = { imagen: img, duracion: escena.duracion || 5 };
           } else if (escena.tipo === 'carta') {
             data = { duracion: escena.duracion || 5 };
+          } else if (escena.tipo === 'spread_fotos') {
+            let imgIzq: HTMLImageElement | null = null;
+            let imgDer: HTMLImageElement | null = null;
+            const urlIzq = escena.paginaIzquierda?.url || (escena.paginaIzquierda?.archivo ? this.obtenerUrlArchivo(escena.paginaIzquierda.archivo) : '');
+            const urlDer = escena.paginaDerecha?.url || (escena.paginaDerecha?.archivo ? this.obtenerUrlArchivo(escena.paginaDerecha.archivo) : '');
+            if (urlIzq) {
+              try { imgIzq = await this.cargarImagenUrl(urlIzq); } catch (e) {}
+            }
+            if (urlDer) {
+              try { imgDer = await this.cargarImagenUrl(urlDer); } catch (e) {}
+            }
+            data = { imgIzq, imgDer, duracion: escena.duracion || 4 };
+          } else if (escena.tipo === 'spread_intro') {
+            let imgPortada: HTMLImageElement | null = null;
+            const urlPortada = escena.paginaDerecha?.url || (escena.paginaDerecha?.archivo ? this.obtenerUrlArchivo(escena.paginaDerecha.archivo) : '');
+            if (urlPortada) {
+              try { imgPortada = await this.cargarImagenUrl(urlPortada); } catch (e) {}
+            }
+            data = { imgPortada, duracion: escena.duracion || 4.5 };
+          } else if (escena.tipo === 'spread_mapa') {
+            let imgMapa: HTMLImageElement | null = null;
+            let videoMapa: HTMLVideoElement | null = null;
+            if (escena.url && /\.mp4$/i.test(escena.url)) {
+              try {
+                const vData = await this.procesarVideoUrl(escena.url, true);
+                videoMapa = vData.video;
+              } catch (e) {}
+            } else if (escena.url) {
+              try {
+                imgMapa = await this.cargarImagenUrl(escena.url);
+              } catch (e) {}
+            }
+            data = { imagen: imgMapa, video: videoMapa, duracion: escena.duracion || 5 };
+          } else if (escena.tipo === 'spread_carta') {
+            data = { duracion: escena.duracion || 5 };
           }
 
           cacheRecursos.set(cacheKey, data);
@@ -720,7 +755,96 @@ export interface ProgresoVideo {
       if (config.incluirTexto && escena.archivo) {
         this.dibujarTextoImagen(escena.archivo);
       }
+    } else if (escena.tipo === 'spread_fotos') {
+      const w = this.canvas.width;
+      const h = this.canvas.height;
+      this.ctx.fillStyle = '#1c120c';
+      this.ctx.fillRect(0, 0, w, h);
+      this.ctx.fillStyle = '#f5eedc';
+      this.ctx.fillRect(60, 40, w - 120, h - 80);
+      this.ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      this.ctx.fillRect((w / 2) - 8, 40, 16, h - 80);
+
+      if (escena.data?.imgIzq) {
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.fillRect(90, 70, (w / 2) - 120, h - 140);
+        this.dibujarImagenEnRect(escena.data.imgIzq, 105, 85, (w / 2) - 150, h - 220, 'contain');
+        if (escena.paginaIzquierda?.titulo) {
+          this.ctx.fillStyle = '#2b1810';
+          this.ctx.font = 'bold 20px "Cinzel", Georgia, serif';
+          this.ctx.textAlign = 'center';
+          this.ctx.fillText(escena.paginaIzquierda.titulo, 90 + ((w / 2) - 120) / 2, h - 90);
+        }
+      }
+      if (escena.data?.imgDer) {
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.fillRect((w / 2) + 30, 70, (w / 2) - 120, h - 140);
+        this.dibujarImagenEnRect(escena.data.imgDer, (w / 2) + 45, 85, (w / 2) - 150, h - 220, 'contain');
+        if (escena.paginaDerecha?.titulo) {
+          this.ctx.fillStyle = '#2b1810';
+          this.ctx.font = 'bold 20px "Cinzel", Georgia, serif';
+          this.ctx.textAlign = 'center';
+          this.ctx.fillText(escena.paginaDerecha.titulo, (w / 2) + 30 + ((w / 2) - 120) / 2, h - 90);
+        }
+      }
+    } else if (escena.tipo === 'spread_intro') {
+      const w = this.canvas.width;
+      const h = this.canvas.height;
+      this.ctx.fillStyle = '#1c120c';
+      this.ctx.fillRect(0, 0, w, h);
+      this.ctx.fillStyle = '#f5eedc';
+      this.ctx.fillRect(60, 40, w - 120, h - 80);
+      this.ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      this.ctx.fillRect((w / 2) - 8, 40, 16, h - 80);
+
+      this.ctx.fillStyle = '#2b1810';
+      this.ctx.font = 'bold 32px "Cinzel", Georgia, serif';
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(escena.titulo || 'Diario de Viaje', (w / 4), h / 2 - 30);
+      if (escena.descripcion) {
+        this.ctx.font = 'italic 18px Georgia, serif';
+        this.ctx.fillText(escena.descripcion, (w / 4), h / 2 + 15);
+      }
+      if (escena.data?.imgPortada) {
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.fillRect((w / 2) + 30, 70, (w / 2) - 120, h - 140);
+        this.dibujarImagenEnRect(escena.data.imgPortada, (w / 2) + 45, 85, (w / 2) - 150, h - 220, 'contain');
+      }
+    } else if (escena.tipo === 'spread_mapa') {
+      if (escena.data?.video) {
+        dibujarFrameVideo(escena.data.video, escena, config);
+      } else if (escena.data?.imagen) {
+        this.dibujarImagenCentrada(escena.data.imagen, 'contain');
+      } else {
+        this.renderizarMapaResumenFallback(escena, elapsed);
+      }
+    } else if (escena.tipo === 'spread_carta') {
+      this.renderizarCartaFrame(escena, progreso);
     }
+  }
+
+  private dibujarImagenEnRect(imagen: HTMLImageElement, x: number, y: number, w: number, h: number, modo: 'contain' | 'cover' = 'contain'): void {
+    const rectAspect = w / h;
+    const imageAspect = (imagen.naturalWidth || imagen.width || 1) / (imagen.naturalHeight || imagen.height || 1);
+    let dw = w;
+    let dh = h;
+    let dx = x;
+    let dy = y;
+
+    if (modo === 'contain') {
+      if (imageAspect > rectAspect) {
+        dw = w;
+        dh = dw / imageAspect;
+        dx = x;
+        dy = y + (h - dh) / 2;
+      } else {
+        dh = h;
+        dw = dh * imageAspect;
+        dx = x + (w - dw) / 2;
+        dy = y;
+      }
+    }
+    this.ctx.drawImage(imagen, dx, dy, dw, dh);
   }
 
   /** @deprecated Usar renderizarFrameEscenaSync */
