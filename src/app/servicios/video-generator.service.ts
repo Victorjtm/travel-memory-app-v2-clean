@@ -104,9 +104,13 @@ export interface ProgresoVideo {
       const endpoint = `${backendUrl}/api/viajes/${viajeId}/generar-pelicula-servidor`;
 
       console.log('🎬 [VideoGenerator] Enviando solicitud a servidor FFmpeg:', endpoint);
+      const controller = new AbortController();
+      const abortTimeout = setTimeout(() => controller.abort(), 30 * 60 * 1000); // 30 min timeout para viajes grandes
+
       const resp = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           secuencia,
           configuracion,
@@ -115,6 +119,7 @@ export interface ProgresoVideo {
           itinerariosAudio
         })
       });
+      clearTimeout(abortTimeout);
 
       clearInterval(progressTimer);
 
@@ -769,22 +774,28 @@ export interface ProgresoVideo {
         this.ctx.fillStyle = '#ffffff';
         this.ctx.fillRect(90, 70, (w / 2) - 120, h - 140);
         this.dibujarImagenEnRect(escena.data.imgIzq, 105, 85, (w / 2) - 150, h - 220, 'contain');
-        if (escena.paginaIzquierda?.titulo) {
+        const titIzq = escena.paginaIzquierda?.titulo || escena.paginaIzquierda?.descripcion || '';
+        if (titIzq && titIzq.toLowerCase() !== 'itinerario') {
           this.ctx.fillStyle = '#2b1810';
-          this.ctx.font = 'bold 20px "Cinzel", Georgia, serif';
+          this.ctx.font = 'bold 18px "Cinzel", Georgia, serif';
           this.ctx.textAlign = 'center';
-          this.ctx.fillText(escena.paginaIzquierda.titulo, 90 + ((w / 2) - 120) / 2, h - 90);
+          const maxW = (w / 2) - 150;
+          const textoCorto = titIzq.length > 55 ? titIzq.substring(0, 52) + '...' : titIzq;
+          this.ctx.fillText(textoCorto, 90 + ((w / 2) - 120) / 2, h - 90, maxW);
         }
       }
       if (escena.data?.imgDer) {
         this.ctx.fillStyle = '#ffffff';
         this.ctx.fillRect((w / 2) + 30, 70, (w / 2) - 120, h - 140);
         this.dibujarImagenEnRect(escena.data.imgDer, (w / 2) + 45, 85, (w / 2) - 150, h - 220, 'contain');
-        if (escena.paginaDerecha?.titulo) {
+        const titDer = escena.paginaDerecha?.titulo || escena.paginaDerecha?.descripcion || '';
+        if (titDer && titDer.toLowerCase() !== 'itinerario') {
           this.ctx.fillStyle = '#2b1810';
-          this.ctx.font = 'bold 20px "Cinzel", Georgia, serif';
+          this.ctx.font = 'bold 18px "Cinzel", Georgia, serif';
           this.ctx.textAlign = 'center';
-          this.ctx.fillText(escena.paginaDerecha.titulo, (w / 2) + 30 + ((w / 2) - 120) / 2, h - 90);
+          const maxW = (w / 2) - 150;
+          const textoCorto = titDer.length > 55 ? titDer.substring(0, 52) + '...' : titDer;
+          this.ctx.fillText(textoCorto, (w / 2) + 30 + ((w / 2) - 120) / 2, h - 90, maxW);
         }
       }
     } else if (escena.tipo === 'spread_intro') {
@@ -2404,15 +2415,17 @@ private dibujarImagenCentrada(imagen: HTMLImageElement, modo: 'contain' | 'cover
       ctx.strokeRect(imgX - padSide, imgY - padTop, targetW + padSide * 2, targetH + padTop + padBottom);
 
       ctx.fillStyle = '#2b1d14';
-      ctx.font = 'italic bold 22px "Cinzel", Georgia, serif';
+      ctx.font = 'italic bold 20px "Cinzel", Georgia, serif';
       ctx.textAlign = 'center';
       const textoPolaroid = escena.titulo || escena.descripcion || 'Recuerdo de viaje';
-      ctx.fillText(textoPolaroid, w / 2, imgY + targetH + 42, targetW);
+      const polaroidCenter = imgX + targetW / 2;
+      const textoCorto = textoPolaroid.length > 50 ? textoPolaroid.substring(0, 47) + '...' : textoPolaroid;
+      ctx.fillText(textoCorto, polaroidCenter, imgY + targetH + 42, targetW);
 
       if (escena.fecha) {
         ctx.font = 'italic 16px "Cinzel", Georgia, serif';
         ctx.fillStyle = '#6b4f3b';
-        ctx.fillText(escena.fecha + (escena.hora ? ' · ' + escena.hora : ''), w / 2, imgY + targetH + 68);
+        ctx.fillText(escena.fecha + (escena.hora ? ' · ' + escena.hora : ''), polaroidCenter, imgY + targetH + 68, targetW);
       }
     }
 

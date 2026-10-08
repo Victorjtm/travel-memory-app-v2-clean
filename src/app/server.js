@@ -6324,6 +6324,8 @@ try {
 }
 
 app.post(['/viajes/:id/generar-pelicula-servidor', '/api/viajes/:id/generar-pelicula-servidor'], express.json({ limit: '50mb' }), async (req, res) => {
+  req.setTimeout(30 * 60 * 1000); // 30 minutos
+  res.setTimeout(30 * 60 * 1000);
   const viajeId = req.params.id;
   const { secuencia, configuracion, infoViaje, audioViajeUrl, itinerariosAudio } = req.body;
 

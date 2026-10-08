@@ -1593,8 +1593,13 @@ async function ensamblarPeliculaConTransiciones(segmentos, tmpDir, esVintage, ou
 
       if (subReels.length === 1) {
         fs.copyFileSync(subReels[0].path, outPath);
-      } else {
+      } else if (subReels.length <= BATCH_SIZE) {
         await ejecutarXfadeLote(subReels, tmpDir, esVintage, outPath);
+      } else {
+        console.log(`🎬 [PeliculaServer] Concatenando ${subReels.length} subreels finales con demuxer directo...`);
+        const concatReels = path.join(tmpDir, 'concat_subreels.txt');
+        fs.writeFileSync(concatReels, subReels.map(s => `file '${s.path.replace(/\\/g, '/')}'`).join('\n'));
+        await runFFmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', concatReels, '-c:v', 'copy', '-c:a', 'copy', outPath]);
       }
     }
     console.log(`✅ [PeliculaServer] Transiciones ensambladas con éxito.`);
